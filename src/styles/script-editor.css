@@ -1,0 +1,248 @@
+.se-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.se-modal-content {
+    width: 90%;
+    height: 90%;
+    background-color: #1e1e1e;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+.se-modal-header {
+    height: 48px;
+    background-color: #252526;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+}
+
+.se-modal-title {
+    font-weight: bold;
+    font-size: 16px;
+    color: #e0e0e0;
+}
+
+.se-modal-path {
+    margin-left: 10px;
+    font-size: 12px;
+    color: #ccc;
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.se-modal-close {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #999;
+}
+
+.se-modal-close:hover {
+    color: #fff;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.se-modal-toolbar {
+    height: 40px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.se-button {
+    height: 32px;
+    padding: 0 8px;
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.se-button:hover {
+    background-color: #3d3d3d;
+    color: #fff;
+}
+
+.se-button i {
+    margin-right: 4px;
+}
+
+.se-separator {
+    height: 24px;
+    width: 1px;
+    background-color: #444;
+    margin: 0 8px;
+}
+
+.se-modal-editor-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.CodeMirror {
+    height: 100% !important;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+}
+
+.se-modal-status {
+    height: 24px;
+    background-color: #252526;
+    border-top: 1px solid #333;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    color: #ccc;
+    padding: 0 16px;
+}
+
+.se-status-position {
+    margin-right: 16px;
+}
+
+.se-status-modified {
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.se-status-modified.modified {
+    background-color: rgba(255, 255, 0, 0.2);
+    color: #ffff00;
+}
+
+.se-status-message {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.se-status-message.error {
+    background-color: rgba(255, 0, 0, 0.2);
+    color: #ff7070;
+}
+
+/* Dark scrollbars */
+.CodeMirror-vscrollbar, .CodeMirror-hscrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #444 #252526;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar,
+.CodeMirror-hscrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-track,
+.CodeMirror-hscrollbar::-webkit-scrollbar-track {
+    background: #252526;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
+.CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+.CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
+.CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Confirmation dialog */
+.se-confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.se-confirm-content {
+    background-color: #252526;
+    border-radius: 4px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90%;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.se-confirm-content h3 {
+    margin-top: 0;
+    color: #e0e0e0;
+}
+
+.se-confirm-content p {
+    color: #ccc;
+    margin-bottom: 20px;
+}
+
+.se-confirm-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.se-confirm-buttons .se-button {
+    padding: 6px 12px;
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.se-confirm-buttons .se-button:hover {
+    background-color: #4d4d4d;
+}
+
+#se-save-close {
+    background-color: #0078d7;
+}
+
+#se-save-close:hover {
+    background-color: #0086f0;
+}
+
+#se-discard {
+    background-color: #d74545;
+}
+
+#se-discard:hover {
+    background-color: #e45555;
+}

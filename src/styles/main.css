@@ -1,0 +1,248 @@
+body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+    background: #1e1e1e;
+    color: #e0e0e0;
+}
+
+.toolbar {
+    height: 32px;
+    background: #2d2d2d;
+    border-bottom: 1px solid #232323;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    justify-content: space-between;
+}
+
+.toolbar-group {
+    display: flex;
+    gap: 4px;
+}
+
+.toolbar-button {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #b8b8b8;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.toolbar-button:hover {
+    background: #3d3d3d;
+    color: #fff;
+}
+
+.toolbar-button.active {
+    background: #454545;
+    color: #fff;
+}
+
+.main-content {
+    display: flex;
+    flex: 1;
+    min-height: 0; /* Important for nested scrolling */
+}
+
+.hierarchy-panel {
+    width: 300px;
+    min-width: 32px;
+    background: #252526;
+    border-right: 1px solid #1e1e1e;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.hierarchy-header {
+    padding: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    background: #2d2d2d;
+    border-bottom: 1px solid #1e1e1e;
+}
+
+.center-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.canvas-tabs {
+    height: 32px;
+    background: #2d2d2d;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+}
+
+.canvas-tab {
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    color: #b8b8b8;
+    cursor: pointer;
+    font-size: 12px;
+    border-right: 1px solid #1e1e1e;
+}
+
+.canvas-tab.active {
+    background: #1e1e1e;
+    color: #fff;
+}
+
+.canvas-container {
+    flex: 1;
+    background: #1e1e1e;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.canvas-view {
+    position: relative;
+    flex: 1;
+    display: none;
+    flex-direction: column;
+}
+
+.canvas-view.active {
+    display: flex;
+}
+
+.module-panel {
+    width: 300px;
+    min-width: 32px;
+    background: #252526;
+    border-left: 1px solid #1e1e1e;
+    position: relative;
+}
+
+.bottom-panel {
+    height: 250px;
+    min-height: 32px;
+    background: #252526;
+    border-top: 1px solid #1e1e1e;
+    position: relative;
+    z-index: 10;
+}
+
+.tab-buttons {
+    height: 32px;
+    background: #2d2d2d;
+    display: flex;
+}
+
+.tab-button {
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    color: #b8b8b8;
+    cursor: pointer;
+    font-size: 12px;
+    border-right: 1px solid #1e1e1e;
+}
+
+.tab-button.active {
+    background: #252526;
+    color: #fff;
+}
+
+.footer {
+    height: 24px;
+    background: #007acc;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+#editorCanvas, #gameCanvas {
+    background: #2d2d2d;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+
+.resizer-v {
+    width: 4px;
+    cursor: col-resize;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: transparent;
+}
+
+.resizer-h {
+    height: 4px;
+    cursor: row-resize;
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: transparent;
+}
+
+.hierarchy-panel .resizer-v {
+    right: -2px;
+}
+
+.module-panel .resizer-v {
+    left: -2px;
+}
+
+.bottom-panel .resizer-h {
+    top: -2px;
+}
+
+.editor-toolbar {
+    height: 32px;
+    background: #333;
+    border-bottom: 1px solid #232323;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.editor-toolbar label {
+    color: #b8b8b8;
+    font-size: 12px;
+}
+
+.editor-toolbar input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.editor-toolbar input[type="number"] {
+    width: 60px;
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    color: white;
+    padding: 2px 4px;
+}
+
+.axis-indicator {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.editor-canvas-container {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+}
