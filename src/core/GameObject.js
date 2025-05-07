@@ -5,6 +5,7 @@ class GameObject {
         this.scale = new Vector2(1, 1);
         this.angle = 0;
         this.depth = 0;
+        this.visible = true;
         this.modules = [];
         this.children = [];
         this.parent = null;
@@ -13,6 +14,7 @@ class GameObject {
         this.selected = false; // Track if selected in editor
         this.expanded = false; // Track if expanded in hierarchy
         this.editorColor = this.generateRandomColor(); // Color in editor view
+        this.id = crypto.randomUUID(); // Generate unique ID
     }
 
     generateRandomColor() {
@@ -372,6 +374,31 @@ class GameObject {
     rename(newName) {
         this.name = newName;
     }
+
+    getWorldRotation() {
+        let rotation = this.angle;
+        let currentParent = this.parent;
+        
+        while (currentParent) {
+            rotation += currentParent.angle;
+            currentParent = currentParent.parent;
+        }
+        
+        return rotation;
+    }
+    
+    getWorldScale() {
+        let scale = this.scale.clone();
+        let currentParent = this.parent;
+        
+        while (currentParent) {
+            scale.x *= currentParent.scale.x;
+            scale.y *= currentParent.scale.y;
+            currentParent = currentParent.parent;
+        }
+        
+        return scale;
+    }
     
     /**
      * Serialize this GameObject to JSON
@@ -421,7 +448,7 @@ class GameObject {
      * @returns {GameObject} A deep copy of this GameObject
      */
     clone() {
-        const cloned = new GameObject(this.name + ' (Copy)');
+        const cloned = new GameObject(this.name);
         
         // Copy basic properties
         cloned.position = this.position.clone();
@@ -429,41 +456,32 @@ class GameObject {
         cloned.angle = this.angle;
         cloned.depth = this.depth;
         cloned.active = this.active;
-        cloned.tags = [...this.tags];
-        cloned.editorColor = this.editorColor;
-
-        // Clone modules
-        this.modules.forEach(module => {
-            if (typeof module.clone === 'function') {
-                // Use module's clone method if available
-                const clonedModule = module.clone();
-                cloned.addModule(clonedModule);
-            } else {
-                // Fallback to creating new instance of same type
+        
+        // Clone modules (deep copy)
+        if (this.modules) {
+            cloned.modules = this.modules.map(module => {
+                // Get the module constructor
                 const ModuleClass = module.constructor;
-                const newModule = new ModuleClass();
                 
-                // Copy over all properties except gameObject reference
-                Object.keys(module).forEach(key => {
-                    if (key !== 'gameObject' && typeof module[key] !== 'function') {
-                        if (module[key] && typeof module[key].clone === 'function') {
-                            newModule[key] = module[key].clone();
-                        } else {
-                            newModule[key] = module[key];
-                        }
-                    }
-                });
+                // Create a new module instance
+                const clonedModule = new ModuleClass(cloned);
                 
-                cloned.addModule(newModule);
-            }
-        });
-
-        // Clone children recursively
-        this.children.forEach(child => {
-            const clonedChild = child.clone();
-            cloned.addChild(clonedChild);
-        });
-
+                // Copy module properties
+                clonedModule.enabled = module.enabled;
+                clonedModule.name = module.name;
+                
+                // Deep copy properties object if it exists
+                if (module.properties) {
+                    clonedModule.properties = JSON.parse(JSON.stringify(module.properties));
+                }
+                
+                return clonedModule;
+            });
+        }
+        
+        // Clone children when using Engine.cloneGameObjects
+        cloned.children = [];
+        
         return cloned;
     }
 }

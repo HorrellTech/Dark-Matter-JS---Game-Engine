@@ -6,6 +6,8 @@ class Scene {
         this.settings = {
             viewportWidth: 1280,
             viewportHeight: 720,
+            viewportX: 0,  
+            viewportY: 0,
             backgroundColor: "#1e1e1e",
             gridEnabled: true,
             gridSize: 32,
@@ -21,14 +23,35 @@ class Scene {
     toJSON() {
         return {
             name: this.name,
-            settings: { ...this.settings },
-            gameObjects: this.gameObjects.map(obj => obj.toJSON())
+            settings: {
+                viewportWidth: this.settings.viewportWidth,
+                viewportHeight: this.settings.viewportHeight,
+                viewportX: this.settings.viewportX || 0,
+                viewportY: this.settings.viewportY || 0,
+                backgroundColor: this.settings.backgroundColor,
+                gridEnabled: this.settings.gridEnabled,
+                gridSize: this.settings.gridSize,
+                snapToGrid: this.settings.snapToGrid
+            },
+            gameObjects: this.gameObjects.filter(obj => !obj.parent).map(obj => obj.toJSON())
         };
     }
 
     static fromJSON(json) {
         const scene = new Scene(json.name);
-        scene.settings = { ...json.settings };
+
+        // Apply settings
+        scene.settings = {
+            viewportWidth: json.settings.viewportWidth || 800,
+            viewportHeight: json.settings.viewportHeight || 600,
+            viewportX: json.settings.viewportX || 0,
+            viewportY: json.settings.viewportY || 0,
+            backgroundColor: json.settings.backgroundColor || "#000000",
+            gridEnabled: json.settings.gridEnabled !== undefined ? json.settings.gridEnabled : true,
+            gridSize: json.settings.gridSize || 32,
+            snapToGrid: json.settings.snapToGrid || false
+        };
+        
         scene.gameObjects = json.gameObjects.map(objData => GameObject.fromJSON(objData));
         return scene;
     }

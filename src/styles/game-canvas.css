@@ -1,0 +1,78 @@
+/* Game canvas styling */
+#gameCanvas {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    display: block;
+}
+
+/* Active toolbar button for play/stop */
+.toolbar-button.active {
+    background-color: rgba(255, 255, 255, 0.2);
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Viewport dragging */
+.viewport-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: move !important;
+}
+
+/* Make sure we capture all drag events */
+body.viewport-dragging {
+    overflow: hidden;
+}
+
+/* Active toolbar button state */
+.toolbar-button.active {
+    background-color: rgba(255, 255, 255, 0.2);
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Game loading state */
+body.game-loading {
+    cursor: progress;
+}
+
+/* Loading overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    z-index: 1000;
+}
+
+body.game-loading .loading-overlay {
+    display: flex;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #4CAF50;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+.loading-text {
+    color: white;
+    font-size: 18px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+

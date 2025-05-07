@@ -28,6 +28,25 @@ class Editor {
             activeAxis: null,
             rotationStartAngle: 0
         };
+
+        // Viewport interaction properties
+        this.viewportInteraction = {
+            dragging: false,
+            resizing: false,
+            settings: false,
+            startPos: null,
+            initialViewport: null
+        };
+
+        // Viewport icon animation properties
+        this.viewportAnimation = {
+            moveHandleScale: 1.0,
+            settingsHandleScale: 1.0,
+            targetMoveScale: 1.0,
+            targetSettingsScale: 1.0,
+            animationSpeed: 0.15  // Speed of animation (0-1, higher is faster)
+        };
+
         this.mousePosition = new Vector2(0, 0);
         this.showMouseCoordinates = true;
 
@@ -67,6 +86,10 @@ class Editor {
             this.mousePosition = this.screenToWorldPosition(screenPos);
             this.refreshCanvas();
         });
+
+        // Create a single bound handler for mousemove
+        const boundMouseMoveHandler = this.handleMouseMove.bind(this);
+        this.canvas.addEventListener('mousemove', boundMouseMoveHandler);
 
         // Mouse leave - hide coordinates when mouse exits canvas
         this.canvas.addEventListener('mouseleave', () => {
@@ -121,9 +144,29 @@ class Editor {
                 this.refreshCanvas();
             }
         });
+
+        // Set up animation loop for smoother icon animations
+        this.animationLoop();
         
         // Initial render
         this.refreshCanvas();
+    }
+
+    animationLoop() {
+        // Check if any animations are in progress
+        const moveAnimating = Math.abs(this.viewportAnimation.moveHandleScale - 
+                                     this.viewportAnimation.targetMoveScale) > 0.01;
+                                     
+        const settingsAnimating = Math.abs(this.viewportAnimation.settingsHandleScale - 
+                                         this.viewportAnimation.targetSettingsScale) > 0.01;
+        
+        // If anything is animating, refresh the canvas
+        if (moveAnimating || settingsAnimating) {
+            this.refreshCanvas();
+        }
+        
+        // Continue the animation loop
+        requestAnimationFrame(() => this.animationLoop());
     }
     
     refreshCanvas() {
@@ -155,9 +198,9 @@ class Editor {
         });
         
         // Draw all game objects
-        this.scene.gameObjects.forEach(obj => {
-            obj.drawInEditor(this.ctx);
-        });
+        //this.scene.gameObjects.forEach(obj => {
+        //    obj.drawInEditor(this.ctx);
+        //});
         
         // Draw transform handles for selected object
         if (this.hierarchy && this.hierarchy.selectedObject && this.hierarchy.selectedObject.active) {
@@ -179,15 +222,65 @@ class Editor {
         this.setActiveScene(scene);
     }
 
+    handleDocumentMouseMove = (e) => {
+        if (this.viewportInteraction.dragging) {
+            // Get canvas-relative coordinates
+            const rect = this.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const screenPos = new Vector2(x, y);
+            const worldPos = this.screenToWorldPosition(screenPos);
+            const delta = worldPos.subtract(this.viewportInteraction.startPos);
+            
+            // Update viewport position
+            this.activeScene.settings.viewportX = this.viewportInteraction.initialViewport.x + delta.x;
+            this.activeScene.settings.viewportY = this.viewportInteraction.initialViewport.y + delta.y;
+            
+            // Snap to grid if enabled
+            if (this.grid.snapToGrid) {
+                this.activeScene.settings.viewportX = this.grid.snapValue(this.activeScene.settings.viewportX);
+                this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
+            }
+            
+            // Mark scene as modified
+            this.activeScene.dirty = true;
+            
+            this.refreshCanvas();
+        }
+    }
+    
+    handleDocumentMouseUp = (e) => {
+        if (this.viewportInteraction.dragging) {
+            this.viewportInteraction.dragging = false;
+            this.viewportInteraction.startPos = null;
+            this.viewportInteraction.initialViewport = null;
+            
+            document.body.classList.remove('viewport-dragging');
+            
+            // Remove document-level event listeners
+            document.removeEventListener('mousemove', this.handleDocumentMouseMove);
+            document.removeEventListener('mouseup', this.handleDocumentMouseUp);
+            
+            // Mark scene as modified
+            if (this.activeScene) {
+                this.activeScene.dirty = true;
+            }
+            
+            this.refreshCanvas();
+        }
+    }
+
     setActiveScene(scene) {
         this.activeScene = scene;
+        this.scene = scene; // Keep these in sync
         
         // Update references in hierarchy and inspector
         if (this.hierarchy) {
             this.hierarchy.scene = scene;
             this.hierarchy.refreshHierarchy();
         }
-
+    
         // Update window title to show current scene
         document.title = `Dark Matter JS - ${scene.name}${scene.dirty ? '*' : ''}`;
         
@@ -196,37 +289,222 @@ class Editor {
 
     drawSceneViewport() {
         if (!this.activeScene) return;
-
+    
         const settings = this.activeScene.settings;
-        const worldPos = this.screenToWorldPosition(new Vector2(0, 0));
         
-        // Draw viewport rectangle
+        // Draw viewport rectangle using its actual coordinates
         this.ctx.save();
-        this.ctx.strokeStyle = '#00ff00';
-        this.ctx.lineWidth = 2 / this.camera.zoom;
-        this.ctx.setLineDash([5 / this.camera.zoom, 5 / this.camera.zoom]);
         
-        // Convert viewport dimensions to world space
-        const width = settings.viewportWidth / this.camera.zoom;
-        const height = settings.viewportHeight / this.camera.zoom;
-        
-        this.ctx.strokeRect(
-            worldPos.x,
-            worldPos.y,
-            width,
-            height
+        // Make sure it's visible with a semi-transparent fill
+        this.ctx.fillStyle = 'rgba(0, 100, 0, 0.05)';
+        this.ctx.fillRect(
+            settings.viewportX || 0, 
+            settings.viewportY || 0,
+            settings.viewportWidth,
+            settings.viewportHeight
         );
         
-        // Draw label
-        this.ctx.fillStyle = '#00ff00';
+        // Draw the border with a dashed line
+        this.ctx.strokeStyle = '#00ff00';
+        this.ctx.lineWidth = 1.5 / this.camera.zoom;
+        this.ctx.setLineDash([5 / this.camera.zoom, 5 / this.camera.zoom]);
+        this.ctx.strokeRect(
+            settings.viewportX || 0, 
+            settings.viewportY || 0,
+            settings.viewportWidth,
+            settings.viewportHeight
+        );
+        this.ctx.setLineDash([]);
+        
+        // Get mouse position for hover effects
+        const worldMouse = this.mousePosition;
+        
+        // Define base handle size and hover effect
+        const handleSize = 10 / this.camera.zoom;
+        const hoverScale = 1.3;
+        
+        // Check if mouse is hovering over handles
+        const isOverMoveHandle = this.isOnViewportMoveHandle(worldMouse);
+        const isOverSettingsHandle = this.isOnViewportSettingsHandle(worldMouse);
+        
+        // Update target scales based on hover state
+        this.viewportAnimation.targetMoveScale = isOverMoveHandle ? hoverScale : 1.0;
+        this.viewportAnimation.targetSettingsScale = isOverSettingsHandle ? hoverScale : 1.0;
+        
+        // Smoothly interpolate current scale toward target scale
+        this.viewportAnimation.moveHandleScale += (this.viewportAnimation.targetMoveScale - 
+                                                  this.viewportAnimation.moveHandleScale) * 
+                                                  this.viewportAnimation.animationSpeed;
+                                                  
+        this.viewportAnimation.settingsHandleScale += (this.viewportAnimation.targetSettingsScale - 
+                                                     this.viewportAnimation.settingsHandleScale) * 
+                                                     this.viewportAnimation.animationSpeed;
+        
+        // Calculate actual sizes with animation
+        const actualMoveSize = handleSize * this.viewportAnimation.moveHandleScale;
+        const actualSettingsSize = handleSize * this.viewportAnimation.settingsHandleScale;
+        
+        // Draw move handle in the top-left corner
+        const moveX = (settings.viewportX || 0) + handleSize;
+        const moveY = (settings.viewportY || 0) + handleSize;
+        
+        // Draw move handle background with color transition
+        const moveHandleNormal = '#4CAF50';
+        const moveHandleHover = '#5CCC60';
+        const moveHandleColor = this.blendColors(moveHandleNormal, moveHandleHover, 
+                                                (this.viewportAnimation.moveHandleScale - 1.0) / (hoverScale - 1.0));
+                                                
+        this.ctx.fillStyle = moveHandleColor;
+        this.ctx.strokeStyle = '#FFFFFF';
+        this.ctx.lineWidth = 1 / this.camera.zoom;
+        
+        this.ctx.beginPath();
+        this.ctx.arc(moveX, moveY, actualMoveSize, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        
+        // Draw move icon (four-direction arrows)
+        this.ctx.fillStyle = '#FFFFFF';
+        const iconSize = actualMoveSize * 0.7;
+        
+        // Draw arrows for move handle
+        this.ctx.save();
+        this.ctx.translate(moveX, moveY);
+        
+        // Draw four arrows pointing in different directions
+        for (let i = 0; i < 4; i++) {
+            this.ctx.save();
+            this.ctx.rotate(i * Math.PI / 2);
+            
+            // Draw arrow
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, -iconSize * 0.3);
+            this.ctx.lineTo(iconSize * 0.5, -iconSize * 0.7);
+            this.ctx.lineTo(0, -iconSize);
+            this.ctx.lineTo(-iconSize * 0.5, -iconSize * 0.7);
+            this.ctx.closePath();
+            this.ctx.fill();
+            
+            this.ctx.restore();
+        }
+        
+        this.ctx.restore();
+        
+        // Draw settings gear in the top-right corner
+        const settingsX = (settings.viewportX || 0) + settings.viewportWidth - handleSize;
+        const settingsY = (settings.viewportY || 0) + handleSize;
+        
+        // Draw settings handle background with color transition
+        const settingsHandleNormal = '#4CAF50';
+        const settingsHandleHover = '#5CCC60';
+        const settingsHandleColor = this.blendColors(settingsHandleNormal, settingsHandleHover,
+                                                   (this.viewportAnimation.settingsHandleScale - 1.0) / (hoverScale - 1.0));
+        
+        this.ctx.fillStyle = settingsHandleColor;
+        this.ctx.beginPath();
+        this.ctx.arc(settingsX, settingsY, actualSettingsSize, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+        
+        // Draw gear icon
+        this.ctx.fillStyle = '#FFFFFF';
+        this.drawGearIcon(settingsX, settingsY, actualSettingsSize * 0.7);
+        
+        // Add a label in the top-middle
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        const labelX = (settings.viewportX || 0) + settings.viewportWidth / 2;
+        const labelY = (settings.viewportY || 0) + handleSize * 2.5;
+        const labelWidth = 120 / this.camera.zoom;
+        const labelHeight = 20 / this.camera.zoom;
+        
+        this.ctx.fillRect(
+            labelX - labelWidth/2, 
+            labelY - labelHeight/2, 
+            labelWidth, 
+            labelHeight
+        );
+        
+        this.ctx.fillStyle = '#FFFFFF';
         this.ctx.font = `${12 / this.camera.zoom}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
         this.ctx.fillText(
-            `Viewport (${settings.viewportWidth}x${settings.viewportHeight})`,
-            worldPos.x + 5 / this.camera.zoom,
-            worldPos.y + 20 / this.camera.zoom
+            `${settings.viewportWidth} x ${settings.viewportHeight}`,
+            labelX, 
+            labelY
         );
         
         this.ctx.restore();
+    }
+
+    /**
+     * Blend two hex colors using a factor (0-1)
+     * @param {string} color1 - First color hex code
+     * @param {string} color2 - Second color hex code
+     * @param {number} factor - Blend factor (0 = color1, 1 = color2)
+     * @returns {string} - Blended color
+     */
+    blendColors(color1, color2, factor) {
+        // Ensure factor is between 0 and 1
+        factor = Math.max(0, Math.min(1, factor));
+        
+        // Convert hex to RGB
+        const hexToRgb = hex => {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return [r, g, b];
+        };
+        
+        // Convert RGB to hex
+        const rgbToHex = rgb => {
+            return '#' + rgb.map(v => {
+                const hex = Math.round(v).toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join('');
+        };
+        
+        // Get RGB values for colors
+        const c1 = hexToRgb(color1);
+        const c2 = hexToRgb(color2);
+        
+        // Blend colors
+        const blended = c1.map((v, i) => v + factor * (c2[i] - v));
+        
+        return rgbToHex(blended);
+    }
+
+    drawGearIcon(x, y, size) {
+        const outerRadius = size;
+        const innerRadius = size * 0.6;
+        const toothCount = 8;
+        
+        this.ctx.beginPath();
+        for (let i = 0; i < toothCount; i++) {
+            const angle = (Math.PI * 2 * i) / toothCount;
+            const nextAngle = (Math.PI * 2 * (i + 0.5)) / toothCount;
+            const nextNextAngle = (Math.PI * 2 * (i + 1)) / toothCount;
+            
+            // Outer point
+            this.ctx.lineTo(
+                x + Math.cos(angle) * outerRadius,
+                y + Math.sin(angle) * outerRadius
+            );
+            
+            // Inner point
+            this.ctx.lineTo(
+                x + Math.cos(nextAngle) * innerRadius,
+                y + Math.sin(nextAngle) * innerRadius
+            );
+        }
+        this.ctx.closePath();
+        this.ctx.fill();
+        
+        // Draw a small circle in the center
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, size * 0.2, 0, Math.PI * 2);
+        this.ctx.fillStyle = '#4CAF50';
+        this.ctx.fill();
     }
 
     drawMouseCoordinates() {
@@ -385,6 +663,28 @@ class Editor {
     handleMouseDown(e) {
         if (e.button === 0) { // Left click
             const worldPos = this.screenToWorldPosition(new Vector2(e.offsetX, e.offsetY));
+
+            // First check if we're interacting with the viewport
+            if (this.isOnViewportMoveHandle(worldPos)) {
+                this.viewportInteraction.dragging = true;
+                this.viewportInteraction.startPos = worldPos.clone();
+                this.viewportInteraction.initialViewport = {
+                    x: this.activeScene.settings.viewportX || 0,
+                    y: this.activeScene.settings.viewportY || 0
+                };
+                
+                // Add global document event listeners for smoother dragging
+                document.addEventListener('mousemove', this.handleDocumentMouseMove);
+                document.addEventListener('mouseup', this.handleDocumentMouseUp);
+                
+                return;
+            }
+            
+            // Check if clicking on settings gear
+            if (this.isOnViewportSettingsHandle(worldPos)) {
+                this.showViewportSettings();
+                return;
+            }
             
             // Check for transform handle interaction if an object is selected
             if (this.hierarchy && this.hierarchy.selectedObject) {
@@ -492,9 +792,50 @@ class Editor {
     }
     
     handleMouseMove(e) {
-        if (!this.dragInfo.dragging) return;
-    
+        //if (!this.dragInfo.dragging) return;
+
+        const screenPos = new Vector2(e.offsetX, e.offsetY);
         const worldPos = this.screenToWorldPosition(new Vector2(e.offsetX, e.offsetY));
+        this.mousePosition = worldPos.clone();
+
+        this.updateCursor(worldPos);
+
+        // Handle viewport dragging first
+        if (this.viewportInteraction.dragging) {
+            e.preventDefault(); // Prevent selection during drag
+            
+            document.body.classList.add('viewport-dragging');
+            
+            const currentPos = worldPos;
+            const delta = currentPos.subtract(this.viewportInteraction.startPos);
+            
+            // Update viewport position
+            this.activeScene.settings.viewportX = this.viewportInteraction.initialViewport.x + delta.x;
+            this.activeScene.settings.viewportY = this.viewportInteraction.initialViewport.y + delta.y;
+            
+            // Snap to grid if enabled
+            if (this.grid.snapToGrid) {
+                this.activeScene.settings.viewportX = this.grid.snapValue(this.activeScene.settings.viewportX);
+                this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
+            }
+            
+            // Mark scene as modified
+            this.activeScene.dirty = true;
+
+            // Sync to game if running
+            if (this.engine && this.engine.running) {
+                syncEditorToGame();
+            }
+            
+            this.refreshCanvas();
+            return;
+        }
+        
+        // If not dragging, just refresh canvas to update hover effects on handles
+        if (!this.dragInfo.dragging) {
+            this.refreshCanvas();
+            return;
+        }
         
         if (this.dragInfo.dragMode === 'rotate') {
             const objPos = this.dragInfo.object.getWorldPosition();
@@ -514,9 +855,7 @@ class Editor {
             
             this.refreshCanvas();
             return;
-        }
-        
-        if (this.dragInfo.isPanning) {
+        } else if (this.dragInfo.isPanning) {
             // Pan the camera
             const currentPos = new Vector2(e.offsetX, e.offsetY);
             const delta = currentPos.subtract(this.dragInfo.startPos);
@@ -558,8 +897,138 @@ class Editor {
             this.inspector.updateTransformValues();
         }
     }
+
+    isOnViewportMoveHandle(worldPos) {
+        if (!this.activeScene) return false;
+        
+        const settings = this.activeScene.settings;
+        const handleSize = 10 / this.camera.zoom;
+        const moveX = (settings.viewportX || 0) + handleSize;
+        const moveY = (settings.viewportY || 0) + handleSize;
+        
+        // Slightly larger detection radius for easier interaction
+        return worldPos.distance(new Vector2(moveX, moveY)) <= handleSize * 1.5;
+    }
+    
+    isOnViewportSettingsHandle(worldPos) {
+        if (!this.activeScene) return false;
+        
+        const settings = this.activeScene.settings;
+        const handleSize = 10 / this.camera.zoom;
+        const settingsX = (settings.viewportX || 0) + settings.viewportWidth - handleSize;
+        const settingsY = (settings.viewportY || 0) + handleSize;
+        
+        // Slightly larger detection radius for easier interaction
+        return worldPos.distance(new Vector2(settingsX, settingsY)) <= handleSize * 1.5;
+    }
+
+    showViewportSettings() {
+        const settings = this.activeScene.settings;
+        
+        // Create a modal dialog
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Viewport Settings</h3>
+                    <span class="close-button">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="form-row">
+                        <label>Width:</label>
+                        <input type="number" id="viewport-width" value="${settings.viewportWidth}" min="1" step="1">
+                    </div>
+                    <div class="form-row">
+                        <label>Height:</label>
+                        <input type="number" id="viewport-height" value="${settings.viewportHeight}" min="1" step="1">
+                    </div>
+                    <div class="form-row">
+                        <label>X Position:</label>
+                        <input type="number" id="viewport-x" value="${settings.viewportX || 0}" step="1">
+                    </div>
+                    <div class="form-row">
+                        <label>Y Position:</label>
+                        <input type="number" id="viewport-y" value="${settings.viewportY || 0}" step="1">
+                    </div>
+                    <div class="form-row checkbox-row">
+                        <label>Snap to Grid:</label>
+                        <input type="checkbox" id="viewport-snap" ${this.grid.snapToGrid ? 'checked' : ''}>
+                    </div>
+                    <div class="form-row">
+                        <label>Background Color:</label>
+                        <input type="color" id="viewport-bg-color" value="${settings.backgroundColor || '#000000'}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="reset-viewport">Reset to Origin</button>
+                    <button id="cancel-viewport">Cancel</button>
+                    <button id="save-viewport">Apply</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Add event handlers
+        const closeBtn = modal.querySelector('.close-button');
+        const cancelBtn = modal.querySelector('#cancel-viewport');
+        const saveBtn = modal.querySelector('#save-viewport');
+        const resetBtn = modal.querySelector('#reset-viewport');
+        
+        const closeModal = () => {
+            document.body.removeChild(modal);
+        };
+        
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        
+        saveBtn.addEventListener('click', () => {
+            // Get values from form
+            const width = parseInt(modal.querySelector('#viewport-width').value) || 800;
+            const height = parseInt(modal.querySelector('#viewport-height').value) || 600;
+            const x = parseInt(modal.querySelector('#viewport-x').value) || 0;
+            const y = parseInt(modal.querySelector('#viewport-y').value) || 0;
+            const snapToGrid = modal.querySelector('#viewport-snap').checked;
+            const bgColor = modal.querySelector('#viewport-bg-color').value;
+            
+            // Update settings
+            settings.viewportWidth = width;
+            settings.viewportHeight = height;
+            settings.viewportX = x;
+            settings.viewportY = y;
+            settings.backgroundColor = bgColor;
+            
+            // Update grid snapping
+            this.grid.snapToGrid = snapToGrid;
+            
+            // Mark scene as modified
+            this.activeScene.dirty = true;
+            
+            // Close modal and refresh canvas
+            closeModal();
+            this.refreshCanvas();
+        });
+        
+        resetBtn.addEventListener('click', () => {
+            // Reset viewport to origin
+            modal.querySelector('#viewport-x').value = 0;
+            modal.querySelector('#viewport-y').value = 0;
+        });
+    }
     
     updateCursor(worldPos) {
+        // Check viewport handles first
+        if (this.isOnViewportMoveHandle(worldPos)) {
+            this.canvas.style.cursor = 'move';
+            return;
+        }
+        
+        if (this.isOnViewportSettingsHandle(worldPos)) {
+            this.canvas.style.cursor = 'pointer';
+            return;
+        }
+
         // Check if mouse is over a transform handle and change cursor accordingly
         const selectedObj = this.hierarchy.selectedObject;
         if (!selectedObj) {
@@ -600,6 +1069,20 @@ class Editor {
     }
     
     handleMouseUp(e) {
+        document.body.classList.remove('viewport-dragging');
+
+        // Clear viewport interaction state
+        if (this.viewportInteraction.dragging) {
+            this.viewportInteraction.dragging = false;
+            this.viewportInteraction.startPos = null;
+            this.viewportInteraction.initialViewport = null;
+            
+            // Mark scene as modified
+            if (this.activeScene) {
+                this.activeScene.dirty = true;
+            }
+        }
+
         this.dragInfo.dragging = false;
         this.dragInfo.isPanning = false;
         this.dragInfo.object = null;

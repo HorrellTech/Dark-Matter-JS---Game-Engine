@@ -553,3 +553,64 @@
 .module-container.drop-below {
     border-bottom: 2px solid #4c90ff;
 }
+
+/* Enhanced module header for better drag handling */
+.module-header {
+    background: #2a2a2a;
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #333;
+    cursor: default;
+}
+
+.module-title {
+    font-weight: bold;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+/* Improve drag handle visibility */
+.module-drag-handle {
+    cursor: grab;
+    padding: 0 8px;
+    margin-right: 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.module-drag-handle:hover {
+    opacity: 1;
+    background-color: rgba(100, 100, 100, 0.2);
+    border-radius: 3px;
+}
+
+/* Make module headers stand out when draggable */
+.module-header[draggable="true"] {
+    cursor: grabbing !important;
+}
+
+/* Fix to prevent accidental text selection during module drags */
+.module-title {
+    user-select: none;
+}
+
+.viewport-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: move !important;
+}
+
+/* Add animation to canvas to ensure smooth rendering */
+canvas {
+    will-change: transform;
+}

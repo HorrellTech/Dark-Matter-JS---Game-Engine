@@ -1,5 +1,5 @@
 /* Custom scrollbars */
-.hierarchy-list,
+#gameObjectHierarchy,
 #moduleSettings,
 .console-output,
 .file-browser-content {
@@ -7,7 +7,7 @@
     scrollbar-color: #555 #333;
 }
 
-.hierarchy-list::-webkit-scrollbar,
+#gameObjectHierarchy::-webkit-scrollbar,
 #moduleSettings::-webkit-scrollbar,
 .console-output::-webkit-scrollbar,
 .file-browser-content::-webkit-scrollbar {
@@ -15,7 +15,7 @@
     height: 8px;
 }
 
-.hierarchy-list::-webkit-scrollbar-track,
+#gameObjectHierarchy::-webkit-scrollbar-track,
 #moduleSettings::-webkit-scrollbar-track,
 .console-output::-webkit-scrollbar-track,
 .file-browser-content::-webkit-scrollbar-track {
@@ -23,7 +23,7 @@
     border-radius: 4px;
 }
 
-.hierarchy-list::-webkit-scrollbar-thumb,
+#gameObjectHierarchy::-webkit-scrollbar-thumb,
 #moduleSettings::-webkit-scrollbar-thumb,
 .console-output::-webkit-scrollbar-thumb,
 .file-browser-content::-webkit-scrollbar-thumb {
@@ -31,9 +31,31 @@
     border-radius: 4px;
 }
 
-.hierarchy-list::-webkit-scrollbar-thumb:hover,
+#gameObjectHierarchy::-webkit-scrollbar-thumb:hover,
 #moduleSettings::-webkit-scrollbar-thumb:hover,
 .console-output::-webkit-scrollbar-thumb:hover,
 .file-browser-content::-webkit-scrollbar-thumb:hover {
     background: #777;
+}
+
+/* Make sure drag handles are properly styled */
+.module-drag-handle {
+    cursor: grab;
+    padding: 0 8px;
+    margin-right: 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.module-drag-handle:hover {
+    opacity: 1;
+    background-color: rgba(100, 100, 100, 0.2);
+}
+
+.module-dragging .module-drag-handle {
+    cursor: grabbing;
 }

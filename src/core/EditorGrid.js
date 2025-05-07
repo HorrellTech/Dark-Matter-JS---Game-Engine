@@ -70,6 +70,11 @@ class EditorGrid {
         }
     }
 
+    snapValue(value) {
+        if (!this.snapToGrid) return value;
+        return Math.round(value / this.gridSize) * this.gridSize;
+    }
+
     adjustGridToZoom(zoom) {
         // Calculate grid size based on zoom level
         let newSize = this.baseGridSize * zoom;

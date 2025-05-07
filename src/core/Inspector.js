@@ -723,17 +723,35 @@ class Inspector {
         
         // Drag handle for better UX
         const dragHandle = moduleElement.querySelector('.module-drag-handle');
+        const moduleHeader = moduleElement.querySelector('.module-header');
+
         if (dragHandle) {
-            // Make only the handle trigger dragging
-            dragHandle.addEventListener('mousedown', () => {
+            // Make the drag handle initiate dragging
+            dragHandle.addEventListener('mousedown', (e) => {
+                // Set draggable attribute just before drag starts
                 moduleElement.setAttribute('draggable', 'true');
+                
+                // Add grabbing cursor to indicate dragging is possible
+                dragHandle.style.cursor = 'grabbing';
+                
+                // Prevent event propagation to avoid other handlers
+                e.stopPropagation();
             });
             
-            // Make other parts of the module not initiate dragging
-            moduleElement.querySelectorAll('.module-header > *:not(.module-drag-handle)').forEach(el => {
-                el.addEventListener('mousedown', (e) => {
-                    moduleElement.setAttribute('draggable', 'false');
-                });
+            // Reset draggable attribute after mouseup anywhere
+            document.addEventListener('mouseup', () => {
+                moduleElement.setAttribute('draggable', 'false');
+                if (dragHandle) dragHandle.style.cursor = 'grab';
+            }, { once: true });
+        }
+
+        // Make the module header draggable too
+        if (moduleHeader) {
+            moduleHeader.addEventListener('mousedown', (e) => {
+                // Only allow drag from the header, not from buttons within it
+                if (e.target === moduleHeader || e.target.classList.contains('module-title')) {
+                    moduleElement.setAttribute('draggable', 'true');
+                }
             });
         }
     
