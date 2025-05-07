@@ -2,6 +2,7 @@ class GameObject {
     constructor(name = "GameObject") {
         this.name = name;
         this.position = new Vector2();
+        this.scale = new Vector2(1, 1);
         this.angle = 0;
         this.depth = 0;
         this.modules = [];
@@ -9,6 +10,15 @@ class GameObject {
         this.parent = null;
         this.active = true;
         this.tags = [];
+        this.selected = false; // Track if selected in editor
+        this.expanded = false; // Track if expanded in hierarchy
+        this.editorColor = this.generateRandomColor(); // Color in editor view
+    }
+
+    generateRandomColor() {
+        // Generate a semi-bright color for better visibility on dark backgrounds
+        const hue = Math.floor(Math.random() * 360);
+        return `hsl(${hue}, 70%, 60%)`;
     }
 
     async preload() {
@@ -61,16 +71,71 @@ class GameObject {
         const worldPos = this.getWorldPosition();
         ctx.translate(worldPos.x, worldPos.y);
         ctx.rotate(this.angle * Math.PI / 180);
+        ctx.scale(this.scale.x, this.scale.y);
         
-        // Draw all modules
-        this.modules.forEach(module => {
-            if (module.enabled && module.draw) module.draw(ctx);
-        });
+        // Check if object has custom draw method
+        if (this.drawInEditor) {
+            this.drawInEditor(ctx);
+        } else {
+            // Draw all modules
+            this.modules.forEach(module => {
+                if (module.enabled && module.draw) module.draw(ctx);
+            });
+        }
         
         ctx.restore();
         
         // Draw all children
         this.children.forEach(child => child.draw(ctx));
+    }
+
+    drawInEditor(ctx) {
+        if (!this.active) return;
+        
+        // Draw this object
+        ctx.save();
+        
+        // Apply transformations
+        const worldPos = this.getWorldPosition();
+        ctx.translate(worldPos.x, worldPos.y);
+        ctx.rotate(this.angle * Math.PI / 180);
+        ctx.scale(this.scale.x, this.scale.y);
+        
+        // Draw square representation
+        const size = 20; // Base size
+        ctx.beginPath();
+        ctx.rect(-size/2, -size/2, size, size);
+        ctx.fillStyle = this.selected ? '#ffffff' : this.editorColor;
+        ctx.fill();
+        
+        // Draw outline if selected
+        if (this.selected) {
+            ctx.strokeStyle = '#00aaff';
+            ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
+            ctx.stroke();
+        }
+        
+        // Draw origin point
+        ctx.beginPath();
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff0000';
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Draw name (always upright)
+        if (this.selected) {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(this.name, worldPos.x, worldPos.y - 25);
+        }
+        
+        // Draw children
+        this.children.forEach(child => {
+            child.drawInEditor(ctx);
+        });
     }
 
     onDestroy() {
@@ -101,11 +166,81 @@ class GameObject {
     }
 
     /**
+     * Reorder modules based on an array of module IDs
+     * @param {Array<string>} moduleIds - Ordered array of module IDs
+     */
+    reorderModules(moduleIds) {
+        if (!moduleIds || !moduleIds.length) return;
+        
+        // Create a new ordered modules array
+        const orderedModules = [];
+        
+        // First add modules in the specified order
+        for (const moduleId of moduleIds) {
+            const module = this.getModuleById(moduleId);
+            if (module) {
+                orderedModules.push(module);
+            }
+        }
+        
+        // Add any remaining modules that weren't in the moduleIds array
+        for (const module of this.modules) {
+            if (!orderedModules.includes(module)) {
+                orderedModules.push(module);
+            }
+        }
+        
+        // Replace the modules array with the ordered one
+        this.modules = orderedModules;
+    }
+
+    /**
+     * Get a module by its ID
+     * @param {string} id - The module ID
+     * @returns {Module|null} The found module or null
+     */
+    getModuleById(id) {
+        return this.modules.find(module => module.id === id) || null;
+    }
+
+    /**
+     * Remove a module by reference
+     * @param {Module} module - The module to remove
+     * @returns {boolean} True if the module was removed
+     */
+    removeModule(module) {
+        const index = this.modules.indexOf(module);
+        if (index !== -1) {
+            module.gameObject = null;
+            this.modules.splice(index, 1);
+            if (module.onDestroy) module.onDestroy();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Remove a module by type
+     * @param {class} moduleType - The class/type of module to remove
+     * @returns {boolean} True if a module was removed
+     */
+    removeModuleByType(moduleType) {
+        const module = this.getModule(moduleType);
+        if (module) {
+            return this.removeModule(module);
+        }
+        return false;
+    }
+
+    /**
      * Add a child GameObject
      * @param {GameObject} child - The child to add
      * @returns {GameObject} The added child
      */
     addChild(child) {
+        if (child.parent) {
+            child.parent.removeChild(child);
+        }
         child.parent = this;
         this.children.push(child);
         return child;
@@ -135,6 +270,13 @@ class GameObject {
     }
 
     /**
+     * Toggle the active state of this GameObject
+     */
+    toggleActive() {
+        this.active = !this.active;
+    }
+
+    /**
      * Add a tag to this GameObject
      * @param {string} tag - The tag to add
      */
@@ -151,6 +293,17 @@ class GameObject {
      */
     hasTag(tag) {
         return this.tags.includes(tag);
+    }
+
+    /**
+     * Remove a tag from this GameObject
+     * @param {string} tag - The tag to remove
+     */
+    removeTag(tag) {
+        const index = this.tags.indexOf(tag);
+        if (index !== -1) {
+            this.tags.splice(index, 1);
+        }
     }
 
     /**
@@ -182,6 +335,45 @@ class GameObject {
     }
     
     /**
+     * Find a child by name (including deep search through children)
+     * @param {string} name - The name of the GameObject to find
+     * @param {boolean} deep - Whether to search recursively through all children
+     * @returns {GameObject|null} The found GameObject or null
+     */
+    findChild(name, deep = true) {
+        // First, check direct children
+        for (const child of this.children) {
+            if (child.name === name) return child;
+        }
+        
+        // If not found and deep search is enabled, search in children's children
+        if (deep) {
+            for (const child of this.children) {
+                const found = child.findChild(name, true);
+                if (found) return found;
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Set the selection state of this GameObject
+     * @param {boolean} selected - Whether the GameObject is selected
+     */
+    setSelected(selected) {
+        this.selected = selected;
+    }
+    
+    /**
+     * Rename this GameObject
+     * @param {string} newName - The new name
+     */
+    rename(newName) {
+        this.name = newName;
+    }
+    
+    /**
      * Serialize this GameObject to JSON
      * @returns {Object} Serialized GameObject data
      */
@@ -196,5 +388,82 @@ class GameObject {
             modules: this.modules.map(module => module.toJSON()),
             children: this.children.map(child => child.toJSON())
         };
+    }
+    
+    /**
+     * Create a GameObject from serialized data
+     * @param {Object} json - Serialized GameObject data
+     * @returns {GameObject} The created GameObject
+     */
+    static fromJSON(json) {
+        const obj = new GameObject(json.name);
+        obj.position = new Vector2(json.position.x, json.position.y);
+        obj.angle = json.angle;
+        obj.depth = json.depth;
+        obj.active = json.active;
+        obj.tags = [...json.tags];
+        
+        // Add modules
+        // This requires a module registry to create instances
+        // We'll implement this later
+        
+        // Add children
+        json.children.forEach(childJson => {
+            const child = GameObject.fromJSON(childJson);
+            obj.addChild(child);
+        });
+        
+        return obj;
+    }
+
+    /**
+     * Clone this GameObject, including all modules and children
+     * @returns {GameObject} A deep copy of this GameObject
+     */
+    clone() {
+        const cloned = new GameObject(this.name + ' (Copy)');
+        
+        // Copy basic properties
+        cloned.position = this.position.clone();
+        cloned.scale = this.scale.clone();
+        cloned.angle = this.angle;
+        cloned.depth = this.depth;
+        cloned.active = this.active;
+        cloned.tags = [...this.tags];
+        cloned.editorColor = this.editorColor;
+
+        // Clone modules
+        this.modules.forEach(module => {
+            if (typeof module.clone === 'function') {
+                // Use module's clone method if available
+                const clonedModule = module.clone();
+                cloned.addModule(clonedModule);
+            } else {
+                // Fallback to creating new instance of same type
+                const ModuleClass = module.constructor;
+                const newModule = new ModuleClass();
+                
+                // Copy over all properties except gameObject reference
+                Object.keys(module).forEach(key => {
+                    if (key !== 'gameObject' && typeof module[key] !== 'function') {
+                        if (module[key] && typeof module[key].clone === 'function') {
+                            newModule[key] = module[key].clone();
+                        } else {
+                            newModule[key] = module[key];
+                        }
+                    }
+                });
+                
+                cloned.addModule(newModule);
+            }
+        });
+
+        // Clone children recursively
+        this.children.forEach(child => {
+            const clonedChild = child.clone();
+            cloned.addChild(clonedChild);
+        });
+
+        return cloned;
     }
 }

@@ -1,0 +1,39 @@
+/* Custom scrollbars */
+.hierarchy-list,
+#moduleSettings,
+.console-output,
+.file-browser-content {
+    scrollbar-width: thin;
+    scrollbar-color: #555 #333;
+}
+
+.hierarchy-list::-webkit-scrollbar,
+#moduleSettings::-webkit-scrollbar,
+.console-output::-webkit-scrollbar,
+.file-browser-content::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.hierarchy-list::-webkit-scrollbar-track,
+#moduleSettings::-webkit-scrollbar-track,
+.console-output::-webkit-scrollbar-track,
+.file-browser-content::-webkit-scrollbar-track {
+    background: #333;
+    border-radius: 4px;
+}
+
+.hierarchy-list::-webkit-scrollbar-thumb,
+#moduleSettings::-webkit-scrollbar-thumb,
+.console-output::-webkit-scrollbar-thumb,
+.file-browser-content::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.hierarchy-list::-webkit-scrollbar-thumb:hover,
+#moduleSettings::-webkit-scrollbar-thumb:hover,
+.console-output::-webkit-scrollbar-thumb:hover,
+.file-browser-content::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}

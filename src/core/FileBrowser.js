@@ -6,8 +6,17 @@ class FileBrowser {
         this.selectedItems = new Set();
         this.dbName = 'FileSystemDB';
         this.dbVersion = 1;
+        this.fileTypes = {}; // Initialize fileTypes object first
+
         this.initializeUI();
         this.initializeDB();
+
+        // Register file types after initialization
+        this.fileTypes['.scene'] = {
+            icon: 'fa-gamepad',
+            color: '#64B5F6',
+            onDoubleClick: (file) => this.openSceneFile(file)
+        };
     }
 
     async initializeDB() {
@@ -77,6 +86,9 @@ class FileBrowser {
 
         // Setup event listeners
         this.setupEventListeners();
+
+        // Set up module drop target functionality
+        this.setupModuleDropTarget();
     }
 
     setupEventListeners() {
@@ -128,11 +140,12 @@ class FileBrowser {
             }
         });
 
-        // Drag and drop between folders
+        // Add dataset attributes for draggable module files
         this.content.addEventListener('dragstart', (e) => {
             const item = e.target.closest('.fb-item');
             if (!item) return;
             
+            // For regular file operations (already implemented)
             if (!this.selectedItems.has(item)) {
                 this.selectItem(item, !e.ctrlKey);
             }
@@ -144,7 +157,34 @@ class FileBrowser {
                     name: el.dataset.name
                 }))
             ));
-            e.dataTransfer.effectAllowed = 'move';
+            
+            // For module script files, add specific data
+            if (item.dataset.type === 'file' && item.dataset.name.endsWith('.js')) {
+                // Add a special data type for module scripts
+                e.dataTransfer.setData('application/module-script', item.dataset.path);
+                
+                // Create a custom ghost image for dragging
+                const ghostImage = document.createElement('div');
+                ghostImage.className = 'drag-ghost-module';
+                ghostImage.innerHTML = `<i class="fas fa-puzzle-piece"></i> ${item.dataset.name}`;
+                ghostImage.style.backgroundColor = '#333';
+                ghostImage.style.color = '#fff';
+                ghostImage.style.padding = '8px 12px';
+                ghostImage.style.borderRadius = '4px';
+                ghostImage.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+                ghostImage.style.position = 'absolute';
+                ghostImage.style.top = '-1000px';
+                document.body.appendChild(ghostImage);
+                
+                e.dataTransfer.setDragImage(ghostImage, 15, 15);
+                
+                // Clean up the ghost image after drag
+                setTimeout(() => {
+                    document.body.removeChild(ghostImage);
+                }, 100);
+            }
+            
+            e.dataTransfer.effectAllowed = 'copyMove';
         });
 
         this.content.addEventListener('dragover', (e) => {
@@ -194,6 +234,20 @@ class FileBrowser {
                 }
             }
         });
+    }
+
+    async openSceneFile(file) {
+        // Get editor instance
+        const editor = window.editor;
+        if (!editor || !editor.sceneManager) {
+            console.error('Editor or SceneManager not available');
+            return;
+        }
+    
+        // Check for unsaved changes before loading
+        if (await editor.sceneManager.checkUnsavedChanges()) {
+            await editor.sceneManager.loadScene(file.path);
+        }
     }
 
     showContextMenu(e, item) {
@@ -289,9 +343,17 @@ class FileBrowser {
 
     async promptNewFolder() {
         const name = await this.promptDialog('New Folder', 'Enter folder name:');
-        if (name) {
-            this.createDirectory(`${this.currentPath}/${name}`);
-        }
+        if (!name) return; // User cancelled
+        
+        // Normalize current path
+        const normalizedPath = this.normalizePath(this.currentPath);
+        
+        // Create path for new folder
+        const folderPath = normalizedPath === '/' 
+            ? `/${name}` 
+            : `${normalizedPath}/${name}`;
+        
+        await this.createDirectory(folderPath);
     }
     
     async promptNewScript() {
@@ -299,16 +361,107 @@ class FileBrowser {
         if (!name) return; // User cancelled
         
         try {
+            // Normalize path
+            const normalizedPath = this.normalizePath(this.currentPath);
+            
+            // Ensure filename has .js extension
             const fileName = name.endsWith('.js') ? name : `${name}.js`;
-            const className = name.replace(/\.js$/, '');
+            // Ensure class name is PascalCase for consistency
+            const baseName = name.replace(/\.js$/, '');
+            const className = baseName.charAt(0).toUpperCase() + baseName.slice(1);
             
             // Generate template code for the new module
             const templateCode = this.generateModuleTemplate(className);
             
-            // Explicitly create a file, not a directory
-            await this.createFile(`${this.currentPath}/${fileName}`, templateCode);
+            // Create the filepath
+            const filePath = normalizedPath === '/' 
+                ? `/${fileName}` 
+                : `${normalizedPath}/${fileName}`;
+            
+            // Explicitly create a file
+            const success = await this.createFile(filePath, templateCode);
+            
+            if (success) {
+                this.showNotification(`Created script: ${fileName}`, 'info');
+            }
         } catch (error) {
             console.error('Failed to create script:', error);
+            this.showNotification(`Failed to create script: ${error.message}`, 'error');
+        }
+    }
+    
+   /**
+     * Helper method to check if a name already exists in a parent directory
+     * @param {string} parentPath - The parent directory path
+     * @param {string} name - The name to check for
+     * @returns {Promise<boolean>} - True if the name already exists in the parent directory
+     */
+    async checkNameClash(parentPath, name) {
+        if (!this.db) return false;
+        
+        try {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            const index = store.index('parentPath');
+            
+            const siblings = await new Promise(resolve => {
+                index.getAll(parentPath).onsuccess = e => resolve(e.target.result || []);
+            });
+            
+            return siblings.some(item => item.name === name);
+        } catch (error) {
+            console.error('Error checking name clash:', error);
+            return false; // Assume no clash if there's an error
+        }
+    }
+
+    async debugShowAllFiles() {
+        if (!this.db) return;
+        
+        try {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            const allFiles = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+            
+            console.group('All Files in Database');
+            console.table(allFiles.map(file => ({
+                name: file.name,
+                path: file.path,
+                parentPath: file.parentPath,
+                type: file.type
+            })));
+            
+            // Highlight potential issues
+            const pathsSet = new Set();
+            const duplicates = [];
+            
+            allFiles.forEach(file => {
+                if (pathsSet.has(file.path)) {
+                    duplicates.push(file.path);
+                }
+                pathsSet.add(file.path);
+            });
+            
+            if (duplicates.length) {
+                console.warn('Duplicate paths found:', duplicates);
+            }
+            
+            // Check for orphaned items (items with non-existent parent paths)
+            const orphans = allFiles.filter(file => {
+                if (file.parentPath === '/' || file.parentPath === null) return false;
+                return !allFiles.some(parent => parent.path === file.parentPath);
+            });
+            
+            if (orphans.length) {
+                console.warn('Orphaned items found:', orphans);
+            }
+            
+            console.groupEnd();
+        } catch (error) {
+            console.error('Error listing all files:', error);
         }
     }
 
@@ -333,10 +486,16 @@ class ${pascalCaseName} extends Module {
         // Call the parent constructor with the module name
         super("${pascalCaseName}");
         
-        // Initialize your module properties here. eg. 'this.exampleProperty = options.exampleProperty || "default value";'
-
+        // Initialize your module properties here
+        this.speed = options.speed || 5;
+        this.direction = options.direction || 0;
         
-        // Store serializable properties. eg 'this.setProperty("exampleProperty", this.exampleProperty);'
+        // Store serializable properties and expose them to the Inspector
+        this.exposeProperty("speed", "number", this.speed, { min: 0, max: 20, step: 0.1 });
+        this.exposeProperty("direction", "number", this.direction, { min: 0, max: 360, step: 1 });
+        
+        // Example of a private variable (not exposed to Inspector)
+        this._internalCounter = 0;
     }
 
     /**
@@ -346,7 +505,6 @@ class ${pascalCaseName} extends Module {
     async preload() {
         // Load any resources your module needs before the game starts
         // Example: await this.loadImage("path/to/image.png");
-
     }
 
     /**
@@ -356,7 +514,6 @@ class ${pascalCaseName} extends Module {
     start() {
         // Initialize your module behavior here
         console.log(\`${pascalCaseName} module started on \${this.gameObject.name}\`);
-
     }
 
     /**
@@ -364,11 +521,16 @@ class ${pascalCaseName} extends Module {
      * @param {number} deltaTime - Time in seconds since the last frame
      */
     loop(deltaTime) {
-        // Add your per-frame logic here
-        // Example: Move the object
-        // const position = this.getLocalPosition();
-        // this.setLocalPosition(new Vector2(position.x + 1 * deltaTime, position.y));
+        // Example of using exposed properties
+        const radians = this.direction * Math.PI / 180;
+        const position = this.getLocalPosition();
+        this.setLocalPosition(new Vector2(
+            position.x + Math.cos(radians) * this.speed * deltaTime,
+            position.y + Math.sin(radians) * this.speed * deltaTime
+        ));
         
+        // Update internal state
+        this._internalCounter += deltaTime;
     }
 
     /**
@@ -377,12 +539,14 @@ class ${pascalCaseName} extends Module {
      */
     draw(ctx) {
         // Add custom rendering logic here
-        // Example: Draw a circle
-        // ctx.fillStyle = 'red';
-        // ctx.beginPath();
-        // ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        // ctx.fill();
+    }
 
+    /**
+     * Called when a property changes in the Inspector
+     * This is an example of a custom property change handler
+     */
+    onDirectionChanged(newValue) {
+        console.log(\`Direction changed to \${newValue} degrees\`);
     }
 
     /**
@@ -390,38 +554,14 @@ class ${pascalCaseName} extends Module {
      * Use this to clean up resources
      */
     onDestroy() {
-        // Clean up any resources or event listeners
         console.log(\`${pascalCaseName} module destroyed on \${this.gameObject?.name}\`);
-        
-    }
-
-    /**
-     * Custom method example - add your own methods here
-     * @param {string} message - Example parameter
-     */
-    exampleMethod(message) {
-        console.log(\`${pascalCaseName}: \${message}\`);
-    }
-
-    /**
-     * Override to handle serialization from JSON
-     * @param {Object} json - The JSON data to restore from
-     */
-    fromJSON(json) {
-        super.fromJSON(json);
-        
-        // Restore properties from serialized data
-        this.exampleProperty = this.getProperty("exampleProperty", "default value");
     }
 }
-
-// Register the module with the engine (if you have a module registry system)
-// ModuleRegistry.register("${pascalCaseName}", ${pascalCaseName});
 
 // Export the class globally for the engine to use
 window.${pascalCaseName} = ${pascalCaseName};
 `;
-}
+    }
     
     async promptRename(item) {
         const newName = await this.promptDialog('Rename', 'Enter new name:', item.dataset.name);
@@ -452,9 +592,68 @@ window.${pascalCaseName} = ${pascalCaseName};
         reader.readAsText(file);
     }
 
+    /**
+     * Handle file selection in the browser
+     * @param {string} filePath - Path to the selected file
+     */
+    handleFileSelection(filePath) {
+        const extension = filePath.split('.').pop().toLowerCase();
+
+        // Handle different file types
+        switch (extension) {
+            case 'js':
+                // Check if the file might be a module
+                this.checkAndHandleModuleFile(filePath);
+                break;
+            case 'scene':
+                this.loadScene(filePath);
+                break;
+            // Handle other file types as needed
+        }
+    }
+
+    /**
+     * Check if a JS file is a module and handle it accordingly
+     * @param {string} filePath - Path to the JS file
+     */
+    async checkAndHandleModuleFile(filePath) {
+        try {
+            const content = await this.readFile(filePath);
+            if (!content) return;
+            
+            // Simple check - if it extends Module, treat it as a module
+            if (content.includes('extends Module')) {
+                await this.handleModuleFileSelect(filePath);
+            } else {
+                // Regular JS file
+                this.editFile(filePath);
+            }
+        } catch (error) {
+            console.error('Error checking module file:', error);
+        }
+    }
+
     async handleFileDrop(files) {
         Array.from(files).forEach(file => {
             this.handleFileUpload(file);
+        });
+    }
+
+    /**
+     * Get all files in the file system
+     * @returns {Promise<Array>} Array of file objects
+     */
+    async getAllFiles() {
+        if (!this.db) return [];
+        
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            store.getAll().onsuccess = (e) => {
+                const files = e.target.result;
+                resolve(files.filter(file => file.type === 'file'));
+            };
         });
     }
 
@@ -469,47 +668,21 @@ window.${pascalCaseName} = ${pascalCaseName};
         this.selectedItems.add(item);
     }
 
-    async createDirectory(path) {
-        if (!path || path === '/') {
-            console.error('Invalid directory path');
-            return false;
-        }
-        
-        const name = path.split('/').pop();
-        const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
-        
-        const newFolder = {
-            name,
-            path,
-            parentPath,
-            type: 'folder',
-            created: Date.now()
-        };
     
-        const transaction = this.db.transaction(['files'], 'readwrite');
-        const store = transaction.objectStore('files');
-        
+
+    async loadScene(filePath) {
         try {
-            // Check if path already exists
-            const existing = await new Promise(resolve => {
-                store.get(path).onsuccess = e => resolve(e.target.result);
-            });
-            
-            if (existing) {
-                console.error('Directory already exists:', path);
-                return false;
+            // Get the editor instance
+            const editor = window.editor;
+            if (!editor || !editor.sceneManager) {
+                throw new Error('Editor not available');
             }
             
-            await new Promise((resolve, reject) => {
-                const request = store.add(newFolder);
-                request.onsuccess = () => resolve();
-                request.onerror = (e) => reject(e.target.error);
-            });
-            
-            await this.loadContent(this.currentPath);
+            // Delegate to scene manager
+            await editor.sceneManager.loadScene(filePath);
             return true;
         } catch (error) {
-            console.error('Failed to create folder:', error);
+            console.error('Error loading scene in FileBrowser:', error);
             return false;
         }
     }
@@ -520,52 +693,82 @@ window.${pascalCaseName} = ${pascalCaseName};
             return false;
         }
         
-        const name = path.split('/').pop();
-        const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
-        
-        const transaction = this.db.transaction(['files'], 'readwrite');
-        const store = transaction.objectStore('files');
+        // Normalize path
+        path = this.normalizePath(path);
         
         try {
-            // Check if path exists
-            const existingFile = await new Promise(resolve => {
-                store.get(path).onsuccess = e => resolve(e.target.result);
-            });
+            const name = path.split('/').pop();
+            const parentPathArray = path.split('/').slice(0, -1);
+            const parentPath = parentPathArray.length === 1 ? '/' : parentPathArray.join('/');
+            
+            // Check if file exists first (in a separate transaction)
+            const existingFile = await this.getFile(path);
             
             if (existingFile && !overwrite) {
                 throw new Error('File already exists');
             }
             
+            // Ensure parent directory exists
+            if (parentPath !== '/' && parentPath !== '') {
+                const parentExists = await this.exists(parentPath);
+                if (!parentExists) {
+                    await this.createDirectory(parentPath);
+                }
+            }
+            
+            // Create a new transaction for file creation 
+            // (after all parent directory operations are complete)
+            const transaction = this.db.transaction(['files'], 'readwrite');
+            const store = transaction.objectStore('files');
+                
             const newFile = {
                 name,
                 path,
                 parentPath,
-                type: 'file',  // Ensure this is always 'file' not 'folder'
+                type: 'file',
                 content,
                 created: existingFile ? existingFile.created : Date.now(),
                 modified: Date.now()
             };
-    
-            await new Promise((resolve, reject) => {
-                const request = existingFile ? 
-                    store.put(newFile) : 
-                    store.add(newFile);
-                    
-                request.onsuccess = () => resolve();
-                request.onerror = (e) => reject(e.target.error);
+            
+            // Create a promise for the transaction result
+            const result = await new Promise((resolve, reject) => {
+                const request = existingFile ? store.put(newFile) : store.add(newFile);
+                
+                request.onsuccess = () => resolve(true);
+                request.onerror = (e) => {
+                    console.error("Error in IndexedDB operation:", e.target.error);
+                    reject(e.target.error);
+                };
+                
+                // Add transaction complete handler
+                transaction.oncomplete = () => resolve(true);
+                transaction.onerror = (e) => reject(e.target.error);
             });
             
             // Only reload content if we're not overwriting
-            // This prevents the editor from closing when saving
             if (!overwrite) {
                 await this.loadContent(this.currentPath);
             }
             
-            return true;
+            return result;
         } catch (error) {
             console.error('Failed to create/update file:', error);
             return false;
         }
+    }
+
+    async getFile(path) {
+        if (!this.db) return null;
+        
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            store.get(path).onsuccess = (e) => {
+                resolve(e.target.result);
+            };
+        });
     }
 
     async deleteSelected() {
@@ -721,17 +924,257 @@ window.${pascalCaseName} = ${pascalCaseName};
         await this.loadContent(this.currentPath);
     }
 
+    /**
+ * Load a module script and register it with the system
+ * @param {string} scriptPath - Path to the module script
+ * @returns {Promise<Class>} The module class
+ */
+async loadModuleScript(scriptPath) {
+    try {
+        const content = await this.readFile(scriptPath);
+        if (!content) {
+            throw new Error(`Could not read file: ${scriptPath}`);
+        }
+        
+        // Get the class name from the file name
+        const fileName = scriptPath.split('/').pop().split('\\').pop();
+        // Remove extension and ensure first character is uppercase for class name
+        const className = fileName.replace('.js', '');
+        const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+        
+        console.log(`Loading module: ${scriptPath}, expected class name: ${pascalClassName}`);
+        
+        // Check if the module class is already loaded
+        if (window[pascalClassName] && typeof window[pascalClassName] === 'function') {
+            console.log(`Module ${pascalClassName} already loaded, skipping...`);
+            return window[pascalClassName];
+        }
+        
+        // Create a unique ID for the script
+        const scriptId = `module-script-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // To ensure the script properly exports to window, we'll wrap the content
+        // with a specific pattern that forces the export
+        const wrappedContent = `
+            try {
+                // Original script content
+                ${content}
+                
+                // Ensure class is exported to window using various naming conventions
+                // Try both original name and Pascal case name
+                if (typeof ${className} !== 'undefined' && !window.${className}) {
+                    window.${className} = ${className};
+                    console.log("Module ${className} exported to window");
+                }
+                
+                if (typeof ${pascalClassName} !== 'undefined' && !window.${pascalClassName}) {
+                    window.${pascalClassName} = ${pascalClassName};
+                    console.log("Module ${pascalClassName} exported to window");
+                }
+            } catch (e) {
+                console.error("Error executing module script ${fileName}:", e);
+                throw e; // Re-throw to catch in the outer scope
+            }
+        `;
+        
+        // Execute script in a controlled environment
+        const moduleClass = await new Promise((resolve, reject) => {
+            // Create and execute the script
+            const scriptElement = document.createElement('script');
+            scriptElement.id = scriptId;
+            scriptElement.type = 'text/javascript';
+            scriptElement.textContent = wrappedContent;
+            
+            // Handle script errors
+            scriptElement.onerror = (e) => {
+                reject(new Error(`Failed to execute script: ${e.message}`));
+            };
+            
+            // Add to DOM to execute
+            document.head.appendChild(scriptElement);
+            
+            // Wait a moment for script to execute
+            setTimeout(() => {
+                // Check for class using both naming conventions
+                if (window[className] && typeof window[className] === 'function') {
+                    resolve(window[className]);
+                } else if (window[pascalClassName] && typeof window[pascalClassName] === 'function') {
+                    resolve(window[pascalClassName]);
+                } else {
+                    // Look for any class that extends Module
+                    const keys = Object.keys(window);
+                    for (const key of keys) {
+                        if (typeof window[key] === 'function' && 
+                            window[key].prototype && 
+                            window[key].prototype instanceof Module) {
+                            console.log(`Found module class with name ${key} instead of ${className}`);
+                            resolve(window[key]);
+                            return;
+                        }
+                    }
+                    reject(new Error(`Script did not export class to window.${pascalClassName} or window.${className}`));
+                }
+                
+                // Clean up
+                if (scriptElement.parentNode) {
+                    scriptElement.parentNode.removeChild(scriptElement);
+                }
+            }, 200); // Wait a bit longer to ensure script execution
+        });
+        
+        // Register with inspector
+        if (moduleClass && window.editor && window.editor.inspector) {
+            window.editor.inspector.registerModuleClass(moduleClass);
+        }
+        
+        // Show success notification
+        this.showNotification(`Module loaded: ${moduleClass.name}`);
+        return moduleClass;
+    } catch (error) {
+        console.error('Error in loadModuleScript:', error);
+        this.showNotification(`Error loading module: ${error.message}`, 'error');
+        throw error;
+    } finally {
+        // Clean up script elements
+        const scriptElements = document.head.querySelectorAll('script[id^="module-script-"]');
+        scriptElements.forEach(el => {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        });
+    }
+}
+
+    /**
+     * Load a script from a URL
+     */
+    loadScriptFromUrl(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.type = 'text/javascript';
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+            document.head.appendChild(script);
+        });
+    }
+
+    /**
+     * Read a file from IndexedDB
+     */
+    async readFile(path) {
+        if (!this.db) return null;
+        
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            store.get(path).onsuccess = (e) => {
+                const file = e.target.result;
+                resolve(file ? file.content : null);
+            };
+        });
+    }
+
+    /**
+     * Show a notification toast
+     */
+    showNotification(message, type = 'info') {
+        // Create notification element if it doesn't exist
+        if (!this.notificationElement) {
+            this.notificationElement = document.createElement('div');
+            this.notificationElement.className = 'file-browser-notification';
+            document.body.appendChild(this.notificationElement);
+        }
+        
+        // Set notification content
+        this.notificationElement.textContent = message;
+        this.notificationElement.className = `file-browser-notification ${type}`;
+        
+        // Show notification
+        this.notificationElement.style.display = 'block';
+        
+        // Hide after timeout
+        clearTimeout(this.notificationTimeout);
+        this.notificationTimeout = setTimeout(() => {
+            this.notificationElement.style.display = 'none';
+        }, 3000);
+    }
+
+    /**
+     * Handle module file selection
+     * @param {string} filePath - Path to the selected file
+     */
+    handleModuleFileSelect(filePath) {
+        if (filePath.endsWith('.js')) {
+            this.loadModuleScript(filePath)
+                .then(ModuleClass => {
+                    // Show a toast notification or other feedback
+                    this.showNotification(`Module loaded: ${ModuleClass.name}`);
+                })
+                .catch(error => {
+                    this.showNotification(`Error loading module: ${error.message}`, 'error');
+                });
+        }
+    }
+
+    /**
+     * Scan for module scripts in the file system
+     */
+    async scanForModuleScripts() {
+        if (!this.db) return;
+        
+        try {
+            // Use a transaction to get all files
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            const allFiles = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+            
+            // Filter for JavaScript files
+            const jsFiles = allFiles.filter(file => 
+                file.type === 'file' && file.name.endsWith('.js')
+            );
+            
+            // Check each file and load if it's a module
+            for (const file of jsFiles) {
+                const content = await this.readFile(file.path);
+                if (content && content.includes('extends Module')) {
+                    try {
+                        await this.loadModuleScript(file.path);
+                    } catch (error) {
+                        console.warn(`Failed to load module ${file.path}:`, error);
+                    }
+                }
+            }
+            
+            console.log('Module script scan complete');
+        } catch (error) {
+            console.error('Error scanning for module scripts:', error);
+        }
+    }
+
     async loadContent(path) {
         this.content.innerHTML = '';
         if (!this.db) return;
         
-        const transaction = this.db.transaction(['files'], 'readonly');
-        const store = transaction.objectStore('files');
-        const index = store.index('parentPath');
+        // Normalize path to ensure consistent format
+        path = this.normalizePath(path);
+        console.log(`Loading content for path: ${path}`);
         
         try {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            const index = store.index('parentPath');
+            
+            // Get items with exact parent path match
             const items = await new Promise((resolve) => {
-                index.getAll(path).onsuccess = (e) => resolve(e.target.result);
+                index.getAll(path).onsuccess = (e) => {
+                    const results = e.target.result;
+                    console.log(`Retrieved ${results.length} items with parentPath=${path}`);
+                    resolve(results);
+                };
             });
             
             // Sort: folders first, then alphabetically
@@ -750,9 +1193,65 @@ window.${pascalCaseName} = ${pascalCaseName};
             // Create items
             items.forEach(item => this.renderItem(item));
             
+            console.log(`Loaded ${items.length} items in ${path}`);
+            
+            // Debug: show actual paths
+            console.log("Items loaded:", items.map(i => ({ 
+                name: i.name, 
+                path: i.path, 
+                parentPath: i.parentPath, 
+                type: i.type 
+            })));
         } catch (error) {
             console.error('Failed to load content:', error);
         }
+    }
+
+    async writeFile(path, content) {
+        if (!this.db) return false;
+        
+        try {
+            // Normalize path
+            path = this.normalizePath(path);
+            
+            const name = path.split('/').pop();
+            const parentPathArray = path.split('/').slice(0, -1);
+            const parentPath = parentPathArray.length === 1 ? '/' : parentPathArray.join('/');
+            
+            // Ensure the parent directory exists
+            if (parentPath !== '/') {
+                const parentExists = await this.exists(parentPath);
+                if (!parentExists) {
+                    // Create parent directories recursively
+                    await this.createDirectory(parentPath);
+                }
+            }
+            
+            // Now create or update the file
+            return await this.createFile(path, content, true);
+        } catch (error) {
+            console.error('Error writing file:', error);
+            return false;
+        }
+    }
+
+    normalizePath(path) {
+        if (!path) return '/';
+        
+        // Ensure path starts with a slash
+        if (!path.startsWith('/')) {
+            path = '/' + path;
+        }
+        
+        // Remove duplicate slashes
+        path = path.replace(/\/+/g, '/');
+        
+        // Remove trailing slash unless it's the root path
+        if (path.length > 1 && path.endsWith('/')) {
+            path = path.slice(0, -1);
+        }
+        
+        return path;
     }
 
     renderItem(item) {
@@ -786,37 +1285,275 @@ window.${pascalCaseName} = ${pascalCaseName};
         this.items.push({ ...item, element });
     }
 
-    openFile(path) {
-        // Get the file content from IndexedDB
+    async openFile(path) {
+        // Get file information
         const transaction = this.db.transaction(['files'], 'readonly');
         const store = transaction.objectStore('files');
         
-        store.get(path).onsuccess = (e) => {
+        const fileRequest = store.get(path);
+        fileRequest.onsuccess = async (e) => {
             const file = e.target.result;
-            if (file) {
-                // Check if it's a text-based file we can edit
-                if (this.isEditableFile(file.name)) {
-                    // Initialize the script editor if not already done
-                    if (!window.scriptEditor) {
-                        window.scriptEditor = new ScriptEditor();
-                    }
-                    
-                    // Open the file in the editor
-                    window.scriptEditor.loadFile(path, file.content);
-                } else {
-                    // For non-text files, just log for now
-                    console.log(`Opening file: ${path}`);
-                    // Here you could implement preview for images, etc.
+            if (!file) return;
+            
+            // Handle scene files specially
+            if (path.toLowerCase().endsWith('.scene')) {
+                await this.openSceneFile(file);
+                return;
+            }
+            
+            // Check if it's a text-based file we can edit
+            if (this.isEditableFile(file.name)) {
+                // Initialize the script editor if not already done
+                if (!window.scriptEditor) {
+                    window.scriptEditor = new ScriptEditor();
                 }
+                
+                // Open the file in the editor
+                window.scriptEditor.loadFile(path, file.content);
+            } else {
+                // For non-text files, just log for now
+                console.log(`Opening file: ${path}`);
             }
         };
+    }
+
+    async exists(path) {
+        if (!this.db) return false;
+        
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            store.get(path).onsuccess = (e) => {
+                resolve(!!e.target.result);
+            };
+        });
+    }
+
+    async createDirectory(path) {
+        if (!this.db) return false;
+        
+        try {
+            // Normalize path to ensure consistency
+            path = this.normalizePath(path);
+            console.log(`Creating directory: ${path}`);
+            
+            // Check if directory already exists
+            const exists = await this.exists(path);
+            if (exists) {
+                console.log(`Directory already exists: ${path}`);
+                return true;
+            }
+            
+            const name = path.split('/').pop();
+            const parentPathArray = path.split('/').slice(0, -1);
+            const parentPath = parentPathArray.length === 1 ? '/' : parentPathArray.join('/');
+            
+            // Ensure parent directories exist first (recursive)
+            if (parentPath !== '/' && parentPath !== '') {
+                const parentExists = await this.exists(parentPath);
+                if (!parentExists) {
+                    const parentCreated = await this.createDirectory(parentPath);
+                    if (!parentCreated) {
+                        return false;
+                    }
+                }
+            }
+            
+            // Double check if folder with same name exists in parent directory
+            // This prevents duplicates due to race conditions
+            const nameClashCheck = await this.checkNameClash(parentPath, name);
+            if (nameClashCheck) {
+                console.warn(`A folder with name "${name}" already exists in ${parentPath}`);
+                this.showNotification(`Folder "${name}" already exists`, 'warning');
+                return false;
+            }
+            
+            // Create folder object
+            const newFolder = {
+                name,
+                path,
+                parentPath,
+                type: 'folder',
+                created: Date.now()
+            };
+            
+            // Create a transaction for this specific operation
+            const result = await new Promise((resolve) => {
+                const transaction = this.db.transaction(['files'], 'readwrite');
+                const store = transaction.objectStore('files');
+                
+                transaction.oncomplete = () => {
+                    console.log(`Created directory: ${path}`);
+                    resolve(true);
+                };
+                
+                transaction.onerror = (e) => {
+                    console.error(`Error creating directory ${path}:`, e.target.error);
+                    resolve(false);
+                };
+                
+                try {
+                    store.add(newFolder);
+                } catch (err) {
+                    console.error("Error in store.add:", err);
+                    resolve(false);
+                }
+            });
+            
+            if (result) {
+                // Refresh the UI to show the new folder
+                this.refreshFiles();
+            }
+            
+            return result;
+        } catch (error) {
+            console.error('Error creating directory:', error);
+            return false;
+        }
+    }
+
+    getRootPath() {
+        return '/';
+    }
+
+    async stat(path) {
+        if (!this.db) return null;
+        
+        const transaction = this.db.transaction(['files'], 'readonly');
+        const store = transaction.objectStore('files');
+        
+        return new Promise((resolve) => {
+            store.get(path).onsuccess = (e) => {
+                resolve(e.target.result);
+            };
+        });
     }
 
     isEditableFile(filename) {
         const textExtensions = ['.js', '.json', '.txt', '.html', '.css', '.md'];
         return textExtensions.some(ext => filename.toLowerCase().endsWith(ext));
     }
+    
+    /**
+     * Show a save dialog
+     * @param {Object} options - Dialog options
+     * @returns {Promise<string>} Selected file path
+     */
+    async showSaveDialog(options) {
+        const defaultName = options.defaultPath ? 
+            options.defaultPath.split('/').pop().split('\\').pop() : 
+            'untitled.scene';
+        
+        const name = await this.promptDialog('Save File', 'Enter file name:', defaultName);
+        if (!name) return null;
+        
+        // Ensure parent directory exists
+        const parentDir = options.defaultPath ? 
+            options.defaultPath.substring(0, options.defaultPath.lastIndexOf('/')) : 
+            this.currentPath;
+        
+        if (parentDir !== '/') {
+            await this.ensureDirectoryExists(parentDir);
+        }
+        
+        // Return the full path
+        return `${parentDir}/${name}`;
+    }
 
+    /**
+     * Show an open dialog
+     * @param {Object} options - Dialog options
+     * @returns {Promise<string>} Selected file path
+     */
+    async showOpenDialog(options) {
+        // For now, just use the current selected file
+        if (this.selectedItems.size !== 1) {
+            alert('Please select exactly one file to open');
+            return null;
+        }
+        
+        const selectedItem = this.selectedItems.values().next().value;
+        if (selectedItem.dataset.type !== 'file') {
+            alert('Please select a file to open');
+            return null;
+        }
+        
+        return selectedItem.dataset.path;
+    }
+
+    /**
+     * Ensure a directory exists, creating it if necessary
+     * @param {string} path - Directory path
+     */
+    async ensureDirectoryExists(path) {
+        try {
+            const exists = await this.exists(path);
+            if (!exists) {
+                // Create directory and parents using our corrected createDirectory method
+                await this.createDirectory(path);
+            }
+            return true;
+        } catch (error) {
+            console.error('Error ensuring directory exists:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Reset the entire filesystem database (use with caution)
+     * @returns {Promise<boolean>} Success indicator
+     */
+    async resetDatabase() {
+        if (!confirm('WARNING: This will delete ALL files and folders. This action cannot be undone. Continue?')) {
+            return false;
+        }
+        
+        try {
+            // Close existing connection
+            if (this.db) {
+                this.db.close();
+            }
+            
+            // Delete the database
+            await new Promise((resolve, reject) => {
+                const request = indexedDB.deleteDatabase(this.dbName);
+                request.onsuccess = () => {
+                    console.log('Database successfully deleted');
+                    resolve();
+                };
+                request.onerror = () => {
+                    console.error('Could not delete database');
+                    reject(new Error('Failed to delete database'));
+                };
+            });
+            
+            // Reinitialize the database
+            await this.initializeDB();
+            this.showNotification('File system has been reset', 'info');
+            return true;
+        } catch (error) {
+            console.error('Error resetting database:', error);
+            this.showNotification('Error resetting file system', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * Refresh file list
+     */
+    async refreshFiles() {
+        // Clear current content first
+        this.content.innerHTML = '';
+        this.items = [];
+        this.selectedItems.clear();
+        
+        // Reload content for current path
+        await this.loadContent(this.currentPath);
+        
+        // Update breadcrumb navigation
+        this.updateBreadcrumb();
+    }
     async promptDialog(title, message, defaultValue = '') {
         return new Promise(resolve => {
             const dialog = document.createElement('div');
@@ -870,24 +1607,139 @@ window.${pascalCaseName} = ${pascalCaseName};
     }
 
     async navigateTo(path) {
+        // Normalize path consistently
+        path = this.normalizePath(path);
+        console.log(`Navigating to: ${path}`);
+        
+        // Update current path
         this.currentPath = path;
+        
+        // Clear selection
         this.selectedItems.clear();
+        
+        // Load content with the normalized path
         await this.loadContent(path);
+        
+        // Update UI
         this.updateBreadcrumb();
     }
 
+    setupModuleDropTarget() {
+        // This is a stub - FileBrowser doesn't need to handle module dropping
+        // The actual functionality is implemented in the Inspector class
+        console.log('Module drop target functionality is handled by Inspector');
+    }
+
+    /**
+     * Get all items with the specified parent path
+     * @param {IDBIndex} index - The parentPath index
+     * @param {string} path - The parent path to look for
+     * @returns {Promise<Array>} - Array of items with matching parent path
+     */
     getAllItems(index, path) {
+        path = this.normalizePath(path);
+        
         return new Promise((resolve) => {
             const request = index.getAll(path);
-            request.onsuccess = () => resolve(request.result);
+            request.onsuccess = () => {
+                console.log(`Found ${request.result.length} items with parent path ${path}`);
+                resolve(request.result);
+            };
+            request.onerror = (e) => {
+                console.error(`Error getting items for ${path}:`, e.target.error);
+                resolve([]);
+            };
         });
     }
 
+    /**
+     * Clean up the database by removing duplicate entries and orphaned files
+     */
+    async cleanupDatabase() {
+        if (!this.db) return;
+        
+        try {
+            console.log("Starting database cleanup...");
+            
+            // Get all items
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            
+            const allItems = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+            
+            console.log(`Found ${allItems.length} total items in database`);
+            
+            // Find duplicates (items with same path)
+            const pathMap = new Map();
+            const duplicates = [];
+            
+            allItems.forEach(item => {
+                if (pathMap.has(item.path)) {
+                    duplicates.push(item);
+                } else {
+                    pathMap.set(item.path, item);
+                }
+            });
+            
+            // Find orphans (items whose parent doesn't exist)
+            const orphans = allItems.filter(item => {
+                // Skip root items
+                if (item.parentPath === '/' || item.parentPath === null) return false;
+                
+                // Check if parent exists
+                return !pathMap.has(item.parentPath);
+            });
+            
+            console.log(`Found ${duplicates.length} duplicates and ${orphans.length} orphans`);
+            
+            // Remove duplicates and orphans if they exist
+            if (duplicates.length > 0 || orphans.length > 0) {
+                const writeTransaction = this.db.transaction(['files'], 'readwrite');
+                const writeStore = writeTransaction.objectStore('files');
+                
+                const itemsToDelete = [...duplicates, ...orphans];
+                
+                for (const item of itemsToDelete) {
+                    await new Promise(resolve => {
+                        writeStore.delete(item.path).onsuccess = resolve;
+                    });
+                }
+                
+                await new Promise(resolve => {
+                    writeTransaction.oncomplete = resolve;
+                });
+                
+                console.log(`Removed ${itemsToDelete.length} problematic items`);
+                this.showNotification(`Database cleanup complete: Removed ${itemsToDelete.length} items`, 'info');
+                
+                // Refresh the file browser
+                await this.refreshFiles();
+            } else {
+                console.log("No issues found in database");
+                this.showNotification("Database appears to be clean", 'info');
+            }
+        } catch (error) {
+            console.error("Error during database cleanup:", error);
+            this.showNotification("Error during database cleanup", 'error');
+        }
+    }
+
     updateBreadcrumb() {
+        // Always start with root
+        let html = '<span class="fb-crumb" data-path="/">Root</span>';
+        
+        if (this.currentPath === '/') {
+            this.breadcrumb.innerHTML = html;
+            return;
+        }
+        
+        // Split path into parts, ignoring empty strings
         const parts = this.currentPath.split('/').filter(Boolean);
-        let html = '<span class="fb-crumb" data-path="">Root</span>';
         let currentPath = '';
         
+        // Build breadcrumb trail
         parts.forEach(part => {
             currentPath += '/' + part;
             html += `<span class="fb-crumb-separator">/</span>

@@ -2,6 +2,7 @@ class Engine {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
+        this.scene = null;
         this.gameObjects = [];
         this.lastTime = 0;
         this.running = false;
@@ -16,6 +17,11 @@ class Engine {
     }
 
     async start() {
+        if (!this.scene) {
+            console.error('No scene loaded');
+            return;
+        }
+
         if (!this.preloaded) {
             await this.preload();
         }
@@ -61,5 +67,25 @@ class Engine {
         // Sort game objects by depth
         const sortedObjects = [...this.gameObjects].sort((a, b) => a.depth - b.depth);
         sortedObjects.forEach(obj => obj.draw(this.ctx));
+    }
+
+    loadScene(scene) {
+        // Stop current scene if running
+        if (this.running) {
+            this.stop();
+        }
+
+        // Clear existing state
+        this.gameObjects = [];
+        this.preloaded = false;
+
+        // Set new scene
+        this.scene = scene;
+        this.gameObjects = scene.gameObjects;
+
+        // Start scene if engine was running
+        if (this.running) {
+            this.start();
+        }
     }
 }

@@ -118,6 +118,104 @@ class Module {
     }
 
     /**
+     * Clone this module instance
+     * @returns {Module} A new instance of this module with the same properties
+     */
+    clone() {
+        const cloned = new this.constructor();
+        
+        // Copy all properties except gameObject reference
+        Object.keys(this).forEach(key => {
+            if (key !== 'gameObject' && typeof this[key] !== 'function') {
+                if (this[key] && typeof this[key].clone === 'function') {
+                    cloned[key] = this[key].clone();
+                } else {
+                    cloned[key] = this[key];
+                }
+            }
+        });
+        
+        return cloned;
+    }
+
+    /**
+     * Register a module class to be available in the Add Module dropdown
+     * @param {Class} moduleClass - The module class to register
+     */
+    registerModuleClass(moduleClass) {
+        if (!moduleClass || !(moduleClass.prototype instanceof Module)) {
+            console.error('Not a valid module class:', moduleClass);
+            return;
+        }
+        
+        // Check if already registered
+        const alreadyRegistered = this.availableModules.some(mod => 
+            mod.name === moduleClass.name || mod === moduleClass);
+        
+        if (!alreadyRegistered) {
+            this.availableModules.push(moduleClass);
+            console.log(`Registered module: ${moduleClass.name}`);
+            
+            // Update the dropdown if it's open
+            if (this.moduleDropdown && 
+                this.moduleDropdown.style.display !== 'none') {
+                this.populateModuleDropdown();
+            }
+        }
+    }
+
+    /**
+     * Get the list of exposed properties that should be editable in the Inspector
+     * @returns {Array<Object>} Array of property descriptors
+     */
+    getExposedProperties() {
+        // Start with properties explicitly marked as exposed
+        let exposed = this.exposedProperties || [];
+        
+        // Also include any properties in this.properties object
+        for (const key in this.properties) {
+            if (!exposed.some(prop => prop.name === key)) {
+                exposed.push({
+                    name: key,
+                    type: typeof this.properties[key],
+                    value: this.properties[key]
+                });
+            }
+        }
+        
+        return exposed;
+    }
+
+    /**
+     * Register a property to be exposed in the Inspector
+     * @param {string} name - Property name
+     * @param {string} type - Property type (string, number, boolean, etc.)
+     * @param {any} defaultValue - Default value
+     * @param {Object} options - Additional options (min, max, step, etc.)
+     */
+    exposeProperty(name, type, defaultValue, options = {}) {
+        if (!this.exposedProperties) {
+            this.exposedProperties = [];
+        }
+        
+        this.exposedProperties.push({
+            name,
+            type,
+            value: defaultValue,
+            options
+        });
+        
+        // Also set it in the properties object for serialization
+        this.setProperty(name, defaultValue);
+        
+        // Add a getter/setter for convenience
+        Object.defineProperty(this, name, {
+            get: () => this.getProperty(name, defaultValue),
+            set: (value) => this.setProperty(name, value)
+        });
+    }
+
+    /**
      * Enable this module
      */
     enable() {

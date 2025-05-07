@@ -1,0 +1,42 @@
+.scene-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 10px 0;
+}
+
+.scene-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: #333;
+    margin: 4px 0;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.scene-item:hover {
+    background: #444;
+}
+
+.delete-scene {
+    background: none;
+    border: none;
+    color: #f44336;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.delete-scene:hover {
+    color: #ff5252;
+}
+
+.scene-name-input {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    background: #333;
+    border: 1px solid #444;
+    color: #fff;
+    border-radius: 3px;
+}

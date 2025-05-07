@@ -51,6 +51,8 @@ body {
     display: flex;
     flex: 1;
     min-height: 0; /* Important for nested scrolling */
+    height: calc(100vh - 56px - 250px); /* 56px for toolbar + footer, 250px for bottom panel */
+    min-height: 200px;
 }
 
 .hierarchy-panel {
@@ -61,6 +63,7 @@ body {
     display: flex;
     flex-direction: column;
     position: relative;
+    overflow: hidden;
 }
 
 .hierarchy-header {
@@ -126,6 +129,7 @@ body {
     background: #252526;
     border-left: 1px solid #1e1e1e;
     position: relative;
+    overflow: hidden;
 }
 
 .bottom-panel {
@@ -135,6 +139,8 @@ body {
     border-top: 1px solid #1e1e1e;
     position: relative;
     z-index: 10;
+    max-height: 60vh; /* Don't let it take more than 60% of viewport */
+    min-height: 100px;
 }
 
 .tab-buttons {
@@ -245,4 +251,65 @@ body {
     justify-content: center;
     align-items: center;
     position: relative;
+    overflow: hidden;
+}
+
+.canvas-view canvas {
+    cursor: default;
+}
+
+.canvas-view canvas.cursor-move {
+    cursor: move;
+}
+
+.canvas-view canvas.cursor-ew-resize {
+    cursor: ew-resize;
+}
+
+.canvas-view canvas.cursor-ns-resize {
+    cursor: ns-resize;
+}
+
+/* Additional styles for object selection in editor */
+.editor-canvas-container {
+    position: relative;
+    overflow: hidden;
+}
+
+.editor-canvas-container canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* Add to the end of your main.css file */
+
+/* Better panel height management */
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+
+#gameObjectHierarchy,
+#moduleSettings {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(100% - 30px); /* Subtract header height */
+}
+
+/* Improve resizing */
+.resizer-v:hover, 
+.resizer-h:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.resizer-v:active, 
+.resizer-h:active {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Fix layout for file browser container */
+#fileBrowserContainer {
+    height: calc(100% - 32px); /* Subtract tab height */
 }

@@ -1,0 +1,130 @@
+.scene-selector {
+    padding: 8px;
+    background: #252525;
+    border-bottom: 1px solid #333;
+}
+
+.scene-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.scene-dropdown {
+    flex-grow: 1;
+    background: #333;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+.scene-button {
+    width: 28px;
+    height: 28px;
+    background: #333;
+    border: 1px solid #444;
+    color: #ccc;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.scene-button:hover {
+    background: #444;
+    color: #fff;
+}
+
+.scene-settings-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.dialog-content {
+    background: #252525;
+    padding: 20px;
+    border-radius: 4px;
+    min-width: 400px;
+}
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    margin: 20px 0;
+    align-items: center;
+}
+
+.dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.dialog-buttons button {
+    padding: 6px 12px;
+    background: #333;
+    border: 1px solid #444;
+    color: #fff;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.dialog-buttons button:hover {
+    background: #444;
+}
+
+.scene-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.dialog-content {
+    background: #252525;
+    padding: 20px;
+    border-radius: 4px;
+    min-width: 300px;
+}
+
+.dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+.dialog-buttons button {
+    padding: 6px 12px;
+    border: 1px solid #444;
+    background: #333;
+    color: #fff;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.dialog-buttons button:hover {
+    background: #444;
+}
