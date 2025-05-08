@@ -18,6 +18,47 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize editor
     const editor = new Editor('editorCanvas');
 
+    // Add this after initializing the editor but before other game-related code
+
+    // Initialize physics manager
+    window.physicsManager = new PhysicsManager();
+
+    // Modify the engine to update physics
+    const originalEngineUpdate = Engine.prototype.update;
+    Engine.prototype.update = function(deltaTime) {
+        // Update physics first
+        if (window.physicsManager) {
+            window.physicsManager.update(deltaTime);
+        }
+        
+        // Call the original update method
+        originalEngineUpdate.call(this, deltaTime);
+    };
+
+    // Add debug drawing to the engine's draw method
+    const originalEngineDraw = Engine.prototype.draw;
+    Engine.prototype.draw = function() {
+        // Call the original draw method
+        originalEngineDraw.call(this);
+        
+        // Draw physics debug visualization
+        if (window.physicsManager && this.ctx) {
+            window.physicsManager.drawDebug(this.ctx);
+        }
+    };
+
+    // Add physics reset when stopping the game
+    const originalEngineStop = Engine.prototype.stop;
+    Engine.prototype.stop = function() {
+        // Call the original stop method
+        originalEngineStop.call(this);
+        
+        // Reset physics when stopping the game
+        if (window.physicsManager) {
+            window.physicsManager.reset();
+        }
+    };
+
     // Add some test objects
     const scene = new Scene("Default Scene");
 

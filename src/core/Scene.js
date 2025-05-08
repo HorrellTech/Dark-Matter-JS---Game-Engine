@@ -31,7 +31,10 @@ class Scene {
                 backgroundColor: this.settings.backgroundColor,
                 gridEnabled: this.settings.gridEnabled,
                 gridSize: this.settings.gridSize,
-                snapToGrid: this.settings.snapToGrid
+                snapToGrid: this.settings.snapToGrid,
+                gravity: { x: 0, y: 1 },       // Physics gravity direction
+                physicsEnabled: true,          // Whether physics is enabled
+                physicsDebugDraw: false   
             },
             gameObjects: this.gameObjects.filter(obj => !obj.parent).map(obj => obj.toJSON())
         };
@@ -49,7 +52,11 @@ class Scene {
             backgroundColor: json.settings.backgroundColor || "#000000",
             gridEnabled: json.settings.gridEnabled !== undefined ? json.settings.gridEnabled : true,
             gridSize: json.settings.gridSize || 32,
-            snapToGrid: json.settings.snapToGrid || false
+            snapToGrid: json.settings.snapToGrid || false,
+            gravity: json.settings.gravity || { x: 0, y: 1 },
+            physicsEnabled: json.settings.physicsEnabled !== undefined ? 
+                json.settings.physicsEnabled : true,
+            physicsDebugDraw: json.settings.physicsDebugDraw || false
         };
         
         scene.gameObjects = json.gameObjects.map(objData => GameObject.fromJSON(objData));
