@@ -1,5 +1,7 @@
 // Initialize editor components
 document.addEventListener('DOMContentLoaded', () => {
+    const startScreen = new StartScreen('0.1.0');
+
     // Tab functionality
     document.querySelectorAll('.tab-button').forEach(button => {
         button.addEventListener('click', () => {
