@@ -368,25 +368,52 @@ class Inspector {
      */
     inspectObject(gameObject) {
         // If inspector is locked, don't change the inspected object
-        if (this.lockedObject) return;
+        if (this.lockedObject && gameObject) return;
         
+        // Store the previous object reference
+        const previousObject = this.inspectedObject;
+        
+        // Update the inspected object
         this.inspectedObject = gameObject;
         
+        // Show appropriate UI based on whether an object is selected
         if (!gameObject) {
             this.showNoObjectMessage();
-            return;
+        } else {
+            this.showObjectInspector();
         }
         
-        this.showObjectInspector();
+        // If the object changed, refresh the canvas to show selection state
+        if (previousObject !== gameObject && this.editor) {
+            this.editor.refreshCanvas();
+        }
     }
 
     /**
      * Show "no object selected" message
      */
     showNoObjectMessage() {
+        // Hide the "Add Module" button container when no object is selected
+        const addModuleContainer = this.container.querySelector('.add-module-container');
+        if (addModuleContainer) {
+            addModuleContainer.style.display = 'none';
+        }
+        
+        // Hide object header and show "no object" message
         this.noObjectMessage.style.display = 'block';
         this.objectHeader.style.display = 'none';
+        
+        // Clear the entire modules list
         this.modulesList.innerHTML = '';
+        
+        // Add a more descriptive message with instructions
+        this.modulesList.innerHTML = `
+            <div class="no-selection-message">
+                <i class="fas fa-info-circle"></i>
+                <p>Select a GameObject in the scene or hierarchy to view and edit its properties.</p>
+                <p class="hint">Tip: Right-click in the scene to create a new GameObject.</p>
+            </div>
+        `;
     }
 
     /**
@@ -395,6 +422,12 @@ class Inspector {
     showObjectInspector() {
         this.noObjectMessage.style.display = 'none';
         this.objectHeader.style.display = 'block';
+        
+        // Show the "Add Module" button container when an object is selected
+        const addModuleContainer = this.container.querySelector('.add-module-container');
+        if (addModuleContainer) {
+            addModuleContainer.style.display = 'block';
+        }
         
         // Update header information
         this.nameInput.value = this.inspectedObject.name;

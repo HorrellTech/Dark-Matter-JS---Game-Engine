@@ -192,10 +192,12 @@ class Editor {
         // Draw viewport bounds
         this.drawSceneViewport();
         
-        // Draw all game objects
+        // Draw all game objects - ONLY FROM activeScene
+    if (this.activeScene && this.activeScene.gameObjects) {
         this.activeScene.gameObjects.forEach(obj => {
             obj.drawInEditor(this.ctx);
         });
+    }
         
         // Draw all game objects
         //this.scene.gameObjects.forEach(obj => {

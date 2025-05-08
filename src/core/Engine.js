@@ -21,6 +21,11 @@ class Engine {
         
         // Track if canvas was resized
         this.canvasResized = true;
+
+        // Set the input manager reference to this engine
+        if (window.input) {
+            window.input.setEngine(this);
+        }
     }
 
     async preload() {
@@ -58,27 +63,43 @@ class Engine {
             console.error('No scene loaded');
             return;
         }
-
+    
         console.log("Starting game...");
 
+        this.refreshModules();
+    
         if (!this.preloaded) {
             await this.preload();
         }
         
         // Call start on all game objects
         this.traverseGameObjects(this.gameObjects, obj => {
-            if (obj.active && obj.modules) {
-                obj.modules.forEach(module => {
+            if (obj.active) {
+                // Fix: Call the object's start method first
+                if (obj.start) {
+                    obj.start();
+                }
+                
+                // Then call each module's start method
+                /*obj.modules.forEach(module => {
                     if (module.enabled && module.start) {
-                        module.start(obj);
+                        try {
+                            // Make sure the gameObject reference is properly set
+                            if (!module.gameObject) module.gameObject = obj;
+                            
+                            // Call start() with no arguments
+                            module.start();
+                        } catch (error) {
+                            console.error(`Error starting module ${module.type || module.constructor.name} on ${obj.name}:`, error);
+                        }
                     }
-                });
+                });*/
             }
         });
         
         this.running = true;
         this.lastTime = performance.now();
-        requestAnimationFrame(this.gameLoop.bind(this));
+        this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
         
         // Switch to game tab if we have a DOM reference
         const gameTab = document.querySelector('[data-canvas="game"]');
@@ -130,27 +151,74 @@ class Engine {
         }
     }
 
+    refreshModules() {
+        if (!window.moduleReloader || !window.moduleRegistry) {
+            console.warn("Cannot refresh modules: ModuleReloader or ModuleRegistry not available");
+            return false;
+        }
+        
+        console.log("Refreshing all module instances before game start...");
+        
+        let totalUpdated = 0;
+        
+        // Get all registered module types
+        const moduleTypes = Array.from(window.moduleRegistry.modules.keys());
+        
+        // Update instances of each module type
+        moduleTypes.forEach(className => {
+            const updated = window.moduleReloader.updateModuleInstances(
+                className,
+                this.gameObjects
+            );
+            
+            if (updated > 0) {
+                totalUpdated += updated;
+                console.log(`Updated ${updated} instances of ${className}`);
+            }
+        });
+        
+        console.log(`Total module instances refreshed: ${totalUpdated}`);
+        return totalUpdated > 0;
+    }
+
     gameLoop(timestamp) {
         if (!this.running) return;
         
         const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1); // Cap at 100ms to prevent large jumps
         this.lastTime = timestamp;
-
+    
+        // Update input manager at the start of the frame
+        if (window.input) {
+            window.input.beginFrame();
+        }
+    
         this.update(deltaTime);
         this.draw();
-
-        requestAnimationFrame(this.gameLoop.bind(this));
+    
+        // Update input manager at the end of the frame
+        if (window.input) {
+            window.input.endFrame();
+        }
+    
+        this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
     }
     
     update(deltaTime) {
         // Begin loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
-            if (obj.active && obj.modules) {
-                if (obj.beginLoop) obj.beginLoop();
+            if (obj.active) {
+                // Call object's beginLoop method
+                if (obj.beginLoop) obj.beginLoop(deltaTime);
                 
+                // Call modules' beginLoop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.beginLoop) {
-                        module.beginLoop(deltaTime, obj);
+                        try {
+                            // Only pass deltaTime parameter, not the object reference
+                            module.beginLoop(deltaTime);
+                        } catch (error) {
+                            console.error(`Error in beginLoop for module ${module.type || module.constructor.name}:`, error);
+                        }
                     }
                 });
             }
@@ -158,12 +226,19 @@ class Engine {
         
         // Main loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
-            if (obj.active && obj.modules) {
+            if (obj.active) {
+                // Call object's loop method
                 if (obj.loop) obj.loop(deltaTime);
                 
+                // Call modules' loop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.loop) {
-                        module.loop(deltaTime, obj);
+                        try {
+                            // Only pass deltaTime parameter, not the object reference
+                            module.loop(deltaTime);
+                        } catch (error) {
+                            console.error(`Error in loop for module ${module.type || module.constructor.name}:`, error);
+                        }
                     }
                 });
             }
@@ -171,12 +246,19 @@ class Engine {
         
         // End loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
-            if (obj.active && obj.modules) {
-                if (obj.endLoop) obj.endLoop();
+            if (obj.active) {
+                // Call object's endLoop method
+                if (obj.endLoop) obj.endLoop(deltaTime);
                 
+                // Call modules' endLoop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.endLoop) {
-                        module.endLoop(deltaTime, obj);
+                        try {
+                            // Only pass deltaTime parameter, not the object reference
+                            module.endLoop(deltaTime);
+                        } catch (error) {
+                            console.error(`Error in endLoop for module ${module.type || module.constructor.name}:`, error);
+                        }
                     }
                 });
             }
@@ -198,104 +280,47 @@ class Engine {
         // Apply viewport transformation
         this.ctx.save();
         
-        // Apply viewport scaling and centering if needed
-        if (this.canvasResized && this.scene && this.scene.settings) {
-            // Get actual viewport dimensions
-            const viewportWidth = this.scene.settings.viewportWidth;
-            const viewportHeight = this.scene.settings.viewportHeight;
-            
-            // Calculate scaling to fit viewport to canvas
-            const canvasRatio = this.canvas.width / this.canvas.height;
-            const viewportRatio = viewportWidth / viewportHeight;
-            
-            let scale, offsetX = 0, offsetY = 0;
-            
-            if (canvasRatio > viewportRatio) {
-                // Canvas is wider than viewport
-                scale = this.canvas.height / viewportHeight;
-                offsetX = (this.canvas.width - viewportWidth * scale) / 2;
-            } else {
-                // Canvas is taller than viewport
-                scale = this.canvas.width / viewportWidth;
-                offsetY = (this.canvas.height - viewportHeight * scale) / 2;
-            }
-            
-            this.ctx.translate(offsetX, offsetY);
-            this.ctx.scale(scale, scale);
-            
-            // Store viewport transform for later use
-            this.viewTransform = { offsetX, offsetY, scale };
-            this.canvasResized = false;
-            
-            // Log that we've resized
-            console.log(`Game canvas resized: ${this.canvas.width}x${this.canvas.height}, scale: ${scale}`);
-        }
-        
-        // Adjust for viewport position
-        if (this.scene && this.scene.settings) {
-            this.ctx.translate(-this.scene.settings.viewportX || 0, -this.scene.settings.viewportY || 0);
-        }
+        // Apply any camera transformations
+        this.applyViewportTransform();
         
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
         
-        // Log the number of objects being drawn
-        console.log(`Drawing ${allObjects.length} game objects`);
-        
         if (allObjects.length === 0) {
             // If no objects, draw a placeholder message
-            this.ctx.save();
             this.ctx.fillStyle = "#ffffff";
             this.ctx.font = "20px Arial";
             this.ctx.textAlign = "center";
-            this.ctx.fillText("No objects in scene", this.viewport.width / 2, this.viewport.height / 2);
-            this.ctx.restore();
+            this.ctx.fillText("No objects in scene", this.canvas.width / 2, this.canvas.height / 2);
         } else {
-            allObjects.sort((a, b) => a.depth - b.depth).forEach(obj => {
-                if (obj.active && obj.visible) {
-                    try {
-                        // Get world transform
-                        const worldPos = obj.getWorldPosition();
-                        const worldAngle = obj.getWorldRotation ? obj.getWorldRotation() : obj.angle;
-                        const worldScale = obj.getWorldScale ? obj.getWorldScale() : obj.scale;
-                        
-                        this.ctx.save();
-                        this.ctx.translate(worldPos.x, worldPos.y);
-                        this.ctx.rotate(worldAngle * Math.PI / 180);
-                        
-                        if (typeof worldScale === 'object') {
-                            this.ctx.scale(worldScale.x, worldScale.y);
-                        }
-                        
-                        // Draw the object itself (fallback for objects without modules)
-                        if (obj.draw) {
-                            obj.draw(this.ctx);
-                        }
-                        
-                        // Draw all modules
-                        if (obj.modules && obj.modules.length > 0) {
-                            obj.modules.forEach(module => {
-                                if (module && module.enabled && module.draw) {
-                                    module.draw(this.ctx, obj);
-                                }
-                            });
-                        } else {
-                            // No modules, draw a placeholder
-                            this.ctx.fillStyle = obj.editorColor || "#4CAF50";
-                            this.ctx.beginPath();
-                            this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
-                            this.ctx.fill();
-                        }
-                        
-                        this.ctx.restore();
-                    } catch (err) {
-                        console.error(`Error drawing object ${obj.name}:`, err);
-                    }
-                }
-            });
+            allObjects
+                .filter(obj => obj.active && obj.visible !== false)
+                .sort((a, b) => a.depth - b.depth)
+                .forEach(obj => obj.draw(this.ctx));
         }
         
         this.ctx.restore();
+    }
+    
+    applyViewportTransform() {
+        if (!this.scene || !this.scene.settings) return;
+        
+        const settings = this.scene.settings;
+        
+        // Apply viewport offset
+        if (settings.viewportX || settings.viewportY) {
+            this.ctx.translate(-settings.viewportX || 0, -settings.viewportY || 0);
+        }
+        
+        // Apply camera zoom if available
+        if (settings.cameraZoom) {
+            const centerX = this.canvas.width / 2;
+            const centerY = this.canvas.height / 2;
+            
+            this.ctx.translate(centerX, centerY);
+            this.ctx.scale(settings.cameraZoom, settings.cameraZoom);
+            this.ctx.translate(-centerX, -centerY);
+        }
     }
     
     getAllObjects(objects) {
@@ -338,17 +363,105 @@ class Engine {
     
     cloneGameObjects(objects) {
         return objects.map(obj => {
-            // Use GameObject's clone method
-            const clonedObj = obj.clone();
+            // Create a new GameObject with the same name
+            const clonedObj = new GameObject(obj.name);
             
-            // Handle children separately since clone might not clone children correctly
+            // Copy basic properties
+            clonedObj.id = crypto.randomUUID(); // Generate a new unique ID
+            clonedObj.position = new Vector2(obj.position.x, obj.position.y);
+            clonedObj.scale = new Vector2(obj.scale.x, obj.scale.y);
+            clonedObj.angle = obj.angle;
+            clonedObj.depth = obj.depth;
+            clonedObj.active = obj.active;
+            clonedObj.visible = obj.visible !== false; // Ensure visible is true unless explicitly false
+            clonedObj.tags = [...obj.tags];
+            clonedObj.editorColor = obj.editorColor;
+            
+            // Clone modules properly
+            if (obj.modules && obj.modules.length > 0) {
+                clonedObj.modules = [];
+                
+                for (const module of obj.modules) {
+                    try {
+                        // Use module's clone method if available
+                        if (typeof module.clone === 'function') {
+                            const clonedModule = module.clone();
+                            clonedModule.gameObject = clonedObj; // Set the correct gameObject reference
+                            clonedObj.modules.push(clonedModule);
+                            continue;
+                        } 
+                        
+                        // Create a new instance of the same module type
+                        if (module.constructor) {
+                            // Get module constructor name or use the module type
+                            const constructorName = module.constructor.name || module.type;
+                            
+                            // Try to get the class from the window object
+                            const ModuleClass = window[constructorName];
+                            
+                            if (ModuleClass) {
+                                console.log(`Cloning module ${constructorName}`);
+                                
+                                // Create a new module instance
+                                let newModule;
+                                
+                                // Special handling for SpriteRenderer which needs imageSrc
+                                if (constructorName === 'SpriteRenderer' && module.imageSrc) {
+                                    newModule = new ModuleClass(module.imageSrc);
+                                } else {
+                                    newModule = new ModuleClass();
+                                }
+                                
+                                // Copy important properties
+                                newModule.gameObject = clonedObj;
+                                newModule.enabled = module.enabled !== false; // Ensure enabled is true unless explicitly false
+                                newModule.id = crypto.randomUUID(); // New ID
+                                
+                                // Copy all other properties if module has them
+                                for (const prop in module) {
+                                    // Skip functions, gameObject reference, and already copied properties
+                                    if (prop === 'gameObject' || prop === 'id' || prop === 'enabled' || 
+                                        prop === 'constructor' || typeof module[prop] === 'function') {
+                                        continue;
+                                    }
+                                    
+                                    try {
+                                        if (module[prop] !== undefined) {
+                                            // Handle Vector2 objects
+                                            if (module[prop] instanceof Vector2) {
+                                                newModule[prop] = new Vector2(module[prop].x, module[prop].y);
+                                            }
+                                            // Handle image objects
+                                            else if (prop === 'image' && module[prop]) {
+                                                // Images will be reloaded in preload()
+                                            } 
+                                            // Handle simple objects and primitives
+                                            else {
+                                                newModule[prop] = JSON.parse(JSON.stringify(module[prop]));
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.warn(`Could not clone property ${prop} on module ${constructorName}:`, err);
+                                    }
+                                }
+                                
+                                clonedObj.modules.push(newModule);
+                            } else {
+                                console.error(`Module class ${constructorName} not found`);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error cloning module on ${obj.name}:`, error);
+                    }
+                }
+            }
+            
+            // Handle children
             if (obj.children && obj.children.length > 0) {
                 const clonedChildren = this.cloneGameObjects(obj.children);
                 clonedChildren.forEach(child => {
-                    // Update parent reference
-                    child.parent = clonedObj;
+                    clonedObj.addChild(child);
                 });
-                clonedObj.children = clonedChildren;
             }
             
             return clonedObj;

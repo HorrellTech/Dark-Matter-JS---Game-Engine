@@ -47,7 +47,10 @@ class Module {
      * Use this for initialization logic
      */
     start() {
-        // Override in subclass to implement startup behavior
+        // Override in subclass but provide safety
+        if (!this.gameObject) {
+            console.warn(`Module ${this.name} has no gameObject reference during start()`);
+        }
     }
 
     /**
@@ -64,7 +67,11 @@ class Module {
      * @param {number} deltaTime - Time in seconds since the last frame
      */
     loop(deltaTime) {
-        // Override in subclass to implement per-frame behavior
+        // Override in subclass but provide safety
+        if (!this.gameObject) {
+            console.warn(`Module ${this.name} has no gameObject reference during loop()`);
+            this.enabled = false; // Disable to prevent further errors
+        }
     }
 
     /**
@@ -89,6 +96,15 @@ class Module {
      */
     onDestroy() {
         // Override in subclass to implement cleanup behavior
+    }
+
+    /**
+     * Called when the module is attached to a GameObject
+     * @param {GameObject} gameObject - The GameObject this module is attached to
+     */
+    onAttach(gameObject) {
+        // This is called when the module is added to a GameObject
+        // Override in subclasses if needed
     }
 
     /**

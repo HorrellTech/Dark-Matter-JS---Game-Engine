@@ -90,30 +90,43 @@ class SpriteRenderer extends Module {
      * @param {CanvasRenderingContext2D} ctx - The canvas rendering context
      */
     draw(ctx) {
-        if (!this.enabled) return;
+        // If we don't have an image or it's not loaded yet, draw a placeholder
+        if (!this.image || !this.loaded) {
+            // Draw a placeholder rectangle
+            const width = this.width || 50;
+            const height = this.height || 50;
+            ctx.fillStyle = 'rgba(255, 0, 255, 0.5)'; // Magenta semi-transparent
+            ctx.fillRect(-width/2, -height/2, width, height);
+            
+            // Draw an X
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-width/2, -height/2);
+            ctx.lineTo(width/2, height/2);
+            ctx.moveTo(width/2, -height/2);
+            ctx.lineTo(-width/2, height/2);
+            ctx.stroke();
+            
+            return;
+        }
         
-        // Calculate position based on origin point
-        const originX = this.width * this.origin.x;
-        const originY = this.height * this.origin.y;
+        // Calculate drawing position based on origin
+        const width = this.width || this.image.width;
+        const height = this.height || this.image.height;
+        const originX = this.origin ? this.origin.x : 0.5; // Default to center
+        const originY = this.origin ? this.origin.y : 0.5; // Default to center
+        const drawX = -width * originX;
+        const drawY = -height * originY;
         
-        if (this.loaded && this.image) {
-            // Draw the loaded image
-            ctx.drawImage(
-                this.image,
-                -originX * this.scale.x,
-                -originY * this.scale.y,
-                this.width * this.scale.x,
-                this.height * this.scale.y
-            );
-        } else {
-            // Draw a colored rectangle as a placeholder
-            ctx.fillStyle = this.color;
-            ctx.fillRect(
-                -originX * this.scale.x,
-                -originY * this.scale.y,
-                (this.width || 64) * this.scale.x,
-                (this.height || 64) * this.scale.y
-            );
+        // Draw the image
+        ctx.drawImage(this.image, drawX, drawY, width, height);
+        
+        // Debug outline 
+        if (this.gameObject?.debug) {
+            ctx.strokeStyle = 'lime';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(drawX, drawY, width, height);
         }
     }
 

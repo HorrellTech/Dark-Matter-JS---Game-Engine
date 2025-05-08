@@ -614,3 +614,25 @@
 canvas {
     will-change: transform;
 }
+
+.no-selection-message {
+    padding: 20px;
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+    margin-top: 30px;
+}
+
+.no-selection-message i {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #666;
+}
+
+.no-selection-message .hint {
+    font-size: 12px;
+    margin-top: 15px;
+    font-style: italic;
+    color: #777;
+}
+

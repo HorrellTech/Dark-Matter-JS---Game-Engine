@@ -310,8 +310,7 @@ class ScriptEditor {
         const content = this.editor.getValue();
         
         try {
-            // Get FileBrowser instance - assuming it's available globally or through a module system
-            // For now we'll use window.fileBrowser which should be set in the main app.js
+            // Save the file
             if (window.fileBrowser) {
                 await window.fileBrowser.createFile(this.currentPath, content, true); // true to overwrite
                 this.originalContent = content;
@@ -319,6 +318,10 @@ class ScriptEditor {
                 
                 // Show brief success message
                 this.showStatusMessage('File saved successfully');
+                
+                // Check if this is a module file and reload it
+                this.reloadModuleIfNeeded(this.currentPath, content);
+                
                 return true;
             } else {
                 console.error('FileBrowser instance not found');
@@ -329,6 +332,53 @@ class ScriptEditor {
             console.error('Failed to save file:', error);
             this.showStatusMessage('Error saving file', true);
             return false;
+        }
+    }
+
+    reloadModuleIfNeeded(filePath, content) {
+        // Check if this is a module script file
+        if (!filePath.toLowerCase().endsWith('.js')) return;
+        
+        // Extract class name from file path
+        const fileName = filePath.split('/').pop().split('\\').pop();
+        const className = fileName.replace('.js', '');
+        
+        // Validate it looks like a module class
+        if (!content.includes(`class ${className}`) && !content.includes(`class ${className} extends Module`)) {
+            return;
+        }
+        
+        console.log(`Attempting to reload module: ${className}`);
+        
+        // Use the ModuleReloader if available
+        if (window.moduleReloader) {
+            const success = window.moduleReloader.reloadModuleClass(className, content);
+            
+            if (success) {
+                // Update all instances in the editor's scene
+                let instancesUpdated = 0;
+                
+                if (window.editor && window.editor.activeScene) {
+                    instancesUpdated = window.moduleReloader.updateModuleInstances(
+                        className, 
+                        window.editor.activeScene.gameObjects
+                    );
+                    
+                    if (instancesUpdated > 0) {
+                        this.showStatusMessage(`Updated ${instancesUpdated} instances of ${className}`);
+                        
+                        // Refresh the inspector if visible
+                        if (window.editor.inspector) {
+                            window.editor.inspector.refreshInspector();
+                        }
+                        
+                        // Refresh canvas
+                        window.editor.refreshCanvas();
+                    }
+                }
+            }
+        } else {
+            console.warn("ModuleReloader not available, modules won't be hot-reloaded");
         }
     }
 
@@ -393,6 +443,18 @@ class ScriptEditor {
     }
 
     close() {
+        // If there are unsaved changes and they might be module changes, 
+        // still attempt to reload from the last saved version
+        if (this.hasUnsavedChanges() && this.currentPath) {
+            // Try to reload from the last saved file
+            window.fileBrowser?.readFile(this.currentPath)
+                .then(content => {
+                    this.reloadModuleIfNeeded(this.currentPath, content);
+                })
+                .catch(err => console.error("Couldn't reload module on close:", err));
+        }
+        
+        // Proceed with normal close
         this.modal.style.display = 'none';
         this.isOpen = false;
         this.currentPath = null;

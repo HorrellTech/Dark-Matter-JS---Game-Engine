@@ -64,33 +64,56 @@ class GameObject {
         this.children.forEach(child => child.endLoop());
     }
 
+    /**
+     * Draw this GameObject and its modules during runtime
+     * @param {CanvasRenderingContext2D} ctx - The rendering context
+     */
     draw(ctx) {
-        if (!this.active) return;
+        if (!this.active || !this.visible) return;
         
         ctx.save();
         
         // Apply local transform
         const worldPos = this.getWorldPosition();
-        ctx.translate(worldPos.x, worldPos.y);
-        ctx.rotate(this.angle * Math.PI / 180);
-        ctx.scale(this.scale.x, this.scale.y);
+        const worldAngle = this.getWorldRotation();
+        const worldScale = this.getWorldScale();
         
-        // Check if object has custom draw method
-        if (this.drawInEditor) {
-            this.drawInEditor(ctx);
-        } else {
-            // Draw all modules
-            this.modules.forEach(module => {
-                if (module.enabled && module.draw) module.draw(ctx);
-            });
+        ctx.translate(worldPos.x, worldPos.y);
+        ctx.rotate(worldAngle * Math.PI / 180);
+        ctx.scale(worldScale.x, worldScale.y);
+        
+        // Track if any module actually drew something
+        let moduleDidDraw = false;
+        
+        // Always draw the fallback shape first to ensure object visibility
+        this.drawFallbackShape(ctx);
+        
+        // Draw modules
+        for (const module of this.modules) {
+            if (module.enabled && typeof module.draw === 'function') {
+                try {
+                    module.draw(ctx);
+                    moduleDidDraw = true;
+                } catch (error) {
+                    console.error(`Error in module ${module.type || module.constructor.name} draw on ${this.name}:`, error);
+                }
+            }
         }
         
         ctx.restore();
         
         // Draw all children
-        this.children.forEach(child => child.draw(ctx));
+        this.children.forEach(child => {
+            if (child.active && child.visible) {
+                child.draw(ctx);
+            }
+        });
     }
 
+    /**
+     * Draw representation of this GameObject in the editor
+     * @param {CanvasRenderingContext2D} ctx - The rendering context
+     */
     drawInEditor(ctx) {
         if (!this.active) return;
         
@@ -99,9 +122,12 @@ class GameObject {
         
         // Apply transformations
         const worldPos = this.getWorldPosition();
+        const worldAngle = this.getWorldRotation();
+        const worldScale = this.getWorldScale();
+        
         ctx.translate(worldPos.x, worldPos.y);
-        ctx.rotate(this.angle * Math.PI / 180);
-        ctx.scale(this.scale.x, this.scale.y);
+        ctx.rotate(worldAngle * Math.PI / 180);
+        ctx.scale(worldScale.x, worldScale.y);
         
         // Draw square representation
         const size = 20; // Base size
@@ -136,8 +162,26 @@ class GameObject {
         
         // Draw children
         this.children.forEach(child => {
-            child.drawInEditor(ctx);
+            if (child.active) {
+                child.drawInEditor(ctx);
+            }
         });
+    }
+
+    /**
+     * Draw a simple shape to represent the GameObject when no modules are drawing
+     * @param {CanvasRenderingContext2D} ctx - The rendering context
+     */
+    drawFallbackShape(ctx) {
+        // Draw circle representation
+        const size = 10;
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.fillStyle = this.editorColor || '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.stroke();
     }
 
     onDestroy() {
@@ -153,8 +197,20 @@ class GameObject {
      * @returns {Module} The added module
      */
     addModule(module) {
+        if (!module) {
+            console.error("Attempted to add null or undefined module to GameObject:", this.name);
+            return null;
+        }
+        
+        // Set bidirectional reference
         module.gameObject = this;
         this.modules.push(module);
+        
+        // If module has an onAttach method, call it
+        if (typeof module.onAttach === 'function') {
+            module.onAttach(this);
+        }
+        
         return module;
     }
 
@@ -456,31 +512,11 @@ class GameObject {
         cloned.angle = this.angle;
         cloned.depth = this.depth;
         cloned.active = this.active;
+        cloned.visible = this.visible;
+        cloned.tags = [...this.tags];
+        cloned.editorColor = this.editorColor;
         
-        // Clone modules (deep copy)
-        if (this.modules) {
-            cloned.modules = this.modules.map(module => {
-                // Get the module constructor
-                const ModuleClass = module.constructor;
-                
-                // Create a new module instance
-                const clonedModule = new ModuleClass(cloned);
-                
-                // Copy module properties
-                clonedModule.enabled = module.enabled;
-                clonedModule.name = module.name;
-                
-                // Deep copy properties object if it exists
-                if (module.properties) {
-                    clonedModule.properties = JSON.parse(JSON.stringify(module.properties));
-                }
-                
-                return clonedModule;
-            });
-        }
-        
-        // Clone children when using Engine.cloneGameObjects
-        cloned.children = [];
+        // Don't clone children or modules here - the engine will handle this separately
         
         return cloned;
     }
