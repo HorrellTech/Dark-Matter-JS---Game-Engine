@@ -69,6 +69,28 @@ class Collider extends Module {
      */
     createCollider() {
         if (!this.gameObject) return;
+
+        let rigidBody;
+        try {
+            // Try to find a RigidBody module on this GameObject
+            rigidBody = this.gameObject.getModule('RigidBody');
+        } catch (error) {
+            console.error("Error getting RigidBody module:", error);
+            rigidBody = null;
+        }
+        
+        // Check if rigidBody exists
+        if (!rigidBody) {
+            console.warn(`No RigidBody found on ${this.gameObject.name}, adding one automatically`);
+            // Create and add a RigidBody module
+            if (window.RigidBody) {
+                rigidBody = new window.RigidBody();
+                this.gameObject.addModule(rigidBody);
+            } else {
+                console.error("RigidBody class not found, cannot create collider");
+                return;
+            }
+        }
         
         // Clean up existing body if any
         this.removeCollider();
@@ -286,4 +308,4 @@ class Collider extends Module {
 }
 
 // Register the module
-ModuleRegistry.registerModule("Collider", Collider);
+window.Collider = Collider;

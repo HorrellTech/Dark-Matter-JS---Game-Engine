@@ -86,7 +86,7 @@ class GameObject {
         let moduleDidDraw = false;
         
         // Always draw the fallback shape first to ensure object visibility
-        this.drawFallbackShape(ctx);
+        //this.drawFallbackShape(ctx);
         
         // Draw modules
         for (const module of this.modules) {
@@ -129,25 +129,121 @@ class GameObject {
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
         
-        // Draw square representation
-        const size = 20; // Base size
-        ctx.beginPath();
-        ctx.rect(-size/2, -size/2, size, size);
-        ctx.fillStyle = this.selected ? '#ffffff' : this.editorColor;
-        ctx.fill();
+        // Check if any module has a draw method and can be drawn in editor
+        let moduleDidDraw = false;
         
-        // Draw outline if selected
-        if (this.selected) {
-            ctx.strokeStyle = '#00aaff';
-            ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
-            ctx.stroke();
+        // Draw modules that support rendering
+        for (const module of this.modules) {
+            // Check for modules that should draw in editor
+            if (module.enabled && typeof module.draw === 'function') {
+                try {
+                    // Instead of trying to analyze the function code, let's use a pattern
+                    // where modules can explicitly indicate if they should be drawn in editor
+                    
+                    // Option 1: Check for module.drawInEditor flag
+                    if (module.drawInEditor === false) {
+                        continue;
+                    }
+                    
+                    // Option 2: Use a canvas measuring approach - detect if anything was drawn
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = 100;
+                    tempCanvas.height = 100;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    // Clear the temp canvas and save its state
+                    tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    tempCtx.save();
+                    tempCtx.translate(50, 50); // Center for drawing
+                    
+                    // Get image data before drawing
+                    const beforeData = tempCtx.getImageData(0, 0, 100, 100).data;
+                    
+                    // Try to draw
+                    module.draw(tempCtx);
+                    
+                    // Get image data after drawing
+                    const afterData = tempCtx.getImageData(0, 0, 100, 100).data;
+                    
+                    // Check if anything changed
+                    let hasDrawnSomething = false;
+                    for (let i = 0; i < beforeData.length; i += 4) {
+                        if (beforeData[i] !== afterData[i] || 
+                            beforeData[i+1] !== afterData[i+1] || 
+                            beforeData[i+2] !== afterData[i+2] || 
+                            beforeData[i+3] !== afterData[i+3]) {
+                            hasDrawnSomething = true;
+                            break;
+                        }
+                    }
+                    
+                    // Restore temp context
+                    tempCtx.restore();
+                    
+                    if (!hasDrawnSomething) {
+                        continue; // Module's draw didn't change anything visually
+                    }
+                    
+                    // Now we know the module actually draws something, so use it in the main context
+                    module.draw(ctx);
+                    moduleDidDraw = true;
+                } catch (error) {
+                    console.error(`Error drawing module ${module.type || module.constructor.name} in editor:`, error);
+                }
+            }
         }
         
-        // Draw origin point
+        // If no module drew anything, draw the default representation
+        if (!moduleDidDraw) {
+            // Draw square representation
+            const size = 20; // Base size
+            ctx.beginPath();
+            ctx.rect(-size/2, -size/2, size, size);
+            ctx.fillStyle = this.selected ? '#ffffff' : this.editorColor;
+            ctx.fill();
+            
+            // Draw origin point
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff0000';
+            ctx.fill();
+        }
+        
+        // Always draw the angle indicator line for better orientation
+        const size = 20; // Base size for consistency with default representation
+        const lineLength = size * 1.5; // Length of the line - 1.5x the size
         ctx.beginPath();
-        ctx.arc(0, 0, 2, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff0000';
+        ctx.moveTo(0, 0);
+        ctx.lineTo(lineLength, 0);
+        ctx.strokeStyle = '#ffcc00'; // Distinct yellow color for angle line
+        ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
+        ctx.stroke();
+        
+        // Add arrowhead to angle line
+        ctx.beginPath();
+        ctx.moveTo(lineLength, 0);
+        ctx.lineTo(lineLength - 5, -3);
+        ctx.lineTo(lineLength - 5, 3);
+        ctx.closePath();
+        ctx.fillStyle = '#ffcc00';
         ctx.fill();
+        
+        // Draw selection outline if selected
+        if (this.selected) {
+            // Draw either around the module bounds or the default square
+            if (moduleDidDraw) {
+                // Draw a slightly larger selection outline
+                ctx.strokeStyle = '#00aaff';
+                ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
+                // A slightly larger rectangle than the typical module would draw
+                // This is an approximation - ideally modules would report their bounds
+                ctx.strokeRect(-size/2, -size/2, size, size);
+            } else {
+                ctx.strokeStyle = '#00aaff';
+                ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
+                ctx.strokeRect(-size/2, -size/2, size, size);
+            }
+        }
         
         ctx.restore();
         
@@ -197,16 +293,58 @@ class GameObject {
      * @returns {Module} The added module
      */
     addModule(module) {
-        if (!module) {
-            console.error("Attempted to add null or undefined module to GameObject:", this.name);
-            return null;
+        if (!module) return null;
+    
+        // Check if this type of module is already attached
+        const existingModule = this.getModuleByType(module.constructor.name);
+        if (existingModule) {
+            console.warn(`GameObject already has a ${module.constructor.name} module`);
+            return existingModule;
         }
-        
-        // Set bidirectional reference
+    
+        // Generate a unique ID for the module if it doesn't have one
+        if (!module.id) {
+            module.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        }
+    
+        // Add required modules first
+        const requirements = module.getRequirements ? module.getRequirements() : [];
+        for (const requiredName of requirements) {
+            // Check if we already have this module
+            const existingReq = this.getModuleByType(requiredName);
+            if (!existingReq) {
+                console.log(`Adding required module: ${requiredName} for ${module.constructor.name}`);
+                
+                // Try to get the module class
+                let ModuleClass = null;
+                
+                // First try to get from registry
+                if (window.moduleRegistry) {
+                    ModuleClass = window.moduleRegistry.getModuleClass(requiredName);
+                }
+                
+                // Fall back to global scope
+                if (!ModuleClass && window[requiredName]) {
+                    ModuleClass = window[requiredName];
+                }
+                
+                if (ModuleClass) {
+                    // Create a new instance and add it
+                    const requiredModule = new ModuleClass();
+                    this.addModule(requiredModule); // Recursive to handle nested requirements
+                } else {
+                    console.warn(`Required module ${requiredName} not found`);
+                }
+            }
+        }
+    
+        // Set the gameObject reference
         module.gameObject = this;
+        
+        // Add to modules array
         this.modules.push(module);
         
-        // If module has an onAttach method, call it
+        // Call onAttach
         if (typeof module.onAttach === 'function') {
             module.onAttach(this);
         }
@@ -215,12 +353,79 @@ class GameObject {
     }
 
     /**
+     * Check for and add required modules
+     * @param {Module} module - The module to check requirements for
+     * @private
+     */
+    addRequiredModules(module) {
+        // Get the requirements
+        const requirements = module.getRequirements ? module.getRequirements() : [];
+        
+        // Process each requirement
+        for (const requiredName of requirements) {
+            // Check if we already have this required module
+            const existing = this.getModuleByType(requiredName);
+            
+            if (!existing) {
+                console.log(`Module ${module.constructor.name} requires ${requiredName}, adding it automatically`);
+                
+                // Find the module class from registry or global scope
+                let ModuleClass = null;
+                
+                // Try to get from registry first
+                if (window.moduleRegistry) {
+                    ModuleClass = window.moduleRegistry.getModuleClass(requiredName);
+                }
+                
+                // Fall back to global namespace
+                if (!ModuleClass && window[requiredName]) {
+                    ModuleClass = window[requiredName];
+                }
+                
+                if (ModuleClass) {
+                    // Create and add the required module
+                    const requiredModule = new ModuleClass();
+                    
+                    // Check if this required module itself has requirements
+                    this.addRequiredModules(requiredModule);
+                    
+                    // Add the module normally
+                    requiredModule.gameObject = this;
+                    requiredModule.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                    this.modules.push(requiredModule);
+                    
+                    // Call onAttach
+                    if (typeof requiredModule.onAttach === 'function') {
+                        requiredModule.onAttach(this);
+                    }
+                } else {
+                    console.warn(`Required module ${requiredName} not found, cannot add automatically`);
+                }
+            }
+        }
+    }
+
+    /**
      * Get a module by type
      * @param {class} moduleType - The class/type of module to find
      * @returns {Module} The found module or null
      */
     getModule(moduleType) {
-        return this.modules.find(module => module instanceof moduleType);
+        // Handle module type as string
+        if (typeof moduleType === 'string') {
+            return this.modules.find(module => 
+                module.constructor.name === moduleType || 
+                module.type === moduleType
+            );
+        }
+        
+        // Handle module type as class
+        if (typeof moduleType === 'function') {
+            return this.modules.find(module => module instanceof moduleType);
+        }
+        
+        // If moduleType is neither string nor function, return null
+        return null;
     }
 
     /**
@@ -250,6 +455,18 @@ class GameObject {
         
         // Replace the modules array with the ordered one
         this.modules = orderedModules;
+    }
+
+    /**
+     * Get a module by type name
+     * @param {string} typeName - The name of the module type to find
+     * @returns {Module} The found module or null
+     */
+    getModuleByType(typeName) {
+        return this.modules.find(module => 
+            module.constructor.name === typeName || 
+            module.type === typeName
+        );
     }
 
     /**

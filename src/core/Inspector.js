@@ -166,6 +166,87 @@ class Inspector {
         });
     }
 
+    createAddComponentButton() {
+        const addComponentBtn = document.createElement('button');
+        addComponentBtn.className = 'add-component-btn';
+        addComponentBtn.innerHTML = '<i class="fas fa-plus"></i> Add Component';
+        
+        // Create dropdown for available modules
+        const dropdown = document.createElement('div');
+        dropdown.className = 'component-dropdown';
+        
+        // Get modules from the ModulesManager or ModuleRegistry
+        if (window.modulesManager) {
+            const availableModules = window.modulesManager.getAvailableModules();
+            
+            availableModules.forEach(moduleName => {
+                const option = document.createElement('div');
+                option.className = 'component-option';
+                option.textContent = moduleName;
+                option.addEventListener('click', () => {
+                    this.addModuleToSelectedObject(moduleName);
+                });
+                dropdown.appendChild(option);
+            });
+        } else if (window.moduleRegistry) {
+            const availableModules = window.moduleRegistry.getAllModules();
+            
+            availableModules.forEach(ModuleClass => {
+                const option = document.createElement('div');
+                option.className = 'component-option';
+                option.textContent = ModuleClass.name;
+                option.addEventListener('click', () => {
+                    this.addModuleToInspectedObject(ModuleClass);
+                });
+                dropdown.appendChild(option);
+            });
+        } else {
+            // Fallback to hardcoded list if manager not available
+            ['RigidBody', 'Collider', 'SpriteRenderer'].forEach(moduleName => {
+                const option = document.createElement('div');
+                option.className = 'component-option';
+                option.textContent = moduleName;
+                option.addEventListener('click', () => {
+                    if (window[moduleName]) {
+                        const module = new window[moduleName]();
+                        this.inspectedObject.addModule(module);
+                        this.showObjectInspector();
+                    }
+                });
+                dropdown.appendChild(option);
+            });
+        }
+        
+        addComponentBtn.appendChild(dropdown);
+        
+        // Show/hide dropdown on click
+        addComponentBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('visible');
+        });
+        
+        // Hide dropdown when clicking elsewhere
+        document.addEventListener('click', () => {
+            dropdown.classList.remove('visible');
+        });
+        
+        return addComponentBtn;
+    }
+    
+    // Add this method to handle adding a module by class
+    addModuleToInspectedObject(ModuleClass) {
+        if (!this.inspectedObject || !ModuleClass) return;
+        
+        try {
+            const module = new ModuleClass();
+            this.inspectedObject.addModule(module);
+            this.showObjectInspector();
+            console.log(`Added ${ModuleClass.name} to ${this.inspectedObject.name}`);
+        } catch (error) {
+            console.error(`Error creating module ${ModuleClass.name}:`, error);
+        }
+    }
+
     /**
      * Setup module drop functionality
      */
@@ -672,6 +753,19 @@ class Inspector {
         // Check if this module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState(module.id);
         
+        // Prepare requirements section
+        let requirementsHtml = '';
+        const requirements = module.getRequirements ? module.getRequirements() : [];
+        if (requirements.length > 0) {
+            let requirementsList = requirements.map(req => `<span class="requirement-badge">${req}</span>`).join('');
+            
+            requirementsHtml = `
+            <div class="module-requirements">
+                <span>Requires:</span> ${requirementsList}
+            </div>
+            `;
+        }
+        
         moduleContainer.innerHTML = `
             <div class="module-header">
                 <div class="module-title">
@@ -694,6 +788,7 @@ class Inspector {
                 </div>
             </div>
             <div class="module-content" style="${!module.enabled ? 'opacity: 0.5;' : ''}${isCollapsed ? 'display: none;' : ''}">
+                ${requirementsHtml}
                 ${this.generateModulePropertiesUI(module)}
             </div>
         `;
@@ -742,6 +837,8 @@ class Inspector {
         
         // Set up drag and drop for reordering
         this.setupModuleDragEvents(moduleContainer);
+        
+        return moduleContainer;
     }
 
     /**
@@ -1046,6 +1143,12 @@ class Inspector {
         const value = module.getProperty(prop.name, prop.value);
         const inputId = `prop-${module.id}-${prop.name}`;
         
+        // Check if the property is a Vector2 or Vector3
+        if (value instanceof Vector2 || value instanceof Vector3) {
+            // Generate collapsible vector fields
+            return this.generateVectorUI(prop, module, value);
+        }
+        
         switch (prop.type) {
             case 'number':
                 return `
@@ -1054,9 +1157,9 @@ class Inspector {
                         <input type="number" id="${inputId}" class="property-input" 
                             data-prop-name="${prop.name}" 
                             value="${value}" 
-                            ${prop.options.min !== undefined ? `min="${prop.options.min}"` : ''}
-                            ${prop.options.max !== undefined ? `max="${prop.options.max}"` : ''}
-                            ${prop.options.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}>
+                            ${prop.options?.min !== undefined ? `min="${prop.options.min}"` : ''}
+                            ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
+                            ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}>
                     </div>
                 `;
             case 'boolean':
@@ -1075,6 +1178,24 @@ class Inspector {
                             data-prop-name="${prop.name}" value="${value}">
                     </div>
                 `;
+            case 'enum':
+                const options = prop.options?.options || [];
+                return `
+                    <div class="property-row">
+                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
+                        <select id="${inputId}" class="property-input" data-prop-name="${prop.name}">
+                            ${options.map(option => `
+                                <option value="${option}" ${value === option ? 'selected' : ''}>
+                                    ${this.formatPropertyName(option)}
+                                </option>
+                            `).join('')}
+                        </select>
+                    </div>
+                `;
+            case 'vector2':
+                return this.generateVectorUI(prop, module, value);
+            case 'vector3':
+                return this.generateVectorUI(prop, module, value);
             default:
                 return `
                     <div class="property-row">
@@ -1084,6 +1205,64 @@ class Inspector {
                     </div>
                 `;
         }
+    }
+
+    /**
+     * Generate UI for Vector2 or Vector3 properties
+     * @param {Object} prop - Property descriptor
+     * @param {Module} module - The module the property belongs to
+     * @param {Vector2|Vector3} vector - The vector value
+     * @returns {string} HTML for the vector UI
+     */
+    generateVectorUI(prop, module, vector) {
+        const isVector3 = vector instanceof Vector3;
+        const propName = prop.name;
+        const inputId = `prop-${module.id}-${propName}`;
+        const collapsibleId = `vector-${module.id}-${propName}`;
+        
+        // Get collapse state from local storage or default to collapsed
+        const isCollapsed = this.getVectorCollapseState(module.id + propName);
+        
+        // Generate HTML for the vector UI
+        return `
+            <div class="property-row vector-property">
+                <div class="vector-header">
+                    <label for="${inputId}">${this.formatPropertyName(propName)}</label>
+                    <div class="vector-preview">(${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})</div>
+                    <button class="vector-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}" data-target="${collapsibleId}">
+                        <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
+                    </button>
+                </div>
+                <div class="vector-components" id="${collapsibleId}" style="${isCollapsed ? 'display: none;' : ''}">
+                    <div class="vector-component">
+                        <label>X</label>
+                        <input type="number" class="component-input" 
+                            data-prop-name="${propName}" 
+                            data-component="x" 
+                            value="${vector.x}" 
+                            step="1">
+                    </div>
+                    <div class="vector-component">
+                        <label>Y</label>
+                        <input type="number" class="component-input" 
+                            data-prop-name="${propName}" 
+                            data-component="y" 
+                            value="${vector.y}" 
+                            step="1">
+                    </div>
+                    ${isVector3 ? `
+                    <div class="vector-component">
+                        <label>Z</label>
+                        <input type="number" class="component-input" 
+                            data-prop-name="${propName}" 
+                            data-component="z" 
+                            value="${vector.z}" 
+                            step="1">
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
     }
 
     /**
@@ -1097,18 +1276,109 @@ class Inspector {
             .replace(/^./, str => str.toUpperCase()); // Capitalize first letter
     }
 
+    /**
+     * Save the collapse state of a vector property
+     * @param {string} vectorId - The vector's unique identifier
+     * @param {boolean} isCollapsed - Whether the vector is collapsed
+     */
+    saveVectorCollapseState(vectorId, isCollapsed) {
+        try {
+            // Get existing states from localStorage
+            let collapseStates = {};
+            const savedStates = localStorage.getItem('vectorCollapseStates');
+            if (savedStates) {
+                collapseStates = JSON.parse(savedStates);
+            }
+            
+            // Update state for this vector
+            collapseStates[vectorId] = isCollapsed;
+            
+            // Save back to localStorage
+            localStorage.setItem('vectorCollapseStates', JSON.stringify(collapseStates));
+        } catch (e) {
+            console.warn('Failed to save vector collapse state:', e);
+        }
+    }
+
+    /**
+     * Get the collapse state of a vector property
+     * @param {string} vectorId - The vector's unique identifier
+     * @returns {boolean} Whether the vector should be collapsed
+     */
+    getVectorCollapseState(vectorId) {
+        try {
+            // Get states from localStorage
+            const savedStates = localStorage.getItem('vectorCollapseStates');
+            if (savedStates) {
+                const collapseStates = JSON.parse(savedStates);
+                // Return the state if it exists, otherwise default to collapsed
+                return collapseStates[vectorId] !== undefined ? collapseStates[vectorId] : true;
+            }
+        } catch (e) {
+            console.warn('Failed to get vector collapse state:', e);
+        }
+        return true; // Default to collapsed
+    }
     
     /**
-     * Setup event listeners for dynamically generated module properties
-     * @param {HTMLElement} container - Container element
+     * Setup event listeners for module properties
+     * @param {HTMLElement} container - Module container element
      * @param {Module} module - Module instance
      */
     setupModulePropertyListeners(container, module) {
         // Handle special module types first
         if (module instanceof SpriteRenderer) {
             this.setupSpriteRendererListeners(container, module);
-            return;
         }
+        
+        // Handle vector collapsible buttons
+        const vectorCollapseButtons = container.querySelectorAll('.vector-collapse');
+        vectorCollapseButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const targetId = button.dataset.target;
+                const componentsContainer = document.getElementById(targetId);
+                const isCollapsed = componentsContainer.style.display === 'none';
+                
+                // Toggle collapse state
+                componentsContainer.style.display = isCollapsed ? '' : 'none';
+                button.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+                button.title = isCollapsed ? 'Collapse' : 'Expand';
+                
+                // Save collapse state
+                this.saveVectorCollapseState(targetId, !isCollapsed);
+            });
+        });
+        
+        // Handle vector component inputs
+        const componentInputs = container.querySelectorAll('.component-input');
+        componentInputs.forEach(input => {
+            const propName = input.dataset.propName;
+            const component = input.dataset.component;
+            
+            input.addEventListener('change', () => {
+                // Get the vector property
+                const vector = module.getProperty(propName);
+                if (!vector) return;
+                
+                // Update the specific component
+                const value = parseFloat(input.value);
+                vector[component] = value;
+                
+                // Update the preview text
+                const previewEl = input.closest('.vector-property').querySelector('.vector-preview');
+                if (previewEl) {
+                    if (vector instanceof Vector3) {
+                        previewEl.textContent = `(${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}, ${vector.z.toFixed(1)})`;
+                    } else {
+                        previewEl.textContent = `(${vector.x.toFixed(1)}, ${vector.y.toFixed(1)})`;
+                    }
+                }
+                
+                // Update the module and refresh
+                module.setProperty(propName, vector);
+                this.editor.refreshCanvas();
+            });
+        });
         
         // Handle generic property inputs
         const inputs = container.querySelectorAll('.property-input');
@@ -1124,6 +1394,9 @@ class Inspector {
                         break;
                     case 'number':
                         value = parseFloat(input.value);
+                        break;
+                    case 'select-one':
+                        value = input.value;
                         break;
                     default:
                         value = input.value;

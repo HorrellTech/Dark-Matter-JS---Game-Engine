@@ -1,5 +1,20 @@
 // Initialize editor components
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize the registry and module system first
+    if (!window.moduleRegistry) {
+        window.moduleRegistry = new ModuleRegistry();
+    }
+
+    // Initialize modules manager and core modules
+    if (window.modulesManager) {
+        window.modulesManager.initializeCoreModules();
+    }
+
+    if (window.moduleReloader && window.moduleRegistry) {
+        window.moduleReloader.moduleRegistry = window.moduleRegistry;
+        console.log("Connected ModuleReloader to ModuleRegistry");
+    }
+
     const startScreen = new StartScreen('0.1.0');
 
     // Tab functionality
@@ -203,6 +218,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Set up canvas tab switching
+    function setupCanvasTabs() {
+        document.querySelectorAll('.canvas-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Deactivate all tabs and views
+                document.querySelectorAll('.canvas-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.canvas-view').forEach(view => view.classList.remove('active'));
+                
+                // Activate the clicked tab and its associated view
+                tab.classList.add('active');
+                const viewId = tab.getAttribute('data-canvas') + 'View';
+                document.getElementById(viewId).classList.add('active');
+                
+                // If switching to editor view, refresh the canvas
+                if (viewId === 'editorView' && window.editor) {
+                    setTimeout(() => {
+                        window.editor.refreshCanvas();
+                    }, 0);
+                }
+                
+                // If switching to game view, resize the game canvas
+                if (viewId === 'gameView' && window.engine) {
+                    setTimeout(() => {
+                        window.engine.resizeCanvas();
+                    }, 0);
+                }
+            });
+        });
+    }
+
     function syncGameToEditor() {
         if (!engine.running || !engine.activeScene || !editor.activeScene) return;
         
@@ -394,6 +439,9 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 document.body.classList.remove('game-loading');
             }
+
+            // Update resolution display
+            updateResolutionDisplay();
         });
         
         stopButton.addEventListener('click', () => {
@@ -412,6 +460,111 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    function setupGameViewControls() {
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const scaleModeSelect = document.getElementById('scaleModeSelect');
+        const maintainAspectRatio = document.getElementById('maintainAspectRatio');
+        const pixelPerfect = document.getElementById('pixelPerfect');
+        const smoothingEnabled = document.getElementById('smoothingEnabled');
+        const fpsCounter = document.getElementById('fpsCounter');
+        const resolutionDisplay = document.getElementById('resolutionDisplay');
+        const gameView = document.getElementById('gameView');
+        
+        // Fullscreen toggle
+        fullscreenButton.addEventListener('click', () => {
+            if (!engine.running) return;
+            
+            const isFullscreen = gameView.classList.toggle('fullscreen-mode');
+            engine.renderConfig.fullscreen = isFullscreen;
+            
+            // Update button icon
+            fullscreenButton.innerHTML = isFullscreen ? 
+                '<i class="fas fa-compress"></i>' : 
+                '<i class="fas fa-expand"></i>';
+                
+            // Trigger resize
+            engine.resizeCanvas();
+            updateResolutionDisplay();
+        });
+        
+        // Scaling mode
+        scaleModeSelect.addEventListener('change', () => {
+            engine.renderConfig.scaleMode = scaleModeSelect.value;
+            engine.resizeCanvas();
+            updateResolutionDisplay();
+        });
+        
+        // Aspect ratio
+        maintainAspectRatio.addEventListener('change', () => {
+            engine.renderConfig.maintainAspectRatio = maintainAspectRatio.checked;
+            engine.resizeCanvas();
+            updateResolutionDisplay();
+        });
+        
+        // Pixel perfect
+        pixelPerfect.addEventListener('change', () => {
+            engine.renderConfig.pixelPerfect = pixelPerfect.checked;
+            engine.resizeCanvas();
+            updateResolutionDisplay();
+        });
+        
+        // Image smoothing
+        smoothingEnabled.addEventListener('change', () => {
+            engine.renderConfig.smoothing = smoothingEnabled.checked;
+            engine.resizeCanvas();
+        });
+        
+        // Set up FPS counter
+        let lastTime = performance.now();
+        let frameCount = 0;
+        
+        function updateFPS() {
+            if (!engine.running) {
+                fpsCounter.textContent = '0 FPS';
+                return;
+            }
+            
+            const now = performance.now();
+            frameCount++;
+            
+            if (now - lastTime >= 1000) {
+                const fps = Math.round((frameCount * 1000) / (now - lastTime));
+                fpsCounter.textContent = `${fps} FPS`;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            requestAnimationFrame(updateFPS);
+        }
+        
+        // Start FPS counter
+        updateFPS();
+        
+        // Initialize resolution display
+        updateResolutionDisplay();
+    }
+
+    // Update resolution display
+    function updateResolutionDisplay() {
+        const resolutionDisplay = document.getElementById('resolutionDisplay');
+        if (!resolutionDisplay || !engine.canvas) return;
+        
+        const canvasWidth = engine.canvas.width;
+        const canvasHeight = engine.canvas.height;
+        
+        // If in pixel-perfect mode, show both logical and physical resolution
+        if (engine.renderConfig.pixelPerfect) {
+            const viewportWidth = engine.scene?.settings?.viewportWidth || 800;
+            const viewportHeight = engine.scene?.settings?.viewportHeight || 600;
+            resolutionDisplay.textContent = `${viewportWidth}×${viewportHeight} → ${canvasWidth}×${canvasHeight}`;
+        } else {
+            resolutionDisplay.textContent = `${canvasWidth}×${canvasHeight}`;
+        }
+    }
+
+    // Call this after engine initialization
+    setupGameViewControls();
     
     // Add canvas tab handlers
     document.querySelectorAll('.canvas-tab').forEach(tab => {
@@ -434,4 +587,24 @@ document.addEventListener('DOMContentLoaded', () => {
             engine.resizeCanvas();
         }
     });
+
+    setTimeout(() => {
+        if (window.editor) {
+            window.editor.refreshCanvas();
+            
+            // Add resize observer to maintain proper canvas rendering
+            const resizeObserver = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    if (entry.target.id === 'editorView' && entry.target.classList.contains('active')) {
+                        window.editor.refreshCanvas();
+                    }
+                }
+            });
+            
+            const editorView = document.getElementById('editorView');
+            if (editorView) {
+                resizeObserver.observe(editorView);
+            }
+        }
+    }, 500);
 });

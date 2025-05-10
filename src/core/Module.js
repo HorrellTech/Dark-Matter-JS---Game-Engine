@@ -31,6 +31,9 @@ class Module {
         
         /** @type {Object} Custom properties for this module */
         this.properties = {};
+
+        /** @type {Array<string>} Required modules for this module */
+        this._requirements = [];
     }
 
     /**
@@ -105,6 +108,27 @@ class Module {
     onAttach(gameObject) {
         // This is called when the module is added to a GameObject
         // Override in subclasses if needed
+    }
+
+    /**
+     * Define required modules for this module
+     * Modules listed here will be automatically added before this module
+     * @param {...string} moduleNames - List of module names required by this module
+     */
+    requires(...moduleNames) {
+        if (!this._requirements) {
+            this._requirements = [];
+        }
+        this._requirements.push(...moduleNames);
+        return this;
+    }
+    
+    /**
+     * Get all required modules for this module
+     * @returns {Array<string>} Array of required module names
+     */
+    getRequirements() {
+        return this._requirements || [];
     }
 
     /**
@@ -221,14 +245,35 @@ class Module {
             options
         });
         
-        // Also set it in the properties object for serialization
-        this.setProperty(name, defaultValue);
+        // Store the value in a private property with a different name
+        // to avoid conflicts with getters/setters
+        const privatePropName = `_${name}`;
         
-        // Add a getter/setter for convenience
-        Object.defineProperty(this, name, {
-            get: () => this.getProperty(name, defaultValue),
-            set: (value) => this.setProperty(name, value)
-        });
+        // Only set it if it's not already defined
+        if (this[privatePropName] === undefined) {
+            this[privatePropName] = defaultValue;
+        }
+        
+        // Create property accessor that uses the private property
+        if (!Object.getOwnPropertyDescriptor(this, name)) {
+            Object.defineProperty(this, name, {
+                get: function() {
+                    return this[privatePropName];
+                },
+                set: function(value) {
+                    const oldValue = this[privatePropName];
+                    this[privatePropName] = value;
+                    
+                    // Call onChange handler if specified
+                    const propDef = this.exposedProperties?.find(p => p.name === name);
+                    if (propDef?.options?.onChange && oldValue !== value) {
+                        propDef.options.onChange.call(this, value);
+                    }
+                },
+                enumerable: true,
+                configurable: true
+            });
+        }
     }
 
     /**
@@ -264,12 +309,26 @@ class Module {
     }
 
     /**
-     * Set a serializable property value
-     * @param {string} key - Property name
-     * @param {any} value - Property value 
+     * Set a property value
+     * @param {string} name - Property name
+     * @param {any} value - New value
      */
-    setProperty(key, value) {
-        this.properties[key] = value;
+    setProperty(name, value) {
+        const privatePropName = `_${name}`;
+        
+        if (this.hasOwnProperty(privatePropName)) {
+            // If we have a private property, use it
+            this[privatePropName] = value;
+        } else {
+            // Otherwise set directly
+            this[name] = value;
+        }
+        
+        // Call onChange handler if specified in property options
+        const propDef = this.exposedProperties?.find(p => p.name === name);
+        if (propDef?.options?.onChange) {
+            propDef.options.onChange.call(this, value);
+        }
     }
 
     /**
@@ -278,9 +337,18 @@ class Module {
      * @param {any} defaultValue - Default value if property doesn't exist
      * @returns {any} The property value or default value
      */
-    getProperty(key, defaultValue = null) {
-        return key in this.properties ? this.properties[key] : defaultValue;
+    getProperty(name, defaultValue) {
+        const privatePropName = `_${name}`;
+        
+        if (this.hasOwnProperty(privatePropName)) {
+            // If we have a private property, use it
+            return this[privatePropName];
+        }
+        
+        // Otherwise get directly
+        return this[name] !== undefined ? this[name] : defaultValue;
     }
+    
     
     /**
      * Serialize this module to JSON
@@ -291,7 +359,8 @@ class Module {
             name: this.name,
             type: this.constructor.name,
             enabled: this.enabled,
-            properties: this.properties
+            properties: this.properties,
+            requirements: this._requirements
         };
     }
     
@@ -303,6 +372,7 @@ class Module {
         this.name = json.name;
         this.enabled = json.enabled;
         this.properties = json.properties || {};
+        this._requirements = json.requirements || [];
     }
 }
 

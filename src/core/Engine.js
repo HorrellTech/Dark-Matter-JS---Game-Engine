@@ -15,6 +15,14 @@ class Engine {
             x: 0,
             y: 0
         };
+
+        this.renderConfig = {
+            scaleMode: 'fit', // 'fit', 'stretch', 'pixel-perfect', 'nearest-neighbor'
+            fullscreen: false,
+            maintainAspectRatio: true,
+            pixelPerfect: false,
+            smoothing: true    // Image smoothing
+        };
         
         // Add reference to the editor
         this.editor = null;
@@ -96,6 +104,9 @@ class Engine {
                 });*/
             }
         });
+
+        // Initialize touch controls
+        this.initTouchControls();
         
         this.running = true;
         this.lastTime = performance.now();
@@ -286,6 +297,7 @@ class Engine {
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
         
+        // Make sure we actually have objects to draw
         if (allObjects.length === 0) {
             // If no objects, draw a placeholder message
             this.ctx.fillStyle = "#ffffff";
@@ -293,10 +305,20 @@ class Engine {
             this.ctx.textAlign = "center";
             this.ctx.fillText("No objects in scene", this.canvas.width / 2, this.canvas.height / 2);
         } else {
+            // Debug: Log objects being drawn
+            //console.log(`Drawing ${allObjects.length} objects`);
+            
+            // Draw each active and visible object
             allObjects
                 .filter(obj => obj.active && obj.visible !== false)
                 .sort((a, b) => a.depth - b.depth)
-                .forEach(obj => obj.draw(this.ctx));
+                .forEach(obj => {
+                    try {
+                        obj.draw(this.ctx);
+                    } catch (error) {
+                        console.error(`Error drawing object ${obj.name}:`, error);
+                    }
+                });
         }
         
         this.ctx.restore();
@@ -468,12 +490,131 @@ class Engine {
         });
     }
 
+    initTouchControls() {
+        if (!this.canvas) return;
+        
+        // Prevent default touch actions on the canvas
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            
+            // Convert touch to mouse events for simplicity
+            if (window.input) {
+                const touch = e.touches[0];
+                const rect = this.canvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                window.input.handleMouseDown({
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    button: 0, // Simulate left click
+                    offsetX: x,
+                    offsetY: y
+                });
+            }
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            // Convert touch to mouse events
+            if (window.input) {
+                const touch = e.touches[0];
+                const rect = this.canvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                window.input.handleMouseMove({
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    offsetX: x,
+                    offsetY: y
+                });
+            }
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            
+            // Convert touch to mouse events
+            if (window.input) {
+                window.input.handleMouseUp({
+                    button: 0 // Simulate left click
+                });
+            }
+        }, { passive: false });
+    }
+
     resizeCanvas() {
         if (!this.canvas) return;
         
         const container = this.canvas.parentElement;
-        this.canvas.width = container.clientWidth;
-        this.canvas.height = container.clientHeight;
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        
+        // Store physical canvas dimensions
+        let physicalWidth, physicalHeight;
+        
+        // Get the desired viewport dimensions from scene settings
+        const viewportWidth = this.scene?.settings?.viewportWidth || 800;
+        const viewportHeight = this.scene?.settings?.viewportHeight || 600;
+        
+        // Handle different scaling modes
+        if (this.renderConfig.fullscreen) {
+            // In fullscreen mode, use the container dimensions
+            physicalWidth = containerWidth;
+            physicalHeight = containerHeight;
+            
+            // Set canvas size based on scaling mode
+            if (this.renderConfig.maintainAspectRatio && this.renderConfig.scaleMode === 'fit') {
+                // Calculate scaling to maintain aspect ratio while fitting
+                const scale = Math.min(
+                    containerWidth / viewportWidth,
+                    containerHeight / viewportHeight
+                );
+                
+                this.canvas.style.width = `${viewportWidth * scale}px`;
+                this.canvas.style.height = `${viewportHeight * scale}px`;
+                this.canvas.style.marginTop = `${(containerHeight - viewportHeight * scale) / 2}px`;
+                this.canvas.style.marginLeft = `${(containerWidth - viewportWidth * scale) / 2}px`;
+            } else {
+                // Stretch to fill container
+                this.canvas.style.width = '100%';
+                this.canvas.style.height = '100%';
+                this.canvas.style.margin = '0';
+            }
+        } else {
+            // Use defined viewport dimensions
+            physicalWidth = viewportWidth;
+            physicalHeight = viewportHeight;
+            
+            // Reset any styling
+            this.canvas.style.width = `${viewportWidth}px`;
+            this.canvas.style.height = `${viewportHeight}px`;
+            this.canvas.style.margin = 'auto';
+        }
+        
+        // Set the canvas dimensions based on pixel-perfect setting
+        if (this.renderConfig.pixelPerfect) {
+            // For pixel-perfect rendering, use viewport dimensions for drawing surface
+            this.canvas.width = viewportWidth;
+            this.canvas.height = viewportHeight;
+        } else {
+            // Otherwise use physical dimensions
+            this.canvas.width = physicalWidth;
+            this.canvas.height = physicalHeight;
+        }
+        
+        // Configure image smoothing
+        this.ctx.imageSmoothingEnabled = this.renderConfig.smoothing;
+        
+        // Apply appropriate CSS image rendering mode
+        if (this.renderConfig.scaleMode === 'nearest-neighbor') {
+            this.canvas.style.imageRendering = 'pixelated';
+        } else {
+            this.canvas.style.imageRendering = this.renderConfig.smoothing ? 'auto' : 'crisp-edges';
+        }
+        
         this.canvasResized = true;
     }
 }

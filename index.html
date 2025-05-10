@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Dark Matter JS - Game Engine</title>
+    <title>Dark Matter JS - Javascript Based Game Development Tool</title>
     <link rel="stylesheet" href="src/styles/main.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="src/styles/file-browser.css">
@@ -13,10 +13,14 @@
     <link rel="stylesheet" href="src/styles/scrollbars.css">
     <link rel="stylesheet" href="src/styles/game-canvas.css">
     <link rel="stylesheet" href="src/styles/start-screen.css">
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
 
     <!-- Add Matter.js physics engine -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
 </head>
 <body>
     <div class="toolbar">
@@ -52,6 +56,12 @@
                         <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
                         <label>Grid Size: <input type="number" id="gridSize" value="32" min="8" max="128"></label>
                         <label><input type="checkbox" id="snapToGrid"> Snap to Grid</label>
+                        <div class="zoom-controls">
+                            <button id="zoomOutButton" class="editor-button" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+                            <span id="zoomLevel" class="zoom-level">100%</span>
+                            <button id="zoomInButton" class="editor-button" title="Zoom In"><i class="fas fa-search-plus"></i></button>
+                            <button id="resetZoomButton" class="editor-button" title="Reset View"><i class="fas fa-compress-arrows-alt"></i></button>
+                        </div>
                     </div>
                     <div class="editor-canvas-container">
                         <canvas id="editorCanvas" width="800" height="600"></canvas>
@@ -64,7 +74,47 @@
                     </div>
                 </div>
                 <div class="canvas-view" id="gameView">
-                    <canvas id="gameCanvas" width="800" height="600"></canvas>
+                    <div class="game-toolbar">
+                        <div class="game-controls">
+                            <button id="fullscreenButton" class="game-button" title="Toggle Fullscreen">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                            <div class="game-dropdown">
+                                <button class="game-button" title="Rendering Options">
+                                    <i class="fas fa-sliders-h"></i>
+                                </button>
+                                <div class="game-dropdown-content">
+                                    <label>Scaling Mode:
+                                        <select id="scaleModeSelect">
+                                            <option value="fit">Fit</option>
+                                            <option value="stretch">Stretch</option>
+                                            <option value="pixel-perfect">Pixel Perfect</option>
+                                            <option value="nearest-neighbor">Nearest Neighbor</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="maintainAspectRatio" checked> 
+                                        Maintain Aspect Ratio
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="pixelPerfect"> 
+                                        Pixel Perfect
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="smoothingEnabled" checked> 
+                                        Image Smoothing
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="game-info">
+                            <span id="fpsCounter">0 FPS</span>
+                            <span id="resolutionDisplay">800×600</span>
+                        </div>
+                    </div>
+                    <div class="game-canvas-container">
+                        <canvas id="gameCanvas" width="800" height="600"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -163,12 +213,28 @@
                     if (targetSelector === '.bottom-panel') {
                         updateMainContentHeight();
                     }
+
+                    // Update center panel width to maintain proper layout
+                    updateCenterPanelWidth();
                 }
                 
                 function stopResize() {
                     document.removeEventListener('mousemove', resize);
                     document.removeEventListener('mouseup', stopResize);
                     document.body.style.cursor = '';
+                }
+            }
+
+            // Add this function to ensure center panel maintains proper width
+            function updateCenterPanelWidth() {
+                const centerPanel = document.querySelector('.center-panel');
+                const hierarchyPanel = document.querySelector('.hierarchy-panel');
+                const modulePanel = document.querySelector('.module-panel');
+                
+                if (centerPanel && hierarchyPanel && modulePanel) {
+                    // Make sure center panel takes remaining space but doesn't shrink
+                    centerPanel.style.width = `calc(100% - ${hierarchyPanel.offsetWidth}px - ${modulePanel.offsetWidth}px)`;
+                    centerPanel.style.minWidth = '400px'; // Minimum width to prevent excessive squeezing
                 }
             }
             
@@ -191,6 +257,9 @@
                     // Update scroll containers
                     updateScrollContainers();
                 }
+
+                // Update center panel width as well
+                updateCenterPanelWidth();
             }
             
             function updateScrollContainers() {
@@ -218,7 +287,10 @@
             // Handle window resize
             window.addEventListener('resize', function() {
                 updateMainContentHeight();
+                updateCenterPanelWidth();
             });
+
+            updateCenterPanelWidth();
         });
     </script>
     
@@ -231,16 +303,23 @@
         <div class="loading-text">Loading Game...</div>
     </div>
 
-    <script src="src/core/Vector2.js"></script>
+    <script src="src/core/Math/Vector2.js"></script>
+    <script src="src/core/Math/Vector3.js"></script>
     <script src="src/core/Module.js"></script>
     <script src="src/core/ModuleRegistry.js"></script>
     <script src="src/core/ModuleReloader.js"></script>
+    <script src="src/core/3D/Camera3D.js"></script>
+    <script src="src/core/3D/Mesh3D.js"></script>
+    <script src="src/core/3D/CubeMesh3D.js"></script>
+    <script src="src/core/3D/FlyCamera.js"></script>
+    <script src="src/core/3D/MouseLook.js"></script>
     <script src="src/core/GameObject.js"></script>
     <script src="src/core/InputManager.js"></script>
     <script src="src/core/Scene.js"></script>
     <script src="src/core/SceneBuffer.js"></script>
     <script src="src/core/SceneStorage.js"></script>
     <script src="src/core/SceneManager.js"></script>
+    <script src="src/core/babylon-js/BabylonRenderer.js"></script>
     <script src="src/core/Engine.js"></script>
     <script src="src/core/EditorGrid.js"></script>
     <script src="src/core/HierarchyManager.js"></script>
@@ -254,6 +333,7 @@
     <script src="src/core/Documentation.js"></script>
     <script src="src/core/StartScreen.js"></script>
     <script src="src/core/Modules/SpriteRenderer.js"></script>
+    <script src="src/core/ModulesManager.js"></script>
     <script src="src/app.js"></script>
 </body>
 </html>

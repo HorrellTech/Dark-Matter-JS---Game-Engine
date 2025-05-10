@@ -80,6 +80,17 @@ class Editor {
         this.canvas.addEventListener('wheel', this.handleMouseWheel.bind(this));
         this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));
 
+        // Add touch event handlers for panning
+        this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
+        this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
+        this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
+
+        // Add navigation arrows
+        this.addNavigationButtons();
+
+        // Add zoom buttons
+        this.setupZoomButtons();
+
          // Track mouse position even when not dragging
          this.canvas.addEventListener('mousemove', (e) => {
             const screenPos = new Vector2(e.offsetX, e.offsetY);
@@ -168,8 +179,107 @@ class Editor {
         // Continue the animation loop
         requestAnimationFrame(() => this.animationLoop());
     }
+
+    /**
+     * Set up zoom control buttons
+     */
+    setupZoomButtons() {
+        const zoomInButton = document.getElementById('zoomInButton');
+        const zoomOutButton = document.getElementById('zoomOutButton');
+        const resetZoomButton = document.getElementById('resetZoomButton');
+        
+        if (zoomInButton) {
+            zoomInButton.addEventListener('click', () => {
+                this.zoomIn();
+            });
+        }
+        
+        if (zoomOutButton) {
+            zoomOutButton.addEventListener('click', () => {
+                this.zoomOut();
+            });
+        }
+        
+        if (resetZoomButton) {
+            resetZoomButton.addEventListener('click', () => {
+                this.resetCamera();
+            });
+        }
+    }
+
+    /**
+     * Update the zoom level display
+     */
+    updateZoomLevelDisplay() {
+        const zoomLevel = document.getElementById('zoomLevel');
+        if (zoomLevel) {
+            // Format as percentage with no decimal places
+            const percentage = Math.round(this.camera.zoom * 100);
+            zoomLevel.textContent = `${percentage}%`;
+        }
+    }
+
+    /**
+     * Zoom in by a fixed amount, centered on the viewport
+     */
+    zoomIn() {
+        // Calculate center of the viewport
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        // Store old zoom for calculations
+        const oldZoom = this.camera.zoom;
+        
+        // Increase zoom by 20%
+        this.camera.zoom = Math.min(5, this.camera.zoom * 1.2);
+        
+        // Adjust camera position to keep viewport centered
+        if (oldZoom !== this.camera.zoom) {
+            const dx = (centerX - this.camera.position.x);
+            const dy = (centerY - this.camera.position.y);
+            
+            this.camera.position.x = centerX - dx * (this.camera.zoom / oldZoom);
+            this.camera.position.y = centerY - dy * (this.camera.zoom / oldZoom);
+            
+            this.refreshCanvas();
+            this.updateZoomLevelDisplay();
+        }
+    }
+
+    /**
+     * Zoom out by a fixed amount, centered on the viewport
+     */
+    zoomOut() {
+        // Calculate center of the viewport
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        // Store old zoom for calculations
+        const oldZoom = this.camera.zoom;
+        
+        // Decrease zoom by 20%
+        this.camera.zoom = Math.max(0.1, this.camera.zoom / 1.2);
+        
+        // Adjust camera position to keep viewport centered
+        if (oldZoom !== this.camera.zoom) {
+            const dx = (centerX - this.camera.position.x);
+            const dy = (centerY - this.camera.position.y);
+            
+            this.camera.position.x = centerX - dx * (this.camera.zoom / oldZoom);
+            this.camera.position.y = centerY - dy * (this.camera.zoom / oldZoom);
+            
+            this.refreshCanvas();
+            this.updateZoomLevelDisplay();
+        }
+    }
     
     refreshCanvas() {
+        const canvasRect = this.canvas.getBoundingClientRect();
+        if (this.canvas.width !== canvasRect.width || this.canvas.height !== canvasRect.height) {
+            this.canvas.width = canvasRect.width;
+            this.canvas.height = canvasRect.height;
+        }
+
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
         if (!this.activeScene) return;
@@ -214,6 +324,72 @@ class Editor {
         // Draw mouse coordinates (outside the transformed context)
         if (this.showMouseCoordinates) {
             this.drawMouseCoordinates();
+        }
+    }
+
+    /**
+     * Add navigation buttons to the editor view
+     */
+    addNavigationButtons() {
+        // Create container for navigation arrows
+        const navContainer = document.createElement('div');
+        navContainer.className = 'navigation-arrows';
+        
+        // Define the buttons: direction, icon, x-movement, y-movement
+        const buttons = [
+            { dir: 'up', icon: 'fa-arrow-up', x: 0, y: 1 },
+            { dir: 'right', icon: 'fa-arrow-right', x: -1, y: 0 },
+            { dir: 'down', icon: 'fa-arrow-down', x: 0, y: -1 },
+            { dir: 'left', icon: 'fa-arrow-left', x: 1, y: 0 }
+        ];
+        
+        // Create each button
+        buttons.forEach(btn => {
+            const button = document.createElement('div');
+            button.className = `nav-button ${btn.dir}`;
+            button.innerHTML = `<i class="fas ${btn.icon}"></i>`;
+            
+            // Navigation speed (pixels per frame)
+            const moveSpeed = 10;
+            let isMoving = false;
+            let moveInterval = null;
+            
+            // Start movement on mouse down or touch start
+            const startMove = () => {
+                if (isMoving) return;
+                
+                isMoving = true;
+                moveInterval = setInterval(() => {
+                    // Move the camera in the specified direction
+                    this.camera.position.x += btn.x * moveSpeed;
+                    this.camera.position.y += btn.y * moveSpeed;
+                    this.refreshCanvas();
+                }, 16); // ~60fps
+            };
+            
+            // Stop movement on mouse up or touch end
+            const stopMove = () => {
+                if (!isMoving) return;
+                
+                isMoving = false;
+                clearInterval(moveInterval);
+            };
+            
+            // Add event listeners for both mouse and touch
+            button.addEventListener('mousedown', startMove);
+            button.addEventListener('touchstart', startMove);
+            button.addEventListener('mouseup', stopMove);
+            button.addEventListener('mouseleave', stopMove);
+            button.addEventListener('touchend', stopMove);
+            
+            // Add to container
+            navContainer.appendChild(button);
+        });
+        
+        // Add the container to the editor canvas container
+        const editorCanvasContainer = document.querySelector('.editor-canvas-container');
+        if (editorCanvasContainer) {
+            editorCanvasContainer.appendChild(navContainer);
         }
     }
 
@@ -270,6 +446,55 @@ class Editor {
             }
             
             this.refreshCanvas();
+        }
+    }
+
+    /**
+     * Handle touch start events for panning
+     */
+    handleTouchStart(e) {
+        if (e.touches.length !== 1) return;
+        
+        // Prevent default behavior to avoid scrolling the page
+        e.preventDefault();
+        
+        // Start panning
+        this.dragInfo.dragging = true;
+        this.dragInfo.isPanning = true;
+        this.dragInfo.startPos = new Vector2(
+            e.touches[0].clientX - this.canvas.getBoundingClientRect().left,
+            e.touches[0].clientY - this.canvas.getBoundingClientRect().top
+        );
+        this.dragInfo.cameraStartPos = this.camera.position.clone();
+    }
+
+    /**
+     * Handle touch move events for panning
+     */
+    handleTouchMove(e) {
+        if (!this.dragInfo.isPanning || e.touches.length !== 1) return;
+        
+        // Prevent default behavior
+        e.preventDefault();
+        
+        // Update camera position based on touch movement
+        const currentPos = new Vector2(
+            e.touches[0].clientX - this.canvas.getBoundingClientRect().left,
+            e.touches[0].clientY - this.canvas.getBoundingClientRect().top
+        );
+        const delta = currentPos.subtract(this.dragInfo.startPos);
+        
+        this.camera.position = this.dragInfo.cameraStartPos.add(delta);
+        this.refreshCanvas();
+    }
+
+    /**
+     * Handle touch end events for panning
+     */
+    handleTouchEnd(e) {
+        if (this.dragInfo.isPanning) {
+            this.dragInfo.dragging = false;
+            this.dragInfo.isPanning = false;
         }
     }
 
@@ -661,10 +886,27 @@ class Editor {
             }
         }
     }
+
+    /**
+     * Get the correct mouse position relative to the canvas, accounting for CSS scaling
+     * @param {MouseEvent} e - The mouse event
+     * @returns {Vector2} - The corrected mouse position
+     */
+    getAdjustedMousePosition(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        
+        return new Vector2(
+            (e.clientX - rect.left) * scaleX,
+            (e.clientY - rect.top) * scaleY
+        );
+    }
     
     handleMouseDown(e) {
-        if (e.button === 0) { // Left click
-            const worldPos = this.screenToWorldPosition(new Vector2(e.offsetX, e.offsetY));
+        if (e.button === 0) { // Left click// Use the adjusted mouse position
+            const screenPos = this.getAdjustedMousePosition(e);
+            const worldPos = this.screenToWorldPosition(screenPos);    
 
             // First check if we're interacting with the viewport
             if (this.isOnViewportMoveHandle(worldPos)) {
@@ -796,8 +1038,8 @@ class Editor {
     handleMouseMove(e) {
         //if (!this.dragInfo.dragging) return;
 
-        const screenPos = new Vector2(e.offsetX, e.offsetY);
-        const worldPos = this.screenToWorldPosition(new Vector2(e.offsetX, e.offsetY));
+        const screenPos = this.getAdjustedMousePosition(e);
+        const worldPos = this.screenToWorldPosition(screenPos);
         this.mousePosition = worldPos.clone();
 
         this.updateCursor(worldPos);
@@ -858,9 +1100,12 @@ class Editor {
             this.refreshCanvas();
             return;
         } else if (this.dragInfo.isPanning) {
-            // Pan the camera
-            const currentPos = new Vector2(e.offsetX, e.offsetY);
-            const delta = currentPos.subtract(this.dragInfo.startPos);
+            // Pan the camera using adjusted coordinates
+            const currentPos = this.getAdjustedMousePosition(e);
+            const delta = new Vector2(
+                currentPos.x - this.dragInfo.startPos.x,
+                currentPos.y - this.dragInfo.startPos.y
+            );
             
             this.camera.position = this.dragInfo.cameraStartPos.add(delta);
             this.refreshCanvas();
@@ -1097,7 +1342,7 @@ class Editor {
         e.preventDefault();
         
         // Get the cursor position in screen space
-        const cursorPos = new Vector2(e.offsetX, e.offsetY);
+        const cursorPos = this.getAdjustedMousePosition(e);
         
         // Calculate new zoom level
         const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1; // 0.9 for zoom out, 1.1 for zoom in
@@ -1120,8 +1365,8 @@ class Editor {
     handleContextMenu(e) {
         e.preventDefault();
         
-        const worldPos = this.screenToWorldPosition(new Vector2(e.offsetX, e.offsetY));
-        const clickedObj = this.findObjectAtPosition(worldPos);
+        const screenPos = this.getAdjustedMousePosition(e);
+        const worldPos = this.screenToWorldPosition(screenPos);
         
         let menuItems = [];
         
@@ -1319,8 +1564,37 @@ class Editor {
      * Reset the camera to the default position
      */
     resetCamera() {
-        this.camera.position = new Vector2(this.canvas.width / 2, this.canvas.height / 2);
-        this.camera.zoom = 1;
-        this.refreshCanvas();
+        // Save old position and zoom for animation
+        const oldPosition = this.camera.position.clone();
+        const oldZoom = this.camera.zoom;
+        const targetPosition = new Vector2(this.canvas.width / 2, this.canvas.height / 2);
+        const targetZoom = 1;
+        
+        // Animate the camera reset
+        let startTime = null;
+        const duration = 300; // Animation duration in ms
+        
+        const animateReset = (timestamp) => {
+            if (!startTime) startTime = timestamp;
+            const progress = Math.min(1, (timestamp - startTime) / duration);
+            
+            // Ease in-out function for smoother animation
+            const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            const easedProgress = easeInOut(progress);
+            
+            // Interpolate position and zoom
+            this.camera.position.x = oldPosition.x + (targetPosition.x - oldPosition.x) * easedProgress;
+            this.camera.position.y = oldPosition.y + (targetPosition.y - oldPosition.y) * easedProgress;
+            this.camera.zoom = oldZoom + (targetZoom - oldZoom) * easedProgress;
+            
+            this.refreshCanvas();
+            this.updateZoomLevelDisplay();
+            
+            if (progress < 1) {
+                requestAnimationFrame(animateReset);
+            }
+        };
+        
+        requestAnimationFrame(animateReset);
     }
 }

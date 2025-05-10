@@ -404,4 +404,4 @@ class RigidBody extends Module {
 }
 
 // Register the module
-ModuleRegistry.registerModule("RigidBody", RigidBody);
+window.RigidBody = RigidBody;

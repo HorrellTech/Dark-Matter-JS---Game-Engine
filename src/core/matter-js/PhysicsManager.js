@@ -58,7 +58,11 @@ class PhysicsManager {
      * Synchronize game object transforms with physics body positions
      */
     syncPhysicsBodies() {
+        if (!this.bodies || this.bodies.size === 0) return;
+        
         this.bodies.forEach((gameObject, body) => {
+            if (!gameObject || !body) return;
+            
             // Only update if the body is dynamic or kinematic
             if (!body.isStatic) {
                 // Update position from physics body

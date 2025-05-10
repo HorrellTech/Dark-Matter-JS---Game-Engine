@@ -2,7 +2,10 @@
 #gameObjectHierarchy,
 #moduleSettings,
 .console-output,
-.file-browser-content {
+.file-browser-content,
+.canvas-view,
+.editor-canvas-container,
+#gameView {
     scrollbar-width: thin;
     scrollbar-color: #555 #333;
 }
@@ -10,7 +13,10 @@
 #gameObjectHierarchy::-webkit-scrollbar,
 #moduleSettings::-webkit-scrollbar,
 .console-output::-webkit-scrollbar,
-.file-browser-content::-webkit-scrollbar {
+.file-browser-content::-webkit-scrollbar,
+.canvas-view::-webkit-scrollbar,
+.editor-canvas-container::-webkit-scrollbar,
+#gameView::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
@@ -18,7 +24,10 @@
 #gameObjectHierarchy::-webkit-scrollbar-track,
 #moduleSettings::-webkit-scrollbar-track,
 .console-output::-webkit-scrollbar-track,
-.file-browser-content::-webkit-scrollbar-track {
+.file-browser-content::-webkit-scrollbar-track,
+.canvas-view::-webkit-scrollbar-track,
+.editor-canvas-container::-webkit-scrollbar-track,
+#gameView::-webkit-scrollbar-track {
     background: #333;
     border-radius: 4px;
 }
@@ -26,7 +35,10 @@
 #gameObjectHierarchy::-webkit-scrollbar-thumb,
 #moduleSettings::-webkit-scrollbar-thumb,
 .console-output::-webkit-scrollbar-thumb,
-.file-browser-content::-webkit-scrollbar-thumb {
+.file-browser-content::-webkit-scrollbar-thumb,
+.canvas-view::-webkit-scrollbar-thumb,
+.editor-canvas-container::-webkit-scrollbar-thumb,
+#gameView::-webkit-scrollbar-thumb {
     background: #555;
     border-radius: 4px;
 }
@@ -34,7 +46,10 @@
 #gameObjectHierarchy::-webkit-scrollbar-thumb:hover,
 #moduleSettings::-webkit-scrollbar-thumb:hover,
 .console-output::-webkit-scrollbar-thumb:hover,
-.file-browser-content::-webkit-scrollbar-thumb:hover {
+.file-browser-content::-webkit-scrollbar-thumb:hover,
+.canvas-view::-webkit-scrollbar-thumb:hover,
+.editor-canvas-container::-webkit-scrollbar-thumb:hover,
+#gameView::-webkit-scrollbar-thumb:hover {
     background: #777;
 }
 
