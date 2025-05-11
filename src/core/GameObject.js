@@ -2,6 +2,8 @@ class GameObject {
     constructor(name = "GameObject") {
         this.name = name;
         this.position = new Vector2();
+        this.size = new Vector2(32, 32); // Default size in pixels for collision detection
+        this.origin = new Vector2(0.5, 0.5); // Centered by default
         this.scale = new Vector2(1, 1);
         this.angle = 0;
         this.depth = 0;
@@ -15,6 +17,10 @@ class GameObject {
         this.expanded = false; // Track if expanded in hierarchy
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
+
+        this.collisionEnabled = true;  // Flag to enable/disable collision
+        this.collisionLayer = 0;       // Collision layer for filtering
+        this.collisionMask = 0xFFFF;   // Collision mask for filtering
     }
 
     generateRandomColor() {
@@ -265,6 +271,40 @@ class GameObject {
     }
 
     /**
+     * Get the bounding box of this GameObject in world coordinates
+     * @returns {Object} The bounding box with x, y, width, height properties
+     */
+    getBoundingBox() {
+        const worldPos = this.getWorldPosition();
+        const worldScale = this.getWorldScale();
+        const worldAngle = this.getWorldRotation();
+        
+        // Calculate the effective width and height
+        const effectiveWidth = this.width * worldScale.x;
+        const effectiveHeight = this.height * worldScale.y;
+        
+        // If there's no rotation, return a simple axis-aligned box
+        if (worldAngle % 360 === 0) {
+            return {
+                x: worldPos.x - effectiveWidth / 2,
+                y: worldPos.y - effectiveHeight / 2,
+                width: effectiveWidth,
+                height: effectiveHeight,
+                rotation: 0
+            };
+        }
+        
+        // For rotated objects, return an oriented bounding box
+        return {
+            x: worldPos.x,
+            y: worldPos.y,
+            width: effectiveWidth,
+            height: effectiveHeight,
+            rotation: worldAngle
+        };
+    }
+
+    /**
      * Draw a simple shape to represent the GameObject when no modules are drawing
      * @param {CanvasRenderingContext2D} ctx - The rendering context
      */
@@ -285,6 +325,49 @@ class GameObject {
             if (module.onDestroy) module.onDestroy();
         });
         this.children.forEach(child => child.onDestroy());
+    }
+
+    /**
+     * Check if this GameObject collides with another GameObject
+     * @param {GameObject} other - The other GameObject to check collision with
+     * @returns {boolean} True if colliding
+     */
+    collidesWith(other) {
+        // Skip collision check if either object has collisions disabled
+        if (!this.collisionEnabled || !other.collisionEnabled) {
+            return false;
+        }
+        
+        // Skip collision check if collision layers don't match
+        if ((this.collisionLayer & other.collisionMask) === 0 && 
+            (other.collisionLayer & this.collisionMask) === 0) {
+            return false;
+        }
+        
+        // Get bounding boxes
+        const thisBox = this.getBoundingBox();
+        const otherBox = other.getBoundingBox();
+        
+        // Check for collision using the CollisionSystem
+        return window.collisionSystem.checkCollision(thisBox, otherBox);
+    }
+
+    /**
+     * Set collision layer and mask
+     * @param {number} layer - The collision layer this object belongs to
+     * @param {number} mask - Bitmask of layers this object should collide with
+     */
+    setCollision(layer, mask = 0xFFFF) {
+        this.collisionLayer = layer;
+        this.collisionMask = mask;
+    }
+
+    /**
+     * Enable or disable collision for this GameObject
+     * @param {boolean} enabled - Whether collision should be enabled
+     */
+    setCollisionEnabled(enabled) {
+        this.collisionEnabled = enabled;
     }
 
     /**
@@ -681,10 +764,14 @@ class GameObject {
         return {
             name: this.name,
             position: { x: this.position.x, y: this.position.y },
+            size: { width: this.size.x, height: this.size.y },
             angle: this.angle,
             depth: this.depth,
             active: this.active,
             tags: [...this.tags],
+            collisionEnabled: this.collisionEnabled,
+            collisionLayer: this.collisionLayer,
+            collisionMask: this.collisionMask,
             modules: this.modules.map(module => module.toJSON()),
             children: this.children.map(child => child.toJSON())
         };
@@ -698,10 +785,15 @@ class GameObject {
     static fromJSON(json) {
         const obj = new GameObject(json.name);
         obj.position = new Vector2(json.position.x, json.position.y);
+        obj.size = new Vector2(json.size.x, json.size.y);
         obj.angle = json.angle;
         obj.depth = json.depth;
         obj.active = json.active;
         obj.tags = [...json.tags];
+
+        if (json.collisionEnabled !== undefined) obj.collisionEnabled = json.collisionEnabled;
+        if (json.collisionLayer !== undefined) obj.collisionLayer = json.collisionLayer;
+        if (json.collisionMask !== undefined) obj.collisionMask = json.collisionMask;
         
         // Add modules
         // This requires a module registry to create instances

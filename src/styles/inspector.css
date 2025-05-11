@@ -732,3 +732,91 @@ canvas {
     font-size: 0.9em;
 }
 
+
+.module-dropdown {
+    position: absolute;
+    background: #2d2d2d;
+    border: 1px solid #3d3d3d;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-height: 350px; /* Increased max-height */
+    overflow-y: auto;
+    min-width: 220px; /* Adjusted min-width */
+    padding: 5px 0; /* Add some padding */
+}
+
+.module-dropdown-folder {
+    /* No specific styles needed here, padding is applied inline */
+}
+
+.module-dropdown-folder-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    cursor: pointer;
+    color: #c5c5c5;
+    font-weight: 500; /* Slightly bolder */
+    transition: background-color 0.2s;
+}
+
+.module-dropdown-folder-header:hover {
+    background-color: #3a3a3a;
+}
+
+.module-dropdown-folder-header i.fas {
+    margin-right: 8px;
+    width: 12px; /* Ensure icon takes up space */
+    text-align: center;
+    color: #9e9e9e;
+    transition: transform 0.2s ease-in-out;
+}
+
+/* No specific style for .module-dropdown-folder-content, display is handled by JS */
+
+.module-dropdown-item {
+    padding: 6px 10px 6px 15px; /* Default padding, JS will add more for indentation */
+    cursor: pointer;
+    color: #e0e0e0;
+    font-size: 0.95em;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.module-dropdown-item:hover {
+    background-color: #3f3f3f; /* Darker hover */
+}
+
+.module-dropdown-namespace { /* Style for "General" header or other top-level groups */
+    padding: 8px 12px 6px 10px; /* Adjusted padding */
+    font-weight: bold;
+    color: #b0b0b0;
+    background-color: #333333; /* Slightly different background */
+    border-bottom: 1px solid #454545;
+    border-top: 1px solid #454545; /* Add top border for separation */
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 5px; /* Space above if it's not the first item */
+}
+.module-dropdown-namespace:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
+
+.module-dropdown-separator {
+    height: 1px;
+    background-color: #454545;
+    border: none;
+    margin: 5px 0;
+}
+
+.dropdown-message {
+    padding: 10px 12px; /* Increased padding */
+    color: #888;
+    text-align: center;
+    font-style: italic;
+}

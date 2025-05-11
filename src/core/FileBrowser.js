@@ -67,6 +67,9 @@ class FileBrowser {
             <button class="fb-button" id="fbNewScript" title="New Script"><i class="fas fa-file-code"></i></button>
             <button class="fb-button" id="fbUploadFile" title="Upload File"><i class="fas fa-file-upload"></i></button>
             <button class="fb-button" id="fbDeleteItem" title="Delete"><i class="fas fa-trash"></i></button>
+            <div class="fb-separator"></div>
+            <button class="fb-button" id="fbExportAssets" title="Export Assets"><i class="fas fa-file-export"></i></button>
+            <button class="fb-button" id="fbImportAssets" title="Import Assets"><i class="fas fa-file-import"></i></button>
         `;
 
         this.breadcrumb = document.createElement('div');
@@ -125,6 +128,29 @@ class FileBrowser {
             if (!item) return;
             
             this.selectItem(item, !e.ctrlKey);
+        });
+
+        document.getElementById('fbExportAssets').addEventListener('click', () => {
+            if (!this.assetManager) {
+                this.assetManager = new AssetManager(this);
+            }
+            this.assetManager.showExportModal();
+        });
+        
+        document.getElementById('fbImportAssets').addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.dmjs';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    if (!this.assetManager) {
+                        this.assetManager = new AssetManager(this);
+                    }
+                    await this.assetManager.importAssets(file);
+                }
+            };
+            input.click();
         });
 
         // Double-click to open folders
@@ -584,12 +610,26 @@ window.${pascalCaseName} = ${pascalCaseName};
     }
 
     async handleFileUpload(file) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            const content = e.target.result;
-            this.createFile(`${this.currentPath}/${file.name}`, content);
-        };
-        reader.readAsText(file);
+        return new Promise((resolve) => {
+            if (file.type.startsWith('image/')) {
+                // For images, use FileReader with readAsDataURL
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const content = e.target.result; // This will be the base64 data URL
+                    await this.createFile(`${this.currentPath}/${file.name}`, content);
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // For non-image files, read as text
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    await this.createFile(`${this.currentPath}/${file.name}`, e.target.result);
+                    resolve();
+                };
+                reader.readAsText(file);
+            }
+        });
     }
 
     /**
@@ -1263,22 +1303,34 @@ async loadModuleScript(scriptPath) {
         element.dataset.name = item.name;
         
         let icon = 'fa-file';
+        let previewHTML = ''; // Changed variable name for clarity
         
         if (item.type === 'folder') {
             icon = 'fa-folder';
-        } else if (item.name.endsWith('.js')) {
-            icon = 'fa-file-code';
-        } else if (item.name.endsWith('.json')) {
-            icon = 'fa-file-code';
-        } else if (item.name.match(/\.(png|jpg|jpeg|gif|svg)$/i)) {
-            icon = 'fa-file-image';
-        } else if (item.name.match(/\.(mp3|wav|ogg)$/i)) {
-            icon = 'fa-file-audio';
+        } else {
+            const extension = item.name.split('.').pop().toLowerCase();
+            if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp'].includes(extension)) {
+                icon = 'fa-file-image';
+                if (item.content && typeof item.content === 'string' && item.content.startsWith('data:image')) {
+                    previewHTML = `<div class="fb-preview-img"><img src="${item.content}" alt="${item.name}" loading="lazy"></div>`;
+                    element.classList.add('has-preview');
+                } else {
+                    // console.warn(`Item ${item.name} looks like an image but content is not a data URL:`, item.content);
+                }
+            } else if (extension === 'js') {
+                icon = 'fa-file-code';
+            } else if (extension === 'json') {
+                icon = 'fa-file-code'; // Or a different icon if you prefer
+            } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
+                icon = 'fa-file-audio';
+            }
+            // Add more file types as needed
         }
         
         element.innerHTML = `
             <i class="fas ${icon}"></i>
             <span class="fb-item-name" title="${item.name}">${item.name}</span>
+            ${previewHTML}
         `;
     
         this.content.appendChild(element);
@@ -1286,35 +1338,33 @@ async loadModuleScript(scriptPath) {
     }
 
     async openFile(path) {
-        // Get file information
-        const transaction = this.db.transaction(['files'], 'readonly');
-        const store = transaction.objectStore('files');
-        
-        const fileRequest = store.get(path);
-        fileRequest.onsuccess = async (e) => {
-            const file = e.target.result;
-            if (!file) return;
-            
-            // Handle scene files specially
-            if (path.toLowerCase().endsWith('.scene')) {
-                await this.openSceneFile(file);
+        const file = await this.getFile(path);
+        if (!file) {
+            this.showNotification(`File not found: ${path}`, 'error');
+            return;
+        }
+
+        const fileName = file.name.toLowerCase();
+
+        if (fileName.endsWith('.scene')) {
+            await this.openSceneFile(file);
+        } else if (/\.(png|jpg|jpeg|gif|svg|ico|webp)$/i.test(fileName)) {
+            this.showImagePreviewModal(file);
+        } else if (/\.(mp3|wav|ogg|aac|flac)$/i.test(fileName)) {
+            this.showAudioPlayerModal(file);
+        } else if (this.isEditableFile(file.name)) {
+            if (!window.scriptEditor) {
+                // Assuming ScriptEditor is globally available or imported
+             window.scriptEditor = new ScriptEditor(); 
+                console.warn("ScriptEditor not initialized. Please initialize it.");
+                this.showNotification("Script editor is not available.", "error");
                 return;
             }
-            
-            // Check if it's a text-based file we can edit
-            if (this.isEditableFile(file.name)) {
-                // Initialize the script editor if not already done
-                if (!window.scriptEditor) {
-                    window.scriptEditor = new ScriptEditor();
-                }
-                
-                // Open the file in the editor
-                window.scriptEditor.loadFile(path, file.content);
-            } else {
-                // For non-text files, just log for now
-                console.log(`Opening file: ${path}`);
-            }
-        };
+            window.scriptEditor.loadFile(path, file.content);
+        } else {
+            this.showNotification(`Cannot open file type: ${file.name}`, 'info');
+            console.log(`Opening unhandled file type: ${path}`);
+        }
     }
 
     async exists(path) {
@@ -1411,6 +1461,133 @@ async loadModuleScript(scriptPath) {
             console.error('Error creating directory:', error);
             return false;
         }
+    }
+
+    showImagePreviewModal(file) {
+        const existingModal = document.getElementById('imagePreviewModal');
+        if (existingModal) existingModal.remove();
+
+        const modalOverlay = document.createElement('div');
+        modalOverlay.id = 'imagePreviewModal';
+        modalOverlay.className = 'media-modal-overlay';
+
+        let currentScale = 1;
+        let posX = 0;
+        let posY = 0;
+        let isDragging = false;
+        let startX, startY;
+
+        modalOverlay.innerHTML = `
+            <div class="media-modal-content">
+                <div class="media-modal-header">
+                    <h3 class="media-modal-title">${file.name}</h3>
+                    <button class="media-modal-close">&times;</button>
+                </div>
+                <div class="media-modal-body">
+                    <div class="image-preview-container">
+                        <img src="${file.content}" alt="${file.name}" style="transform: scale(${currentScale}) translate(${posX}px, ${posY}px);">
+                    </div>
+                </div>
+                <div class="media-modal-footer">
+                    <button id="zoomInBtn"><i class="fas fa-search-plus"></i> Zoom In</button>
+                    <button id="zoomOutBtn"><i class="fas fa-search-minus"></i> Zoom Out</button>
+                    <button id="resetZoomBtn"><i class="fas fa-sync-alt"></i> Reset</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalOverlay);
+
+        const modalContent = modalOverlay.querySelector('.media-modal-content');
+        const img = modalOverlay.querySelector('img');
+        const closeBtn = modalOverlay.querySelector('.media-modal-close');
+        const zoomInBtn = modalOverlay.querySelector('#zoomInBtn');
+        const zoomOutBtn = modalOverlay.querySelector('#zoomOutBtn');
+        const resetZoomBtn = modalOverlay.querySelector('#resetZoomBtn');
+
+        const updateTransform = () => {
+            img.style.transform = `scale(${currentScale}) translate(${posX}px, ${posY}px)`;
+        };
+
+        zoomInBtn.onclick = () => { currentScale *= 1.2; updateTransform(); };
+        zoomOutBtn.onclick = () => { currentScale /= 1.2; updateTransform(); };
+        resetZoomBtn.onclick = () => { currentScale = 1; posX = 0; posY = 0; updateTransform(); };
+        closeBtn.onclick = () => modalOverlay.remove();
+        modalOverlay.onclick = (e) => {
+            if (e.target === modalOverlay) modalOverlay.remove();
+        };
+        
+        img.onmousedown = (e) => {
+            if (e.button !== 0) return; // Only left click
+            isDragging = true;
+            img.classList.add('grabbing');
+            startX = e.clientX - posX * currentScale; // Adjust for current translation and scale
+            startY = e.clientY - posY * currentScale;
+            e.preventDefault();
+        };
+
+        window.onmousemove = (e) => {
+            if (!isDragging) return;
+            // Divide by currentScale to make mouse movement feel natural regardless of zoom level
+            posX = (e.clientX - startX) / currentScale;
+            posY = (e.clientY - startY) / currentScale;
+            updateTransform();
+        };
+
+        window.onmouseup = () => {
+            if (isDragging) {
+                isDragging = false;
+                img.classList.remove('grabbing');
+            }
+        };
+        
+        img.onwheel = (e) => {
+            e.preventDefault();
+            const zoomFactor = 1.1;
+            if (e.deltaY < 0) { // Zoom in
+                currentScale *= zoomFactor;
+            } else { // Zoom out
+                currentScale /= zoomFactor;
+            }
+            // Basic zoom towards mouse pointer (can be improved)
+            // For simplicity, this example zooms towards center
+            updateTransform();
+        };
+
+
+        // Show modal
+        setTimeout(() => modalOverlay.classList.add('visible'), 10);
+    }
+
+    showAudioPlayerModal(file) {
+        const existingModal = document.getElementById('audioPlayerModal');
+        if (existingModal) existingModal.remove();
+
+        const modalOverlay = document.createElement('div');
+        modalOverlay.id = 'audioPlayerModal';
+        modalOverlay.className = 'media-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="media-modal-content">
+                <div class="media-modal-header">
+                    <h3 class="media-modal-title">${file.name}</h3>
+                    <button class="media-modal-close">&times;</button>
+                </div>
+                <div class="media-modal-body">
+                    <div class="audio-player-container">
+                        <audio controls autoplay src="${file.content}"></audio>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalOverlay);
+
+        const closeBtn = modalOverlay.querySelector('.media-modal-close');
+        closeBtn.onclick = () => modalOverlay.remove();
+        modalOverlay.onclick = (e) => {
+            if (e.target === modalOverlay) modalOverlay.remove();
+        };
+        
+        // Show modal
+        setTimeout(() => modalOverlay.classList.add('visible'), 10);
     }
 
     getRootPath() {

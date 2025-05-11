@@ -234,6 +234,15 @@ class Engine {
                 });
             }
         });
+
+        // Update collision system
+        if (window.collisionSystem) {
+            // Get all active objects
+            const allObjects = this.getAllObjects(this.gameObjects).filter(obj => obj.active);
+            
+            // Update collision detection
+            window.collisionSystem.update(allObjects);
+        }
         
         // Main loop phase
         this.traverseGameObjects(this.gameObjects, obj => {

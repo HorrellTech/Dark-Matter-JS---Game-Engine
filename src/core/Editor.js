@@ -272,6 +272,16 @@ class Editor {
             this.updateZoomLevelDisplay();
         }
     }
+
+    /**
+     * Get the world coordinates of the center of the current canvas view.
+     * @returns {Vector2} The world coordinates of the view center.
+     */
+    getWorldCenterOfView() {
+        const screenCenterX = this.canvas.width / 2;
+        const screenCenterY = this.canvas.height / 2;
+        return this.screenToWorldPosition(new Vector2(screenCenterX, screenCenterY));
+    }
     
     refreshCanvas() {
         const canvasRect = this.canvas.getBoundingClientRect();
@@ -1367,6 +1377,8 @@ class Editor {
         
         const screenPos = this.getAdjustedMousePosition(e);
         const worldPos = this.screenToWorldPosition(screenPos);
+
+        const clickedObj = this.findObjectAtPosition(worldPos); // Moved this up
         
         let menuItems = [];
         
@@ -1414,11 +1426,19 @@ class Editor {
             // Show general context menu
             menuItems = [
                 { 
-                    label: 'Add GameObject',
+                    label: 'Add GameObject at Cursor',
                     action: () => {
                         if (this.hierarchy) {
-                            // Pass the world position to addGameObject
-                            this.hierarchy.addGameObject("New GameObject", worldPos);
+                            this.hierarchy.addGameObject("New GameObject", worldPos); // Use click position
+                        }
+                    }
+                },
+                { 
+                    label: 'Add GameObject at View Center',
+                    action: () => {
+                        if (this.hierarchy) {
+                            const centerViewPos = this.getWorldCenterOfView();
+                            this.hierarchy.addGameObject("New GameObject", centerViewPos);
                         }
                     }
                 },

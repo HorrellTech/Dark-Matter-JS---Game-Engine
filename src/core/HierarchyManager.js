@@ -9,6 +9,15 @@ class HierarchyManager {
         this.selectedObject = null;
         this.initializeUI();
         this.createDropIndicator();
+
+        // Assuming you have an "Add GameObject" button in your hierarchy UI
+        const addGameObjectButton = this.container.querySelector('.add-object-button'); // Or whatever its selector is
+        if (addGameObjectButton) {
+            addGameObjectButton.addEventListener('click', () => {
+                const position = this.editor.getWorldCenterOfView();
+                this.addGameObject("New GameObject", position);
+            });
+        }
         
         // Listen for panel resize events
         window.addEventListener('panelsResized', () => {
@@ -42,7 +51,10 @@ class HierarchyManager {
         this.listContainer = this.container.querySelector('.hierarchy-list');
         
         // Setup toolbar button event listeners
-        document.getElementById('addGameObject').addEventListener('click', () => this.addGameObject());
+        document.getElementById('addGameObject').addEventListener('click', () => {
+            const position = this.editor.getWorldCenterOfView();
+            this.addGameObject("New GameObject", position);
+        });
         document.getElementById('removeGameObject').addEventListener('click', () => this.removeSelectedGameObject());
         document.getElementById('duplicateGameObject').addEventListener('click', () => this.duplicateSelectedGameObject());
     
@@ -836,19 +848,21 @@ class HierarchyManager {
         const obj = new GameObject(name);
         
         // Set position based on camera center if no position specified
-        if (!position) {
-            const cameraCenter = new Vector2(
-                -this.editor.camera.position.x / this.editor.camera.zoom,
-                -this.editor.camera.position.y / this.editor.camera.zoom
-            );
-            obj.position = cameraCenter;
+        if (position instanceof Vector2) {
+            obj.position.x = position.x;
+            obj.position.y = position.y;
         } else {
-            obj.position = position;
+            // If position is still null (e.g. called from somewhere else without it),
+            // then default to the center of the camera's view.
+            const centerViewPos = this.editor.getWorldCenterOfView();
+            obj.position.x = centerViewPos.x;
+            obj.position.y = centerViewPos.y;
         }
         
         // If there's a selected object, add as child, otherwise add to root
         if (this.selectedObject) {
             this.selectedObject.addChild(obj);
+            this.selectedObject.expanded = true; // Ensure parent is expanded
         } else {
             this.editor.scene.gameObjects.push(obj);
         }

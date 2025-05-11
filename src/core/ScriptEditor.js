@@ -43,6 +43,10 @@ class ScriptEditor {
                     <button class="se-button" id="se-format" title="Format Code">
                         <i class="fas fa-indent"></i>
                     </button>
+                    <div class="se-separator"></div>
+                    <button class="se-button" id="se-docs" title="Documentation">
+                        <i class="fas fa-book"></i>
+                    </button>
                 </div>
                 <div class="se-modal-editor-container">
                     <textarea id="se-editor"></textarea>
@@ -103,6 +107,12 @@ class ScriptEditor {
 
         // Format button
         document.getElementById('se-format').addEventListener('click', () => this.formatCode());
+
+        document.getElementById('se-docs').addEventListener('click', () => {
+            if (window.docModal) {
+                window.docModal.toggle();
+            }
+        });
 
         // Handle keyboard shortcuts
         document.addEventListener('keydown', (e) => {

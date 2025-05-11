@@ -13,14 +13,23 @@
     <link rel="stylesheet" href="src/styles/scrollbars.css">
     <link rel="stylesheet" href="src/styles/game-canvas.css">
     <link rel="stylesheet" href="src/styles/start-screen.css">
+    <link rel="stylesheet" href="src/styles/documentation-modal.css">
+    <link rel="stylesheet" href="src/styles/asset-manager.css">
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
 
+    <script src="src/core/Keywords.js"></script>
+    
+    <script src="src/core/Documentation.js"></script>
+    <script src="src/core/StartScreen.js"></script>
+    <script src="src/core/DocumentationModal.js"></script>
+
     <!-- Add Matter.js physics engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
     <div class="toolbar">
@@ -30,6 +39,10 @@
             <button class="toolbar-button" title="Save Project" style="color: #789ace"><i class="fas fa-save"></i></button>
             <button class="toolbar-button" title="Export Project" style="color: #68bb81"><i class="fas fa-file-export"></i></button>
         </div>
+        <div class="toolbar-spacer"></div>
+        <button class="toolbar-button" title="Documentation" style="color: #64B5F6">
+            <i class="fas fa-book"></i>
+        </button>
         <div class="toolbar-group">
             <button class="toolbar-button" title="Play" style="color: #4CAF50"><i class="fas fa-play"></i></button>
             <button class="toolbar-button" title="Stop" style="color: #f44336"><i class="fas fa-stop"></i></button>
@@ -225,6 +238,16 @@
                 }
             }
 
+            // Initialize documentation system
+            try {
+                if (!window.DocumentationModal) {
+                    console.log('Creating documentation modal');
+                    window.DocumentationModal = new DocumentationModal();
+                }
+            } catch (error) {
+                console.error('Failed to initialize documentation:', error);
+            }
+
             // Add this function to ensure center panel maintains proper width
             function updateCenterPanelWidth() {
                 const centerPanel = document.querySelector('.center-panel');
@@ -290,6 +313,17 @@
                 updateCenterPanelWidth();
             });
 
+            document.querySelector('.toolbar-button[title="Documentation"]').addEventListener('click', () => {
+                console.log('Documentation button clicked');
+                if (window.docModal) {
+                    console.log('DocModal exists');
+                    window.docModal.toggle();
+                } else {
+                    console.error('DocModal not initialized');
+                    window.docModal = new DocumentationModal();
+                }
+            });
+
             updateCenterPanelWidth();
         });
     </script>
@@ -308,11 +342,16 @@
     <script src="src/core/Module.js"></script>
     <script src="src/core/ModuleRegistry.js"></script>
     <script src="src/core/ModuleReloader.js"></script>
+    <script src="src/core/Math/Raycast.js"></script>
+
     <script src="src/core/3D/Camera3D.js"></script>
     <script src="src/core/3D/Mesh3D.js"></script>
     <script src="src/core/3D/CubeMesh3D.js"></script>
     <script src="src/core/3D/FlyCamera.js"></script>
     <script src="src/core/3D/MouseLook.js"></script>
+
+    <script src="src/core/AssetManager.js"></script>
+
     <script src="src/core/GameObject.js"></script>
     <script src="src/core/InputManager.js"></script>
     <script src="src/core/Scene.js"></script>
@@ -324,16 +363,22 @@
     <script src="src/core/EditorGrid.js"></script>
     <script src="src/core/HierarchyManager.js"></script>
     <script src="src/core/matter-js/PhysicsManager.js"></script>
+
     <script src="src/core/Modules/RigidBody.js"></script>
     <script src="src/core/Modules/Collider.js"></script>
+    <script src="src/core/Modules/SpriteRenderer.js"></script>
+    <script src="src/core/Modules/BoundingBoxCollider.js"></script>
+    <script src="src/core/Modules/SimpleHealth.js"></script>
+    <script src="src/core/Modules/Controllers/SimpleMovementController.js"></script>
+
     <script src="src/core/Inspector.js"></script>
     <script src="src/core/Editor.js"></script>
     <script src="src/core/FileBrowser.js"></script>
     <script src="src/core/ScriptEditor.js"></script>
-    <script src="src/core/Documentation.js"></script>
-    <script src="src/core/StartScreen.js"></script>
-    <script src="src/core/Modules/SpriteRenderer.js"></script>
+    <script src="src/core/ProjectManager.js"></script>
+
     <script src="src/core/ModulesManager.js"></script>
+
     <script src="src/app.js"></script>
 </body>
 </html>

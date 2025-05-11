@@ -2,6 +2,9 @@
  * RigidBody - Physics component that adds a physical body to a GameObject
  */
 class RigidBody extends Module {
+    static namespace = "Matter JS/RigidBody";
+    static description = "Physics component that adds a physical body to a GameObject";
+
     constructor() {
         super("RigidBody");
         
@@ -173,6 +176,18 @@ class RigidBody extends Module {
             body.inertia = Infinity;
             body.inverseInertia = 0;
             body.inverseMass = 0;
+        }
+        else if (this.bodyType === "static") {
+            body.isStatic = true;
+            body.inertia = Infinity;
+            body.inverseInertia = 0;
+            body.inverseMass = 0;
+        }
+        else {
+            body.isStatic = false;
+            body.inertia = Matter.Body.inertia(body);
+            body.inverseInertia = 1 / body.inertia;
+            body.inverseMass = 1 / body.mass;
         }
         
         // Apply fixed rotation constraint

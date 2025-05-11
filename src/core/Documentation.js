@@ -1,4 +1,4 @@
-class DocumentationModal {
+class Documentation {
     constructor() {
         this.container = null;
         this.currentSection = null;

@@ -303,43 +303,38 @@ class Inspector {
      */
     async toggleModuleDropdown() {
         if (this.moduleDropdown.style.display === 'none') {
-            // Show loading indicator in dropdown
             this.moduleDropdown.style.display = 'block';
             this.moduleDropdown.innerHTML = '<div class="dropdown-message">Loading modules...</div>';
             
             try {
-                // Clear existing modules first to avoid duplicates
-                this.availableModules = [];
+                this.availableModules = []; // Clear before scanning
                 
-                // Get FileBrowser instance
                 const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
-                if (fileBrowser) {
+                if (fileBrowser && typeof fileBrowser.scanForModuleScripts === 'function') {
                     console.log("Scanning for module scripts...");
-                    // Scan for and load all module scripts
-                    await fileBrowser.scanForModuleScripts();
-                    
-                    // Check all window objects for modules
-                    this.detectAvailableModules();
+                    await fileBrowser.scanForModuleScripts(); // Populates via registerModuleClass
                 }
                 
-                // Populate dropdown with available modules
+                // Detect additional modules from global scope (e.g., built-ins)
+                this.detectAvailableModules(); // Appends to what scanForModuleScripts found
+                
+                console.log(`Total available modules after all scans: ${this.availableModules.length}`);
                 this.populateModuleDropdown();
             } catch (error) {
                 console.error('Error loading modules:', error);
                 this.moduleDropdown.innerHTML = '<div class="dropdown-message error">Error loading modules</div>';
             }
         } else {
-            // Hide dropdown
             this.moduleDropdown.style.display = 'none';
         }
     }
 
     /**
-     * Populate the dropdown with available modules
+     * Populate the dropdown with available modules, grouped by namespace
      */
     populateModuleDropdown() {
         this.moduleDropdown.innerHTML = '';
-        
+
         if (!this.availableModules || this.availableModules.length === 0) {
             const message = document.createElement('div');
             message.className = 'dropdown-message';
@@ -347,29 +342,53 @@ class Inspector {
             this.moduleDropdown.appendChild(message);
             return;
         }
-        
-        // Sort modules alphabetically
-        const sortedModules = [...this.availableModules].sort((a, b) => 
-            a.name.localeCompare(b.name)
-        );
-        
-        sortedModules.forEach(moduleClass => {
-            const item = document.createElement('div');
-            item.className = 'module-dropdown-item';
-            item.textContent = moduleClass.name;
-            
-            item.addEventListener('click', () => {
-                const module = this.addModuleToGameObject(moduleClass);
-                if (module) {
-                    this.moduleDropdown.style.display = 'none';
-                }
-            });
-            
-            this.moduleDropdown.appendChild(item);
+
+        // Group modules by namespace
+        const groupedModules = {};
+        this.availableModules.forEach(moduleInfo => {
+            const namespace = moduleInfo.namespace || 'General'; // Default to "General"
+            if (!groupedModules[namespace]) {
+                groupedModules[namespace] = [];
+            }
+            groupedModules[namespace].push(moduleInfo.moduleClass);
         });
-        
+
+        // Sort namespaces alphabetically, "General" can be first or last
+        const sortedNamespaces = Object.keys(groupedModules).sort((a, b) => {
+            if (a === 'General') return -1; // Put General first
+            if (b === 'General') return 1;
+            return a.localeCompare(b);
+        });
+
+        sortedNamespaces.forEach(namespace => {
+            // Add namespace header
+            const namespaceHeader = document.createElement('div');
+            namespaceHeader.className = 'module-dropdown-namespace';
+            namespaceHeader.textContent = namespace.replace(/\//g, ' \u203A '); // Replace / with › for display
+            this.moduleDropdown.appendChild(namespaceHeader);
+
+            // Sort modules within the namespace alphabetically
+            const modulesInNamespace = groupedModules[namespace].sort((a, b) =>
+                a.name.localeCompare(b.name)
+            );
+
+            modulesInNamespace.forEach(moduleClass => {
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                item.textContent = moduleClass.name;
+
+                item.addEventListener('click', () => {
+                    const module = this.addModuleToGameObject(moduleClass);
+                    if (module) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                this.moduleDropdown.appendChild(item);
+            });
+        });
+
         // Log available modules for debugging
-        console.log('Available modules:', sortedModules.map(m => m.name));
+        console.log('Available modules grouped:', groupedModules);
     }
 
     /**
@@ -410,38 +429,27 @@ class Inspector {
      */
     detectAvailableModules() {
         console.log("Detecting available modules...");
-        
-        // Start with an empty list (unless we're adding to existing list)
-        if (!this.availableModules) {
-            this.availableModules = [];
-        }
-        
-        // Check if Module class exists
+        //this.availableModules = []; // Reset before detection
+
         if (typeof Module !== 'undefined') {
-            // Look for any classes in the global scope that extend Module
             for (const key in window) {
                 try {
                     const obj = window[key];
-                    
-                    // Check if it's a class that extends Module
-                    if (typeof obj === 'function' && 
-                        obj.prototype instanceof Module && 
-                        obj !== Module) { // Skip the base Module class
-                        
-                        // Check if we already have this module class
-                        const exists = this.availableModules.some(m => m.name === obj.name);
+                    if (typeof obj === 'function' &&
+                        obj.prototype instanceof Module &&
+                        obj !== Module) {
+                        // Check if we already have this module class by name
+                        const exists = this.availableModules.some(m => m.moduleClass.name === obj.name);
                         if (!exists) {
-                            console.log(`Found module class: ${obj.name}`);
-                            this.availableModules.push(obj);
+                            const namespace = obj.namespace || 'General'; // Default to General if undefined
+                            console.log(`Found module class: ${obj.name}` + (namespace ? ` (Namespace: ${namespace})` : ''));
+                            this.availableModules.push({ moduleClass: obj, namespace: namespace });
                         }
                     }
-                } catch (e) {
-                    // Ignore errors, some window objects might not be accessible
-                }
+                } catch (e) { /* Ignore */ }
             }
         }
-        
-        console.log(`Total available modules: ${this.availableModules.length}`);
+        console.log(`Total available modules found: ${this.availableModules.length}`);
     }
 
     /**
@@ -1087,23 +1095,21 @@ class Inspector {
             console.error('Invalid module class:', moduleClass);
             return;
         }
-        
-        // Verify it extends Module
         if (!(moduleClass.prototype instanceof Module)) {
             console.error('Class must extend Module:', moduleClass.name);
             return;
         }
-        
-        // Check if already registered
-        const existing = this.availableModules.find(m => m.name === moduleClass.name);
+
+        const existing = this.availableModules.find(m => m.moduleClass.name === moduleClass.name);
         if (!existing) {
-            this.availableModules.push(moduleClass);
-            console.log(`Registered module: ${moduleClass.name}`);
-        }
-        
-        // Always refresh dropdown if it's open
-        if (this.moduleDropdown.style.display === 'block') {
-            this.populateModuleDropdown();
+            const namespace = moduleClass.namespace || 'General'; // Default to General
+            this.availableModules.push({ moduleClass: moduleClass, namespace: namespace });
+            console.log(`Registered module: ${moduleClass.name}` + (namespace ? ` (Namespace: ${namespace})` : ''));
+            
+            // If dropdown is open, refresh it
+            if (this.moduleDropdown.style.display === 'block') {
+                this.populateModuleDropdown();
+            }
         }
     }
 
@@ -1204,6 +1210,160 @@ class Inspector {
                             data-prop-name="${prop.name}" value="${value}">
                     </div>
                 `;
+        }
+    }
+
+    /**
+     * Populate the dropdown with available modules, structured as a hierarchical tree.
+     */
+    populateModuleDropdown() {
+        this.moduleDropdown.innerHTML = ''; // Clear previous content
+
+        if (!this.availableModules || this.availableModules.length === 0) {
+            const message = document.createElement('div');
+            message.className = 'dropdown-message';
+            message.textContent = 'No modules available';
+            this.moduleDropdown.appendChild(message);
+            return;
+        }
+
+        // 1. Build the hierarchical tree data structure
+        const namespaceTree = {};
+        const generalModules = [];
+
+        this.availableModules.forEach(moduleInfo => {
+            const namespace = moduleInfo.namespace;
+            const moduleClass = moduleInfo.moduleClass;
+
+            if (!namespace || namespace.toLowerCase() === 'general') {
+                generalModules.push(moduleClass);
+                return;
+            }
+
+            const parts = namespace.split('/');
+            let currentLevel = namespaceTree;
+
+            parts.forEach(part => {
+                if (!currentLevel[part]) {
+                    currentLevel[part] = { _children: {}, _modules: [] };
+                }
+                currentLevel = currentLevel[part];
+            });
+            currentLevel._modules.push(moduleClass);
+        });
+
+        // 2. Render the tree
+        const renderNode = (node, parentElement, level, pathPrefix = '') => {
+            // Sort folder names alphabetically
+            const folderNames = Object.keys(node._children || {}).sort();
+            
+            folderNames.forEach(folderName => {
+                const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
+                const folderElement = document.createElement('div');
+                folderElement.className = 'module-dropdown-folder';
+                folderElement.style.paddingLeft = `${level * 15}px`;
+
+                const header = document.createElement('div');
+                header.className = 'module-dropdown-folder-header';
+                
+                const icon = document.createElement('i');
+                const isCollapsed = this.getFolderCollapseState(currentPath);
+                icon.className = `fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = folderName;
+                
+                header.appendChild(icon);
+                header.appendChild(nameSpan);
+                folderElement.appendChild(header);
+
+                const content = document.createElement('div');
+                content.className = 'module-dropdown-folder-content';
+                if (isCollapsed) {
+                    content.style.display = 'none';
+                }
+                folderElement.appendChild(content);
+                parentElement.appendChild(folderElement);
+
+                header.addEventListener('click', () => {
+                    const currentlyCollapsed = content.style.display === 'none';
+                    content.style.display = currentlyCollapsed ? 'block' : 'none';
+                    icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
+                    this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
+                });
+
+                renderNode(node._children[folderName], content, level + 1, currentPath);
+            });
+
+            // Sort modules within this folder/namespace alphabetically
+            (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                item.textContent = moduleClass.name;
+                item.style.paddingLeft = `${(level * 15) + 15}px`; // Indent module items further
+
+                item.addEventListener('click', () => {
+                    const module = this.addModuleToGameObject(moduleClass);
+                    if (module) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                parentElement.appendChild(item);
+            });
+        };
+        
+        // Create a root node for rendering
+        const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
+        renderNode(rootNodeForRendering, this.moduleDropdown, 0);
+
+        // Add "General" modules at the end, if any
+        if (generalModules.length > 0) {
+            if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) { // Add separator if there were other namespaces
+                const separator = document.createElement('hr');
+                separator.className = 'module-dropdown-separator';
+                this.moduleDropdown.appendChild(separator);
+            }
+            const generalHeader = document.createElement('div');
+            generalHeader.className = 'module-dropdown-namespace'; // Use existing style or create a new one
+            generalHeader.textContent = 'General';
+            generalHeader.style.paddingLeft = `5px`; // Minimal indent for top-level group
+            this.moduleDropdown.appendChild(generalHeader);
+
+            generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                item.textContent = moduleClass.name;
+                item.style.paddingLeft = `20px`; // Indent items under "General"
+
+                item.addEventListener('click', () => {
+                    const module = this.addModuleToGameObject(moduleClass);
+                    if (module) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                this.moduleDropdown.appendChild(item);
+            });
+        }
+        console.log('Namespace tree:', namespaceTree, 'General modules:', generalModules);
+    }
+
+    saveFolderCollapseState(folderPath, isCollapsed) {
+        try {
+            let states = JSON.parse(localStorage.getItem('moduleFolderCollapseStates') || '{}');
+            states[folderPath] = isCollapsed;
+            localStorage.setItem('moduleFolderCollapseStates', JSON.stringify(states));
+        } catch (e) {
+            console.warn('Failed to save folder collapse state:', e);
+        }
+    }
+
+    getFolderCollapseState(folderPath) {
+        try {
+            const states = JSON.parse(localStorage.getItem('moduleFolderCollapseStates') || '{}');
+            return states[folderPath] === undefined ? true : states[folderPath]; // Default to collapsed
+        } catch (e) {
+            console.warn('Failed to get folder collapse state:', e);
+            return true; // Default to collapsed on error
         }
     }
 

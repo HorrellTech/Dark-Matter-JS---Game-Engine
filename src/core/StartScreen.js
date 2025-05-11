@@ -174,7 +174,7 @@ class StartScreen {
     
     showDocumentation() {
         // Documentation modal implementation
-        const docsModal = new DocumentationModal();
+        const docsModal = new Documentation();
         docsModal.show();
     }
     

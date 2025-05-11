@@ -1,5 +1,15 @@
 // Initialize editor components
 document.addEventListener('DOMContentLoaded', () => {
+    try {
+        console.log('Initializing documentation system...');
+        if (!window.docModal && window.DocumentationModal) {
+            window.docModal = new DocumentationModal();
+            console.log('Documentation system initialized');
+        }
+    } catch (error) {
+        console.error('Failed to initialize documentation:', error);
+    }
+
     // Initialize the registry and module system first
     if (!window.moduleRegistry) {
         window.moduleRegistry = new ModuleRegistry();
@@ -102,6 +112,41 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Scan for existing module scripts
     this.fileBrowser.scanForModuleScripts();
+    
+    // Ensure editor.sceneManager is available
+    if (!editor.sceneManager && window.SceneManager) {
+        editor.sceneManager = new SceneManager(editor);
+    }
+
+    // Initialize ProjectManager
+    if (window.ProjectManager && editor && editor.sceneManager && window.fileBrowser) {
+        projectManager = new ProjectManager(editor, editor.sceneManager, window.fileBrowser);
+    }
+
+    // Toolbar button connections for Project Management
+    const newProjectButton = document.querySelector('.toolbar-button[title="New Project"]');
+    const loadProjectButton = document.querySelector('.toolbar-button[title="Load Project"]');
+    const saveProjectButton = document.querySelector('.toolbar-button[title="Save Project"]');
+
+    if (projectManager) {
+        if (newProjectButton) {
+            newProjectButton.addEventListener('click', () => projectManager.newProject());
+        } else {
+            console.warn("New Project button not found.");
+        }
+        if (loadProjectButton) {
+            loadProjectButton.addEventListener('click', () => projectManager.loadProject());
+        } else {
+            console.warn("Load Project button not found.");
+        }
+        if (saveProjectButton) {
+            saveProjectButton.addEventListener('click', () => projectManager.saveProject());
+        } else {
+            console.warn("Save Project button not found.");
+        }
+    } else {
+        console.error("ProjectManager not initialized, toolbar buttons won't work.");
+    }
 
     // Wait a bit to ensure indexedDB is ready
     setTimeout(() => {
