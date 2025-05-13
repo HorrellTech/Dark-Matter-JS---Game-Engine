@@ -49,7 +49,11 @@ class ProjectManager {
             this.editor.createDefaultScene(); // Creates a new scene and sets it active
 
             // 3. Reset Editor State
-            this.editor.camera.position.set(0, 0);
+            if (this.editor.camera.position && typeof this.editor.camera.position.set === 'function') {
+                this.editor.camera.position.set(0, 0);
+            } else {
+                this.editor.camera.position = { x: 0, y: 0 };
+            }
             this.editor.camera.zoom = 1.0;
             this.editor.updateZoomLevelDisplay();
             if (this.editor.hierarchy) {
@@ -77,6 +81,14 @@ class ProjectManager {
             this.editor.refreshCanvas();
             this.editor.fileBrowser.showNotification("New project created.", "success");
             console.log("New project created successfully.");
+
+            // Wait before scanning for scripts to let the database initialize fully
+            setTimeout(() => {
+                if (this.fileBrowser) {
+                    this.fileBrowser.scanForModuleScripts()
+                        .catch(err => console.warn("Post-creation script scan error:", err));
+                }
+            }, 1000);
 
         } catch (error) {
             console.error("Error creating new project:", error);
@@ -113,29 +125,45 @@ class ProjectManager {
             scenes: [],
             assets: [],
         };
-
+    
         // Gather scenes
         for (const scene of this.editor.scenes) {
             projectData.scenes.push(scene.toJSON());
         }
         console.log(`Gathered ${projectData.scenes.length} scenes.`);
-
-        // Gather assets from FileBrowser
-        const allFiles = await this.fileBrowser.getAllFiles(); // Assumes this gets all files with content
-        projectData.assets = allFiles
-            .filter(file => file.path !== '/') // Exclude root folder entry if it's just a placeholder
-            .map(file => ({
-                path: file.path, // Full path including name
-                type: file.type, // 'file' or 'folder'
-                content: file.type === 'file' ? file.content : null, // Content for files
-                created: file.created,
-                modified: file.modified,
-            }));
-        console.log(`Gathered ${projectData.assets.length} asset entries.`);
+    
+        // Gather assets from FileBrowser - Make sure to handle the promise
+        try {
+            const allFiles = await this.fileBrowser.getAllFiles();
+            projectData.assets = allFiles
+                .filter(file => file.path !== '/') // Exclude root folder entry if it's just a placeholder
+                .map(file => ({
+                    path: file.path, // Full path including name
+                    type: file.type, // 'file' or 'folder'
+                    content: file.type === 'file' ? file.content : null, // Content for files
+                    created: file.created,
+                    modified: file.modified,
+                }));
+            console.log(`Gathered ${projectData.assets.length} asset entries.`);
+        } catch (error) {
+            console.error("Error gathering asset data:", error);
+            projectData.assets = []; // Default to empty if there's an error
+        }
+        
         return projectData;
     }
 
     async saveProject() {
+        // Set a safety timeout to reset the loading state after 30 seconds
+        // This prevents the UI from being permanently locked if something goes wrong
+        const safetyTimeout = setTimeout(() => {
+            if (this.isSavingOrLoading) {
+                console.warn("Project operation timed out, resetting state.");
+                this.isSavingOrLoading = false;
+                this.editor.fileBrowser.showNotification("Operation timed out. Try again.", "error");
+            }
+        }, 30000); // 30 seconds timeout
+
         if (this.isSavingOrLoading) {
             console.warn("Project operation already in progress.");
             this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
@@ -192,11 +220,27 @@ class ProjectManager {
             console.error("Error saving project:", error);
             this.editor.fileBrowser.showNotification(`Error saving project: ${error.message}`, "error");
         } finally {
+            clearTimeout(safetyTimeout);
             this.isSavingOrLoading = false;
         }
     }
 
     async loadProject() {
+        // First ensure core classes are available
+        if (!await this.ensureCoreDependencies()) {
+            return;  // Stop if dependencies are missing
+        }
+
+        // Set a safety timeout to reset the loading state after 30 seconds
+        // This prevents the UI from being permanently locked if something goes wrong
+        const safetyTimeout = setTimeout(() => {
+            if (this.isSavingOrLoading) {
+                console.warn("Project operation timed out, resetting state.");
+                this.isSavingOrLoading = false;
+                this.editor.fileBrowser.showNotification("Operation timed out. Try again.", "error");
+            }
+        }, 30000); // 30 seconds timeout
+
         if (this.isSavingOrLoading) {
             console.warn("Project operation already in progress.");
             this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
@@ -269,9 +313,20 @@ class ProjectManager {
                 console.log("Restoring scenes...");
                 const loadedScenes = [];
                 for (const sceneJSON of projectData.scenes) {
-                    const scene = Scene.fromJSON(sceneJSON);
-                    scene.dirty = false; // Loaded scenes are initially not dirty
-                    loadedScenes.push(scene);
+                    try {
+                        const scene = Scene.fromJSON(sceneJSON);
+                        scene.dirty = false;
+                        
+                        // If GameObject was loaded after scene, try to complete loading
+                        if (scene.gameObjectsJSON && scene.completeLoading) {
+                            scene.completeLoading();
+                        }
+                        
+                        loadedScenes.push(scene);
+                    } catch (error) {
+                        console.error("Error loading scene:", error);
+                        this.editor.fileBrowser.showNotification(`Error loading scene: ${error.message}`, "error");
+                    }
                 }
                 this.editor.scenes = loadedScenes;
                 console.log(`${this.editor.scenes.length} scenes restored.`);
@@ -281,7 +336,16 @@ class ProjectManager {
                 const settings = projectData.editorSettings;
                 if (settings) {
                     if (settings.camera) {
-                        this.editor.camera.position.set(settings.camera.x, settings.camera.y);
+                        // Check if position is an object with set method (Vector2)
+                        if (this.editor.camera.position && typeof this.editor.camera.position.set === 'function') {
+                            this.editor.camera.position.set(settings.camera.x, settings.camera.y);
+                        } else {
+                            // Fallback: directly assign x and y properties
+                            this.editor.camera.position = { 
+                                x: settings.camera.x, 
+                                y: settings.camera.y 
+                            };
+                        }
                         this.editor.camera.zoom = settings.camera.zoom;
                         this.editor.updateZoomLevelDisplay();
                     }
@@ -349,11 +413,226 @@ class ProjectManager {
                 // Attempt to revert to a clean state if loading fails badly
                 await this.newProject(); // Or a more specific error recovery
             } finally {
+                clearTimeout(safetyTimeout);
                 this.isSavingOrLoading = false;
                 input.value = ''; // Clear file input
             }
         };
         input.click();
+    }
+
+    async ensureCoreDependencies() {
+        // Check for essential classes
+        const requiredClasses = ['GameObject', 'Scene', 'Vector2', 'Module'];
+        const missingClasses = requiredClasses.filter(name => !window[name]);
+        
+        if (missingClasses.length === 0) {
+            return true; // All classes are already available globally
+        }
+        
+        console.warn(`Missing core classes in global scope: ${missingClasses.join(', ')}`);
+        this.editor.fileBrowser.showNotification(
+            `Making core classes globally available: ${missingClasses.join(', ')}...`,
+            "info"
+        );
+        
+        try {
+            // Try to find classes that might be loaded but not on window object
+            let success = true;
+            
+            // Common ways classes might be available
+            for (const className of missingClasses) {
+                // Try different approaches to find the class
+                if (typeof eval(className) !== 'undefined') {
+                    // Class exists in current scope but not on window
+                    window[className] = eval(className);
+                    console.log(`Made ${className} globally available from local scope`);
+                } else {
+                    // If not found in current scope, we need to load it
+                    try {
+                        console.log(`Attempting to load ${className} from file...`);
+                        await this.loadClassFile(className);
+                        
+                        // Check if it's now available
+                        if (!window[className]) {
+                            console.error(`${className} still not available globally after loading`);
+                            success = false;
+                        }
+                    } catch (err) {
+                        console.error(`Error loading ${className} from file:`, err);
+                        success = false;
+                    }
+                }
+            }
+            
+            // Check if we resolved all dependencies
+            const stillMissing = requiredClasses.filter(name => !window[name]);
+            if (stillMissing.length > 0) {
+                throw new Error(`Failed to make required classes globally available: ${stillMissing.join(', ')}`);
+            }
+            
+            this.editor.fileBrowser.showNotification(
+                "Core dependencies are now globally available",
+                "success"
+            );
+            return true;
+            
+        } catch (error) {
+            console.error("Error ensuring core dependencies:", error);
+            this.editor.fileBrowser.showNotification(
+                `Error with core classes: ${error.message}`,
+                "error"
+            );
+            return false;
+        }
+    }
+
+    // Helper method to load class files
+    async loadClassFile(className) {
+        const classFilePaths = {
+            'GameObject': './src/core/GameObject.js',
+            'Scene': './src/core/Scene.js', 
+            'Vector2': './src/core/Math/Vector2.js',
+            'Module': './src/core/Module.js'
+        };
+        
+        const path = classFilePaths[className];
+        if (!path) {
+            throw new Error(`Path mapping not found for ${className}`);
+        }
+        
+        // Try to get class from existing instances/prototypes if possible
+        if (className === 'GameObject' && this.editor.activeScene) {
+            // Try to get GameObject constructor from an existing instance
+            if (this.editor.activeScene.gameObjects && this.editor.activeScene.gameObjects.length > 0) {
+                const obj = this.editor.activeScene.gameObjects[0];
+                if (obj && obj.constructor) {
+                    window[className] = obj.constructor;
+                    console.log(`Got ${className} constructor from existing instance`);
+                    return;
+                }
+            }
+        } else if (className === 'Scene') {
+            // Try to get Scene constructor
+            if (this.editor.activeScene && this.editor.activeScene.constructor) {
+                window[className] = this.editor.activeScene.constructor;
+                console.log(`Got ${className} constructor from existing instance`);
+                return;
+            }
+        }
+        
+        // If we couldn't get the class from existing instances, try a more direct approach
+        // Just define minimal versions of the classes that should work with serialization
+        if (className === 'GameObject') {
+            // Define a minimal GameObject class if it doesn't exist globally
+            if (!window.GameObject) {
+                window.GameObject = class GameObject {
+                    constructor(name = "GameObject", transform = null) {
+                        this.id = this.generateUUID();
+                        this.name = name;
+                        this.transform = transform || { position: { x: 0, y: 0 }, rotation: 0, scale: { x: 1, y: 1 } };
+                        this.components = [];
+                        this.children = [];
+                        this.parent = null;
+                        this.active = true;
+                        this.layer = "Default";
+                        this.tags = [];
+                    }
+                    
+                    generateUUID() {
+                        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                            const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                            return v.toString(16);
+                        });
+                    }
+                    
+                    static fromJSON(json) {
+                        const gameObject = new GameObject(json.name, json.transform);
+                        gameObject.id = json.id;
+                        gameObject.active = json.active;
+                        gameObject.layer = json.layer || "Default";
+                        gameObject.tags = json.tags || [];
+                        
+                        if (json.children && json.children.length > 0) {
+                            gameObject.children = json.children.map(childJson => {
+                                const child = GameObject.fromJSON(childJson);
+                                child.parent = gameObject;
+                                return child;
+                            });
+                        }
+                        
+                        return gameObject;
+                    }
+                };
+                console.log("Created fallback GameObject class");
+            }
+        } else if (className === 'Scene') {
+            // Define a minimal Scene class if it doesn't exist globally
+            if (!window.Scene) {
+                window.Scene = class Scene {
+                    constructor(name = "New Scene") {
+                        this.name = name;
+                        this.gameObjects = [];
+                        this.activeCamera = null;
+                        this.settings = {};
+                        this.dirty = false;
+                    }
+                    
+                    static fromJSON(json) {
+                        const scene = new Scene(json.name);
+                        scene.settings = json.settings || {};
+                        scene.activeCamera = json.activeCamera;
+                        
+                        if (json.gameObjects && Array.isArray(json.gameObjects)) {
+                            if (window.GameObject) {
+                                scene.gameObjects = json.gameObjects.map(objJson => GameObject.fromJSON(objJson));
+                            } else {
+                                scene.gameObjectsJSON = json.gameObjects;
+                                console.warn("GameObject class not available. Game objects will be loaded when GameObject class is available.");
+                            }
+                        }
+                        
+                        return scene;
+                    }
+                    
+                    completeLoading() {
+                        if (this.gameObjectsJSON && window.GameObject) {
+                            this.gameObjects = this.gameObjectsJSON.map(objJson => GameObject.fromJSON(objJson));
+                            delete this.gameObjectsJSON;
+                            return true;
+                        }
+                        return false;
+                    }
+                };
+                console.log("Created fallback Scene class");
+            }
+        } else if (className === 'Vector2') {
+            if (!window.Vector2) {
+                window.Vector2 = class Vector2 {
+                    constructor(x = 0, y = 0) {
+                        this.x = x;
+                        this.y = y;
+                    }
+                    
+                    set(x, y) {
+                        this.x = x;
+                        this.y = y;
+                        return this;
+                    }
+                };
+                console.log("Created fallback Vector2 class");
+            }
+        } else if (className === 'Module') {
+            if (!window.Module) {
+                window.Module = class Module {
+                    constructor(name, properties = {}) {
+                        this.name = name;
+                        this.properties = properties;
+                    }
+                };
+                console.log("Created fallback Module class");
+            }
+        }
     }
 
     _triggerDownload(blob, fileName) {
@@ -368,3 +647,5 @@ class ProjectManager {
         console.log(`Download triggered for ${fileName}`);
     }
 }
+
+window.ProjectManager = ProjectManager;

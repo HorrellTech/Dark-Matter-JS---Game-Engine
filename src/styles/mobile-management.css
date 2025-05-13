@@ -1,0 +1,362 @@
+/* Mobile panel management */
+:root {
+    --panel-transition-time: 0.3s;
+}
+
+body.mobile-mode .main-content {
+    position: relative;
+    flex-direction: column;
+    height: 100vh !important; /* Force full height */
+    overflow: hidden;
+}
+
+body.mobile-mode .hierarchy-panel,
+body.mobile-mode .module-panel,
+body.mobile-mode .bottom-panel {
+    position: fixed !important; /* Use fixed instead of absolute */
+    z-index: 10000 !important;
+    background-color: rgba(37, 37, 38, 0.95);
+    transition: transform var(--panel-transition-time) ease;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+    overflow: auto;
+}
+
+body.mobile-mode .hierarchy-panel {
+    top: 32px !important; /* Account for toolbar height */
+    left: 0;
+    width: 90% !important;
+    height: calc(100vh - 32px) !important;
+    max-height: calc(100vh - 32px) !important;
+    transform: translateX(-100%);
+    border-radius: 0 0 5px 0;
+}
+
+body.mobile-mode .module-panel {
+    top: 32px !important; /* Account for toolbar height */
+    right: 0;
+    width: 90% !important;
+    height: calc(100vh - 32px) !important;
+    max-height: calc(100vh - 32px) !important;
+    transform: translateX(100%);
+    border-radius: 0 0 0 5px;
+}
+
+body.mobile-mode .bottom-panel {
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    height: 70vh !important; /* Larger height for bottom panel */
+    max-height: 70vh !important;
+    transform: translateY(100%);
+    border-radius: 5px 5px 0 0;
+}
+
+/* When panel is open */
+body.mobile-mode .hierarchy-panel.mobile-open,
+body.mobile-mode .module-panel.mobile-open,
+body.mobile-mode .bottom-panel.mobile-open {
+    transform: translateX(0) translateY(0);
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+/* Panel toggle buttons */
+.mobile-panel-toggles {
+    display: none;
+    position: fixed !important; /* Use fixed positioning */
+    z-index: 20000 !important; /* Higher than any panel */
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(45, 45, 45, 0.9);
+    border-radius: 30px;
+    padding: 5px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+body.mobile-mode .mobile-panel-toggles {
+    display: flex;
+}
+
+.mobile-panel-button {
+    width: 48px;
+    height: 48px;
+    margin: 0 5px;
+    border-radius: 50%;
+    border: none;
+    color: #ccc;
+    background: #333;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.mobile-panel-button:hover,
+.mobile-panel-button.active {
+    background-color: #454545;
+    color: #fff;
+}
+
+/* Hide resizers in mobile mode */
+body.mobile-mode .resizer-h,
+body.mobile-mode .resizer-v {
+    display: none;
+}
+
+/* Mobile friendly adjustments */
+@media (max-width: 768px) {
+    .hierarchy-header, 
+    .editor-toolbar {
+        font-size: 14px;
+    }
+
+    .toolbar-button,
+    .tab-button,
+    .canvas-tab {
+        padding: 8px;
+    }
+
+    .property-row {
+        flex-direction: column;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .property-row label {
+        margin-bottom: 4px;
+        width: 100%;
+    }
+    
+    .property-row input[type="text"],
+    .property-row input[type="number"],
+    .property-row input[type="color"],
+    .property-row select {
+        width: 100%;
+    }
+}
+
+/* Mobile detection overlay */
+.mobile-detection-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-align: center;
+    padding: 20px;
+}
+
+.mobile-detection-overlay h2 {
+    margin-bottom: 20px;
+}
+
+.mobile-detection-overlay p {
+    margin-bottom: 20px;
+    max-width: 500px;
+}
+
+.mobile-detection-overlay button {
+    padding: 10px 20px;
+    background-color: #007acc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    margin: 10px;
+    cursor: pointer;
+}
+
+/* Ensure mobile panel shows over the editor but doesn't resize it */
+body.mobile-mode .inspector-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+body.mobile-mode .inspector-scroll-container {
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* Additional fixes for editor canvas sizing */
+body.mobile-mode .center-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+body.mobile-mode .editor-section,
+body.mobile-mode .canvas-view.active,
+body.mobile-mode .canvas-container {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex;
+    flex-direction: column;
+}
+
+body.mobile-mode .editor-canvas-container,
+body.mobile-mode .game-canvas-container {
+    position: relative;
+    flex: 1;
+    width: 100% !important;
+    height: auto !important;
+}
+
+body.mobile-mode canvas#editorCanvas,
+body.mobile-mode canvas#gameCanvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+}
+
+body.mobile-mode .center-panel {
+    position: absolute !important;
+    top: 32px !important; /* Account for toolbar height */
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  /* Desktop mode - Editor section should expand to fill available space */
+.editor-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  /* Editor canvas container should be positioned absolutely to fill all available space */
+  .editor-canvas-container {
+    position: absolute;
+    top: 32px; /* Account for the toolbar */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: auto !important;
+  }
+  
+  /* Canvas should fill its container */
+  #editorCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  
+  /* Mobile mode specific fixes */
+  body.mobile-mode .center-panel {
+    position: absolute !important;
+    top: 32px !important; /* Account for toolbar height */
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  
+  body.mobile-mode .editor-canvas-container {
+    top: 0;
+  }
+  
+  /* Make sure the main content calculates height correctly when resizing */
+  .main-content {
+    height: calc(100vh - 56px - var(--bottom-panel-height, 250px));
+    min-height: 200px;
+  }
+  
+  /* Improve the panel resize handling */
+  .top-panel {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Make sure the editor panel takes full available height */
+.editor-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  /* Prevent scrollbars from appearing on the editor container */
+  .editor-canvas-container {
+    position: absolute !important;
+    top: 32px; /* Account for the toolbar/tabs */
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto !important;
+    height: auto !important;
+    overflow: hidden !important;
+  }
+  
+  /* Make sure the canvas fills its container properly */
+  #editorCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  
+  /* Proper handling of main content area when resizing */
+  .main-content {
+    height: calc(100vh - 32px - var(--bottom-panel-height, 250px));
+    min-height: 200px;
+    overflow: hidden;
+  }
+  
+  /* Ensure top panel does not collapse */
+  .top-panel {
+    position: relative;
+    flex: 1;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Prevent scrolling issues with bottom panel */
+  .bottom-panel {
+    position: relative;
+    min-height: 100px;
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Fix mobile layout to ensure panels appear on top */
+  body.mobile-mode .hierarchy-panel,
+  body.mobile-mode .module-panel,
+  body.mobile-mode .bottom-panel {
+    position: fixed !important;
+    z-index: 10000;
+  }
+  
+  /* Make mobile toggles always visible */
+  .mobile-panel-toggles {
+    position: fixed !important;
+    z-index: 20000 !important;
+  }

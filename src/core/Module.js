@@ -355,13 +355,52 @@ class Module {
      * @returns {Object} Serialized module data
      */
     toJSON() {
-        return {
+        // Basic module data
+        const data = {
             name: this.name,
             type: this.constructor.name,
             enabled: this.enabled,
-            properties: this.properties,
             requirements: this._requirements
         };
+    
+        // Serialize regular properties object
+        data.properties = { ...this.properties };
+        
+        // Serialize exposed properties (both from exposedProperties and custom getters/setters)
+        data.exposedValues = {};
+        
+        // Handle properties registered via exposeProperty
+        if (Array.isArray(this.exposedProperties)) {
+            for (const prop of this.exposedProperties) {
+                const propName = prop.name;
+                // Get the current value using our getter
+                const value = this[propName];
+                
+                // Only serialize non-undefined values
+                if (value !== undefined) {
+                    // Special handling for objects that have their own toJSON method
+                    if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
+                        data.exposedValues[propName] = value.toJSON();
+                    } else if (value instanceof Vector2) {
+                        // Special case for Vector2 objects
+                        data.exposedValues[propName] = { x: value.x, y: value.y };
+                    } else {
+                        // For primitive values and regular objects
+                        data.exposedValues[propName] = value;
+                    }
+                }
+            }
+        }
+
+        // Allow subclasses to add their own serialization
+        if (typeof this._serializeCustomData === 'function') {
+            const customData = this._serializeCustomData();
+            if (customData && typeof customData === 'object') {
+                data.customData = customData;
+            }
+        }
+        
+        return data;
     }
     
     /**
@@ -369,10 +408,72 @@ class Module {
      * @param {Object} json - Serialized module data 
      */
     fromJSON(json) {
-        this.name = json.name;
-        this.enabled = json.enabled;
+        if (!json) return this;
+        
+        // Restore basic properties
+        this.name = json.name || this.name;
+        this.enabled = json.enabled !== undefined ? json.enabled : this.enabled;
+        this._requirements = json.requirements || this._requirements || [];
+        
+        // Restore regular properties object
         this.properties = json.properties || {};
-        this._requirements = json.requirements || [];
+        
+        // Restore exposed property values
+        if (json.exposedValues) {
+            for (const propName in json.exposedValues) {
+                const value = json.exposedValues[propName];
+                
+                // Handle Vector2 values
+                if (value && typeof value === 'object' && 
+                    'x' in value && 'y' in value && 
+                    typeof this[propName] === 'object' && 
+                    this[propName] instanceof Vector2) {
+                    this[propName].x = value.x;
+                    this[propName].y = value.y;
+                }
+                // Handle objects with fromJSON method
+                else if (this[propName] && 
+                         typeof this[propName] === 'object' && 
+                         typeof this[propName].fromJSON === 'function' &&
+                         value) {
+                    this[propName].fromJSON(value);
+                }
+                // Regular values
+                else {
+                    // Use setProperty if available, otherwise set directly
+                    if (typeof this.setProperty === 'function') {
+                        this.setProperty(propName, value);
+                    } else {
+                        this[propName] = value;
+                    }
+                }
+            }
+        }
+
+        // Allow subclasses to handle custom data
+        if (json.customData && typeof this._deserializeCustomData === 'function') {
+            this._deserializeCustomData(json.customData);
+        }
+        
+        return this;
+    }
+
+    /**
+     * Override in subclasses to serialize additional module-specific data
+     * @protected
+     * @returns {Object|null} Custom serialized data
+     */
+    _serializeCustomData() {
+        return null; // Default implementation
+    }
+
+    /**
+     * Override in subclasses to deserialize module-specific data
+     * @protected
+     * @param {Object} data - Custom data to deserialize
+     */
+    _deserializeCustomData(data) {
+        // Default implementation does nothing
     }
 }
 

@@ -762,17 +762,25 @@ class GameObject {
      */
     toJSON() {
         return {
+            id: this.id, // Include the ID for reference
             name: this.name,
             position: { x: this.position.x, y: this.position.y },
+            scale: { x: this.scale.x, y: this.scale.y }, // Add scale
             size: { width: this.size.x, height: this.size.y },
             angle: this.angle,
             depth: this.depth,
             active: this.active,
+            editorColor: this.editorColor,
+            visible: this.visible, // Add visible property
             tags: [...this.tags],
             collisionEnabled: this.collisionEnabled,
             collisionLayer: this.collisionLayer,
             collisionMask: this.collisionMask,
-            modules: this.modules.map(module => module.toJSON()),
+            modules: this.modules.map(module => ({
+                type: module.constructor.name,
+                id: module.id,
+                data: module.toJSON ? module.toJSON() : {}
+            })),
             children: this.children.map(child => child.toJSON())
         };
     }
@@ -784,20 +792,93 @@ class GameObject {
      */
     static fromJSON(json) {
         const obj = new GameObject(json.name);
+        // Restore ID if available
+        if (json.id) obj.id = json.id;
+        
         obj.position = new Vector2(json.position.x, json.position.y);
-        obj.size = new Vector2(json.size.x, json.size.y);
+        obj.size = new Vector2(json.size.width, json.size.height);
+        // Restore scale if available
+        if (json.scale) obj.scale = new Vector2(json.scale.x, json.scale.y);
+        
         obj.angle = json.angle;
         obj.depth = json.depth;
         obj.active = json.active;
+        if (json.visible !== undefined) obj.visible = json.visible;
         obj.tags = [...json.tags];
-
+    
         if (json.collisionEnabled !== undefined) obj.collisionEnabled = json.collisionEnabled;
         if (json.collisionLayer !== undefined) obj.collisionLayer = json.collisionLayer;
         if (json.collisionMask !== undefined) obj.collisionMask = json.collisionMask;
         
-        // Add modules
-        // This requires a module registry to create instances
-        // We'll implement this later
+        // Add modules - with improved module class lookup
+        if (json.modules && Array.isArray(json.modules)) {
+            json.modules.forEach(moduleData => {
+                // Try to get the module class from registry or window
+                const moduleTypeName = moduleData.type;
+                let ModuleClass = null;
+                
+                // Try module registry first
+                if (window.moduleRegistry) {
+                    ModuleClass = window.moduleRegistry.getModuleClass(moduleTypeName);
+                }
+                
+                // Fall back to global scope with various naming conventions
+                if (!ModuleClass) {
+                    // Try PascalCase (standard naming convention)
+                    if (window[moduleTypeName]) {
+                        ModuleClass = window[moduleTypeName];
+                    }
+                    // If not found, try other possible variations to be more robust
+                    else if (moduleTypeName) {
+                        // Try camelCase variation
+                        const camelCase = moduleTypeName.charAt(0).toLowerCase() + moduleTypeName.slice(1);
+                        if (window[camelCase]) {
+                            ModuleClass = window[camelCase];
+                        }
+                        // Try capitalized version
+                        const capitalized = moduleTypeName.charAt(0).toUpperCase() + moduleTypeName.slice(1);
+                        if (window[capitalized]) {
+                            ModuleClass = window[capitalized];
+                        }
+                    }
+                }
+                
+                if (ModuleClass) {
+                    try {
+                        // Create the module instance
+                        const module = new ModuleClass();
+                        
+                        // Restore the module's ID and type
+                        if (moduleData.id) module.id = moduleData.id;
+                        module.type = moduleTypeName; // Explicitly set type to what was saved
+                        
+                        // Initialize from saved data if module has fromJSON method
+                        if (moduleData.data && typeof module.fromJSON === 'function') {
+                            module.fromJSON(moduleData.data);
+                        } else if (moduleData.exposedValues) {
+                            // Fall back to copying exposed values if no specific fromJSON method
+                            for (const key in moduleData.exposedValues) {
+                                if (key in module) {
+                                    module[key] = moduleData.exposedValues[key];
+                                }
+                            }
+                        }
+                        
+                        // Add module to game object
+                        obj.addModule(module);
+                        
+                    } catch (error) {
+                        console.error(`Error restoring module ${moduleTypeName}:`, error);
+                        // Create a placeholder module to preserve data
+                        createPlaceholderModule(obj, moduleData, moduleTypeName);
+                    }
+                } else {
+                    console.warn(`Module class ${moduleTypeName} not found when restoring game object.`);
+                    // Create a placeholder module to preserve data
+                    createPlaceholderModule(obj, moduleData, moduleTypeName);
+                }
+            });
+        }
         
         // Add children
         json.children.forEach(childJson => {
@@ -829,4 +910,18 @@ class GameObject {
         
         return cloned;
     }
+}
+
+function createPlaceholderModule(gameObj, moduleData, typeName) {
+    // Create a basic module that preserves the data
+    const placeholderModule = new Module(`${typeName || 'Unknown'} (Missing)`);
+    placeholderModule.id = moduleData.id;
+    placeholderModule.type = typeName || 'UnknownModule';
+    placeholderModule.missingModule = true;
+    placeholderModule.originalData = moduleData;
+    
+    // Add the placeholder module to preserve the structure
+    gameObj.addModule(placeholderModule);
+    
+    console.warn(`Created placeholder for missing module: ${typeName}`);
 }

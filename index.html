@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="src/styles/start-screen.css">
     <link rel="stylesheet" href="src/styles/documentation-modal.css">
     <link rel="stylesheet" href="src/styles/asset-manager.css">
+    <link rel="stylesheet" href="src/styles/mobile-management.css">
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -335,22 +336,28 @@
     <div class="loading-overlay">
         <div class="spinner"></div>
         <div class="loading-text">Loading Game...</div>
+    </div>    
+
+    <div class="mobile-panel-toggles">
+        <button class="mobile-panel-button" id="toggleHierarchy" title="Toggle Hierarchy">
+            <i class="fas fa-sitemap"></i>
+        </button>
+        <button class="mobile-panel-button" id="toggleInspector" title="Toggle Inspector">
+            <i class="fas fa-sliders-h"></i>
+        </button>
+        <button class="mobile-panel-button" id="toggleBottom" title="Toggle Files/Console">
+            <i class="fas fa-folder"></i>
+        </button>
     </div>
-
-    <script src="src/core/Math/Vector2.js"></script>
-    <script src="src/core/Math/Vector3.js"></script>
-    <script src="src/core/Module.js"></script>
-    <script src="src/core/ModuleRegistry.js"></script>
-    <script src="src/core/ModuleReloader.js"></script>
-    <script src="src/core/Math/Raycast.js"></script>
-
-    <script src="src/core/3D/Camera3D.js"></script>
-    <script src="src/core/3D/Mesh3D.js"></script>
-    <script src="src/core/3D/CubeMesh3D.js"></script>
-    <script src="src/core/3D/FlyCamera.js"></script>
-    <script src="src/core/3D/MouseLook.js"></script>
-
-    <script src="src/core/AssetManager.js"></script>
+    
+    <div class="mobile-detection-overlay" style="display: none;">
+        <h2>Mobile Device Detected</h2>
+        <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
+        <div>
+            <button id="enableMobileMode">Yes, use mobile mode</button>
+            <button id="disableMobileMode">No, use desktop mode</button>
+        </div>
+    </div>
 
     <script src="src/core/GameObject.js"></script>
     <script src="src/core/InputManager.js"></script>
@@ -363,6 +370,23 @@
     <script src="src/core/EditorGrid.js"></script>
     <script src="src/core/HierarchyManager.js"></script>
     <script src="src/core/matter-js/PhysicsManager.js"></script>
+
+    <script src="src/core/Math/Vector2.js"></script>
+    <script src="src/core/Math/Vector3.js"></script>
+    <script src="src/core/Module.js"></script>
+    <script src="src/core/ModuleRegistry.js"></script>
+    <script src="src/core/ModuleReloader.js"></script>
+    <script src="src/core/Math/Raycast.js"></script>
+
+    <script src="src/core/PanelManager.js"></script>
+
+    <script src="src/core/3D/Camera3D.js"></script>
+    <script src="src/core/3D/Mesh3D.js"></script>
+    <script src="src/core/3D/CubeMesh3D.js"></script>
+    <script src="src/core/3D/FlyCamera.js"></script>
+    <script src="src/core/3D/MouseLook.js"></script>
+
+    <script src="src/core/AssetManager.js"></script>
 
     <script src="src/core/Modules/RigidBody.js"></script>
     <script src="src/core/Modules/Collider.js"></script>

@@ -42,25 +42,40 @@ class Scene {
 
     static fromJSON(json) {
         const scene = new Scene(json.name);
-
-        // Apply settings
-        scene.settings = {
-            viewportWidth: json.settings.viewportWidth || 800,
-            viewportHeight: json.settings.viewportHeight || 600,
-            viewportX: json.settings.viewportX || 0,
-            viewportY: json.settings.viewportY || 0,
-            backgroundColor: json.settings.backgroundColor || "#000000",
-            gridEnabled: json.settings.gridEnabled !== undefined ? json.settings.gridEnabled : true,
-            gridSize: json.settings.gridSize || 32,
-            snapToGrid: json.settings.snapToGrid || false,
-            gravity: json.settings.gravity || { x: 0, y: 1 },
-            physicsEnabled: json.settings.physicsEnabled !== undefined ? 
-                json.settings.physicsEnabled : true,
-            physicsDebugDraw: json.settings.physicsDebugDraw || false
-        };
+        scene.settings = json.settings || {};
         
-        scene.gameObjects = json.gameObjects.map(objData => GameObject.fromJSON(objData));
+        // Restore other scene properties
+        scene.activeCamera = json.activeCamera;
+        
+        // Create gameObjects if we have GameObject reference
+        if (typeof GameObject !== 'undefined' || window.GameObject) {
+            // Use the appropriate GameObject reference
+            const GameObjectRef = typeof GameObject !== 'undefined' ? GameObject : window.GameObject;
+            
+            // Create gameObjects
+            scene.gameObjects = json.gameObjects.map(objJson => {
+                return GameObjectRef.fromJSON(objJson);
+            });
+        } else {
+            // If GameObject isn't available, store the JSON for later
+            scene.gameObjectsJSON = json.gameObjects;
+            scene.gameObjects = [];
+            console.warn("GameObject class not available. Game objects will be loaded when GameObject class is available.");
+        }
+        
         return scene;
+    }
+
+    completeLoading() {
+        if (this.gameObjectsJSON && (typeof GameObject !== 'undefined' || window.GameObject)) {
+            const GameObjectRef = typeof GameObject !== 'undefined' ? GameObject : window.GameObject;
+            this.gameObjects = this.gameObjectsJSON.map(objJson => {
+                return GameObjectRef.fromJSON(objJson);
+            });
+            delete this.gameObjectsJSON;
+            return true;
+        }
+        return false;
     }
 
     // Add engine integration methods

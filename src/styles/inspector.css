@@ -820,3 +820,94 @@ canvas {
     text-align: center;
     font-style: italic;
 }
+
+.main-content {
+    display: flex;
+    flex-direction: row;
+    height: calc(100vh - 56px); /* Adjust based on your header size */
+    overflow: hidden;
+}
+
+.hierarchy-panel, .module-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.bottom-panel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.panel-content {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+/* Make sure the inspector scroll container fills available space */
+.inspector-scroll-container {
+    height: calc(100% - 50px); /* Adjust based on header height */
+    overflow-y: auto;
+}
+
+/* Make sure the hierarchy content fills available space */
+.hierarchy-content {
+    height: calc(100% - 40px); /* Adjust based on header height */
+    overflow-y: auto;
+}
+
+.module-dropdown {
+    position: fixed; /* Change to fixed positioning */
+    background: #2d2d2d;
+    border: 1px solid #3d3d3d;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    z-index: 10000; /* Ensure it's above everything */
+    overflow-y: auto;
+    max-height: 400px; /* Will be set dynamically in JS */
+}
+
+.module-dropdown-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.module-dropdown-item:hover {
+    background-color: #3d3d3d;
+}
+
+.module-dropdown-namespace {
+    padding: 8px 12px 6px 10px;
+    font-weight: bold;
+    color: #b0b0b0;
+    background-color: #333333;
+    border-bottom: 1px solid #454545;
+    border-top: 1px solid #454545;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 5px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.module-dropdown-namespace:first-child {
+    margin-top: 0;
+    border-top: none;
+}
+
+.add-module-container {
+    margin-top: 15px;
+    position: relative;
+    margin-bottom: 15px; /* Add space at the bottom */
+}
+

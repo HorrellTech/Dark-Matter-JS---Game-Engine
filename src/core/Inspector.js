@@ -306,6 +306,23 @@ class Inspector {
             this.moduleDropdown.style.display = 'block';
             this.moduleDropdown.innerHTML = '<div class="dropdown-message">Loading modules...</div>';
             
+            // Position the dropdown above the button
+            const buttonRect = this.addModuleButton.getBoundingClientRect();
+            const containerRect = this.container.getBoundingClientRect();
+            
+            // Set high z-index to be above everything
+            this.moduleDropdown.style.zIndex = '10000';
+            
+            // Position it properly
+            this.moduleDropdown.style.bottom = `${window.innerHeight - buttonRect.top}px`;
+            this.moduleDropdown.style.left = `${buttonRect.left - containerRect.left}px`;
+            this.moduleDropdown.style.width = `${Math.min(300, window.innerWidth - 20)}px`;
+            
+            // Calculate max height to prevent overflow
+            const maxHeight = Math.min(400, buttonRect.top - 10);
+            this.moduleDropdown.style.maxHeight = `${maxHeight}px`;
+            this.moduleDropdown.style.overflowY = 'auto';
+            
             try {
                 this.availableModules = []; // Clear before scanning
                 
@@ -742,7 +759,7 @@ class Inspector {
         // Try to find module icon
         let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; // Default icon
         
-        if (this.editor?.fileBrowser) {
+        /*if (this.editor?.fileBrowser) {
             const files = this.editor.fileBrowser.getAllFiles();
             const moduleClassName = module.constructor.name;
             
@@ -756,7 +773,11 @@ class Inspector {
             if (iconFile) {
                 iconHtml = `<img src="${iconFile.path}" class="module-icon" alt="${module.type} icon">`;
             }
-        }
+        }*/
+
+        // Set module type display name - handle missing/undefined modules
+        const moduleDisplayName = module.type || module.constructor.name || 'Unknown Module';
+        const isMissingModule = module.missingModule === true;
         
         // Check if this module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState(module.id);
@@ -772,6 +793,18 @@ class Inspector {
                 <span>Requires:</span> ${requirementsList}
             </div>
             `;
+        }
+
+        // Add warning for missing modules
+        let warningHtml = '';
+        if (isMissingModule) {
+            warningHtml = `
+            <div class="module-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Module class not found. Data preserved but functionality is limited.</span>
+            </div>
+            `;
+            moduleContainer.classList.add('missing-module');
         }
         
         moduleContainer.innerHTML = `
@@ -796,6 +829,7 @@ class Inspector {
                 </div>
             </div>
             <div class="module-content" style="${!module.enabled ? 'opacity: 0.5;' : ''}${isCollapsed ? 'display: none;' : ''}">
+                ${warningHtml}
                 ${requirementsHtml}
                 ${this.generateModulePropertiesUI(module)}
             </div>
@@ -1049,16 +1083,40 @@ class Inspector {
     }
 
     /**
-     * Generate HTML for module-specific properties
+     * Generate UI for a module based on its exposed properties
+     * @param {Module} module - The module to generate UI for
+     * @returns {string} HTML for the module properties
      */
     generateModulePropertiesUI(module) {
-        // This method would be customized based on the module type
+        // Handle specific module types first
         if (module instanceof SpriteRenderer) {
             return this.generateSpriteRendererUI(module);
         }
         
-        // Default empty properties
-        return '<div class="property-message">No editable properties</div>';
+        // For generic modules, first try to use exposedProperties
+        let exposedProps = module.getExposedProperties ? module.getExposedProperties() : [];
+        
+        // If no exposed properties and module has a properties object, use that directly
+        if ((!exposedProps || exposedProps.length === 0) && module.properties && Object.keys(module.properties).length > 0) {
+            exposedProps = Object.entries(module.properties).map(([key, value]) => {
+                return {
+                    name: key,
+                    type: typeof value,
+                    value: value
+                };
+            });
+        }
+        
+        if (!exposedProps || exposedProps.length === 0) {
+            return '<div class="property-message">No editable properties</div>';
+        }
+        
+        // Generate UI for each property
+        const html = exposedProps.map(prop => {
+            return this.generatePropertyUI(prop, module);
+        }).join('');
+        
+        return html;
     }
 
     /**
@@ -1146,11 +1204,23 @@ class Inspector {
      * @returns {string} HTML for the property UI
      */
     generatePropertyUI(prop, module) {
-        const value = module.getProperty(prop.name, prop.value);
+        // Get the property value, trying different access methods
+        let value;
+        if (typeof module.getProperty === 'function') {
+            value = module.getProperty(prop.name, prop.value);
+        } else if (prop.name in module) {
+            value = module[prop.name];
+        } else if (module.properties && prop.name in module.properties) {
+            value = module.properties[prop.name];
+        } else {
+            value = prop.value;
+        }
+
         const inputId = `prop-${module.id}-${prop.name}`;
         
         // Check if the property is a Vector2 or Vector3
-        if (value instanceof Vector2 || value instanceof Vector3) {
+        if (value instanceof Vector2 || value instanceof Vector3 || 
+            (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
             // Generate collapsible vector fields
             return this.generateVectorUI(prop, module, value);
         }
@@ -1496,16 +1566,18 @@ class Inspector {
         vectorCollapseButtons.forEach(button => {
             button.addEventListener('click', () => {
                 const targetId = button.dataset.target;
-                const componentsContainer = document.getElementById(targetId);
-                const isCollapsed = componentsContainer.style.display === 'none';
+                const vectorComponents = container.querySelector(`#${targetId}`);
+                const isCollapsed = vectorComponents.style.display === 'none';
                 
                 // Toggle collapse state
-                componentsContainer.style.display = isCollapsed ? '' : 'none';
+                vectorComponents.style.display = isCollapsed ? '' : 'none';
                 button.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
                 button.title = isCollapsed ? 'Collapse' : 'Expand';
                 
                 // Save collapse state
-                this.saveVectorCollapseState(targetId, !isCollapsed);
+                if (button.dataset.vectorId) {
+                    this.saveVectorCollapseState(button.dataset.vectorId, !isCollapsed);
+                }
             });
         });
         
@@ -1516,26 +1588,21 @@ class Inspector {
             const component = input.dataset.component;
             
             input.addEventListener('change', () => {
-                // Get the vector property
-                const vector = module.getProperty(propName);
-                if (!vector) return;
-                
-                // Update the specific component
-                const value = parseFloat(input.value);
-                vector[component] = value;
-                
-                // Update the preview text
-                const previewEl = input.closest('.vector-property').querySelector('.vector-preview');
-                if (previewEl) {
-                    if (vector instanceof Vector3) {
-                        previewEl.textContent = `(${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}, ${vector.z.toFixed(1)})`;
-                    } else {
-                        previewEl.textContent = `(${vector.x.toFixed(1)}, ${vector.y.toFixed(1)})`;
+                if (!module[propName]) {
+                    // If property doesn't exist directly, look in module.properties
+                    if (module.properties && module.properties[propName]) {
+                        if (!module.properties[propName][component]) {
+                            module.properties[propName][component] = 0;
+                        }
+                        module.properties[propName][component] = parseFloat(input.value);
+                    }
+                } else {
+                    // Direct property access
+                    if (module[propName] && module[propName][component] !== undefined) {
+                        module[propName][component] = parseFloat(input.value);
                     }
                 }
                 
-                // Update the module and refresh
-                module.setProperty(propName, vector);
                 this.editor.refreshCanvas();
             });
         });
@@ -1548,27 +1615,30 @@ class Inspector {
             input.addEventListener('change', () => {
                 let value;
                 
-                switch (input.type) {
-                    case 'checkbox':
-                        value = input.checked;
-                        break;
-                    case 'number':
-                        value = parseFloat(input.value);
-                        break;
-                    case 'select-one':
-                        value = input.value;
-                        break;
-                    default:
-                        value = input.value;
+                // Handle different input types
+                if (input.type === 'checkbox') {
+                    value = input.checked;
+                } else if (input.type === 'number') {
+                    value = parseFloat(input.value);
+                } else if (input.type === 'color') {
+                    value = input.value;
+                } else if (input.tagName === 'SELECT') {
+                    value = input.value;
+                } else {
+                    value = input.value;
                 }
                 
-                // Update the property
-                module.setProperty(propName, value);
-                
-                // Call specific update handler if defined on the module
-                const updateHandler = `on${propName.charAt(0).toUpperCase() + propName.slice(1)}Changed`;
-                if (typeof module[updateHandler] === 'function') {
-                    module[updateHandler](value);
+                // Try to set property using setProperty method first
+                if (typeof module.setProperty === 'function') {
+                    module.setProperty(propName, value);
+                } 
+                // Then try direct property access
+                else if (propName in module) {
+                    module[propName] = value;
+                }
+                // Finally fall back to module.properties
+                else if (module.properties) {
+                    module.properties[propName] = value;
                 }
                 
                 this.editor.refreshCanvas();

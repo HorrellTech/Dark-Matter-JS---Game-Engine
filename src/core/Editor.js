@@ -161,6 +161,16 @@ class Editor {
         
         // Initial render
         this.refreshCanvas();
+
+        // Add window resize handler specifically for editor canvas
+        window.addEventListener('resize', () => {
+            this.refreshCanvas();
+        });
+        
+        // Also listen for panel resize events
+        window.addEventListener('panelsResized', () => {
+            this.refreshCanvas();
+        });
     }
 
     animationLoop() {
@@ -284,12 +294,23 @@ class Editor {
     }
     
     refreshCanvas() {
-        const canvasRect = this.canvas.getBoundingClientRect();
-        if (this.canvas.width !== canvasRect.width || this.canvas.height !== canvasRect.height) {
-            this.canvas.width = canvasRect.width;
-            this.canvas.height = canvasRect.height;
+        // Get the parent container dimensions directly
+        const container = this.canvas.parentElement;
+        if (!container) return;
+        
+        const containerRect = container.getBoundingClientRect();
+        
+        // Always set canvas dimensions to match container, even if they seem unchanged
+        // This helps with mobile panel state changes
+        this.canvas.width = containerRect.width;
+        this.canvas.height = containerRect.height;
+        
+        // Update camera position if this is the first time setting up or after significant size changes
+        if (!this.initialSizeSet) {
+            this.camera.position = new Vector2(this.canvas.width / 2, this.canvas.height / 2);
+            this.initialSizeSet = true;
         }
-
+    
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
         if (!this.activeScene) return;
@@ -312,17 +333,12 @@ class Editor {
         // Draw viewport bounds
         this.drawSceneViewport();
         
-        // Draw all game objects - ONLY FROM activeScene
-    if (this.activeScene && this.activeScene.gameObjects) {
-        this.activeScene.gameObjects.forEach(obj => {
-            obj.drawInEditor(this.ctx);
-        });
-    }
-        
-        // Draw all game objects
-        //this.scene.gameObjects.forEach(obj => {
-        //    obj.drawInEditor(this.ctx);
-        //});
+        // Draw all game objects from activeScene
+        if (this.activeScene && this.activeScene.gameObjects) {
+            this.activeScene.gameObjects.forEach(obj => {
+                obj.drawInEditor(this.ctx);
+            });
+        }
         
         // Draw transform handles for selected object
         if (this.hierarchy && this.hierarchy.selectedObject && this.hierarchy.selectedObject.active) {
@@ -330,7 +346,7 @@ class Editor {
         }
         
         this.ctx.restore();
-
+    
         // Draw mouse coordinates (outside the transformed context)
         if (this.showMouseCoordinates) {
             this.drawMouseCoordinates();
@@ -475,7 +491,9 @@ class Editor {
             e.touches[0].clientX - this.canvas.getBoundingClientRect().left,
             e.touches[0].clientY - this.canvas.getBoundingClientRect().top
         );
-        this.dragInfo.cameraStartPos = this.camera.position.clone();
+        this.dragInfo.cameraStartPos = this.camera.position instanceof Vector2 ? 
+        this.camera.position.clone() : 
+        new Vector2(this.camera.position.x, this.camera.position.y);
     }
 
     /**
@@ -1041,7 +1059,9 @@ class Editor {
             this.dragInfo.dragging = true;
             this.dragInfo.isPanning = true;
             this.dragInfo.startPos = new Vector2(e.offsetX, e.offsetY);
-            this.dragInfo.cameraStartPos = this.camera.position.clone();
+            this.dragInfo.cameraStartPos = this.camera.position instanceof Vector2 ? 
+            this.camera.position.clone() : 
+            new Vector2(this.camera.position.x, this.camera.position.y);
         }
     }
     
@@ -1585,7 +1605,10 @@ class Editor {
      */
     resetCamera() {
         // Save old position and zoom for animation
-        const oldPosition = this.camera.position.clone();
+        const oldPosition = this.camera.position instanceof Vector2 ? 
+        this.camera.position.clone() : 
+        new Vector2(this.camera.position.x, this.camera.position.y);
+        
         const oldZoom = this.camera.zoom;
         const targetPosition = new Vector2(this.canvas.width / 2, this.canvas.height / 2);
         const targetZoom = 1;

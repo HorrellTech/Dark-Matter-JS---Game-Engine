@@ -27,6 +27,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const startScreen = new StartScreen('0.1.0');
 
+    // Setup mobile touch handling
+    setupMobileTouchHandling();
+
     // Tab functionality
     document.querySelectorAll('.tab-button').forEach(button => {
         button.addEventListener('click', () => {
@@ -103,20 +106,26 @@ document.addEventListener('DOMContentLoaded', () => {
     contextMenu.style.display = 'none';
     document.body.appendChild(contextMenu);
 
-    // Initialize file browser with the container ID and make it available globally
-    this.fileBrowser = window.fileBrowser || new FileBrowser('fileBrowserContainer');
-    window.fileBrowser = this.fileBrowser;
-    
-    // Connect the editor reference to the file browser
-    this.fileBrowser.editor = this;
+    // Initialize file browser with the container ID
+    const fileBrowser = new FileBrowser('fileBrowserContainer');
+    window.fileBrowser = fileBrowser;
+
+    // Make editor globally accessible
+    window.editor = editor;
+
+    // Connect editor and fileBrowser
+    editor.fileBrowser = fileBrowser;
+    fileBrowser.editor = editor;
     
     // Scan for existing module scripts
-    this.fileBrowser.scanForModuleScripts();
+    fileBrowser.scanForModuleScripts();
     
     // Ensure editor.sceneManager is available
     if (!editor.sceneManager && window.SceneManager) {
         editor.sceneManager = new SceneManager(editor);
     }
+
+    let projectManager;
 
     // Initialize ProjectManager
     if (window.ProjectManager && editor && editor.sceneManager && window.fileBrowser) {
@@ -159,6 +168,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', () => {
         contextMenu.style.display = 'none';
     });
+
+    // Add this near the beginning of your main initialization code
+    function initializeMobileSupport() {
+        // Check if panel manager exists, create if needed
+        if (!window.panelManager) {
+            console.log("Creating panel manager from app.js");
+            window.panelManager = new PanelManager();
+        }
+        
+        // Add a console command for easy testing
+        window.testMobileMode = function() {
+            if (window.panelManager) {
+                window.panelManager.testMobileMode();
+            } else {
+                console.error("PanelManager not initialized");
+            }
+        };
+        
+        // Add mobile detection
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+            console.log("Mobile device detected, enabling mobile mode");
+            if (window.panelManager) {
+                window.panelManager.checkMobileMode();
+            }
+        }
+    }
 
     // Panel resize functionality
     function initResize(resizer, panel, isHorizontal) {
@@ -208,6 +244,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         resizer.addEventListener('mousedown', startResize);
     }
+
+    initializeMobileSupport();
 
     // Initialize resizers
     document.querySelectorAll('.resizer-v').forEach(resizer => {
@@ -450,46 +488,52 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (playButton && stopButton) {
         playButton.addEventListener('click', async () => {
+            console.log("Play button clicked");
+            
             if (!editor.activeScene) {
                 console.error('No active scene to play');
                 return;
             }
             
-            // Visual feedback - button active state
+            // First add visual feedback - button active state
             playButton.classList.add('active');
             stopButton.classList.remove('active');
             
+            // Switch to game tab if needed
+            const gameTab = document.querySelector('[data-canvas="game"]');
+            if (gameTab) gameTab.click();
+            
             // If game was paused, resume it instead of restarting
             if (engine.wasRunning) {
+                console.log("Resuming previously running game");
                 engine.resume();
                 return;
             }
             
-            // Debug log to help troubleshoot
+            // Debug log
             console.log(`Starting game with scene: ${editor.activeScene.name}`);
             console.log(`Scene has ${editor.activeScene.gameObjects.length} root objects`);
             
             // Load and start the scene
             engine.loadScene(editor.activeScene);
-            
-            // Make sure the game canvas is properly sized
             engine.resizeCanvas();
             
             try {
-                // Start the game with a loading indicator
+                // Start the game with loading indicator
                 document.body.classList.add('game-loading');
                 await engine.start();
+                document.getElementById('gameCanvas').focus(); // Give focus to the game canvas
             } catch (error) {
                 console.error('Error starting game:', error);
+                playButton.classList.remove('active');
             } finally {
                 document.body.classList.remove('game-loading');
             }
-
-            // Update resolution display
-            updateResolutionDisplay();
         });
         
         stopButton.addEventListener('click', () => {
+            console.log("Stop button clicked");
+            
             if (engine.running) {
                 // Visual feedback - button active state
                 playButton.classList.remove('active');
@@ -606,6 +650,132 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             resolutionDisplay.textContent = `${canvasWidth}×${canvasHeight}`;
         }
+    }
+
+    function setupMobileTouchHandling() {
+        // Add touch events for canvas interaction
+        const editorCanvas = document.getElementById('editorCanvas');
+        
+        if (editorCanvas && window.editor) {
+            let touchStartPos = null;
+            let touchStartTime = 0;
+            
+            editorCanvas.addEventListener('touchstart', (e) => {
+                // Prevent default to avoid scrolling
+                e.preventDefault();
+                
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    touchStartPos = { 
+                        x: touch.clientX, 
+                        y: touch.clientY 
+                    };
+                    touchStartTime = Date.now();
+                    
+                    // Simulate mousedown for object selection
+                    const mouseEvent = new MouseEvent('mousedown', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY,
+                        bubbles: true
+                    });
+                    editorCanvas.dispatchEvent(mouseEvent);
+                }
+                
+                // Handle pinch zoom with two fingers
+                if (e.touches.length === 2) {
+                    const touch1 = e.touches[0];
+                    const touch2 = e.touches[1];
+                    
+                    // Calculate initial distance between fingers
+                    const initialDistance = Math.hypot(
+                        touch1.clientX - touch2.clientX, 
+                        touch1.clientY - touch2.clientY
+                    );
+                    
+                    window.editor._pinchZoomData = {
+                        initialDistance: initialDistance,
+                        initialZoom: window.editor.camera.zoom
+                    };
+                }
+            });
+            
+            editorCanvas.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                
+                // Handle single finger panning
+                if (e.touches.length === 1 && touchStartPos) {
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - touchStartPos.x;
+                    const deltaY = touch.clientY - touchStartPos.y;
+                    
+                    // If we've moved enough, simulate drag for panning
+                    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+                        touchStartPos = { 
+                            x: touch.clientX, 
+                            y: touch.clientY 
+                        };
+                        
+                        // Simulate mousemove for panning
+                        const mouseEvent = new MouseEvent('mousemove', {
+                            clientX: touch.clientX,
+                            clientY: touch.clientY,
+                            bubbles: true
+                        });
+                        editorCanvas.dispatchEvent(mouseEvent);
+                    }
+                }
+                
+                // Handle pinch zoom
+                if (e.touches.length === 2 && window.editor._pinchZoomData) {
+                    const touch1 = e.touches[0];
+                    const touch2 = e.touches[1];
+                    
+                    // Calculate new distance between fingers
+                    const newDistance = Math.hypot(
+                        touch1.clientX - touch2.clientX, 
+                        touch1.clientY - touch2.clientY
+                    );
+                    
+                    // Calculate zoom factor based on pinch
+                    const pinchRatio = newDistance / window.editor._pinchZoomData.initialDistance;
+                    const newZoom = window.editor._pinchZoomData.initialZoom * pinchRatio;
+                    
+                    // Apply zoom with constraints
+                    window.editor.camera.zoom = Math.max(0.1, Math.min(10, newZoom));
+                    window.editor.updateZoomLevelDisplay();
+                    window.editor.refreshCanvas();
+                }
+            });
+            
+            editorCanvas.addEventListener('touchend', (e) => {
+                // Handle touch ending
+                if (e.touches.length === 0) {
+                    // Check if this was a tap (quick touch)
+                    const touchDuration = Date.now() - touchStartTime;
+                    
+                    if (touchDuration < 300 && touchStartPos) {
+                        // Simulate click for selection
+                        const mouseEvent = new MouseEvent('mouseup', {
+                            clientX: touchStartPos.x,
+                            clientY: touchStartPos.y,
+                            bubbles: true
+                        });
+                        editorCanvas.dispatchEvent(mouseEvent);
+                    }
+                    
+                    // Reset touch data
+                    touchStartPos = null;
+                    touchStartTime = 0;
+                    window.editor._pinchZoomData = null;
+                }
+            });
+        }
+        
+        // Make toolbar and buttons more touch-friendly
+        document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
+            button.style.minHeight = '32px';
+            button.style.minWidth = '32px';
+        });
     }
 
     // Call this after engine initialization

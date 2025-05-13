@@ -11,6 +11,8 @@ class FileBrowser {
         this.initializeUI();
         this.initializeDB();
 
+        this.assetManager = new AssetManager(this);
+
         // Register file types after initialization
         this.fileTypes['.scene'] = {
             icon: 'fa-gamepad',
@@ -260,6 +262,41 @@ class FileBrowser {
                 }
             }
         });
+    }
+
+    /**
+     * Show the export assets modal
+     */
+    showExportAssetsModal() {
+        if (this.assetManager) {
+            this.assetManager.showExportModal();
+        } else {
+            console.error("AssetManager not initialized");
+            this.showNotification("Asset manager not available", "error");
+        }
+    }
+
+    /**
+     * Import assets from a .asset file
+     */
+    importAssets() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.asset';
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (this.assetManager) {
+                await this.assetManager.importAssets(file);
+            } else {
+                console.error("AssetManager not initialized");
+                this.showNotification("Asset manager not available", "error");
+            }
+        };
+        
+        input.click();
     }
 
     async openSceneFile(file) {
@@ -1119,25 +1156,18 @@ async loadModuleScript(scriptPath) {
     /**
      * Show a notification toast
      */
-    showNotification(message, type = 'info') {
-        // Create notification element if it doesn't exist
-        if (!this.notificationElement) {
-            this.notificationElement = document.createElement('div');
-            this.notificationElement.className = 'file-browser-notification';
-            document.body.appendChild(this.notificationElement);
-        }
+    showNotification(message, type = "info") {
+        console.log(`${type.toUpperCase()}: ${message}`);
+        // Create a temporary notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
         
-        // Set notification content
-        this.notificationElement.textContent = message;
-        this.notificationElement.className = `file-browser-notification ${type}`;
-        
-        // Show notification
-        this.notificationElement.style.display = 'block';
-        
-        // Hide after timeout
-        clearTimeout(this.notificationTimeout);
-        this.notificationTimeout = setTimeout(() => {
-            this.notificationElement.style.display = 'none';
+        // Remove after a delay
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => document.body.removeChild(notification), 500);
         }, 3000);
     }
 
