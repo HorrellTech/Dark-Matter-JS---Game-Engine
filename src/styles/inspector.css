@@ -855,41 +855,24 @@ canvas {
 }
 
 .module-dropdown {
-    position: fixed; /* Change to fixed positioning */
+    position: fixed !important;
+    z-index: 1000000 !important;
     background: #2d2d2d;
     border: 1px solid #3d3d3d;
     border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    z-index: 10000; /* Ensure it's above everything */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     overflow-y: auto;
-    max-height: 400px; /* Will be set dynamically in JS */
+    padding: 5px 0;
 }
 
 .module-dropdown-item {
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 12px;
 }
 
 .module-dropdown-item:hover {
     background-color: #3d3d3d;
-}
-
-.module-dropdown {
-    position: fixed; /* Changed from absolute to fixed */
-    background: #2d2d2d;
-    border: 1px solid #3d3d3d;
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Enhanced shadow for better depth */
-    z-index: 10000; /* Ensure it's above everything, was set in JS, good to have in CSS too */
-    overflow-y: auto;
-    /* max-height will be set dynamically by JS */
-    /* width will be set dynamically by JS */
-    /* top, left, bottom will be set by JS */
-    padding: 5px 0;
 }
 
 .module-dropdown-folder {
@@ -922,19 +905,6 @@ canvas {
     /* display is handled by JS */
 }
 
-.module-dropdown-item {
-    /* padding-left is set by JS for indentation */
-    padding-top: 6px;
-    padding-bottom: 6px;
-    padding-right: 12px; /* Keep right padding consistent */
-    cursor: pointer;
-    color: #e0e0e0;
-    font-size: 0.95em;
-    transition: background-color 0.2s;
-    white-space: normal; /* Allow wrapping for description */
-    overflow: hidden; /* Combined with text-overflow for name if needed */
-}
-
 .module-dropdown-item:hover {
     background-color: #3f3f3f;
 }
@@ -948,30 +918,24 @@ canvas {
 }
 
 .module-dropdown-item-description {
-    display: block; /* Display description on a new line */
     font-size: 0.8em;
     color: #a0a0a0;
     margin-top: 2px;
-    padding-left: 2px; /* Small indent for description */
-    white-space: normal; /* Allow description to wrap */
+    white-space: normal;
     line-height: 1.3;
 }
 
 
 .module-dropdown-namespace {
-    padding: 8px 12px 6px 10px;
-    font-weight: bold;
-    color: #b0b0b0;
-    background-color: #333333;
-    border-bottom: 1px solid #454545;
-    border-top: 1px solid #454545;
-    font-size: 0.9em;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 5px;
     position: sticky;
-    top: -5px; /* Adjust based on parent padding */
-    z-index: 1; /* Keep namespace headers above items during scroll */
+    top: 0;
+    background: #333;
+    padding: 6px 12px;
+    font-size: 0.9em;
+    color: #b0b0b0;
+    text-transform: uppercase;
+    border-bottom: 1px solid #454545;
+    z-index: 1;
 }
 
 .module-dropdown-namespace:first-child {
@@ -983,5 +947,74 @@ canvas {
     margin-top: 15px;
     position: relative;
     margin-bottom: 15px; /* Add space at the bottom */
+}
+
+/* —— Namespace header color tweak —— */
+.module-dropdown-namespace {
+    background-color: #324055 !important;  /* dark gray-blue */
+    color: #a2b3c4      !important;  /* light steel blue */
+  }
+  
+  /* —— Make descriptions visible —— */
+  .module-dropdown-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;  /* allow description below name */
+  }
+  
+  .module-dropdown-item-description {
+    display: block         !important;
+    white-space: normal    !important;
+    overflow: visible      !important;
+    color: #a0b0c0         !important;
+    margin-top: 2px;
+    font-size: 0.85em;
+  }
+
+  /* —— Namespace (folder) headers in dropdown —— */
+.module-dropdown-folder-header {
+    background-color: #6b6745 !important;
+    color:          #cfc7ab !important;
+  }
+  
+  .module-dropdown-folder-header:hover {
+    background-color: #aa9e6a !important;
+  }
+
+  /* Polygon editor styles */
+button.add-vertex {
+    display: block;
+    margin: 8px auto;
+    padding: 4px 10px;
+    background-color: #4a6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+button.add-vertex:hover {
+    background-color: #5b7;
+}
+
+button.remove-vertex {
+    background-color: #e55;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button.remove-vertex:hover {
+    background-color: #f66;
+}
+
+button.remove-vertex:disabled {
+    background-color: #999;
+    cursor: not-allowed;
 }
 

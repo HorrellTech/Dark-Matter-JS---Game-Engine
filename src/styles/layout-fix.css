@@ -344,8 +344,20 @@ body {
   background: #666666;
 }
 
-.canvas-view.active .editor-canvas-container {
-  display: flex    !important;  /* ensure flex if you need the nav arrows container */
+/* Make both editor and game canvases hug the top of their panels */
+.canvas-view.active .editor-canvas-container,
+.canvas-view.active .game-canvas-container {
+  display: flex            !important;  
   justify-content: flex-start !important;
   align-items:    flex-start !important;
+}
+
+.editor-canvas-container canvas,
+.game-canvas-container canvas,
+#editorCanvas,
+#gameCanvas {
+  object-fit: fill     !important;
+  object-position: top left !important;
+  margin: 0 !important;
+  min-height: 0 !important;
 }

@@ -394,101 +394,15 @@ class Engine {
     
     cloneGameObjects(objects) {
         return objects.map(obj => {
-            // Create a new GameObject with the same name
-            const clonedObj = new GameObject(obj.name);
+            // Use the GameObject's built-in clone method
+            const clonedObj = obj.clone();
             
-            // Copy basic properties
-            clonedObj.id = crypto.randomUUID(); // Generate a new unique ID
-            clonedObj.position = new Vector2(obj.position.x, obj.position.y);
-            clonedObj.scale = new Vector2(obj.scale.x, obj.scale.y);
-            clonedObj.angle = obj.angle;
-            clonedObj.depth = obj.depth;
-            clonedObj.active = obj.active;
-            clonedObj.visible = obj.visible !== false; // Ensure visible is true unless explicitly false
-            clonedObj.tags = [...obj.tags];
-            clonedObj.editorColor = obj.editorColor;
-            
-            // Clone modules properly
-            if (obj.modules && obj.modules.length > 0) {
-                clonedObj.modules = [];
-                
-                for (const module of obj.modules) {
-                    try {
-                        // Use module's clone method if available
-                        if (typeof module.clone === 'function') {
-                            const clonedModule = module.clone();
-                            clonedModule.gameObject = clonedObj; // Set the correct gameObject reference
-                            clonedObj.modules.push(clonedModule);
-                            continue;
-                        } 
-                        
-                        // Create a new instance of the same module type
-                        if (module.constructor) {
-                            // Get module constructor name or use the module type
-                            const constructorName = module.constructor.name || module.type;
-                            
-                            // Try to get the class from the window object
-                            const ModuleClass = window[constructorName];
-                            
-                            if (ModuleClass) {
-                                console.log(`Cloning module ${constructorName}`);
-                                
-                                // Create a new module instance
-                                let newModule;
-                                
-                                // Special handling for SpriteRenderer which needs imageSrc
-                                if (constructorName === 'SpriteRenderer' && module.imageSrc) {
-                                    newModule = new ModuleClass(module.imageSrc);
-                                } else {
-                                    newModule = new ModuleClass();
-                                }
-                                
-                                // Copy important properties
-                                newModule.gameObject = clonedObj;
-                                newModule.enabled = module.enabled !== false; // Ensure enabled is true unless explicitly false
-                                newModule.id = crypto.randomUUID(); // New ID
-                                
-                                // Copy all other properties if module has them
-                                for (const prop in module) {
-                                    // Skip functions, gameObject reference, and already copied properties
-                                    if (prop === 'gameObject' || prop === 'id' || prop === 'enabled' || 
-                                        prop === 'constructor' || typeof module[prop] === 'function') {
-                                        continue;
-                                    }
-                                    
-                                    try {
-                                        if (module[prop] !== undefined) {
-                                            // Handle Vector2 objects
-                                            if (module[prop] instanceof Vector2) {
-                                                newModule[prop] = new Vector2(module[prop].x, module[prop].y);
-                                            }
-                                            // Handle image objects
-                                            else if (prop === 'image' && module[prop]) {
-                                                // Images will be reloaded in preload()
-                                            } 
-                                            // Handle simple objects and primitives
-                                            else {
-                                                newModule[prop] = JSON.parse(JSON.stringify(module[prop]));
-                                            }
-                                        }
-                                    } catch (err) {
-                                        console.warn(`Could not clone property ${prop} on module ${constructorName}:`, err);
-                                    }
-                                }
-                                
-                                clonedObj.modules.push(newModule);
-                            } else {
-                                console.error(`Module class ${constructorName} not found`);
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`Error cloning module on ${obj.name}:`, error);
-                    }
-                }
-            }
-            
-            // Handle children
+            // Handle the cloning of children separately to maintain proper hierarchy
             if (obj.children && obj.children.length > 0) {
+                // Remove any existing children that were cloned
+                clonedObj.children = [];
+                
+                // Clone all children recursively and add them properly
                 const clonedChildren = this.cloneGameObjects(obj.children);
                 clonedChildren.forEach(child => {
                     clonedObj.addChild(child);

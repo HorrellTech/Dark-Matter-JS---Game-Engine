@@ -15,11 +15,14 @@
  * 7. onDestroy - Called when the module is being destroyed
  */
 class Module {
+    static allowMultiple = true; // Allow multiple instances of this module type
     /**
      * Create a new Module
      * @param {string} name - The name of this module instance
      */
     constructor(name = "Module") {
+        this.type = this.constructor.name; // Module type
+
         /** @type {string} Name of the module */
         this.name = name;
         
@@ -249,9 +252,9 @@ class Module {
         // to avoid conflicts with getters/setters
         const privatePropName = `_${name}`;
         
-        // Only set it if it's not already defined
+        // Initialize the private property with the default value or current value
         if (this[privatePropName] === undefined) {
-            this[privatePropName] = defaultValue;
+            this[privatePropName] = this[name] !== undefined ? this[name] : defaultValue;
         }
         
         // Create property accessor that uses the private property
@@ -273,6 +276,11 @@ class Module {
                 enumerable: true,
                 configurable: true
             });
+        }
+        
+        // Ensure the initial value is set properly
+        if (this[name] !== this[privatePropName]) {
+            this[name] = this[privatePropName];
         }
     }
 

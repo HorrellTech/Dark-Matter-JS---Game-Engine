@@ -63,6 +63,9 @@ class PhysicsManager {
         this.bodies.forEach((gameObject, body) => {
             if (!gameObject || !body) return;
             
+            // Skip colliders that are managed by their own module
+            if (body.plugin && body.plugin.isCollider) return;
+            
             // Only update if the body is dynamic or kinematic
             if (!body.isStatic) {
                 // Update position from physics body

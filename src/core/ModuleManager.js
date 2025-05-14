@@ -9,7 +9,10 @@ class ModulesManager {
         this.coreModules = [
             'SpriteRenderer',
             'RigidBody', 
-            'Collider'
+            'Collider',
+            'BoundingBoxCollider',
+            'DrawCircle',
+            'DrawRectangle'
             //'BabylonRenderer'
         ];
     }

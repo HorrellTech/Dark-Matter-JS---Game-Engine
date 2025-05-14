@@ -309,6 +309,10 @@ class ProjectManager {
                 await this.fileBrowser.navigateTo('/'); // Refresh file browser view
                 console.log("Assets restored.");
 
+                console.log("Scanning for module scripts...");
+                await this.fileBrowser.scanForModuleScripts();
+                console.log("Module scripts scanned and registered.");
+
                 // 4. Restore scenes
                 console.log("Restoring scenes...");
                 const loadedScenes = [];

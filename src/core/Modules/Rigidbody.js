@@ -2,7 +2,8 @@
  * RigidBody - Physics component that adds a physical body to a GameObject
  */
 class RigidBody extends Module {
-    static namespace = "Matter JS";
+    static allowMultiple = false; // Only one RigidBody per GameObject
+    static namespace = "Matter.js";
     static description = "Physics component that adds a physical body to a GameObject";
 
     constructor() {
@@ -185,7 +186,6 @@ class RigidBody extends Module {
         }
         else {
             body.isStatic = false;
-            body.inertia = Matter.Body.inertia(body);
             body.inverseInertia = 1 / body.inertia;
             body.inverseMass = 1 / body.mass;
         }
