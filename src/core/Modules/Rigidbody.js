@@ -2,7 +2,7 @@
  * RigidBody - Physics component that adds a physical body to a GameObject
  */
 class RigidBody extends Module {
-    static namespace = "Matter JS/RigidBody";
+    static namespace = "Matter JS";
     static description = "Physics component that adds a physical body to a GameObject";
 
     constructor() {

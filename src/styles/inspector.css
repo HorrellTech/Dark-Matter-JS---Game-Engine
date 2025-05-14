@@ -821,13 +821,6 @@ canvas {
     font-style: italic;
 }
 
-.main-content {
-    display: flex;
-    flex-direction: row;
-    height: calc(100vh - 56px); /* Adjust based on your header size */
-    overflow: hidden;
-}
-
 .hierarchy-panel, .module-panel {
     height: 100%;
     display: flex;
@@ -836,10 +829,11 @@ canvas {
 }
 
 .bottom-panel {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    height: var(--bottom-panel-height, 30%); /* Use CSS variable, fallback to 30% */
+    min-height: 100px; /* Or your desired minimum */
+    flex-shrink: 0; /* Prevent shrinking beyond its set height */
+    /* display: flex; and flex-direction: column; can be here or in inspector.css for its children */
+    /* overflow: hidden; can be here or in inspector.css */
 }
 
 .panel-content {
@@ -884,6 +878,86 @@ canvas {
     background-color: #3d3d3d;
 }
 
+.module-dropdown {
+    position: fixed; /* Changed from absolute to fixed */
+    background: #2d2d2d;
+    border: 1px solid #3d3d3d;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); /* Enhanced shadow for better depth */
+    z-index: 10000; /* Ensure it's above everything, was set in JS, good to have in CSS too */
+    overflow-y: auto;
+    /* max-height will be set dynamically by JS */
+    /* width will be set dynamically by JS */
+    /* top, left, bottom will be set by JS */
+    padding: 5px 0;
+}
+
+.module-dropdown-folder {
+    /* padding-left is handled by child elements now */
+}
+
+.module-dropdown-folder-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px; /* Adjusted padding */
+    cursor: pointer;
+    color: #c5c5c5;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.module-dropdown-folder-header:hover {
+    background-color: #3a3a3a;
+}
+
+.module-dropdown-folder-header i.fas {
+    margin-right: 8px;
+    width: 12px;
+    text-align: center;
+    color: #9e9e9e;
+    transition: transform 0.2s ease-in-out;
+}
+
+.module-dropdown-folder-content {
+    /* display is handled by JS */
+}
+
+.module-dropdown-item {
+    /* padding-left is set by JS for indentation */
+    padding-top: 6px;
+    padding-bottom: 6px;
+    padding-right: 12px; /* Keep right padding consistent */
+    cursor: pointer;
+    color: #e0e0e0;
+    font-size: 0.95em;
+    transition: background-color 0.2s;
+    white-space: normal; /* Allow wrapping for description */
+    overflow: hidden; /* Combined with text-overflow for name if needed */
+}
+
+.module-dropdown-item:hover {
+    background-color: #3f3f3f;
+}
+
+.module-dropdown-item-name {
+    display: block; /* Make name take full width initially */
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.module-dropdown-item-description {
+    display: block; /* Display description on a new line */
+    font-size: 0.8em;
+    color: #a0a0a0;
+    margin-top: 2px;
+    padding-left: 2px; /* Small indent for description */
+    white-space: normal; /* Allow description to wrap */
+    line-height: 1.3;
+}
+
+
 .module-dropdown-namespace {
     padding: 8px 12px 6px 10px;
     font-weight: bold;
@@ -896,8 +970,8 @@ canvas {
     letter-spacing: 0.5px;
     margin-top: 5px;
     position: sticky;
-    top: 0;
-    z-index: 1;
+    top: -5px; /* Adjust based on parent padding */
+    z-index: 1; /* Keep namespace headers above items during scroll */
 }
 
 .module-dropdown-namespace:first-child {

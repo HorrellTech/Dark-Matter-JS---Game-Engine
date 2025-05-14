@@ -2,7 +2,7 @@
  * BoundingBoxCollider - A module for specifying custom bounding box collision
  */
 class BoundingBoxCollider extends Module {
-    static namespace = "Colliders/BoundingBoxCollider";
+    static namespace = "Colliders";
     static description = "A module for specifying custom bounding box collision";
 
     constructor() {

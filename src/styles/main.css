@@ -10,6 +10,7 @@ body {
 }
 
 .toolbar {
+    flex-shrink: 0;
     height: 32px;
     background: #2d2d2d;
     border-bottom: 1px solid #232323;
@@ -45,14 +46,6 @@ body {
 .toolbar-button.active {
     background: #454545;
     color: #fff;
-}
-
-.main-content {
-    display: flex;
-    flex: 1;
-    min-height: 0; /* Important for nested scrolling */
-    height: calc(100vh - 56px - 250px); /* 56px for toolbar + footer, 250px for bottom panel */
-    min-height: 200px;
 }
 
 .hierarchy-panel {
@@ -165,6 +158,7 @@ body {
 }
 
 .footer {
+    flex-shrink: 0;
     height: 24px;
     background: #007acc;
     color: white;
@@ -245,15 +239,6 @@ body {
     z-index: 20;
 }
 
-.editor-canvas-container {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    position: relative;
-    overflow: hidden;
-}
-
 .canvas-view canvas {
     cursor: default;
 }
@@ -270,24 +255,14 @@ body {
     cursor: ns-resize;
 }
 
-/* Additional styles for object selection in editor */
-.editor-canvas-container {
-    position: relative;
-    overflow: hidden;
-}
-
-.editor-canvas-container canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-}
-
 /* Add to the end of your main.css file */
 
 /* Better panel height management */
 html, body {
-    height: 100%;
-    overflow: hidden;
+    height: 100vh; /* Use vh for full viewport height */
+    overflow: auto;
+    display: flex; /* Make body a flex container */
+    flex-direction: column; /* Arrange children vertically */
 }
 
 #gameObjectHierarchy,
@@ -447,29 +422,11 @@ html, body {
     box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
 }
 
-.editor-canvas-container {
-    position: relative;
-    flex: 1;
-    overflow: hidden;  /* Changed from auto to hidden */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-}
-
 .editor-canvas-container canvas {
     display: block;
     width: 100%;  /* Remove min-width */
     height: 100%; /* Remove min-height */
     object-fit: fill; /* Changed from contain to fill */
-}
-
-.main-content {
-    display: flex;
-    flex-direction: row;
-    height: calc(100vh - 56px); /* Adjust this if your header height is different */
-    overflow: hidden;
 }
 
 /* Sidebar panels */
@@ -485,13 +442,14 @@ html, body {
 
 /* Editor section - the key is to make this flex: 1 */
 .editor-section {
-    flex: 1;
     display: flex;
     flex-direction: column;
+    flex: 1;
     height: 100%;
+    min-height: 0;
     overflow: hidden;
     position: relative;
-}
+  }
 
 /* When resizing the file browser, ensure the editor canvas expands properly */
 .top-panel {
@@ -506,21 +464,41 @@ html, body {
     min-height: 100px;
     flex-shrink: 0;
 }
+  
+  /* Ensure the canvas section is positioned relative for absolute positioning to work */
+  .editor-section {
+    position: relative !important;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    min-height: 0 !important;
+  }
+  
+  /* Make sure the canvas container doesn't try to use flex sizing */
+  .canvas-container {
+    position: relative !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    padding-top: 32px !important; /* Space for tabs */
+  }
+  
+  /* Ensure the canvas view takes full height */
+  .canvas-view.active {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  
+  /* Make sure the canvas itself fills its container properly */
+  #editorCanvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    position: absolute !important; /* Keep it anchored */
+    top: 0 !important;
+    left: 0 !important;
+  }
 
-/* Ensure the canvas container takes full space */
-.editor-canvas-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    overflow: hidden;
-}
-
-/* Make the canvas fill its container */
-#editorCanvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-}
-
+  

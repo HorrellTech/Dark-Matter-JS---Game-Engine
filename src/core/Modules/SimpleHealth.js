@@ -2,7 +2,7 @@
  * SimpleHealth - Basic health and damage system
  */
 class SimpleHealth extends Module {
-    namespace = "Attributes//SimpleHealth";
+    namespace = "Attributes";
     description = "Basic health and damage system for GameObjects";
 
     constructor() {

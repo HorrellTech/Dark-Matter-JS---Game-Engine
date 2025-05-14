@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Panel resize functionality
     function initResize(resizer, panel, isHorizontal) {
-        let startPos = 0;
+        /*let startPos = 0;
         let startSize = 0;
 
         function startResize(e) {
@@ -242,18 +242,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (editor) editor.refreshCanvas();
         }
 
-        resizer.addEventListener('mousedown', startResize);
+        resizer.addEventListener('mousedown', startResize);*/
     }
 
     initializeMobileSupport();
 
     // Initialize resizers
-    document.querySelectorAll('.resizer-v').forEach(resizer => {
+    /*document.querySelectorAll('.resizer-v').forEach(resizer => {
         initResize(resizer, resizer.parentElement, false);
     });
     document.querySelectorAll('.resizer-h').forEach(resizer => {
         initResize(resizer, resizer.parentElement, true);
-    });
+    });*/
 
     // Grid controls
     document.getElementById('showGrid').addEventListener('change', (e) => {

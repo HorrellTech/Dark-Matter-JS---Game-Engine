@@ -1,120 +1,351 @@
-/* Fix for editor panel and mobile mode */
+/* ===== COMPLETE FIX FOR CANVAS POSITIONING AND PANEL RESIZING ===== */
 
-/* Make editor section use absolute positioning to stay anchored */
-.editor-section {
-    position: relative;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-  }
-  
-  /* Editor canvas container should fill the available space */
-  .editor-canvas-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-  
-  /* Make canvas display: block to fill container properly */
-  #editorCanvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-  }
-  
-  /* Fix mobile panel styling */
-  body.mobile-mode .hierarchy-panel,
-  body.mobile-mode .module-panel,
-  body.mobile-mode .bottom-panel {
-    position: fixed !important; /* Use fixed instead of absolute */
-    z-index: 10000 !important; /* Ensure highest z-index */
-  }
-  
-  body.mobile-mode .hierarchy-panel {
-    top: 56px; /* Account for header height */
-    left: 0;
-    width: 85%;
-    height: calc(100vh - 56px);
-    max-height: calc(100vh - 56px);
-  }
-  
-  body.mobile-mode .module-panel {
-    top: 56px; /* Account for header height */
-    right: 0;
-    width: 85%;
-    height: calc(100vh - 56px);
-    max-height: calc(100vh - 56px);
-  }
-  
-  body.mobile-mode .bottom-panel {
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 60%;
-    max-height: 60vh;
-  }
-  
-  /* Mobile panel toggle buttons should be on top of everything */
-  .mobile-panel-toggles {
-    z-index: 10001 !important; /* Higher than panels */
-    position: fixed !important;
-  }
-  
-  /* Make the resizer not affect the editor layout */
-  .panel-resizer {
-    z-index: 10;
-  }
-  
-  /* Ensure the top panel size changes don't affect editor panel position */
-  .top-panel {
-    position: relative;
-    flex: 1;
-  }
-  
-  .bottom-panel {
-    position: relative;
-  }
-  
-  /* Make sure inspector content fills the available space in mobile mode */
-  body.mobile-mode .inspector-container {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  body.mobile-mode .inspector-scroll-container {
-    flex: 1;
-    overflow-y: auto;
-  }
+/* Define CSS variables for panel dimensions and layout constants */
+:root {
+  --bottom-panel-height: 250px;
+  --hierarchy-panel-width: 250px;
+  --module-panel-width: 250px;
+  --toolbar-height: 32px;
+  --footer-height: 24px;
+  --canvas-tabs-height: 30px; /* Height for Scene/Game tabs */
+  --editor-toolbar-height: 32px; /* Height for the toolbar above the editor canvas */
+  --bottom-panel-tab-buttons-height: 32px; /* Height for tabs in the bottom panel (Project/Console) */
+}
 
-  .editor-section {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-  }
-  
-  .editor-canvas-container {
-    position: absolute;
-    top: 32px; /* Account for the toolbar */
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: auto !important;
-  }
-  
-  #editorCanvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
+/* Reset base container for the entire app */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  font-family: sans-serif; /* Basic font */
+  background-color: #202020; /* Dark background for the body */
+}
+
+/* Fix toolbar position at the top */
+.toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--toolbar-height);
+  z-index: 1000;
+  background-color: #333333; /* Toolbar background */
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Main content takes full viewport minus toolbar, bottom panel, and footer */
+.main-content {
+  position: absolute !important;
+  top:    var(--toolbar-height)                             !important;
+  left:   0                                                !important;
+  right:  0                                                !important;
+  bottom: calc(var(--bottom-panel-height) + var(--footer-height)) !important;
+  height: auto     !important;  /* ← allow bottom to clamp it */
+  display: flex   !important;
+  overflow: hidden !important;
+}
+
+/* Bottom panel is fixed above the footer */
+.bottom-panel {
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: var(--footer-height) !important; /* Positioned above the footer */
+  height: var(--bottom-panel-height) !important;
+  min-height: 50px !important; 
+  max-height: 70vh !important;
+  z-index: 900 !important;
+  overflow: hidden !important;
+  background-color: #282828; /* Bottom panel background */
+  display: flex !important;
+  flex-direction: column !important; /* Stack tab-buttons and tab-content vertically */
+  border-top: 1px solid #444444;
+}
+
+/* Side panels have fixed width using CSS variables */
+.hierarchy-panel,
+.module-panel {
+  position: relative !important; /* Changed from absolute to relative for flex context */
+  height: 100% !important;
+  overflow: hidden !important; /* Content scroll managed internally */
+  z-index: 100 !important;
+  background-color: #2f2f2f; /* Side panel background */
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #444444; /* For hierarchy */
+}
+.module-panel {
+  border-left: 1px solid #444444; /* For module panel */
+  border-right: none;
+}
+
+.hierarchy-panel {
+  width: var(--hierarchy-panel-width) !important;
+  min-width: 150px !important;
+}
+
+.module-panel {
+  width: var(--module-panel-width) !important;
+  min-width: 150px !important;
+}
+
+/* Panel Headers (e.g., "Hierarchy", "Inspector") */
+.hierarchy-header { /* Assuming this class is used for headers in side panels */
+  height: 30px; /* Example height */
+  line-height: 30px;
+  padding-left: 10px;
+  background-color: #383838;
+  color: #cccccc;
+  flex-shrink: 0;
+  border-bottom: 1px solid #444444;
+}
+
+
+/* Center panel fills remaining space and manages its children with flexbox */
+.center-panel {
+  position: relative !important;
+  flex: 1 !important; /* Takes remaining width in .main-content flex row */
+  height: 100% !important; /* Takes full height of .main-content */
+  overflow: hidden !important;
+  background-color: #252525; /* Center panel background */
+  display: flex !important;
+  flex-direction: column !important; /* Stack .canvas-tabs and .canvas-container vertically */
+}
+
+/* Canvas Tabs (Scene/Game buttons) */
+.canvas-tabs {
+  height: var(--canvas-tabs-height);
+  flex-shrink: 0; /* Prevent shrinking */
+  background-color: #303030;
+  display: flex;
+  align-items: stretch; /* Make buttons fill height */
+  border-bottom: 1px solid #444444;
+}
+.canvas-tab { /* Style for individual Scene/Game tab buttons */
+  padding: 0 15px;
+  cursor: pointer;
+  border: none;
+  background-color: transparent;
+  color: #aaaaaa;
+  outline: none;
+}
+.canvas-tab.active {
+  background-color: #252525; /* Match center panel background or slightly lighter/darker */
+  color: #ffffff;
+  border-bottom: 2px solid #007acc; /* Active indicator */
+}
+
+/* Canvas Container (holds editorView and gameView) */
+.canvas-container {
+  flex-grow: 1; /* Take remaining vertical space in .center-panel */
+  position: relative; /* For absolute positioning of .canvas-view children */
+  overflow: hidden;
+}
+
+/* Canvas View (editorView or gameView) */
+.canvas-view {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: none; /* Views are hidden by default */
+}
+.canvas-view.active {
+  display: flex; /* Use flex to manage editor-toolbar and editor-canvas-container */
+  flex-direction: column;
+}
+
+/* Editor toolbar sits at the top of .canvas-view.active */
+.editor-toolbar {
+  height: var(--editor-toolbar-height) !important;
+  flex-shrink: 0; /* Prevent shrinking */
+  z-index: 5 !important;
+  background-color: #3a3a3a;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: #cccccc;
+  border-bottom: 1px solid #444444;
+}
+
+/* Ensure the canvas container is properly positioned within .canvas-view.active */
+.editor-canvas-container {
+  flex-grow: 1 !important; /* Takes remaining space in .canvas-view.active */
+  position: relative !important; /* For #editorCanvas absolute positioning */
+  overflow: hidden !important;
+}
+
+/* Make sure canvas fills the container */
+#editorCanvas {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  background-color: #1e1e1e; /* Canvas background */
+}
+
+/* Ensure vertical resizers are properly positioned */
+.resizer-v {
+  position: absolute !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 8px !important;
+  z-index: 1000 !important;
+  cursor: col-resize !important;
+  /* background-color: rgba(0,0,255,0.05); For debugging */
+}
+
+.hierarchy-panel .resizer-v {
+  right: -4px !important;
+}
+
+.module-panel .resizer-v {
+  left: -4px !important;
+}
+
+/* Make horizontal resizer properly positioned for the bottom panel */
+.bottom-panel .resizer-h { /* Specific to bottom panel's resizer */
+  position: absolute !important;
+  top: -4px !important; /* Sits on the top edge of bottom-panel */
+  left: 0 !important;
+  right: 0 !important;
+  height: 8px !important;
+  cursor: ns-resize !important; /* ns-resize is more common for horizontal dividers */
+  z-index: 1001 !important; /* Ensure it's above content it resizes */
+  /* background-color: rgba(255,0,0,0.05); For debugging */
+}
+
+/* Make the footer absolutely positioned at the very bottom */
+.footer {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--footer-height) !important;
+  z-index: 1100 !important;
+  background-color: #1e1e1e; /* Footer background */
+  color: #cccccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8em;
+  border-top: 1px solid #444444;
+}
+
+/* Tab buttons within the bottom panel */
+.bottom-panel .tab-buttons {
+  height: var(--bottom-panel-tab-buttons-height) !important;
+  flex-shrink: 0 !important; /* Prevent shrinking */
+  display: flex;
+  background-color: #383838;
+  border-bottom: 1px solid #444444;
+}
+.bottom-panel .tab-button { /* Style for individual Project/Console tab buttons */
+  padding: 0 15px;
+  cursor: pointer;
+  border: none;
+  background-color: transparent;
+  color: #aaaaaa;
+  outline: none;
+  line-height: var(--bottom-panel-tab-buttons-height);
+}
+.bottom-panel .tab-button.active {
+  background-color: #282828; /* Match bottom panel background */
+  color: #ffffff;
+  border-bottom: 2px solid #007acc; /* Active indicator */
+}
+
+
+/* Tab content area within the bottom panel */
+.bottom-panel .tab-content {
+  display: none; /* Hidden by default */
+  flex-grow: 1 !important; /* Takes remaining space in .bottom-panel */
+  overflow: hidden; /* Let children manage their own scroll if necessary */
+}
+.bottom-panel .tab-content.active {
+  display: flex !important; /* Use flex for active tab content */
+  flex-direction: column !important; /* If its children need to stack */
+}
+
+/* Special handling for file browser container */
+/* #fileBrowserContainer has inline style: height: 100%; display: flex; flex-direction: column; */
+/* This will make it fill its parent (.tab-content.active#fileManager) */
+#fileBrowserContainer {
+  overflow: auto; /* Allow scrolling for the file browser content itself */
+}
+
+/* Console specific styling */
+.console-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.console-toolbar {
+  flex-shrink: 0;
+  padding: 5px;
+  background-color: #303030;
+  border-bottom: 1px solid #444;
+}
+.console-output {
+  flex-grow: 1;
+  overflow-y: auto !important;
+  padding: 5px;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  font-family: monospace;
+}
+.console-input {
+  flex-shrink: 0;
+  display: flex;
+  padding: 5px;
+  background-color: #303030;
+  border-top: 1px solid #444;
+}
+.console-input-field {
+  flex-grow: 1;
+  background-color: #1e1e1e;
+  color: #cccccc;
+  border: 1px solid #555;
+  padding: 3px;
+}
+
+
+/* Ensure all scrolling containers properly size */
+/* For Hierarchy and Inspector lists */
+#gameObjectHierarchy,
+#moduleSettings {
+  flex-grow: 1; /* Take remaining space in their parent panel (after header) */
+  overflow-y: auto !important;
+  padding: 5px;
+}
+
+/* Generic scrollbar styling (optional) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #2f2f2f;
+}
+::-webkit-scrollbar-thumb {
+  background: #555555;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #666666;
+}
+
+.canvas-view.active .editor-canvas-container {
+  display: flex    !important;  /* ensure flex if you need the nav arrows container */
+  justify-content: flex-start !important;
+  align-items:    flex-start !important;
+}

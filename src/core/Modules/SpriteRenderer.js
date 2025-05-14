@@ -4,7 +4,7 @@
  * This module handles loading and rendering sprite images on a GameObject.
  */
 class SpriteRenderer extends Module {
-    static namespace = "Drawing/SpriteRenderer";
+    static namespace = "Drawing";
     static description = "Module for rendering sprites";
 
     /**

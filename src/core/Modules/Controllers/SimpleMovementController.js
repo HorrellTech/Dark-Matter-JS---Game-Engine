@@ -2,7 +2,7 @@
  * SimpleMovement - Basic character movement controller for 2D games
  */
 class SimpleMovementController extends Module {
-    static namespace = "Controllers/SimpleMovementController";
+    static namespace = "Controllers";
     static description = "Basic character movement controller for 2D games";
 
     constructor() {

@@ -305,22 +305,43 @@ class Inspector {
         if (this.moduleDropdown.style.display === 'none') {
             this.moduleDropdown.style.display = 'block';
             this.moduleDropdown.innerHTML = '<div class="dropdown-message">Loading modules...</div>';
-            
-            // Position the dropdown above the button
+
+            // --- Start of new positioning logic ---
+            this.moduleDropdown.style.position = 'fixed'; // Use fixed positioning
+            this.moduleDropdown.style.zIndex = '10000'; // Ensure it's on top
+
             const buttonRect = this.addModuleButton.getBoundingClientRect();
-            const containerRect = this.container.getBoundingClientRect();
+            const windowHeight = window.innerHeight;
+            const windowWidth = window.innerWidth;
+
+            const dropdownMaxWidth = 350;
+            const dropdownMaxHeight = 400; // Default max height
+            const margin = 10; // Margin from window edges or button
+
+            // Set width
+            let dropdownWidth = Math.min(dropdownMaxWidth, windowWidth - buttonRect.left - margin);
+            if (buttonRect.left + dropdownWidth > windowWidth - margin) {
+                dropdownWidth = windowWidth - buttonRect.left - margin;
+            }
+            this.moduleDropdown.style.width = `${dropdownWidth}px`;
+            this.moduleDropdown.style.left = `${buttonRect.left}px`;
+
+            // Decide direction and set vertical position and max-height
+            if (buttonRect.bottom < windowHeight / 2 || (windowHeight - buttonRect.bottom) > buttonRect.top) {
+                // Open downwards
+                this.moduleDropdown.style.top = `${buttonRect.bottom + 2}px`; // 2px gap
+                this.moduleDropdown.style.bottom = 'auto';
+                const availableSpace = windowHeight - buttonRect.bottom - margin - 2;
+                this.moduleDropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, availableSpace)}px`;
+            } else {
+                // Open upwards
+                this.moduleDropdown.style.bottom = `${windowHeight - buttonRect.top + 2}px`; // 2px gap
+                this.moduleDropdown.style.top = 'auto';
+                const availableSpace = buttonRect.top - margin - 2;
+                this.moduleDropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, availableSpace)}px`;
+            }
+            // --- End of new positioning logic ---
             
-            // Set high z-index to be above everything
-            this.moduleDropdown.style.zIndex = '10000';
-            
-            // Position it properly
-            this.moduleDropdown.style.bottom = `${window.innerHeight - buttonRect.top}px`;
-            this.moduleDropdown.style.left = `${buttonRect.left - containerRect.left}px`;
-            this.moduleDropdown.style.width = `${Math.min(300, window.innerWidth - 20)}px`;
-            
-            // Calculate max height to prevent overflow
-            const maxHeight = Math.min(400, buttonRect.top - 10);
-            this.moduleDropdown.style.maxHeight = `${maxHeight}px`;
             this.moduleDropdown.style.overflowY = 'auto';
             
             try {
@@ -336,7 +357,7 @@ class Inspector {
                 this.detectAvailableModules(); // Appends to what scanForModuleScripts found
                 
                 console.log(`Total available modules after all scans: ${this.availableModules.length}`);
-                this.populateModuleDropdown();
+                this.populateModuleDropdown(); // Ensure this calls the hierarchical version
             } catch (error) {
                 console.error('Error loading modules:', error);
                 this.moduleDropdown.innerHTML = '<div class="dropdown-message error">Error loading modules</div>';
@@ -349,8 +370,8 @@ class Inspector {
     /**
      * Populate the dropdown with available modules, grouped by namespace
      */
-    populateModuleDropdown() {
-        this.moduleDropdown.innerHTML = '';
+    populateModuleDropdown() { // This is the hierarchical version to modify
+        this.moduleDropdown.innerHTML = ''; // Clear previous content
 
         if (!this.availableModules || this.availableModules.length === 0) {
             const message = document.createElement('div');
@@ -360,39 +381,142 @@ class Inspector {
             return;
         }
 
-        // Group modules by namespace
-        const groupedModules = {};
+        // 1. Build the hierarchical tree data structure
+        const namespaceTree = {};
+        const generalModules = [];
+
         this.availableModules.forEach(moduleInfo => {
-            const namespace = moduleInfo.namespace || 'General'; // Default to "General"
-            if (!groupedModules[namespace]) {
-                groupedModules[namespace] = [];
+            const namespace = moduleInfo.namespace;
+            const moduleClass = moduleInfo.moduleClass;
+
+            if (!namespace || namespace.toLowerCase() === 'general') {
+                generalModules.push(moduleClass);
+                return;
             }
-            groupedModules[namespace].push(moduleInfo.moduleClass);
+
+            const parts = namespace.split('/');
+            let currentLevel = namespaceTree;
+
+            parts.forEach(part => {
+                if (!currentLevel[part]) {
+                    currentLevel[part] = { _children: {}, _modules: [] };
+                }
+                currentLevel = currentLevel[part];
+            });
+            currentLevel._modules.push(moduleClass);
         });
 
-        // Sort namespaces alphabetically, "General" can be first or last
-        const sortedNamespaces = Object.keys(groupedModules).sort((a, b) => {
-            if (a === 'General') return -1; // Put General first
-            if (b === 'General') return 1;
-            return a.localeCompare(b);
-        });
+        // 2. Render the tree
+        const renderNode = (node, parentElement, level, pathPrefix = '') => {
+            // Sort folder names alphabetically
+            const folderNames = Object.keys(node._children || {}).sort();
+            
+            folderNames.forEach(folderName => {
+                const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
+                const folderElement = document.createElement('div');
+                folderElement.className = 'module-dropdown-folder';
+                // folderElement.style.paddingLeft = `${level * 15}px`; // Padding handled by folder-header
 
-        sortedNamespaces.forEach(namespace => {
-            // Add namespace header
-            const namespaceHeader = document.createElement('div');
-            namespaceHeader.className = 'module-dropdown-namespace';
-            namespaceHeader.textContent = namespace.replace(/\//g, ' \u203A '); // Replace / with › for display
-            this.moduleDropdown.appendChild(namespaceHeader);
+                const header = document.createElement('div');
+                header.className = 'module-dropdown-folder-header';
+                header.style.paddingLeft = `${level * 15 + 10}px`; // Indent header
+                
+                const icon = document.createElement('i');
+                const isCollapsed = this.getFolderCollapseState(currentPath);
+                icon.className = `fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = folderName;
+                
+                header.appendChild(icon);
+                header.appendChild(nameSpan);
+                folderElement.appendChild(header);
 
-            // Sort modules within the namespace alphabetically
-            const modulesInNamespace = groupedModules[namespace].sort((a, b) =>
-                a.name.localeCompare(b.name)
-            );
+                const content = document.createElement('div');
+                content.className = 'module-dropdown-folder-content';
+                if (isCollapsed) {
+                    content.style.display = 'none';
+                }
+                folderElement.appendChild(content);
+                parentElement.appendChild(folderElement);
 
-            modulesInNamespace.forEach(moduleClass => {
+                header.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent closing dropdown
+                    const currentlyCollapsed = content.style.display === 'none';
+                    content.style.display = currentlyCollapsed ? 'block' : 'none';
+                    icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
+                    this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
+                });
+
+                renderNode(node._children[folderName], content, level + 1, currentPath);
+            });
+
+            // Sort modules within this folder/namespace alphabetically
+            (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
                 const item = document.createElement('div');
                 item.className = 'module-dropdown-item';
-                item.textContent = moduleClass.name;
+                const description = moduleClass.description || '';
+                item.title = description || moduleClass.name; // Tooltip for full description or name
+                item.style.paddingLeft = `${(level * 15) + 20}px`; // Indent module items further
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'module-dropdown-item-name';
+                nameSpan.textContent = moduleClass.name;
+                item.appendChild(nameSpan);
+
+                if (description) {
+                    const descSpan = document.createElement('span');
+                    descSpan.className = 'module-dropdown-item-description';
+                    // Truncate long descriptions for display
+                    descSpan.textContent = description.length > 60 ? description.substring(0, 57) + '...' : description;
+                    item.appendChild(descSpan);
+                }
+
+                item.addEventListener('click', () => {
+                    const module = this.addModuleToGameObject(moduleClass);
+                    if (module) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                parentElement.appendChild(item);
+            });
+        };
+        
+        // Create a root node for rendering
+        const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
+        renderNode(rootNodeForRendering, this.moduleDropdown, 0);
+
+        // Add "General" modules at the end, if any
+        if (generalModules.length > 0) {
+            if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) {
+                const separator = document.createElement('hr');
+                separator.className = 'module-dropdown-separator';
+                this.moduleDropdown.appendChild(separator);
+            }
+            const generalHeader = document.createElement('div');
+            generalHeader.className = 'module-dropdown-namespace';
+            generalHeader.textContent = 'General';
+            // generalHeader.style.paddingLeft = `5px`; // Using class style
+            this.moduleDropdown.appendChild(generalHeader);
+
+            generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                const description = moduleClass.description || '';
+                item.title = description || moduleClass.name;
+                item.style.paddingLeft = `20px`; // Indent items under "General"
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'module-dropdown-item-name';
+                nameSpan.textContent = moduleClass.name;
+                item.appendChild(nameSpan);
+
+                if (description) {
+                    const descSpan = document.createElement('span');
+                    descSpan.className = 'module-dropdown-item-description';
+                    descSpan.textContent = description.length > 60 ? description.substring(0, 57) + '...' : description;
+                    item.appendChild(descSpan);
+                }
 
                 item.addEventListener('click', () => {
                     const module = this.addModuleToGameObject(moduleClass);
@@ -402,10 +526,8 @@ class Inspector {
                 });
                 this.moduleDropdown.appendChild(item);
             });
-        });
-
-        // Log available modules for debugging
-        console.log('Available modules grouped:', groupedModules);
+        }
+        // console.log('Namespace tree:', namespaceTree, 'General modules:', generalModules);
     }
 
     /**

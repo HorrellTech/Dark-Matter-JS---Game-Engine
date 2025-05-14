@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="src/styles/documentation-modal.css">
     <link rel="stylesheet" href="src/styles/asset-manager.css">
     <link rel="stylesheet" href="src/styles/mobile-management.css">
+    <link rel="stylesheet" href="src/styles/layout-fix.css">
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -167,7 +168,7 @@
 
     <script>
         // Simple panel resizing
-        document.addEventListener('DOMContentLoaded', function() {
+        /*document.addEventListener('DOMContentLoaded', function() {
             // Vertical resizers for left and right panels
             const leftResizer = document.querySelector('.hierarchy-panel .resizer-v');
             const rightResizer = document.querySelector('.module-panel .resizer-v');
@@ -276,7 +277,7 @@
                     
                     // Calculate remaining height for main content
                     const mainHeight = totalHeight - bottomHeight - toolbarHeight - footerHeight;
-                    mainContent.style.height = mainHeight + 'px';
+                   // mainContent.style.height = mainHeight + 'px';
                     
                     // Update scroll containers
                     updateScrollContainers();
@@ -326,7 +327,7 @@
             });
 
             updateCenterPanelWidth();
-        });
+        });*/
     </script>
     
     <div class="footer">
@@ -370,6 +371,8 @@
     <script src="src/core/EditorGrid.js"></script>
     <script src="src/core/HierarchyManager.js"></script>
     <script src="src/core/matter-js/PhysicsManager.js"></script>
+    
+    <script src="src/core/PanelResizer.js"></script>
 
     <script src="src/core/Math/Vector2.js"></script>
     <script src="src/core/Math/Vector3.js"></script>

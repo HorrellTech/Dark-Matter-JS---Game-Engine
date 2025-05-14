@@ -2,7 +2,7 @@
  * Collider - A sensor-only collider for detecting overlaps without physics response
  */
 class Collider extends Module {
-    static namespace = "Matter JS/Collider";
+    static namespace = "Matter JS";
     static description = "A sensor-only collider for detecting overlaps without physics response";
 
     constructor() {
