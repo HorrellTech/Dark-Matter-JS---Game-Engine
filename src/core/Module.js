@@ -13,6 +13,29 @@
  * 5. endLoop - Called at the end of each frame
  * 6. draw - Called when the module should render
  * 7. onDestroy - Called when the module is being destroyed
+ * 
+ * 
+ * 
+  ICON URL ADDITION(for module icon)
+ class MyCustomModule extends Module {
+    static iconUrl = 'path/to/icon.png';
+    
+    constructor() {
+        super("MyCustomModule");
+        // Module code
+    }
+}
+
+class MyCustomModule extends Module {
+    static iconClass = 'fa-star'; // Just the icon name
+    // OR
+    static iconClass = 'fas fa-star'; // Full class
+    
+    constructor() {
+        super("MyCustomModule");
+        // Module code
+    }
+}
  */
 class Module {
     static allowMultiple = true; // Allow multiple instances of this module type
@@ -160,6 +183,22 @@ class Module {
         }
     }
 
+    set gameObject(go) {
+        this._gameObject = go;
+        
+        // When a module's gameObject reference changes, we need to update
+        // all internal properties that might reference the old gameObject
+        if (go && this._previousGameObject && this._previousGameObject !== go) {
+            this._updateInternalReferences(this._previousGameObject, go);
+        }
+        
+        this._previousGameObject = go;
+    }
+    
+    get gameObject() {
+        return this._gameObject;
+    }
+
     /**
      * Clone this module instance
      * @returns {Module} A new instance of this module with the same properties
@@ -168,17 +207,107 @@ class Module {
         const cloned = new this.constructor();
         
         // Copy all properties except gameObject reference
-        Object.keys(this).forEach(key => {
-            if (key !== 'gameObject' && typeof this[key] !== 'function') {
-                if (this[key] && typeof this[key].clone === 'function') {
-                    cloned[key] = this[key].clone();
-                } else {
-                    cloned[key] = this[key];
+        const propertyNames = new Set([
+            ...Object.getOwnPropertyNames(this), 
+            ...Object.keys(this)
+        ]);
+        
+        for (const key of propertyNames) {
+            if (key === 'gameObject' || key === 'constructor' || 
+                key.startsWith('__') || typeof this[key] === 'function') {
+                continue;
+            }
+            
+            try {
+                const value = this[key];
+                
+                if (value === null || value === undefined) {
+                    cloned[key] = value;
+                }
+                else if (typeof value === 'object') {
+                    if (typeof value.clone === 'function') {
+                        cloned[key] = value.clone();
+                    }
+                    else if (Array.isArray(value)) {
+                        cloned[key] = this.deepCloneArray(value);
+                    }
+                    else if (!(value instanceof HTMLElement)) {
+                        cloned[key] = this.deepCloneObject(value);
+                    }
+                    else {
+                        cloned[key] = value; // Keep DOM references
+                    }
+                }
+                else {
+                    cloned[key] = value;
                 }
             }
-        });
+            catch (e) {
+                console.warn(`Error cloning module property ${key}:`, e);
+            }
+        }
         
         return cloned;
+    }
+
+    /**
+     * Helper: Deep clone an array
+     * @private
+     */
+    deepCloneArray(arr) {
+        if (!arr) return arr;
+        
+        return arr.map(item => {
+            if (item === null || item === undefined || typeof item !== 'object') {
+                return item;
+            }
+            else if (typeof item.clone === 'function') {
+                return item.clone();
+            }
+            else if (Array.isArray(item)) {
+                return this.deepCloneArray(item);
+            }
+            else if (!(item instanceof HTMLElement)) {
+                return this.deepCloneObject(item);
+            }
+            return item;
+        });
+    }
+
+    /**
+     * Helper: Deep clone an object
+     * @private
+     */
+    deepCloneObject(obj) {
+        if (!obj) return obj;
+        if (typeof obj.clone === 'function') return obj.clone();
+        if (obj instanceof HTMLElement) return obj;
+        
+        const clone = Object.create(Object.getPrototypeOf(obj));
+        
+        for (const key in obj) {
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+            
+            const value = obj[key];
+            
+            if (value === null || value === undefined || typeof value !== 'object') {
+                clone[key] = value;
+            }
+            else if (typeof value.clone === 'function') {
+                clone[key] = value.clone();
+            }
+            else if (Array.isArray(value)) {
+                clone[key] = this.deepCloneArray(value);
+            }
+            else if (!(value instanceof HTMLElement)) {
+                clone[key] = this.deepCloneObject(value);
+            }
+            else {
+                clone[key] = value;
+            }
+        }
+        
+        return clone;
     }
 
     /**
@@ -464,6 +593,93 @@ class Module {
         }
         
         return this;
+    }
+
+    /**
+     * Update all internal references to the old gameObject with the new one
+     * @param {GameObject} oldGO - The old GameObject reference
+     * @param {GameObject} newGO - The new GameObject reference
+     */
+    _updateInternalReferences(oldGO, newGO) {
+        if (!oldGO || !newGO || oldGO === newGO) return;
+        
+        // Recursively scan all properties
+        const scanObject = (obj) => {
+            if (!obj || typeof obj !== 'object') return;
+            
+            // Skip DOM elements and functions
+            if (obj instanceof HTMLElement) return;
+            
+            // Use a WeakSet to track visited objects to avoid circular references
+            const visited = new WeakSet();
+            
+            const traverse = (o) => {
+                if (!o || typeof o !== 'object' || visited.has(o)) return;
+                visited.add(o);
+                
+                // Check all enumerable properties of the object
+                for (const key in o) {
+                    try {
+                        const value = o[key];
+                        
+                        // If the value is the old GameObject, replace it with the new one
+                        if (value === oldGO) {
+                            o[key] = newGO;
+                            continue;
+                        }
+                        
+                        // Recursively traverse objects and arrays
+                        if (value && typeof value === 'object' && !visited.has(value)) {
+                            traverse(value);
+                        }
+                    } catch (err) {
+                        // Some properties may not be accessible, just skip them
+                    }
+                }
+                
+                // Check non-enumerable properties as well (for properties defined with Object.defineProperty)
+                const propNames = Object.getOwnPropertyNames(o);
+                for (const propName of propNames) {
+                    try {
+                        if (propName === 'constructor' || propName === 'prototype' || propName === '__proto__') {
+                            continue;
+                        }
+                        
+                        const desc = Object.getOwnPropertyDescriptor(o, propName);
+                        if (desc && desc.get && !desc.configurable) {
+                            // We can't modify non-configurable getters/setters
+                            continue;
+                        }
+                        
+                        const value = o[propName];
+                        if (value === oldGO) {
+                            o[propName] = newGO;
+                            continue;
+                        }
+                        
+                        if (value && typeof value === 'object' && !visited.has(value)) {
+                            traverse(value);
+                        }
+                    } catch (err) {
+                        // Some properties may not be accessible, just skip them
+                    }
+                }
+            };
+            
+            traverse(obj);
+        };
+        
+        // Check own properties first
+        for (const key in this) {
+            if (key !== 'gameObject' && key !== '_gameObject' && key !== '_previousGameObject') {
+                const value = this[key];
+                if (value === oldGO) {
+                    this[key] = newGO;
+                } else if (value && typeof value === 'object') {
+                    scanObject(value);
+                }
+            }
+        }
     }
 
     /**

@@ -893,17 +893,322 @@ class GameObject {
     }
 
     /**
+     * Copy properties from one module to another, with special handling for GameObject references
+     * @param {Module} sourceModule - The source module to copy from
+     * @param {Module} targetModule - The target module to copy to
+     * @param {GameObject} newGameObject - The new GameObject that owns the target module
+     */
+    copyModuleProperties(sourceModule, targetModule, newGameObject) {
+        // First, ensure we have all the necessary objects
+        if (!sourceModule || !targetModule || !newGameObject) {
+            console.warn("copyModuleProperties: Missing required arguments");
+            return;
+        }
+    
+        const originalGameObject = this; // Store reference to original GameObject
+        
+        // Get all property names (including non-enumerable ones)
+        const propertyNames = new Set([
+            ...Object.getOwnPropertyNames(sourceModule), 
+            ...Object.keys(sourceModule)
+        ]);
+        
+        // Process each property
+        for (const key of propertyNames) {
+            try {
+                // Skip special properties and functions
+                if (key === 'id' || key === 'gameObject' || key === 'constructor' || 
+                    key.startsWith('__') || typeof sourceModule[key] === 'function') {
+                    continue;
+                }
+                
+                // Get the source value
+                const value = sourceModule[key];
+                
+                // Handle different value types
+                if (value === null || value === undefined) {
+                    targetModule[key] = value;
+                } 
+                else if (value === originalGameObject) {
+                    // Direct reference to the original GameObject
+                    targetModule[key] = newGameObject;
+                }
+                else if (value === sourceModule.gameObject) {
+                    // Another way to reference the original GameObject
+                    targetModule[key] = newGameObject;
+                }
+                else if (value instanceof Vector2) {
+                    // Deep clone Vector2 (or anything with a clone method)
+                    targetModule[key] = value.clone();
+                }
+                else if (Array.isArray(value)) {
+                    // Process arrays - create a new array for the clone
+                    targetModule[key] = deepCloneArray(value, originalGameObject, newGameObject);
+                }
+                else if (typeof value === 'object' && value !== null && 
+                         !(value instanceof HTMLElement)) {
+                    // For any other objects that aren't DOM elements
+                    if (typeof value.clone === 'function') {
+                        // Use clone method if available
+                        targetModule[key] = value.clone();
+                    } else {
+                        // Do a deep clone with reference replacement
+                        targetModule[key] = deepCloneWithReplacements(value, originalGameObject, newGameObject);
+                    }
+                } else {
+                    // For primitives, do direct assignment
+                    targetModule[key] = value;
+                }
+            } catch (e) {
+                console.warn(`Error cloning property ${key} in module ${sourceModule.constructor.name}:`, e);
+            }
+        }
+        
+        // Handle private properties for exposed properties
+        if (Array.isArray(sourceModule.exposedProperties)) {
+            for (const prop of sourceModule.exposedProperties) {
+                const propName = prop.name;
+                const privatePropName = `_${propName}`;
+                
+                // Copy the private property if it exists
+                if (privatePropName in sourceModule) {
+                    const privateValue = sourceModule[privatePropName];
+                    
+                    if (privateValue === originalGameObject) {
+                        targetModule[privatePropName] = newGameObject;
+                    } else if (typeof privateValue === 'object' && privateValue !== null) {
+                        if (typeof privateValue.clone === 'function') {
+                            targetModule[privatePropName] = privateValue.clone();
+                        } else {
+                            targetModule[privatePropName] = deepCloneWithReplacements(
+                                privateValue, originalGameObject, newGameObject
+                            );
+                        }
+                    } else {
+                        targetModule[privatePropName] = privateValue;
+                    }
+                }
+            }
+        }
+    }
+
+    deepCloneObject(obj, newGameObject) {
+        if (!obj) return obj;
+        
+        try {
+            // For DOM elements, return as-is
+            if (obj instanceof HTMLElement) return obj;
+            
+            // For objects with clone method, use it
+            if (typeof obj.clone === 'function') return obj.clone();
+            
+            const clone = {};
+            
+            for (const key in obj) {
+                if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+                
+                const value = obj[key];
+                
+                if (value === this || value === this.gameObject) {
+                    clone[key] = newGameObject;
+                } else if (value instanceof Vector2) {
+                    clone[key] = value.clone();
+                } else if (Array.isArray(value)) {
+                    clone[key] = this.deepCloneArray(value, newGameObject);
+                } else if (typeof value === 'object' && value !== null && !(value instanceof HTMLElement)) {
+                    clone[key] = this.deepCloneObject(value, newGameObject);
+                } else {
+                    clone[key] = value;
+                }
+            }
+            
+            return clone;
+            
+        } catch (e) {
+            console.warn("Failed to deep clone object:", e);
+            return {}; // Return empty object as fallback
+        }
+    }
+
+    /**
+     * Deep clone an array, replacing GameObject references
+     * @param {Array} arr - The array to clone
+     * @param {GameObject} newGameObject - The new GameObject to use for replacements
+     * @returns {Array} - Cloned array
+     */
+    deepCloneArray(arr, originalGameObject, newGameObject) {
+        if (!arr) return arr;
+        
+        return arr.map(item => {
+            if (item === originalGameObject || item === originalGameObject.gameObject) {
+                return newGameObject;
+            }
+            else if (item === null || item === undefined || typeof item !== 'object') {
+                return item; // Direct copy for primitives
+            }
+            else if (typeof item.clone === 'function') {
+                return item.clone();
+            }
+            else if (Array.isArray(item)) {
+                return this.deepCloneArray(item, originalGameObject, newGameObject);
+            }
+            else if (item instanceof HTMLElement) {
+                return item; // Keep DOM references intact
+            }
+            else {
+                return this.deepCloneWithReplacements(item, originalGameObject, newGameObject);
+            }
+        });
+    }
+
+    /**
+     * Deep clone an object with GameObject reference replacements
+     * @param {Object} obj - Object to clone
+     * @param {GameObject} newGameObject - The new GameObject to use for replacements
+     * @returns {Object} Cloned object
+     */
+    deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
+        if (!obj) return obj;
+        if (obj === originalGameObject) return newGameObject;
+        
+        // Skip non-objects and DOM elements
+        if (typeof obj !== 'object' || obj instanceof HTMLElement) return obj;
+        
+        // Handle special objects
+        if (typeof obj.clone === 'function') return obj.clone();
+        if (obj instanceof Date) return new Date(obj.getTime());
+        
+        // Handle arrays
+        if (Array.isArray(obj)) {
+            return this.deepCloneArray(obj, originalGameObject, newGameObject);
+        }
+        
+        // Create a new object of the same type
+        const clone = Object.create(Object.getPrototypeOf(obj));
+        
+        // Copy all properties with reference checks
+        for (const key in obj) {
+            if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+            
+            const value = obj[key];
+            
+            if (value === originalGameObject || value === originalGameObject.gameObject) {
+                // Replace GameObject references
+                clone[key] = newGameObject;
+            } 
+            else if (value === null || value === undefined || typeof value !== 'object') {
+                // Direct copy for primitives and null/undefined
+                clone[key] = value;
+            }
+            else if (typeof value.clone === 'function') {
+                // Use clone method if available
+                clone[key] = value.clone(); 
+            }
+            else if (value instanceof HTMLElement) {
+                // Keep references to DOM elements intact
+                clone[key] = value;
+            }
+            else if (Array.isArray(value)) {
+                // Deep clone arrays
+                clone[key] = this.deepCloneArray(value, originalGameObject, newGameObject);
+            }
+            else {
+                // Deep clone other objects
+                clone[key] = this.deepCloneWithReplacements(value, originalGameObject, newGameObject);
+            }
+        }
+        
+        return clone;
+    }
+
+    /**
+     * Recursively replace missed GameObject references in the cloned module
+     * @param {Object} obj - The module or object to scan
+     * @param {GameObject} newGameObject - The new GameObject to use for replacements
+     */
+    replaceMissedReferences(obj, newGameObject) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        // Use a Set to track visited objects and avoid circular reference issues
+        const visited = new Set();
+        
+        function scan(o) {
+            if (!o || typeof o !== 'object' || visited.has(o)) return;
+            visited.add(o);
+            
+            // Check all properties
+            for (const key in o) {
+                if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
+                if (key === 'gameObject') continue; // Skip the gameObject property itself
+                
+                const value = o[key];
+                
+                if (value === this) {
+                    // Replace references to the original GameObject
+                    o[key] = newGameObject;
+                } else if (value && typeof value === 'object' && !visited.has(value)) {
+                    // Recursively scan nested objects
+                    scan(value);
+                }
+            }
+        }
+        
+        scan.call(this, obj);
+    }
+
+    /**
+     * Thoroughly scan an object to find and replace all references to the original GameObject
+     * @param {Object} obj - The object to scan
+     * @param {GameObject} originalObj - The original GameObject to replace
+     * @param {GameObject} newObj - The replacement GameObject
+     */
+    deepScanAndReplaceAllReferences(obj, originalObj, newObj) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        // Use a WeakMap to track visited objects and avoid circular reference issues
+        const visited = new WeakMap();
+        
+        const scan = (o) => {
+            if (!o || typeof o !== 'object' || visited.has(o)) return;
+            visited.set(o, true);
+            
+            // Check all properties recursively
+            for (const key in o) {
+                if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
+                
+                const value = o[key];
+                
+                // Replace direct references
+                if (value === originalObj || value === originalObj.gameObject) {
+                    o[key] = newObj;
+                    continue;
+                }
+                
+                // Recursively scan objects and arrays
+                if (typeof value === 'object' && value !== null && !visited.has(value)) {
+                    scan(value);
+                }
+            }
+        };
+        
+        scan(obj);
+    }
+
+    /**
      * Clone this GameObject, including all modules and children
      * @returns {GameObject} A deep copy of this GameObject
      */
     clone() {
-        // Create a new GameObject with the same name
+        const originalGameObject = this; 
+        
+        // Create new GameObject
         const cloned = new GameObject(this.name + " (Copy)");
         
         // Copy basic properties
         cloned.position = this.position.clone();
         cloned.scale = this.scale.clone();
         cloned.size = this.size.clone();
+        cloned.origin = this.origin.clone();
         cloned.angle = this.angle;
         cloned.depth = this.depth;
         cloned.active = this.active;
@@ -914,183 +1219,308 @@ class GameObject {
         cloned.collisionLayer = this.collisionLayer;
         cloned.collisionMask = this.collisionMask;
         
-        // Clone all modules
-        this.modules.forEach(module => {
+        // Clone modules with proper reference handling
+        for (const module of this.modules) {
             try {
-                // Find the constructor for this module
-                // Try to find the module class using multiple approaches
-                let ModuleClass = null;
-
-                // 1. Try constructor name in window scope
-                if (window[module.constructor.name]) {
-                    ModuleClass = window[module.constructor.name];
-                }
-                // 2. Try module registry with constructor name
-                else if (window.moduleRegistry && window.moduleRegistry.getModuleClass(module.constructor.name)) {
-                    ModuleClass = window.moduleRegistry.getModuleClass(module.constructor.name);
-                } 
-                // 3. Try using module.type as fallback
-                else if (module.type && window[module.type]) {
-                    ModuleClass = window[module.type];
-                }
-                // 4. Try module registry with module.type
-                else if (module.type && window.moduleRegistry && window.moduleRegistry.getModuleClass(module.type)) {
-                    ModuleClass = window.moduleRegistry.getModuleClass(module.type);
-                }
-                // 5. Last resort - look through all global properties for matching class
-                else if (module.type) {
-                    // Try camelCase variation
-                    const camelCase = module.type.charAt(0).toLowerCase() + module.type.slice(1);
-                    if (window[camelCase]) {
-                        ModuleClass = window[camelCase];
-                    } else {
-                        // Try capitalized version
-                        const capitalized = module.type.charAt(0).toUpperCase() + module.type.slice(1);
-                        if (window[capitalized]) {
-                            ModuleClass = window[capitalized];
-                        }
-                    }
+                let ModuleClass = module.constructor;
+                if (!ModuleClass && module.type) {
+                    ModuleClass = window.moduleRegistry?.getModuleClass(module.type) || window[module.type];
                 }
                 
                 if (ModuleClass) {
-                    // Create a new instance
+                    // Create new module instance
                     const clonedModule = new ModuleClass();
+                    clonedModule.id = crypto.randomUUID();
+                    clonedModule.gameObject = cloned; // Set correct gameObject reference
                     
-                    // Generate a new unique ID for the module
-                    clonedModule.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                    // Deep clone module properties with reference replacement
+                    copyModuleProperties(module, clonedModule, cloned, originalGameObject);
                     
-                    // Set the gameObject reference to the new object FIRST
-                    clonedModule.gameObject = cloned;
+                    // Add module to cloned object
+                    cloned.modules.push(clonedModule);
                     
-                    // Perform a scan of all properties of the module to find and replace any references
-                    // to the original GameObject with references to the new GameObject
-                    for (const key in module) {
-                        // Skip these special properties
-                        if (key === 'id' || key === 'gameObject') continue;
-                        
+                    // Call onAttach if available
+                    if (typeof clonedModule.onAttach === 'function') {
                         try {
-                            // Handle Vector2 objects
-                            if (module[key] instanceof Vector2) {
-                                clonedModule[key] = module[key].clone();
-                            } 
-                            // Handle arrays (like vertices in polygons)
-                            else if (Array.isArray(module[key])) {
-                                // Deep clone the array with gameObject reference replacement
-                                clonedModule[key] = module[key].map(item => {
-                                    if (item instanceof Vector2) {
-                                        return item.clone();
-                                    } else if (item === this) {
-                                        // Replace references to this GameObject with the cloned one
-                                        return cloned;
-                                    } else if (item === module.gameObject) {
-                                        // Replace references to the module's gameObject with the cloned one
-                                        return cloned;
-                                    } else if (typeof item === 'object' && item !== null) {
-                                        return deepCloneWithReferenceReplacement(item, this, cloned);
-                                    }
-                                    return item;
-                                });
-                            }
-                            // Handle objects that have their own clone method
-                            else if (module[key] && typeof module[key] === 'object' && typeof module[key].clone === 'function') {
-                                clonedModule[key] = module[key].clone();
-                            }
-                            // Replace direct references to the gameObject
-                            else if (module[key] === this || module[key] === module.gameObject) {
-                                clonedModule[key] = cloned;
-                            }
-                            // Handle plain objects - deep clone with reference replacement
-                            else if (module[key] && typeof module[key] === 'object' && module[key] !== null) {
-                                clonedModule[key] = deepCloneWithReferenceReplacement(module[key], this, cloned);
-                            }
-                            // Handle primitive values
-                            else {
-                                clonedModule[key] = module[key];
-                            }
+                            clonedModule.onAttach(cloned);
                         } catch (e) {
-                            console.warn(`Error cloning module property ${key}:`, e);
-                            // Try direct assignment as fallback
-                            clonedModule[key] = module[key];
+                            console.warn(`Error calling onAttach for ${clonedModule.type}:`, e);
                         }
                     }
                     
-                    // Also copy private properties that store exposed values (_propertyName)
-                    if (module.exposedProperties && Array.isArray(module.exposedProperties)) {
-                        module.exposedProperties.forEach(prop => {
-                            const privatePropName = `_${prop.name}`;
-                            if (module.hasOwnProperty(privatePropName)) {
-                                const value = module[privatePropName];
-    
-                                try {
-                                    // Use the same deep cloning logic with reference replacement
-                                    if (value instanceof Vector2) {
-                                        clonedModule[privatePropName] = value.clone();
-                                    } else if (value === this || value === module.gameObject) {
-                                        clonedModule[privatePropName] = cloned;
-                                    } else if (Array.isArray(value)) {
-                                        clonedModule[privatePropName] = value.map(item => {
-                                            if (item instanceof Vector2) return item.clone();
-                                            if (item === this || item === module.gameObject) return cloned;
-                                            if (typeof item === 'object' && item !== null) 
-                                                return deepCloneWithReferenceReplacement(item, this, cloned);
-                                            return item;
-                                        });
-                                    } else if (value && typeof value === 'object' && typeof value.clone === 'function') {
-                                        clonedModule[privatePropName] = value.clone();
-                                    } else if (value && typeof value === 'object' && value !== null) {
-                                        clonedModule[privatePropName] = deepCloneWithReferenceReplacement(value, this, cloned);
-                                    } else {
-                                        clonedModule[privatePropName] = value;
-                                    }
-                                } catch (e) {
-                                    console.warn(`Error cloning private property ${privatePropName}:`, e);
-                                    // Use direct assignment as fallback
-                                    clonedModule[privatePropName] = value;
-                                }
-                            }
-                        });
-                    }
-                    
-                    // Perform a deep scan to find any overlooked references to the original GameObject
-                    deepScanAndReplaceReferences(clonedModule, this, cloned);
-                    
-                    // If the module has a specific cloning method, use it for additional properties
-                    if (typeof module._cloneCustomData === 'function') {
-                        module._cloneCustomData(clonedModule);
-                    }
-                    
-                    // Add the cloned module directly to avoid reset/reconfiguration in addModule
-                    cloned.modules.push(clonedModule);
-                    
-                    // Call onAttach explicitly to establish the parent-child relationship
-                    if (typeof clonedModule.onAttach === 'function') {
-                        clonedModule.onAttach(cloned);
-                    }
-                    
+                    // Do a deep scan to replace any missed references
+                    deepScanAndReplaceReferences(clonedModule, originalGameObject, cloned);
                 } else {
-                    // Handle case where module class isn't found
-                    console.warn(`Module class ${module.constructor.name} not found, creating placeholder`);
-                    const placeholderModule = new Module(`${module.constructor.name || module.type} (Missing)`);
-                    placeholderModule.type = module.constructor.name || module.type;
-                    placeholderModule.missingModule = true;
-                    placeholderModule.gameObject = cloned;
-                    
-                    cloned.modules.push(placeholderModule);
+                    // Handle missing module class
+                    createPlaceholderModule(cloned, {
+                        id: module.id,
+                        type: module.type || module.constructor.name
+                    }, module.type || module.constructor.name);
                 }
             } catch (error) {
-                console.error(`Error cloning module ${module.constructor.name}:`, error);
+                console.error(`Error cloning module ${module.type || module.constructor.name}:`, error);
             }
-        });
+        }
         
-        // Clone all children recursively
-        this.children.forEach(child => {
+        // Clone children recursively
+        for (const child of this.children) {
             const clonedChild = child.clone();
             cloned.addChild(clonedChild);
-        });
+        }
+
+        // Final pass to catch any remaining references
+        for (const module of cloned.modules) {
+            // Replace any remaining references to the original GameObject
+            deepScanAndReplaceAllReferences(module, originalGameObject, cloned);
+            
+            // Also check for private properties
+            for (const key in module) {
+                if (key.startsWith('_') && module[key] === originalGameObject) {
+                    module[key] = cloned;
+                }
+            }
+        }
         
         return cloned;
     }
     
+}
+
+function deepScanAndReplaceAllReferences(obj, originalObj, newObj) {
+    if (!obj || typeof obj !== 'object') return;
+    
+    const visited = new WeakMap();
+    
+    const scan = (o) => {
+        if (!o || typeof o !== 'object' || visited.has(o)) return;
+        visited.set(o, true);
+        
+        for (const key in o) {
+            if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
+            
+            const value = o[key];
+            
+            if (value === originalObj || value === originalObj.gameObject) {
+                console.log(`Replacing reference in ${o.constructor.name}.${key}`);
+                o[key] = newObj;
+            }
+            
+            if (typeof value === 'object' && value !== null && !visited.has(value)) {
+                scan(value);
+            }
+        }
+    };
+    
+    scan(obj);
+}
+
+/**
+ * Helper to find available module class 
+ * @param {string} moduleName - The module class name to find
+ * @returns {Class|null} - The module class or null if not found
+ */
+function findModuleClass(moduleName) {
+    if (!moduleName) return null;
+    
+    // Check registry first (most reliable source)
+    if (window.moduleRegistry) {
+        const moduleClass = window.moduleRegistry.getModuleClass(moduleName);
+        if (moduleClass) return moduleClass;
+    }
+    
+    // Try direct global lookup with original name
+    if (window[moduleName]) return window[moduleName];
+    
+    // Try camelCase variation
+    const camelCase = moduleName.charAt(0).toLowerCase() + moduleName.slice(1);
+    if (window[camelCase]) return window[camelCase];
+    
+    // Try capitalized version
+    const capitalized = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
+    if (window[capitalized]) return window[capitalized];
+    
+    // Not found
+    return null;
+}
+
+/**
+ * Function to copy module properties (outside class to avoid 'this' context issues)
+ */
+function copyModuleProperties(sourceModule, targetModule, newGameObject, originalGameObject) {
+    // First, ensure we have all the necessary objects
+    if (!sourceModule || !targetModule || !newGameObject || !originalGameObject) {
+        console.warn("copyModuleProperties: Missing required arguments");
+        return;
+    }
+    
+    // Get all property names (including non-enumerable ones)
+    const propertyNames = new Set([
+        ...Object.getOwnPropertyNames(sourceModule), 
+        ...Object.keys(sourceModule)
+    ]);
+    
+    // Process each property
+    for (const key of propertyNames) {
+        try {
+            // Skip special properties and functions
+            if (key === 'id' || key === 'gameObject' || key === 'constructor' || 
+                key.startsWith('__') || typeof sourceModule[key] === 'function') {
+                continue;
+            }
+            
+            // Get the source value
+            const value = sourceModule[key];
+            
+            // Handle different value types
+            if (value === null || value === undefined) {
+                targetModule[key] = value;
+            } 
+            else if (value === originalGameObject) {
+                // Direct reference to the original GameObject
+                targetModule[key] = newGameObject;
+            }
+            else if (value === sourceModule.gameObject) {
+                // Another way to reference the original GameObject
+                targetModule[key] = newGameObject;
+            }
+            else if (value instanceof Vector2) {
+                // Deep clone Vector2 (or anything with a clone method)
+                targetModule[key] = value.clone();
+            }
+            else if (Array.isArray(value)) {
+                // Process arrays - create a new array for the clone
+                targetModule[key] = deepCloneArray(value, originalGameObject, newGameObject);
+            }
+            else if (typeof value === 'object' && value !== null && 
+                     !(value instanceof HTMLElement)) {
+                // For any other objects that aren't DOM elements
+                if (typeof value.clone === 'function') {
+                    // Use clone method if available
+                    targetModule[key] = value.clone();
+                } else {
+                    // Do a deep clone with reference replacement
+                    targetModule[key] = deepCloneWithReplacements(value, originalGameObject, newGameObject);
+                }
+            } else {
+                // For primitives, do direct assignment
+                targetModule[key] = value;
+            }
+        } catch (e) {
+            console.warn(`Error cloning property ${key} in module ${sourceModule.constructor.name}:`, e);
+        }
+    }
+    
+    // Handle private properties for exposed properties
+    if (Array.isArray(sourceModule.exposedProperties)) {
+        for (const prop of sourceModule.exposedProperties) {
+            const propName = prop.name;
+            const privatePropName = `_${propName}`;
+            
+            // Copy the private property if it exists
+            if (privatePropName in sourceModule) {
+                const privateValue = sourceModule[privatePropName];
+                
+                if (privateValue === originalGameObject) {
+                    targetModule[privatePropName] = newGameObject;
+                } else if (typeof privateValue === 'object' && privateValue !== null) {
+                    if (typeof privateValue.clone === 'function') {
+                        targetModule[privatePropName] = privateValue.clone();
+                    } else {
+                        targetModule[privatePropName] = deepCloneWithReplacements(
+                            privateValue, originalGameObject, newGameObject
+                        );
+                    }
+                } else {
+                    targetModule[privatePropName] = privateValue;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Deep clone an array, replacing GameObject references (standalone function)
+ */
+function deepCloneArray(arr, originalGameObject, newGameObject) {
+    if (!arr) return arr;
+    
+    return arr.map(item => {
+        if (item === originalGameObject || item === originalGameObject.gameObject) {
+            return newGameObject;
+        }
+        else if (item === null || item === undefined || typeof item !== 'object') {
+            return item; // Direct copy for primitives
+        }
+        else if (typeof item.clone === 'function') {
+            return item.clone();
+        }
+        else if (Array.isArray(item)) {
+            return deepCloneArray(item, originalGameObject, newGameObject);
+        }
+        else if (item instanceof HTMLElement) {
+            return item; // Keep DOM references intact
+        }
+        else {
+            return deepCloneWithReplacements(item, originalGameObject, newGameObject);
+        }
+    });
+}
+
+/**
+ * Deep clone an object with GameObject reference replacements (standalone function)
+ */
+function deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
+    if (!obj) return obj;
+    if (obj === originalGameObject) return newGameObject;
+    
+    // Skip non-objects and DOM elements
+    if (typeof obj !== 'object' || obj instanceof HTMLElement) return obj;
+    
+    // Handle special objects
+    if (typeof obj.clone === 'function') return obj.clone();
+    if (obj instanceof Date) return new Date(obj.getTime());
+    
+    // Handle arrays
+    if (Array.isArray(obj)) {
+        return deepCloneArray(obj, originalGameObject, newGameObject);
+    }
+    
+    // Create a new object of the same type
+    const clone = Object.create(Object.getPrototypeOf(obj));
+    
+    // Copy all properties with reference checks
+    for (const key in obj) {
+        if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+        
+        const value = obj[key];
+        
+        if (value === originalGameObject || value === originalGameObject.gameObject) {
+            // Replace GameObject references
+            clone[key] = newGameObject;
+        } 
+        else if (value === null || value === undefined || typeof value !== 'object') {
+            // Direct copy for primitives and null/undefined
+            clone[key] = value;
+        }
+        else if (typeof value.clone === 'function') {
+            // Use clone method if available
+            clone[key] = value.clone(); 
+        }
+        else if (value instanceof HTMLElement) {
+            // Keep references to DOM elements intact
+            clone[key] = value;
+        }
+        else if (Array.isArray(value)) {
+            // Deep clone arrays
+            clone[key] = deepCloneArray(value, originalGameObject, newGameObject);
+        }
+        else {
+            // Deep clone other objects
+            clone[key] = deepCloneWithReplacements(value, originalGameObject, newGameObject);
+        }
+    }
+    
+    return clone;
 }
 
 /**
@@ -1315,15 +1745,31 @@ function safeClone(obj, originalGameObject, newGameObject) {
 }
 
 function createPlaceholderModule(gameObj, moduleData, typeName) {
-    // Create a basic module that preserves the data
-    const placeholderModule = new Module(`${typeName || 'Unknown'} (Missing)`);
-    placeholderModule.id = moduleData.id;
-    placeholderModule.type = typeName || 'UnknownModule';
-    placeholderModule.missingModule = true;
-    placeholderModule.originalData = moduleData;
-    
-    // Add the placeholder module to preserve the structure
-    gameObj.addModule(placeholderModule);
-    
-    console.warn(`Created placeholder for missing module: ${typeName}`);
+    try {
+        // Check if Module class is available
+        if (typeof Module === 'undefined') {
+            console.error("Module base class not available for placeholder creation");
+            return null;
+        }
+
+        // Create a basic module that preserves the data
+        const placeholderModule = new Module(`${typeName || 'Unknown'} (Missing)`);
+        placeholderModule.id = moduleData.id || crypto.randomUUID();
+        placeholderModule.type = typeName || 'UnknownModule';
+        placeholderModule.missingModule = true;
+        placeholderModule.originalData = moduleData;
+        placeholderModule.gameObject = gameObj;  // Make sure to set this reference
+        
+        // Add the placeholder module directly to avoid using addModule which could have side effects
+        gameObj.modules.push(placeholderModule);
+        
+        console.warn(`Created placeholder for missing module: ${typeName}. Available modules: ${
+            Array.from(window.moduleRegistry?.modules?.keys() || []).join(', ')
+        }`);
+        
+        return placeholderModule;
+    } catch (e) {
+        console.error("Failed to create placeholder module:", e);
+        return null;
+    }
 }

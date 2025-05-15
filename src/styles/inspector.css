@@ -1018,3 +1018,119 @@ button.remove-vertex:disabled {
     cursor: not-allowed;
 }
 
+/* Better tooltips */
+[title] {
+    position: relative;
+    cursor: help;
+}
+
+.module-title span {
+    margin-left: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 150px; /* Limit width to ensure ellipsis works */
+    display: inline-block;
+}
+
+.module-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0; /* Allow title to shrink */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.module-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    margin-right: 5px;
+}
+
+.module-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    position: relative;
+    padding: 8px 10px;
+    background-color: #2a2a2a;
+    border-radius: 4px 4px 0 0;
+    /* Ensure no overflow of header content */
+    box-sizing: border-box;
+}
+
+.module-title {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0; /* Allow title to shrink */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.module-title span {
+    margin-left: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.module-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    flex-shrink: 0; /* Prevent actions from shrinking */
+    margin-right: 2px; /* Add margin to ensure buttons don't stick to edge */
+}
+
+/* Ensure buttons have proper sizing and spacing */
+.module-actions button {
+    width: 24px; /* Fixed width for buttons */
+    height: 24px; /* Fixed height for buttons */
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 2px; /* Small spacing between buttons */
+}
+
+.module-actions button:last-child {
+    margin-right: 0; /* Remove margin from last button */
+}
+
+/* Make sure content area doesn't overflow */
+.inspector-scroll-container {
+    padding: 10px;
+    overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scrolling */
+}
+
+.modules-list {
+    width: 100%;
+    padding-right: 4px; /* Add some padding to ensure content doesn't touch the right edge */
+    box-sizing: border-box;
+}
+
+.module-container {
+    position: relative;
+    border: 1px solid #444;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Make sure module content doesn't push header wider */
+.module-content {
+    overflow-x: hidden;
+    padding: 10px;
+    box-sizing: border-box;
+    width: 100%;
+}
+

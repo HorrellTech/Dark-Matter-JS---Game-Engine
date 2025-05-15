@@ -514,8 +514,15 @@ populateModuleDropdown() {
                 module.type = moduleClass.name;
             }
             
+            // IMPORTANT: Explicitly set the gameObject reference in the module
+            // to ensure all internal properties are updated
+            module.gameObject = this.inspectedObject;
+            
             // Add to GameObject
-            this.inspectedObject.addModule(module);
+            const addedModule = this.inspectedObject.addModule(module);
+            
+            // Ensure reference is correct
+            console.log("Added module gameObject reference:", addedModule.gameObject === this.inspectedObject);
             
             // Refresh inspector UI
             this.showObjectInspector();
@@ -688,7 +695,7 @@ populateModuleDropdown() {
             <div class="module-header">
                 <div class="module-title">
                     <i class="fas fa-arrows-alt"></i>
-                    <span>Transform</span>
+                    <span title="Transform: Position, scale, rotation and depth">Transform</span>
                 </div>
                 <div class="module-actions">
                     <button class="module-collapse" title="${isCollapsed ? 'Expand' : 'Collapse'}">
@@ -698,32 +705,32 @@ populateModuleDropdown() {
             </div>
             <div class="module-content" style="${isCollapsed ? 'display: none;' : ''}">
                 <div class="property-row">
-                    <label>Position X</label>
-                    <input type="number" class="position-x" value="${this.inspectedObject.position.x}" step="1">
+                    <label title="X position in world space">Position X</label>
+                    <input type="number" class="position-x" value="${this.inspectedObject.position.x}" step="1" title="X position in world space">
                 </div>
                 <div class="property-row">
-                    <label>Position Y</label>
-                    <input type="number" class="position-y" value="${this.inspectedObject.position.y}" step="1">
+                    <label title="Y position in world space">Position Y</label>
+                    <input type="number" class="position-y" value="${this.inspectedObject.position.y}" step="1" title="Y position in world space">
                 </div>
                 <div class="property-row">
-                    <label>Scale X</label>
-                    <input type="number" class="scale-x" value="${this.inspectedObject.scale.x}" step="0.1">
+                    <label title="X scale factor">Scale X</label>
+                    <input type="number" class="scale-x" value="${this.inspectedObject.scale.x}" step="0.1" title="X scale factor">
                 </div>
                 <div class="property-row">
-                    <label>Scale Y</label>
-                    <input type="number" class="scale-y" value="${this.inspectedObject.scale.y}" step="0.1">
+                    <label title="Y scale factor">Scale Y</label>
+                    <input type="number" class="scale-y" value="${this.inspectedObject.scale.y}" step="0.1" title="Y scale factor">
                 </div>
                 <div class="property-row">
-                    <label>Rotation</label>
-                    <input type="number" class="rotation" value="${this.inspectedObject.angle}" step="1">
+                    <label title="Rotation angle in degrees">Rotation</label>
+                    <input type="number" class="rotation" value="${this.inspectedObject.angle}" step="1" title="Rotation angle in degrees">
                 </div>
                 <div class="property-row">
-                    <label>Depth</label>
-                    <input type="number" class="depth" value="${this.inspectedObject.depth}" step="1">
+                    <label title="Render depth/layer">Depth</label>
+                    <input type="number" class="depth" value="${this.inspectedObject.depth}" step="1" title="Render depth/layer">
                 </div>
                 <div class="property-row">
-                    <label>Color</label>
-                    <input type="color" class="editor-color" value="${this.inspectedObject.editorColor}">
+                    <label title="Color in editor view">Color</label>
+                    <input type="color" class="editor-color" value="${this.inspectedObject.editorColor}" title="Color in editor view">
                 </div>
             </div>
         `;
@@ -841,37 +848,42 @@ populateModuleDropdown() {
      */
     addModuleUI(module) {
         if (!module) return;
-    
+
         const moduleContainer = document.createElement('div');
         moduleContainer.className = 'module-container';
         moduleContainer.dataset.moduleId = module.id;
         moduleContainer.draggable = true; // Make modules draggable
         
-        // Try to find module icon
-        let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; // Default icon
-        
-        /*if (this.editor?.fileBrowser) {
-            const files = this.editor.fileBrowser.getAllFiles();
-            const moduleClassName = module.constructor.name;
-            
-            // Look for icon file with pattern: moduleName_icon.*
-            const iconFile = files.find(file => {
-                const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
-                return nameWithoutExt === `${moduleClassName}_icon` && 
-                    /\.(png|jpg|jpeg|gif|ico)$/i.test(file.name);
-            });
-            
-            if (iconFile) {
-                iconHtml = `<img src="${iconFile.path}" class="module-icon" alt="${module.type} icon">`;
-            }
-        }*/
-
-        // Set module type display name - handle missing/undefined modules
+        // Get module display name and description
         const moduleDisplayName = module.type || module.constructor.name || 'Unknown Module';
+        const moduleDescription = module.constructor.description || '';
+        const combinedTooltip = moduleDescription ? `${moduleDisplayName}: ${moduleDescription}` : moduleDisplayName;
+        
         const isMissingModule = module.missingModule === true;
         
         // Check if this module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState(module.id);
+        
+        // Handle custom icon if specified in the module
+        let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; // Default icon
+        
+        // Check for iconClass in module constructor or instance
+        const iconClass = module.constructor.iconClass || module.iconClass;
+        if (iconClass) {
+            if (iconClass.startsWith('fa-')) {
+                // Font Awesome icon
+                iconHtml = `<i class="fas ${iconClass}"></i>`;
+            } else {
+                // Assume it's a full icon class including the 'fas' part
+                iconHtml = `<i class="${iconClass}"></i>`;
+            }
+        }
+        
+        // Check for custom iconUrl in module constructor or instance
+        const iconUrl = module.constructor.iconUrl || module.iconUrl;
+        if (iconUrl) {
+            iconHtml = `<img src="${iconUrl}" class="module-icon" alt="${moduleDisplayName} icon">`;
+        }
         
         // Prepare requirements section
         let requirementsHtml = '';
@@ -905,7 +917,7 @@ populateModuleDropdown() {
                         <i class="fas fa-grip-lines"></i>
                     </div>
                     ${iconHtml}
-                    <span>${module.type}</span>
+                    <span title="${combinedTooltip}">${moduleDisplayName}</span>
                 </div>
                 <div class="module-actions">
                     <button class="module-toggle" title="${module.enabled ? 'Disable' : 'Enable'} Module">
@@ -1309,6 +1321,9 @@ populateModuleDropdown() {
 
         const inputId = `prop-${module.id}-${prop.name}`;
         
+        // Get description for tooltip from options if available
+        const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+        
         // Check if the property is a Vector2 or Vector3
         if (value instanceof Vector2 || value instanceof Vector3 || 
             (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
@@ -1320,10 +1335,11 @@ populateModuleDropdown() {
             case 'number':
                 return `
                     <div class="property-row">
-                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
+                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
                         <input type="number" id="${inputId}" class="property-input" 
                             data-prop-name="${prop.name}" 
                             value="${value}" 
+                            title="${tooltip}"
                             ${prop.options?.min !== undefined ? `min="${prop.options.min}"` : ''}
                             ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
                             ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}>
@@ -1332,25 +1348,28 @@ populateModuleDropdown() {
             case 'boolean':
                 return `
                     <div class="property-row">
-                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
+                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
                         <input type="checkbox" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" ${value ? 'checked' : ''}>
+                            data-prop-name="${prop.name}" ${value ? 'checked' : ''}
+                            title="${tooltip}">
                     </div>
                 `;
-                case 'color':
-                    return `
+            case 'color':
+                return `
                     <div class="property-row">
-                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
+                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
                         <input type="color" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" value="${value || '#ffffff'}">
+                            data-prop-name="${prop.name}" value="${value || '#ffffff'}"
+                            title="${tooltip}">
                     </div>
                 `;
             case 'enum':
                 const options = prop.options?.options || [];
                 return `
                     <div class="property-row">
-                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
-                        <select id="${inputId}" class="property-input" data-prop-name="${prop.name}">
+                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
+                        <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
+                            title="${tooltip}">
                             ${options.map(option => `
                                 <option value="${option}" ${value === option ? 'selected' : ''}>
                                     ${this.formatPropertyName(option)}
@@ -1368,9 +1387,10 @@ populateModuleDropdown() {
             default:
                 return `
                     <div class="property-row">
-                        <label for="${inputId}">${this.formatPropertyName(prop.name)}</label>
+                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
                         <input type="text" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" value="${value}">
+                            data-prop-name="${prop.name}" value="${value}"
+                            title="${tooltip}">
                     </div>
                 `;
         }
@@ -1580,46 +1600,52 @@ populateModuleDropdown() {
         const collapsibleId = `vector-${module.id}-${propName}`;
         const isCollapsed  = this.getVectorCollapseState(collapsibleId);
         const isVector3    = vector.z != null;
-    
+        
+        // Get tooltip from options if available
+        const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
+
         return `
         <div class="property-row vector-property">
-          <div class="vector-header">
-            <label>${this.formatPropertyName(propName)}</label>
+        <div class="vector-header">
+            <label title="${tooltip}">${this.formatPropertyName(propName)}</label>
             <div class="vector-preview">
-              (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
+            (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
             </div>
             <button class="vector-collapse"
                     data-target="${collapsibleId}"
                     data-vector-id="${collapsibleId}"
                     title="${isCollapsed ? 'Expand' : 'Collapse'}">
-              <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
+            <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
             </button>
-          </div>
-          <div class="vector-components" id="${collapsibleId}"
-               style="${isCollapsed ? 'display:none' : ''}">
+        </div>
+        <div class="vector-components" id="${collapsibleId}"
+            style="${isCollapsed ? 'display:none' : ''}">
             <div class="vector-component">
-              <label>X</label>
-              <input type="number" class="component-input"
-                     data-prop-name="${propName}"
-                     data-component="x"
-                     value="${vector.x}" step="1">
+            <label title="X coordinate">X</label>
+            <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="x"
+                    value="${vector.x}" step="1"
+                    title="${tooltip} (X coordinate)">
             </div>
             <div class="vector-component">
-              <label>Y</label>
-              <input type="number" class="component-input"
-                     data-prop-name="${propName}"
-                     data-component="y"
-                     value="${vector.y}" step="1">
+            <label title="Y coordinate">Y</label>
+            <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="y"
+                    value="${vector.y}" step="1"
+                    title="${tooltip} (Y coordinate)">
             </div>
             ${isVector3 ? `
             <div class="vector-component">
-              <label>Z</label>
-              <input type="number" class="component-input"
-                     data-prop-name="${propName}"
-                     data-component="z"
-                     value="${vector.z}" step="1">
+            <label title="Z coordinate">Z</label>
+            <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="z"
+                    value="${vector.z}" step="1"
+                    title="${tooltip} (Z coordinate)">
             </div>` : ''}
-          </div>
+        </div>
         </div>
         `;
     }
