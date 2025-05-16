@@ -313,95 +313,172 @@ class FileBrowser {
         }
     }
 
+    /**
+     * Show context menu for an item
+     * @param {Event} e - Context menu event
+     * @param {Object} item - File or folder item
+     */
     showContextMenu(e, item) {
-        // Remove any existing context menus first
-        document.querySelectorAll('.fb-context-menu').forEach(menu => menu.remove());
-    
+        e.preventDefault();
+        
+        // Remove any existing context menus
+        const existingMenu = document.querySelector('.fb-context-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // Create context menu
         const menu = document.createElement('div');
         menu.className = 'fb-context-menu';
+        menu.style.top = `${e.clientY}px`;
+        menu.style.left = `${e.clientX}px`;
         
-        const menuItems = [];
+        // Common actions
+        let menuHTML = '';
         
-        // Add item-specific actions
-        if (item) {
-            if (item.dataset.type === 'folder') {
-                menuItems.push(
-                    { label: 'Open', action: () => this.navigateTo(item.dataset.path) },
-                    { label: 'Rename', action: () => this.promptRename(item) }
-                );
-            } else if (item.dataset.type === 'file') {
-                const isScript = item.dataset.name.endsWith('.js');
-                
-                menuItems.push(
-                    { label: isScript ? 'Edit Script' : 'Open', action: () => this.openFile(item.dataset.path) },
-                    { label: 'Rename', action: () => this.promptRename(item) }
-                );
+        // File-specific actions
+        if (item && item.type === 'file') {
+            // Check if it's an image file
+            const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(item.name);
+            
+            // Check if it's a script file
+            const isScript = item.name.endsWith('.js');
+            
+            // Add open action
+            menuHTML += `<div class="fb-menu-item fb-menu-open">Open</div>`;
+            
+            // Add copy link action
+            menuHTML += `<div class="fb-menu-item fb-menu-copy-link">Copy Link</div>`;
+            
+            // Preview images
+            if (isImage) {
+                menuHTML += `<div class="fb-menu-item fb-menu-preview">Preview Image</div>`;
             }
             
-            menuItems.push({ label: 'Delete', action: () => this.deleteSelected() });
-            menuItems.push({ label: '──────────', disabled: true });
+            // For script files, add run action
+            if (isScript) {
+                menuHTML += `<div class="fb-menu-item fb-menu-run">Run Script</div>`;
+            }
+            
+            // Add separator
+            menuHTML += `<div class="context-menu-separator"></div>`;
         }
         
-        // Add general actions
-        menuItems.push(
-            { label: 'New Folder', action: () => this.promptNewFolder() },
-            { label: 'New Script', action: () => this.promptNewScript() },
-            { label: 'Upload File', action: () => this.uploadFile() }
-        );
+        // Different menu if no item is selected (background context menu)
+        if (!item) {
+            menuHTML += `
+                <div class="fb-menu-item fb-menu-new-folder">New Folder</div>
+                <div class="fb-menu-item fb-menu-new-script">New Script</div>
+                <div class="fb-menu-item fb-menu-upload">Upload File</div>
+            `;
+        } else {
+            // Common actions for files and folders
+            menuHTML += `
+                <div class="fb-menu-item fb-menu-rename">Rename</div>
+                <div class="fb-menu-item fb-menu-delete">Delete</div>
+                <div class="context-menu-separator"></div>
+                <div class="fb-menu-item fb-menu-copy">Copy</div>
+                <div class="fb-menu-item fb-menu-cut">Cut</div>
+            `;
+        }
         
-        // Render menu items
-        menu.innerHTML = menuItems.map(item => 
-            `<div class="fb-menu-item${item.disabled ? ' disabled' : ''}">${item.label}</div>`
-        ).join('');
+        // If we have items in clipboard, show paste option
+        if (this.clipboardItems && this.clipboardItems.length > 0) {
+            menuHTML += `<div class="fb-menu-item fb-menu-paste">Paste</div>`;
+        }
         
-        // First add menu to the DOM (invisible) so we can measure its height
-        menu.style.visibility = 'hidden';
+        menu.innerHTML = menuHTML;
         document.body.appendChild(menu);
         
-        // Calculate position considering menu height and footer position
-        const menuHeight = menu.offsetHeight;
-        const footerTop = document.querySelector('.footer').getBoundingClientRect().top;
-        const availableHeight = footerTop - 10; // 10px buffer
-        
-        // Position menu horizontally
-        let leftPos = e.pageX;
-        const rightEdge = leftPos + menu.offsetWidth;
-        if (rightEdge > window.innerWidth) {
-            leftPos = window.innerWidth - menu.offsetWidth - 5;
+        // Adjust position if menu goes off-screen
+        const menuRect = menu.getBoundingClientRect();
+        if (menuRect.right > window.innerWidth) {
+            menu.style.left = `${window.innerWidth - menuRect.width - 5}px`;
         }
-        menu.style.left = `${leftPos}px`;
-        
-        // Position menu vertically
-        let topPos = e.pageY;
-        if (topPos + menuHeight > availableHeight) {
-            // Position menu above the click point if it would otherwise go below the footer
-            topPos = Math.max(e.pageY - menuHeight, 10);
+        if (menuRect.bottom > window.innerHeight) {
+            menu.style.top = `${window.innerHeight - menuRect.height - 5}px`;
         }
-        menu.style.top = `${topPos}px`;
         
-        // Make menu visible
-        menu.style.visibility = 'visible';
+        // Add event listeners for menu items
+        if (item) {
+            // Item-specific menu actions
+            menu.querySelector('.fb-menu-open')?.addEventListener('click', () => {
+                this.openFile(item.path);
+                menu.remove();
+            });
+            
+            menu.querySelector('.fb-menu-copy-link')?.addEventListener('click', () => {
+                this.copyToClipboard(item.path);
+                menu.remove();
+            });
+            
+            // Add rename listener
+            menu.querySelector('.fb-menu-rename')?.addEventListener('click', () => {
+                this.promptRename(item);
+                menu.remove();
+            });
+            
+            // Add delete listener
+            menu.querySelector('.fb-menu-delete')?.addEventListener('click', () => {
+                if (confirm(`Delete ${item.name}?`)) {
+                    this.deleteItem(item.path).then(() => this.refreshFiles());
+                }
+                menu.remove();
+            });
+        } else {
+            // Background menu actions
+            menu.querySelector('.fb-menu-new-folder')?.addEventListener('click', () => {
+                this.promptNewFolder();
+                menu.remove();
+            });
+            
+            menu.querySelector('.fb-menu-new-script')?.addEventListener('click', () => {
+                this.promptNewScript();
+                menu.remove();
+            });
+            
+            menu.querySelector('.fb-menu-upload')?.addEventListener('click', () => {
+                this.uploadFile();
+                menu.remove();
+            });
+        }
         
-        // Setup click handlers
-        const menuElements = menu.querySelectorAll('.fb-menu-item:not(.disabled)');
-        menuElements.forEach((element, index) => {
-            const action = menuItems[index].action;
-            if (action) {
-                element.addEventListener('click', action);
-            }
+        // Close the menu when clicking outside
+        document.addEventListener('click', function onClickOutside() {
+            menu.remove();
+            document.removeEventListener('click', onClickOutside);
         });
         
-        // Close menu when clicking outside
-        const closeMenu = (e) => {
-            if (!menu.contains(e.target)) {
-                menu.remove();
-                document.removeEventListener('click', closeMenu);
-            }
-        };
+        // Prevent the menu from closing when clicking inside it
+        menu.addEventListener('click', e => {
+            e.stopPropagation();
+        });
+    }
+
+    /**
+     * Copy text to clipboard
+     * @param {string} text - Text to copy
+     */
+    copyToClipboard(text) {
+        // Create a temporary input element
+        const input = document.createElement('input');
+        input.style.position = 'fixed';
+        input.style.opacity = 0;
+        input.value = text;
+        document.body.appendChild(input);
         
-        setTimeout(() => {
-            document.addEventListener('click', closeMenu);
-        }, 0);
+        // Select the text
+        input.select();
+        input.setSelectionRange(0, 99999);
+        
+        // Copy the text
+        document.execCommand('copy');
+        
+        // Remove the temporary element
+        document.body.removeChild(input);
+        
+        // Show notification
+        this.showNotification(`Path copied to clipboard: ${text}`, 'info');
     }
 
     async promptNewFolder() {

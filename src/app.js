@@ -538,6 +538,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Visual feedback - button active state
                 playButton.classList.remove('active');
                 stopButton.classList.add('active');
+
+                // Switch to editor tab
+                const editorTab = document.querySelector('[data-canvas="editor"]');
+                if (editorTab) editorTab.click();
+                
+                // Refresh editor canvas
+                editor.refreshCanvas();
                 
                 // Stop the game
                 engine.stop();

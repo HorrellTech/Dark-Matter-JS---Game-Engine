@@ -203,52 +203,54 @@ class Module {
      * Clone this module instance
      * @returns {Module} A new instance of this module with the same properties
      */
-    clone() {
-        const cloned = new this.constructor();
-        
-        // Copy all properties except gameObject reference
-        const propertyNames = new Set([
-            ...Object.getOwnPropertyNames(this), 
-            ...Object.keys(this)
+    clone(newGameObject = null) {
+        // 1) create a fresh instance
+        const cloned = new this.constructor(this.name);
+    
+        // 2) copy all your own data except any gameObject pointers
+        const keys = new Set([
+          ...Object.getOwnPropertyNames(this),
+          ...Object.keys(this)
         ]);
-        
-        for (const key of propertyNames) {
-            if (key === 'gameObject' || key === 'constructor' || 
-                key.startsWith('__') || typeof this[key] === 'function') {
-                continue;
-            }
-            
-            try {
-                const value = this[key];
-                
-                if (value === null || value === undefined) {
-                    cloned[key] = value;
-                }
-                else if (typeof value === 'object') {
-                    if (typeof value.clone === 'function') {
-                        cloned[key] = value.clone();
-                    }
-                    else if (Array.isArray(value)) {
-                        cloned[key] = this.deepCloneArray(value);
-                    }
-                    else if (!(value instanceof HTMLElement)) {
-                        cloned[key] = this.deepCloneObject(value);
-                    }
-                    else {
-                        cloned[key] = value; // Keep DOM references
-                    }
-                }
-                else {
-                    cloned[key] = value;
-                }
-            }
-            catch (e) {
-                console.warn(`Error cloning module property ${key}:`, e);
-            }
+        keys.delete('gameObject');
+        keys.delete('_gameObject');
+        keys.delete('_previousGameObject');
+        keys.delete('constructor');
+    
+        for (const key of keys) {
+          const v = this[key];
+          if (v == null || typeof v === 'function') {
+            cloned[key] = v;
+          }
+          else if (Array.isArray(v)) {
+            cloned[key] = v.map(item =>
+              (item && typeof item.clone === 'function')
+                ? item.clone()
+                : item
+            );
+          }
+          else if (typeof v.clone === 'function') {
+            cloned[key] = v.clone();
+          }
+          else if (typeof v === 'object') {
+            cloned[key] = JSON.parse(JSON.stringify(v));
+          }
+          else {
+            cloned[key] = v;
+          }
         }
-        
+    
+        // 3) reset any stale pointers
+        cloned._gameObject = null;
+        cloned._previousGameObject = null;
+    
+        // 4) if caller supplied an owner, bind now
+        if (newGameObject) {
+          cloned.attachTo(newGameObject);
+        }
+    
         return cloned;
-    }
+      }
 
     /**
      * Helper: Deep clone an array
@@ -486,6 +488,23 @@ class Module {
         return this[name] !== undefined ? this[name] : defaultValue;
     }
     
+    /**
+     * Reassign this module to a new GameObject,
+     * update internal refs and call onAttach.
+     * @param {GameObject} newGameObject
+     */
+    attachTo(newGameObject) {
+        // clear any stale pointer
+        this._previousGameObject = null;
+        // set the new owner
+        this._gameObject = newGameObject;   // calls our setter
+        // keep _previousGameObject in sync
+        this._previousGameObject = newGameObject;
+
+        if (typeof this.onAttach === 'function') {
+            this.onAttach(newGameObject);
+        }
+    }
     
     /**
      * Serialize this module to JSON

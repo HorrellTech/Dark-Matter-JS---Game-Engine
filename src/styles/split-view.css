@@ -1,0 +1,131 @@
+/* Split view styling */
+.split-view {
+    position: relative !important;
+    overflow: hidden !important;
+    flex-shrink: 0;
+    width: auto !important;      /* Add this */
+    height: auto !important;     /* Add this */
+    min-width: 200px !important; /* Add this */
+    min-height: 200px !important; /* Add this */
+    flex: 1 1 auto !important;   /* Add this */
+}
+
+.split-view-resizer {
+    background-color: #2a2a2a;
+    transition: background-color 0.2s ease;
+    position: relative;
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+.split-view-resizer:hover, 
+.split-view-resizer:active {
+    background-color: #4CAF50;
+}
+
+.canvas-tab.split-active {
+    background-color: #2d2d2d;
+    border-bottom: 2px solid #8BC34A;
+}
+
+/* Split view control button */
+#splitViewButton {
+    background-color: #333;
+    border: 1px solid #555;
+    color: #ccc;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+#splitViewButton:hover {
+    background-color: #444;
+}
+
+#splitViewButton.active {
+    background-color: #3c5a3c;
+    border-color: #4CAF50;
+}
+
+/* Options dropdown for split view */
+.split-view-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.split-view-dropdown-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #2a2a2a;
+    min-width: 180px;
+    z-index: 20;
+    border-radius: 3px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    padding: 5px;
+}
+
+.split-view-dropdown:hover .split-view-dropdown-content {
+    display: block;
+}
+
+.split-view-dropdown-content button {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 5px 10px;
+    margin: 3px 0;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.split-view-dropdown-content button:hover {
+    background: #444;
+}
+
+/* Toolbar separator */
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background-color: #555;
+    margin: 0 8px;
+}
+
+.canvas-container.split-active {
+    display: flex !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.split-view canvas {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+
+.canvas-container {
+    display: flex !important;
+    min-width: 400px !important;
+    min-height: 300px !important;
+    width: 100% !important;
+    height: 100% !important;
+    position: relative !important;
+}
+
+.canvas-view {
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 200px !important;
+    min-height: 200px !important;
+}

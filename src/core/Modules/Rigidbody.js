@@ -43,12 +43,16 @@ class RigidBody extends Module {
         // Expose properties to the inspector
         this.exposeProperty("bodyType", "enum", "dynamic", {
             options: ["dynamic", "static", "kinematic"],
-            onChange: () => this.rebuildBody()
+            onChange: () => {
+                if (!this._skipRebuild) this.rebuildBody();
+            }
         });
         
         this.exposeProperty("shape", "enum", "rectangle", {
             options: ["rectangle", "circle", "polygon"],
-            onChange: () => this.rebuildBody()
+            onChange: () => {
+                if (!this._skipRebuild) this.rebuildBody();
+            }
         });
         
         this.exposeProperty("width", "number", 100, {
@@ -93,7 +97,41 @@ class RigidBody extends Module {
         this.exposeProperty("fixedRotation", "boolean", false, {
             onChange: (value) => {
                 if (this.body) {
-                    this.body.inertia = value ? Infinity : Matter.Body.inertia(this.body);
+                    // Fix: Use correct method to set inertia for fixed rotation
+                    if (value) {
+                        this.body.inertia = Infinity;
+                        this.body.inverseInertia = 0;
+                    } else {
+                        // Calculate proper inertia based on the body shape
+                        if (this.shape === "circle") {
+                            // For circle: I = m * r^2
+                            const mass = this.body.mass;
+                            const radius = this.radius;
+                            this.body.inertia = mass * radius * radius;
+                        } else {
+                            // For rectangles and other shapes, use Matter.js built-in calculation
+                            // We need to recalculate based on vertices
+                            const mass = this.body.mass;
+                            let inertia = 0;
+                            const vertices = this.body.vertices;
+                            
+                            // Simple approximation for non-circular shapes
+                            // Based on Matter.js internal calculations
+                            const centre = this.body.position;
+                            for (let i = 0; i < vertices.length; i++) {
+                                const vertex = vertices[i];
+                                const dx = vertex.x - centre.x;
+                                const dy = vertex.y - centre.y;
+                                const distSq = dx * dx + dy * dy;
+                                inertia += distSq;
+                            }
+                            
+                            this.body.inertia = mass * (inertia / vertices.length);
+                        }
+                        
+                        // Make sure to update inverseInertia as well
+                        this.body.inverseInertia = 1 / this.body.inertia;
+                    }
                 }
             }
         });
@@ -133,6 +171,19 @@ class RigidBody extends Module {
         // Clean up existing body if any
         this.removeBody();
         
+        // Make sure physicsManager is ready
+        if (!window.physicsManager) {
+            console.error("PhysicsManager not found or not initialized");
+            return null;
+        }
+        
+        // Ensure the maps are initialized in physicsManager
+        if (!window.physicsManager.bodies || !window.physicsManager.gameObjectBodies) {
+            console.error("PhysicsManager maps not properly initialized");
+            window.physicsManager.bodies = window.physicsManager.bodies || new Map();
+            window.physicsManager.gameObjectBodies = window.physicsManager.gameObjectBodies || new Map();
+        }
+        
         // Create the shape based on selected type
         let body;
         const pos = this.gameObject.getWorldPosition();
@@ -145,49 +196,69 @@ class RigidBody extends Module {
             isSensor: this.isSensor,
             isStatic: this.bodyType === "static",
             angle: angle,
-            label: this.gameObject.name,
+            label: this.gameObject.name || "Body",
             collisionFilter: this.collisionFilter
         };
         
-        switch (this.shape) {
-            case "circle":
-                body = Matter.Bodies.circle(pos.x, pos.y, this.radius, options);
-                break;
-            
-            case "rectangle":
-                body = Matter.Bodies.rectangle(pos.x, pos.y, this.width, this.height, options);
-                break;
-                
-            case "polygon":
-                if (this.vertices.length >= 3) {
-                    body = Matter.Bodies.fromVertices(pos.x, pos.y, this.vertices, options);
-                } else {
-                    // Fallback to rectangle if no valid vertices
+        console.log(`Creating ${this.bodyType} body for ${options.label} (isStatic: ${options.isStatic})`);
+        
+        try {
+            // Create the actual body based on the shape type
+            switch (this.shape) {
+                case "rectangle":
                     body = Matter.Bodies.rectangle(pos.x, pos.y, this.width, this.height, options);
-                }
-                break;
-            
-            default:
-                body = Matter.Bodies.rectangle(pos.x, pos.y, this.width, this.height, options);
+                    break;
+                    
+                case "circle":
+                    body = Matter.Bodies.circle(pos.x, pos.y, this.radius, options);
+                    break;
+                    
+                case "polygon":
+                    // If we have vertices defined, use them
+                    if (this.vertices && this.vertices.length > 0) {
+                        body = Matter.Bodies.fromVertices(pos.x, pos.y, this.vertices, options);
+                    } else {
+                        // Default to a triangle if no vertices are defined
+                        const sides = 3;
+                        const radius = this.radius || 50;
+                        body = Matter.Bodies.polygon(pos.x, pos.y, sides, radius, options);
+                    }
+                    break;
+                    
+                default:
+                    console.error(`Unsupported shape type: ${this.shape}`);
+                    // Create a default rectangle as fallback
+                    body = Matter.Bodies.rectangle(pos.x, pos.y, this.width, this.height, options);
+            }
+        } catch (error) {
+            console.error("Error creating physics body:", error);
+            return null;
         }
         
-        // Apply kinematics settings
-        if (this.bodyType === "kinematic") {
-            body.isStatic = false;
-            body.inertia = Infinity;
-            body.inverseInertia = 0;
-            body.inverseMass = 0;
-        }
-        else if (this.bodyType === "static") {
+        // Now that we have a valid body, continue with the rest of the method
+        
+        // Ensure static bodies are really static
+        if (this.bodyType === "static") {
             body.isStatic = true;
             body.inertia = Infinity;
             body.inverseInertia = 0;
             body.inverseMass = 0;
+            body.mass = Infinity;
+            body.velocity.x = 0;
+            body.velocity.y = 0;
+            body.angularVelocity = 0;
+            
+            Matter.Body.setStatic(body, true);
+        }
+        else if (this.bodyType === "kinematic") {
+            body.isStatic = false;
+            body.inertia = Infinity;
+            body.inverseInertia = 0;
+            body.mass = Infinity;
+            body.inverseMass = 0;
         }
         else {
             body.isStatic = false;
-            body.inverseInertia = 1 / body.inertia;
-            body.inverseMass = 1 / body.mass;
         }
         
         // Apply fixed rotation constraint
@@ -196,16 +267,40 @@ class RigidBody extends Module {
             body.inverseInertia = 0;
         }
         
-        // Store the body
-        this.body = body;
-        
-        // Register with physics manager
-        window.physicsManager.registerBody(body, this.gameObject);
+        // Register with physics manager - ensure this properly adds to the world
+        try {
+            // Register with physics manager
+            if (window.physicsManager && body) {
+                window.physicsManager.registerBody(body, this.gameObject);
+                
+                const isInWorld = window.physicsManager.engine.world.bodies.includes(body);
+                if (!isInWorld) {
+                    console.warn(`Body for ${options.label} was not properly added to the physics world`);
+                    Matter.World.add(window.physicsManager.engine.world, body);
+                }
+            }
+        } catch (error) {
+            console.error("Error registering physics body:", error);
+        }
         
         // Store reference to this module in the body
-        this.body.module = this;
+        if (body) {
+            this.body = body;
+            this.body.module = this;
+        }
         
         return body;
+    }
+
+    /**
+     * Called when body should be created during game startup
+     */
+    onStart() {
+        if (this.pendingBodyCreation && !this.body) {
+            console.log("Creating pending RigidBody for:", this.gameObject?.name);
+            this.createBody();
+            this.pendingBodyCreation = false;
+        }
     }
     
     /**
@@ -402,6 +497,44 @@ class RigidBody extends Module {
             }
         }
     }
+
+    /**
+     * Custom fromJSON implementation to handle physics body references
+     */
+    fromJSON(data) {
+        // First call the parent class implementation to set basic properties
+        // But completely prevent any property changes from triggering rebuilds
+        const oldSkipRebuild = this._skipRebuild;
+        this._skipRebuild = true;
+        
+        try {
+            // Set properties without triggering rebuilds
+            super.fromJSON(data);
+            
+            // Ensure body is null during clone 
+            this.body = null;
+            
+            // Flag that body needs to be created later when safely possible
+            this.pendingBodyCreation = true;
+        } catch (error) {
+            console.error("Error in RigidBody.fromJSON:", error);
+        } finally {
+            // Restore previous skip status
+            this._skipRebuild = oldSkipRebuild;
+        }
+        
+        return this;
+    }
+
+    /**
+     * Override onEnable to handle pending body creation
+     */
+    onEnable() {
+        if (this.pendingBodyCreation && !this.body && window.physicsManager) {
+            this.createBody();
+            this.pendingBodyCreation = false;
+        }
+    }
     
     /**
      * Called when the module is destroyed
@@ -419,4 +552,4 @@ class RigidBody extends Module {
 }
 
 // Register the module
-window.RigidBody = RigidBody;
+//window.RigidBody = RigidBody;

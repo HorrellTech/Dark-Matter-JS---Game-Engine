@@ -1226,25 +1226,602 @@ populateModuleDropdown() {
      * Generate UI for SpriteRenderer module
      */
     generateSpriteRendererUI(module) {
+        // Create image preview display
+        const hasImage = module.imageAsset && module.imageAsset.path;
+        const imageSrc = module._image ? module._image.src : '';
+        const imagePath = module.imageAsset?.path || 'No image selected';
+        
         return `
             <div class="property-row">
                 <label>Image</label>
-                <div class="image-selector">
-                    <div class="image-preview" style="${module.image ? '' : 'display: none;'}">
-                        ${module.image ? `<img src="${module.imageSrc}" alt="Sprite">` : ''}
+                <div class="image-selector" data-module-id="${module.id}">
+                    <div class="image-preview ${hasImage ? '' : 'empty'}" 
+                         title="${hasImage ? `Path: ${imagePath}` : 'Drag an image here or click to select'}"
+                         data-property="imageAsset">
+                        ${hasImage ? 
+                            `<img src="${imageSrc}" alt="Sprite">
+                             <div class="image-path">${this.formatImagePath(imagePath)}</div>` 
+                            : '<i class="fas fa-image"></i><div>No Image</div>'}
                     </div>
-                    <button class="select-image-button">Select Image</button>
+                    <div class="image-actions">
+                        <button class="select-image-button" title="Select an image">
+                            <i class="fas fa-folder-open"></i> Select
+                        </button>
+                        <button class="clear-image-button" title="Clear image" ${hasImage ? '' : 'disabled'}>
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="property-row">
-                <label>Width</label>
-                <input type="number" class="sprite-width" value="${module.width || 0}" step="1">
+                <label title="Width of the sprite in pixels">Width</label>
+                <input type="number" class="property-input" data-prop-name="width" value="${module.width || 0}" step="1" min="1">
             </div>
             <div class="property-row">
-                <label>Height</label>
-                <input type="number" class="sprite-height" value="${module.height || 0}" step="1">
+                <label title="Height of the sprite in pixels">Height</label>
+                <input type="number" class="property-input" data-prop-name="height" value="${module.height || 0}" step="1" min="1">
             </div>
         `;
+    }
+
+    /**
+     * Setup listeners for SpriteRenderer properties
+     */
+    setupSpriteRendererListeners(container, module) {
+        const imagePreview = container.querySelector('.image-preview');
+        const selectImageButton = container.querySelector('.select-image-button');
+        const clearImageButton = container.querySelector('.clear-image-button');
+        
+        // Make the image preview a drop target
+        if (imagePreview) {
+            // Enable drag & drop
+            imagePreview.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                imagePreview.classList.add('drag-over');
+            });
+            
+            imagePreview.addEventListener('dragleave', () => {
+                imagePreview.classList.remove('drag-over');
+            });
+            
+            imagePreview.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                imagePreview.classList.remove('drag-over');
+                
+                const success = await module.handleImageDrop(e.dataTransfer);
+                if (success) {
+                    this.refreshModuleUI(module);
+                }
+            });
+            
+            // Show image selector on click
+            imagePreview.addEventListener('click', () => {
+                this.showImageSelector(module);
+            });
+        }
+        
+        // Set up select button
+        if (selectImageButton) {
+            selectImageButton.addEventListener('click', () => {
+                this.showImageSelector(module);
+            });
+        }
+        
+        // Set up clear button
+        if (clearImageButton) {
+            clearImageButton.addEventListener('click', () => {
+                module.setSprite(null);
+                this.refreshModuleUI(module);
+                this.editor.refreshCanvas();
+            });
+        }
+        
+        // Standard property handlers
+        container.querySelectorAll('.property-input').forEach(input => {
+            input.addEventListener('change', () => {
+                const propName = input.dataset.propName;
+                let value;
+                
+                if (input.type === 'number') {
+                    value = parseFloat(input.value);
+                    if (isNaN(value)) value = 0;
+                } else {
+                    value = input.value;
+                }
+                
+                module[propName] = value;
+                this.editor.refreshCanvas();
+            });
+        });
+    }
+
+    /**
+     * Format an image path for display (truncate if too long)
+     */
+    formatImagePath(path) {
+        if (!path) return 'No image';
+        if (path.length <= 20) return path;
+        
+        // Extract filename
+        const parts = path.split('/');
+        const filename = parts.pop();
+        
+        // Show only first folder and filename if path is long
+        return parts.length > 0 ? `…/${filename}` : filename;
+    }
+
+    refreshModuleUI(module) {
+        if (!module || !this.inspectedObject) return;
+        
+        // Find the module container
+        const moduleContainer = this.modulesList.querySelector(`.module-container[data-module-id="${module.id}"]`);
+        if (!moduleContainer) return;
+        
+        // Remove the old content
+        const oldContent = moduleContainer.querySelector('.module-content');
+        if (oldContent) {
+            // Save the current display state
+            const wasCollapsed = oldContent.style.display === 'none';
+            
+            // Remove the content
+            oldContent.remove();
+            
+            // Create new content
+            const newContent = document.createElement('div');
+            newContent.className = 'module-content';
+            newContent.style.opacity = module.enabled ? '1' : '0.5';
+            if (wasCollapsed) {
+                newContent.style.display = 'none';
+            }
+            
+            // Generate module properties UI
+            newContent.innerHTML = this.generateModulePropertiesUI(module);
+            
+            // Add after the header
+            const header = moduleContainer.querySelector('.module-header');
+            header.after(newContent);
+            
+            // Setup new event listeners
+            this.setupModulePropertyListeners(moduleContainer, module);
+        }
+    }
+
+    /**
+     * Show image selector dialog for SpriteRenderer
+     */
+    showImageSelector(module) {
+        // Create the image selector dialog
+        const dialog = document.createElement('div');
+        dialog.className = 'image-selector-dialog';
+        dialog.innerHTML = `
+            <div class="image-selector-content">
+                <div class="image-selector-header">
+                    <h3>Select Image</h3>
+                    <button class="image-selector-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="image-selector-tabs">
+                    <button class="image-tab active" data-tab="project">Project Images</button>
+                    <button class="image-tab" data-tab="url">From URL</button>
+                    <button class="image-tab" data-tab="upload">Upload</button>
+                </div>
+                <div class="image-selector-body">
+                    <div class="image-tab-content active" data-tab="project">
+                        <div class="project-images-grid">
+                            <div class="loading-message">Loading images...</div>
+                        </div>
+                    </div>
+                    <div class="image-tab-content" data-tab="url">
+                        <div class="url-input-container">
+                            <label>Image URL:</label>
+                            <input type="text" class="url-input" placeholder="https://example.com/image.png">
+                            <button class="load-url-button">Load</button>
+                        </div>
+                    </div>
+                    <div class="image-tab-content" data-tab="upload">
+                        <div class="upload-container">
+                            <div class="upload-dropzone">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <p>Drag and drop an image file here</p>
+                                <p>or</p>
+                                <button class="upload-button">Select File</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="image-selector-footer">
+                    <button class="cancel-button">Cancel</button>
+                </div>
+            </div>
+        `;
+        
+        // Add styles for the dialog
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .image-selector-dialog {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            }
+            .image-selector-content {
+                background-color: #2a2a2a;
+                border-radius: 4px;
+                width: 80%;
+                max-width: 800px;
+                max-height: 90vh;
+                display: flex;
+                flex-direction: column;
+            }
+            .image-selector-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 15px 20px;
+                border-bottom: 1px solid #444;
+            }
+            .image-selector-header h3 {
+                margin: 0;
+                color: #eee;
+            }
+            .image-selector-close {
+                background: none;
+                border: none;
+                color: #eee;
+                cursor: pointer;
+                font-size: 18px;
+            }
+            .image-selector-tabs {
+                display: flex;
+                border-bottom: 1px solid #444;
+            }
+            .image-tab {
+                background: none;
+                border: none;
+                color: #ccc;
+                padding: 10px 20px;
+                cursor: pointer;
+                border-bottom: 3px solid transparent;
+            }
+            .image-tab.active {
+                color: #fff;
+                border-bottom-color: #0078D7;
+            }
+            .image-selector-body {
+                padding: 20px;
+                flex: 1;
+                min-height: 300px;
+                overflow-y: auto;
+            }
+            .image-tab-content {
+                display: none;
+            }
+            .image-tab-content.active {
+                display: block;
+            }
+            .project-images-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                gap: 15px;
+            }
+            .project-image-item {
+                border: 2px solid transparent;
+                border-radius: 4px;
+                cursor: pointer;
+                position: relative;
+                aspect-ratio: 1/1;
+                overflow: hidden;
+                background: #333;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            .project-image-item:hover {
+                border-color: #666;
+            }
+            .project-image-item.selected {
+                border-color: #0078D7;
+            }
+            .project-image-thumbnail {
+                height: 70%;
+                width: 100%;
+                object-fit: contain;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .project-image-thumbnail img {
+                max-width: 100%;
+                max-height: 100%;
+            }
+            .project-image-name {
+                padding: 5px;
+                text-align: center;
+                color: #eee;
+                font-size: 12px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                width: 100%;
+            }
+            .loading-message {
+                text-align: center;
+                color: #ccc;
+                padding: 40px 0;
+            }
+            .url-input-container, .upload-container {
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+            }
+            .url-input {
+                padding: 8px;
+                margin: 10px 0;
+                background: #333;
+                border: 1px solid #555;
+                color: #eee;
+            }
+            .load-url-button, .upload-button {
+                padding: 8px 15px;
+                background: #0078D7;
+                color: #fff;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                margin-top: 10px;
+                align-self: flex-start;
+            }
+            .upload-dropzone {
+                border: 3px dashed #555;
+                border-radius: 8px;
+                padding: 40px 20px;
+                text-align: center;
+                color: #ccc;
+            }
+            .upload-dropzone i {
+                font-size: 48px;
+                margin-bottom: 15px;
+                color: #555;
+            }
+            .upload-dropzone.drag-over {
+                border-color: #0078D7;
+                background-color: rgba(0, 120, 215, 0.05);
+            }
+            .image-selector-footer {
+                padding: 15px 20px;
+                border-top: 1px solid #444;
+                display: flex;
+                justify-content: flex-end;
+            }
+            .cancel-button {
+                padding: 8px 15px;
+                background: #444;
+                color: #eee;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+        `;
+        document.head.appendChild(style);
+        document.body.appendChild(dialog);
+        
+        // Set up tab switching
+        const tabs = dialog.querySelectorAll('.image-tab');
+        const tabContents = dialog.querySelectorAll('.image-tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                
+                tab.classList.add('active');
+                const tabName = tab.dataset.tab;
+                dialog.querySelector(`.image-tab-content[data-tab="${tabName}"]`).classList.add('active');
+            });
+        });
+        
+        // Load project images
+        this.loadProjectImages(dialog.querySelector('.project-images-grid'), module);
+        
+        // Set up URL tab functionality
+        const urlInput = dialog.querySelector('.url-input');
+        const loadUrlButton = dialog.querySelector('.load-url-button');
+        
+        loadUrlButton.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (url) {
+                try {
+                    await module.loadImageFromUrl(url);
+                    this.refreshModuleUI(module);
+                    this.editor.refreshCanvas();
+                    this.closeDialog(dialog, style);
+                } catch (error) {
+                    console.error('Failed to load image from URL:', error);
+                    alert('Failed to load image. Please check the URL and try again.');
+                }
+            }
+        });
+        
+        // Set up upload tab functionality
+        const uploadDropzone = dialog.querySelector('.upload-dropzone');
+        const uploadButton = dialog.querySelector('.upload-button');
+        
+        uploadDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadDropzone.classList.add('drag-over');
+        });
+        
+        uploadDropzone.addEventListener('dragleave', () => {
+            uploadDropzone.classList.remove('drag-over');
+        });
+        
+        uploadDropzone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            uploadDropzone.classList.remove('drag-over');
+            
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                await this.handleImageUpload(file, module);
+                this.closeDialog(dialog, style);
+            }
+        });
+        
+        uploadButton.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            
+            input.onchange = async (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    await this.handleImageUpload(e.target.files[0], module);
+                    this.closeDialog(dialog, style);
+                }
+            };
+            
+            input.click();
+        });
+        
+        // Set up close button and cancel button
+        const closeButton = dialog.querySelector('.image-selector-close');
+        const cancelButton = dialog.querySelector('.cancel-button');
+        
+        const closeHandler = () => {
+            this.closeDialog(dialog, style);
+        };
+        
+        closeButton.addEventListener('click', closeHandler);
+        cancelButton.addEventListener('click', closeHandler);
+    }
+
+    /**
+     * Close the image selector dialog
+     */
+    closeDialog(dialog, style) {
+        document.body.removeChild(dialog);
+        document.head.removeChild(style);
+    }
+
+    /**
+     * Handle image upload for SpriteRenderer
+     */
+    async handleImageUpload(file, module) {
+        if (!file.type.startsWith('image/')) {
+            alert('The selected file is not an image.');
+            return;
+        }
+        
+        try {
+            // Get the FileBrowser instance
+            const fileBrowser = this.editor?.fileBrowser;
+            if (!fileBrowser) {
+                console.warn('FileBrowser not available for image upload');
+                return;
+            }
+            
+            // Upload to FileBrowser
+            await fileBrowser.handleFileUpload(file);
+            
+            // Set the sprite to this path
+            const path = `${fileBrowser.currentPath}/${file.name}`;
+            await module.setSprite(path);
+            
+            // Refresh UI
+            this.refreshModuleUI(module);
+            this.editor.refreshCanvas();
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            alert('Failed to upload image. Please try again.');
+        }
+    }
+
+    /**
+     * Load project images for the image selector
+     */
+    async loadProjectImages(container, module) {
+        container.innerHTML = '<div class="loading-message">Loading images...</div>';
+        
+        try {
+            const fileBrowser = this.editor?.fileBrowser;
+            if (!fileBrowser) {
+                container.innerHTML = '<div class="loading-message">File Browser not available</div>';
+                return;
+            }
+            
+            // Get all files
+            const allFiles = await fileBrowser.getAllFiles();
+            
+            // Filter for image files
+            const imageFiles = allFiles.filter(file => {
+                return file.type === 'file' && module.isImagePath(file.path);
+            });
+            
+            if (imageFiles.length === 0) {
+                container.innerHTML = '<div class="loading-message">No images found in project</div>';
+                return;
+            }
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Add image items
+            imageFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'project-image-item';
+                item.dataset.path = file.path;
+                
+                // Check if this is the currently selected image
+                if (module.imageAsset && module.imageAsset.path === file.path) {
+                    item.classList.add('selected');
+                }
+                
+                const filename = file.name || file.path.split('/').pop();
+                
+                item.innerHTML = `
+                    <div class="project-image-thumbnail">
+                        <img src="${file.path}" alt="${filename}">
+                    </div>
+                    <div class="project-image-name" title="${file.path}">${filename}</div>
+                `;
+                
+                item.addEventListener('click', async () => {
+                    // Remove selected class from all items
+                    container.querySelectorAll('.project-image-item').forEach(i => {
+                        i.classList.remove('selected');
+                    });
+                    
+                    // Add selected class to this item
+                    item.classList.add('selected');
+                    
+                    // Set the sprite to this path
+                    await module.setSprite(file.path);
+                    
+                    // Refresh UI
+                    this.refreshModuleUI(module);
+                    this.editor.refreshCanvas();
+                    
+                    // Close dialog after a short delay to provide visual feedback
+                    setTimeout(() => {
+                        const dialog = container.closest('.image-selector-dialog');
+                        if (dialog) {
+                            const style = document.head.querySelector('style:last-child');
+                            this.closeDialog(dialog, style);
+                        }
+                    }, 300);
+                });
+                
+                container.appendChild(item);
+            });
+        } catch (error) {
+            console.error('Error loading project images:', error);
+            container.innerHTML = '<div class="loading-message error">Error loading images</div>';
+        }
     }
 
     /**
@@ -1821,6 +2398,12 @@ populateModuleDropdown() {
                     module.properties = module.properties || {};
                     module.properties[propName] = value;
                 }
+
+                const originalHandler = checkbox.onchange;
+                checkbox.onchange = (e) => {
+                    if (originalHandler) originalHandler(e);
+                    updateGameObject();
+                };
                 
                 this.editor.refreshCanvas();
             };
@@ -1857,6 +2440,31 @@ populateModuleDropdown() {
             ['change', 'input'].forEach(eventType => {
                 colorInput.addEventListener(eventType, updateColorValue);
             });
+
+            const originalHandler = colorInput.onchange;
+            colorInput.onchange = (e) => {
+                if (originalHandler) originalHandler(e);
+                updateGameObject();
+            };
+        });
+
+        // Vector2 inputs - modify existing handlers
+        container.querySelectorAll('.vector2-input').forEach(vectorInput => {
+
+            const xInput = vectorInput.querySelector('.vector-x');
+            const yInput = vectorInput.querySelector('.vector-y');
+            
+            const originalXHandler = xInput.onchange;
+            xInput.onchange = (e) => {
+                if (originalXHandler) originalXHandler(e);
+                updateGameObject();
+            };
+            
+            const originalYHandler = yInput.onchange;
+            yInput.onchange = (e) => {
+                if (originalYHandler) originalYHandler(e);
+                updateGameObject();
+            };
         });
 
         // Generic number/text/select inputs
@@ -1884,10 +2492,22 @@ populateModuleDropdown() {
                     module.properties = module.properties || {};
                     module.properties[propName] = value;
                 }
+
+                const originalHandler = input.onchange;
+                input.onchange = (e) => {
+                    if (originalHandler) originalHandler(e);
+                    updateGameObject();
+                };
                 
                 this.editor.refreshCanvas();
             });
         });
+
+        const updateGameObject = () => {
+            if (window.engine && window.engine.running && window.gameEditorSync) {
+                window.gameEditorSync.syncEditorToGame();
+            }
+        };
     }
 
     /**

@@ -292,6 +292,63 @@ class Editor {
         const screenCenterY = this.canvas.height / 2;
         return this.screenToWorldPosition(new Vector2(screenCenterX, screenCenterY));
     }
+
+    /**
+     * Resize and position the canvas to fit the container while maintaining aspect ratio
+     * This ensures no scrollbars appear and the canvas is centered
+     */
+    resizeCanvas() {
+        if (!this.canvas) return;
+        
+        const container = this.canvas.parentElement;
+        if (!container) return;
+        
+        // Get container dimensions
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        
+        if (containerWidth === 0 || containerHeight === 0) return;
+        
+        // Get scene settings for viewport dimensions
+        const viewportWidth = this.scene?.settings?.viewportWidth || 800;
+        const viewportHeight = this.scene?.settings?.viewportHeight || 600;
+        
+        // Calculate aspect ratios
+        const containerAspect = containerWidth / containerHeight;
+        const viewportAspect = viewportWidth / viewportHeight;
+        
+        let width, height;
+        
+        // Determine dimensions to fit within container while maintaining aspect ratio
+        if (containerAspect > viewportAspect) {
+            // Container is wider than needed - constrain by height
+            height = containerHeight;
+            width = height * viewportAspect;
+        } else {
+            // Container is taller than needed - constrain by width
+            width = containerWidth;
+            height = width / viewportAspect;
+        }
+        
+        // Set canvas size
+        this.canvas.width = viewportWidth;
+        this.canvas.height = viewportHeight;
+        
+        // Set display size (CSS)
+        this.canvas.style.width = `${Math.floor(width)}px`;
+        this.canvas.style.height = `${Math.floor(height)}px`;
+        
+        // Center the canvas in the container
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.left = `${Math.floor((containerWidth - width) / 2)}px`;
+        this.canvas.style.top = `${Math.floor((containerHeight - height) / 2)}px`;
+        
+        // Update the viewport settings if needed
+        if (this.scene && this.scene.settings) {
+            this.scene.settings.containerWidth = containerWidth;
+            this.scene.settings.containerHeight = containerHeight;
+        }
+    }
     
     refreshCanvas() {
         // Get the parent container dimensions directly

@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="src/styles/asset-manager.css">
     <link rel="stylesheet" href="src/styles/mobile-management.css">
     <link rel="stylesheet" href="src/styles/layout-fix.css">
+    <!--link rel="stylesheet" href="src/styles/split-view.css"-->
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
@@ -32,6 +33,20 @@
     <!-- Add Matter.js physics engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        .canvas-container.split-active {
+          display: flex !important;
+          min-height: 300px !important;
+          min-width: 400px !important;
+        }
+        
+        .split-view {
+          min-width: 200px !important;
+          min-height: 200px !important;
+          display: block !important;
+        }
+    </style>
 </head>
 <body>
     <div class="toolbar">
@@ -165,170 +180,6 @@
             </div>
         </div>
     </div>
-
-    <script>
-        // Simple panel resizing
-        /*document.addEventListener('DOMContentLoaded', function() {
-            // Vertical resizers for left and right panels
-            const leftResizer = document.querySelector('.hierarchy-panel .resizer-v');
-            const rightResizer = document.querySelector('.module-panel .resizer-v');
-            const bottomResizer = document.querySelector('.bottom-panel .resizer-h');
-            
-            // Set up left panel resizer
-            if (leftResizer) {
-                setupResizer(leftResizer, 'width', '.hierarchy-panel', true);
-            }
-            
-            // Set up right panel resizer
-            if (rightResizer) {
-                setupResizer(rightResizer, 'width', '.module-panel', false);
-            }
-            
-            // Set up bottom panel resizer
-            if (bottomResizer) {
-                setupResizer(bottomResizer, 'height', '.bottom-panel', false);
-                
-                // Update main content height when bottom panel resizes
-                bottomResizer.addEventListener('mouseup', updateMainContentHeight);
-            }
-            
-            // Initial update
-            updateMainContentHeight();
-            
-            function setupResizer(resizer, dimension, targetSelector, isGrowing) {
-                let startPos, startSize;
-                
-                resizer.addEventListener('mousedown', function(e) {
-                    e.preventDefault();
-                    startPos = dimension === 'width' ? e.clientX : e.clientY;
-                    const target = document.querySelector(targetSelector);
-                    startSize = dimension === 'width' ? target.offsetWidth : target.offsetHeight;
-                    
-                    document.addEventListener('mousemove', resize);
-                    document.addEventListener('mouseup', stopResize);
-                    document.body.style.cursor = dimension === 'width' ? 'col-resize' : 'row-resize';
-                });
-                
-                function resize(e) {
-                    const currentPos = dimension === 'width' ? e.clientX : e.clientY;
-                    const diff = isGrowing ? (currentPos - startPos) : (startPos - currentPos);
-                    const target = document.querySelector(targetSelector);
-                    let newSize = Math.max(100, startSize + diff);
-                    
-                    // Add max size constraints
-                    if (dimension === 'width') {
-                        newSize = Math.min(window.innerWidth / 3, newSize);
-                    } else {
-                        newSize = Math.min(window.innerHeight * 0.6, newSize);
-                    }
-                    
-                    target.style[dimension] = newSize + 'px';
-                    
-                    // If this is the bottom panel, update main content
-                    if (targetSelector === '.bottom-panel') {
-                        updateMainContentHeight();
-                    }
-
-                    // Update center panel width to maintain proper layout
-                    updateCenterPanelWidth();
-                }
-                
-                function stopResize() {
-                    document.removeEventListener('mousemove', resize);
-                    document.removeEventListener('mouseup', stopResize);
-                    document.body.style.cursor = '';
-                }
-            }
-
-            // Initialize documentation system
-            try {
-                if (!window.DocumentationModal) {
-                    console.log('Creating documentation modal');
-                    window.DocumentationModal = new DocumentationModal();
-                }
-            } catch (error) {
-                console.error('Failed to initialize documentation:', error);
-            }
-
-            // Add this function to ensure center panel maintains proper width
-            function updateCenterPanelWidth() {
-                const centerPanel = document.querySelector('.center-panel');
-                const hierarchyPanel = document.querySelector('.hierarchy-panel');
-                const modulePanel = document.querySelector('.module-panel');
-                
-                if (centerPanel && hierarchyPanel && modulePanel) {
-                    // Make sure center panel takes remaining space but doesn't shrink
-                    centerPanel.style.width = `calc(100% - ${hierarchyPanel.offsetWidth}px - ${modulePanel.offsetWidth}px)`;
-                    centerPanel.style.minWidth = '400px'; // Minimum width to prevent excessive squeezing
-                }
-            }
-            
-            function updateMainContentHeight() {
-                const bottomPanel = document.querySelector('.bottom-panel');
-                const mainContent = document.querySelector('.main-content');
-                const toolbar = document.querySelector('.toolbar');
-                const footer = document.querySelector('.footer');
-                
-                if (bottomPanel && mainContent) {
-                    const bottomHeight = bottomPanel.offsetHeight;
-                    const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
-                    const footerHeight = footer ? footer.offsetHeight : 0;
-                    const totalHeight = window.innerHeight;
-                    
-                    // Calculate remaining height for main content
-                    const mainHeight = totalHeight - bottomHeight - toolbarHeight - footerHeight;
-                   // mainContent.style.height = mainHeight + 'px';
-                    
-                    // Update scroll containers
-                    updateScrollContainers();
-                }
-
-                // Update center panel width as well
-                updateCenterPanelWidth();
-            }
-            
-            function updateScrollContainers() {
-                // Update hierarchy container height
-                const hierarchyHeader = document.querySelector('.hierarchy-panel .hierarchy-header');
-                const hierarchyList = document.getElementById('gameObjectHierarchy');
-                
-                if (hierarchyHeader && hierarchyList) {
-                    const headerHeight = hierarchyHeader.offsetHeight;
-                    const panelHeight = document.querySelector('.hierarchy-panel').offsetHeight;
-                    hierarchyList.style.maxHeight = (panelHeight - headerHeight) + 'px';
-                }
-                
-                // Update inspector container height
-                const inspectorHeader = document.querySelector('.module-panel .hierarchy-header');
-                const inspectorList = document.getElementById('moduleSettings');
-                
-                if (inspectorHeader && inspectorList) {
-                    const headerHeight = inspectorHeader.offsetHeight;
-                    const panelHeight = document.querySelector('.module-panel').offsetHeight;
-                    inspectorList.style.maxHeight = (panelHeight - headerHeight) + 'px';
-                }
-            }
-            
-            // Handle window resize
-            window.addEventListener('resize', function() {
-                updateMainContentHeight();
-                updateCenterPanelWidth();
-            });
-
-            document.querySelector('.toolbar-button[title="Documentation"]').addEventListener('click', () => {
-                console.log('Documentation button clicked');
-                if (window.docModal) {
-                    console.log('DocModal exists');
-                    window.docModal.toggle();
-                } else {
-                    console.error('DocModal not initialized');
-                    window.docModal = new DocumentationModal();
-                }
-            });
-
-            updateCenterPanelWidth();
-        });*/
-    </script>
     
     <div class="footer">
         SynKrown
@@ -390,6 +241,7 @@
     <script src="src/core/3D/MouseLook.js"></script>
 
     <script src="src/core/AssetManager.js"></script>
+    <script src="src/core/AssetReference.js"></script>
 
     <script src="src/core/Modules/RigidBody.js"></script>
     <script src="src/core/Modules/Collider.js"></script>
@@ -397,6 +249,8 @@
     <script src="src/core/Modules/BoundingBoxCollider.js"></script>
     <script src="src/core/Modules/SimpleHealth.js"></script>
     <script src="src/core/Modules/Controllers/SimpleMovementController.js"></script>
+    <script src="src/core/Modules/Controllers/KeyboardController.js"></script>
+    <script src="src/core/Modules/Controllers/CameraController.js"></script>
     <script src="src/core/Modules/Drawing/DrawCircle.js"></script>
     <script src="src/core/Modules/Drawing/DrawRectangle.js"></script>
     <script src="src/core/Modules/Drawing/DrawPolygon.js"></script>
@@ -408,6 +262,9 @@
     <script src="src/core/ProjectManager.js"></script>
 
     <script src="src/core/ModulesManager.js"></script>
+
+    <!--script src="src/core/GameEditorSync.js"></script>
+    <script src="src/core/SplitViewController.js"></script-->
 
     <script src="src/app.js"></script>
 </body>

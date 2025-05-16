@@ -34,6 +34,43 @@ class Engine {
         if (window.input) {
             window.input.setEngine(this);
         }
+
+         // Set up resize observer to continuously monitor container size
+         this.setupResizeObserver();
+        
+         // Also listen for window resize events
+         window.addEventListener('resize', () => {
+             this.resizeCanvas();
+         });
+         
+         // Listen for panel resize events
+         window.addEventListener('panel-resized', () => {
+             this.resizeCanvas();
+         });
+    }
+
+    setupResizeObserver() {
+        if (this.canvas && this.canvas.parentElement && window.ResizeObserver) {
+            // Create a ResizeObserver to monitor container size changes
+            this.resizeObserver = new ResizeObserver(entries => {
+                // Resize the canvas whenever the container size changes
+                this.resizeCanvas();
+            });
+            
+            // Start observing the canvas container
+            this.resizeObserver.observe(this.canvas.parentElement);
+        } else {
+            // Fallback for browsers without ResizeObserver
+            setInterval(() => this.resizeCanvas(), 1000); // Check every second
+        }
+    }
+
+    updateRenderConfig(settings) {
+        // Update settings
+        Object.assign(this.renderConfig, settings);
+        
+        // Force canvas resize to apply new settings
+        this.resizeCanvas();
     }
 
     async preload() {
@@ -73,7 +110,8 @@ class Engine {
         }
     
         console.log("Starting game...");
-
+    
+        // Perform any pre-start setup
         this.refreshModules();
     
         if (!this.preloaded) {
@@ -83,40 +121,30 @@ class Engine {
         // Call start on all game objects
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.active) {
-                // Fix: Call the object's start method first
+                // Call the object's start method
                 if (obj.start) {
                     obj.start();
                 }
                 
-                // Then call each module's start method
-                /*obj.modules.forEach(module => {
+                // Call each module's start method
+                obj.modules.forEach(module => {
                     if (module.enabled && module.start) {
                         try {
-                            // Make sure the gameObject reference is properly set
-                            if (!module.gameObject) module.gameObject = obj;
-                            
-                            // Call start() with no arguments
                             module.start();
                         } catch (error) {
-                            console.error(`Error starting module ${module.type || module.constructor.name} on ${obj.name}:`, error);
+                            console.error(`Error starting module ${module.type || module.constructor.name}:`, error);
                         }
                     }
-                });*/
+                });
             }
         });
-
+        
         // Initialize touch controls
         this.initTouchControls();
         
         this.running = true;
         this.lastTime = performance.now();
         this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
-        
-        // Switch to game tab if we have a DOM reference
-        const gameTab = document.querySelector('[data-canvas="game"]');
-        if (gameTab) {
-            gameTab.click();
-        }
     }
 
     pause() {
@@ -149,17 +177,15 @@ class Engine {
             if (obj.modules) {
                 obj.modules.forEach(module => {
                     if (module.onDestroy) {
-                        module.onDestroy(obj);
+                        try {
+                            module.onDestroy();
+                        } catch (error) {
+                            console.error(`Error in onDestroy for module ${module.type || module.constructor.name}:`, error);
+                        }
                     }
                 });
             }
         });
-        
-        // Switch back to editor tab
-        const editorTab = document.querySelector('[data-canvas="editor"]');
-        if (editorTab) {
-            editorTab.click();
-        }
     }
 
     refreshModules() {
@@ -369,6 +395,9 @@ class Engine {
         // Stop current scene if running
         if (this.running) {
             this.stop();
+        } else if (window.physicsManager) {
+            // Ensure physics is reset even if not currently running
+            window.physicsManager.reset();
         }
     
         console.log(`Loading scene: ${scene.name}`);
@@ -472,66 +501,89 @@ class Engine {
         if (!this.canvas) return;
         
         const container = this.canvas.parentElement;
+        if (!container) return;
+        
+        // Get container dimensions - force a reflow to get the latest size
+        container.offsetHeight; // Trigger reflow
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
         
-        // Store physical canvas dimensions
-        let physicalWidth, physicalHeight;
+        // Ensure we have positive dimensions to work with
+        if (containerWidth <= 0 || containerHeight <= 0) {
+            console.warn('Container has invalid dimensions:', containerWidth, containerHeight);
+            return;
+        }
         
         // Get the desired viewport dimensions from scene settings
         const viewportWidth = this.scene?.settings?.viewportWidth || 800;
         const viewportHeight = this.scene?.settings?.viewportHeight || 600;
+        const aspectRatio = viewportWidth / viewportHeight;
         
-        // Handle different scaling modes
+        // Set physical dimensions based on scaling mode
+        let physicalWidth, physicalHeight;
+        
         if (this.renderConfig.fullscreen) {
-            // In fullscreen mode, use the container dimensions
-            physicalWidth = containerWidth;
-            physicalHeight = containerHeight;
-            
-            // Set canvas size based on scaling mode
-            if (this.renderConfig.maintainAspectRatio && this.renderConfig.scaleMode === 'fit') {
-                // Calculate scaling to maintain aspect ratio while fitting
-                const scale = Math.min(
-                    containerWidth / viewportWidth,
-                    containerHeight / viewportHeight
-                );
+            if (this.renderConfig.maintainAspectRatio) {
+                // Calculate dimensions to maintain aspect ratio within the container
+                const containerRatio = containerWidth / containerHeight;
                 
-                this.canvas.style.width = `${viewportWidth * scale}px`;
-                this.canvas.style.height = `${viewportHeight * scale}px`;
-                this.canvas.style.marginTop = `${(containerHeight - viewportHeight * scale) / 2}px`;
-                this.canvas.style.marginLeft = `${(containerWidth - viewportWidth * scale) / 2}px`;
+                if (containerRatio > aspectRatio) {
+                    // Container is wider than needed - height is the limiting factor
+                    physicalHeight = containerHeight;
+                    physicalWidth = containerHeight * aspectRatio;
+                } else {
+                    // Container is taller than needed - width is the limiting factor
+                    physicalWidth = containerWidth;
+                    physicalHeight = containerWidth / aspectRatio;
+                }
             } else {
-                // Stretch to fill container
-                this.canvas.style.width = '100%';
-                this.canvas.style.height = '100%';
-                this.canvas.style.margin = '0';
+                // Stretch to fill container without maintaining aspect ratio
+                physicalWidth = containerWidth;
+                physicalHeight = containerHeight;
             }
         } else {
-            // Use defined viewport dimensions
-            physicalWidth = viewportWidth;
-            physicalHeight = viewportHeight;
+            // Fixed size mode - calculate scale to fit in container
+            const scale = Math.min(
+                containerWidth / viewportWidth,
+                containerHeight / viewportHeight
+            );
             
-            // Reset any styling
-            this.canvas.style.width = `${viewportWidth}px`;
-            this.canvas.style.height = `${viewportHeight}px`;
-            this.canvas.style.margin = 'auto';
+            physicalWidth = viewportWidth * scale;
+            physicalHeight = viewportHeight * scale;
         }
         
-        // Set the canvas dimensions based on pixel-perfect setting
-        if (this.renderConfig.pixelPerfect) {
-            // For pixel-perfect rendering, use viewport dimensions for drawing surface
-            this.canvas.width = viewportWidth;
-            this.canvas.height = viewportHeight;
-        } else {
-            // Otherwise use physical dimensions
-            this.canvas.width = physicalWidth;
-            this.canvas.height = physicalHeight;
-        }
+        // Ensure we don't have zero dimensions
+        physicalWidth = Math.max(1, Math.floor(physicalWidth));
+        physicalHeight = Math.max(1, Math.floor(physicalHeight));
+        
+        // Calculate centering position
+        const left = Math.floor((containerWidth - physicalWidth) / 2);
+        const top = Math.floor((containerHeight - physicalHeight) / 2);
+        
+        // Set canvas styles for proper display
+        this.canvas.style.width = `${physicalWidth}px`;
+        this.canvas.style.height = `${physicalHeight}px`;
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.left = `${left}px`;
+        this.canvas.style.top = `${top}px`;
+        
+        // Remove size constraints that might prevent proper scaling
+        this.canvas.style.minWidth = '0';
+        this.canvas.style.minHeight = '0';
+        this.canvas.style.maxWidth = 'none';
+        this.canvas.style.maxHeight = 'none';
+        
+        // IMPORTANT: Always use the viewport dimensions for the drawing surface
+        this.canvas.width = viewportWidth;
+        this.canvas.height = viewportHeight;
+        
+        // Remove transform scaling which can cause positioning issues
+        this.canvas.style.transform = 'none';
         
         // Configure image smoothing
         this.ctx.imageSmoothingEnabled = this.renderConfig.smoothing;
         
-        // Apply appropriate CSS image rendering mode
+        // Apply appropriate CSS image rendering mode based on scale mode
         if (this.renderConfig.scaleMode === 'nearest-neighbor') {
             this.canvas.style.imageRendering = 'pixelated';
         } else {
@@ -539,5 +591,18 @@ class Engine {
         }
         
         this.canvasResized = true;
+        
+        // Debug info
+        console.log(`Canvas resized: ${this.canvas.width}x${this.canvas.height} (physical display: ${physicalWidth}x${physicalHeight})`);
+    }
+    
+    cleanup() {
+        // Clean up resources when engine is destroyed
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+        }
+        
+        window.removeEventListener('resize', this.resizeCanvas);
+        window.removeEventListener('panel-resized', this.resizeCanvas);
     }
 }

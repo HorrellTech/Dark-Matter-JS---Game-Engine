@@ -21,12 +21,21 @@ class GameObject {
         this.collisionEnabled = true;  // Flag to enable/disable collision
         this.collisionLayer = 0;       // Collision layer for filtering
         this.collisionMask = 0xFFFF;   // Collision mask for filtering
+
+        // Keep track of original position and rotation
+        this.originalPosition = this.position.clone();
+        this.originalRotation = this.angle;
     }
 
     generateRandomColor() {
         // Generate a semi-bright color for better visibility on dark backgrounds
         const hue = Math.floor(Math.random() * 360);
         return `hsl(${hue}, 70%, 60%)`;
+    }
+
+    // Track original position (useful when cloning)
+    getOriginalPosition() {
+        return this.originalPosition || this.position.clone();
     }
 
     async preload() {
@@ -40,6 +49,11 @@ class GameObject {
 
     start() {
         if (!this.active) return;
+        // Save initial position and rotation when the game starts
+        this.originalPosition = this.position.clone();
+        this.originalRotation = this.angle;
+
+        // Initialize modules and children
         this.modules.forEach(module => {
             if (module.enabled && module.start) module.start();
         });
@@ -1220,45 +1234,57 @@ class GameObject {
         cloned.collisionMask = this.collisionMask;
         
         // Clone modules with proper reference handling
+        // Clone modules with proper reference handling
         for (const module of this.modules) {
             try {
+                // First get the module class
                 let ModuleClass = module.constructor;
                 if (!ModuleClass && module.type) {
-                    ModuleClass = window.moduleRegistry?.getModuleClass(module.type) || window[module.type];
+                    ModuleClass = window.moduleRegistry?.getModuleClass(module.type)
+                              || window[module.type];
                 }
                 
-                if (ModuleClass) {
-                    // Create new module instance
-                    const clonedModule = new ModuleClass();
-                    clonedModule.id = crypto.randomUUID();
-                    clonedModule.gameObject = cloned; // Set correct gameObject reference
-                    
-                    // Deep clone module properties with reference replacement
-                    copyModuleProperties(module, clonedModule, cloned, originalGameObject);
-                    
-                    // Add module to cloned object
-                    cloned.modules.push(clonedModule);
-                    
-                    // Call onAttach if available
-                    if (typeof clonedModule.onAttach === 'function') {
-                        try {
-                            clonedModule.onAttach(cloned);
-                        } catch (e) {
-                            console.warn(`Error calling onAttach for ${clonedModule.type}:`, e);
-                        }
-                    }
-                    
-                    // Do a deep scan to replace any missed references
-                    deepScanAndReplaceReferences(clonedModule, originalGameObject, cloned);
-                } else {
-                    // Handle missing module class
-                    createPlaceholderModule(cloned, {
-                        id: module.id,
-                        type: module.type || module.constructor.name
-                    }, module.type || module.constructor.name);
+                if (!ModuleClass) {
+                    console.warn(`Could not find class for module type ${module.type}`);
+                    createPlaceholderModule(cloned, { id: module.id, type: module.type }, module.type);
+                    continue;
                 }
+                
+                // Create a new module instance
+                const clonedModule = new ModuleClass();
+                
+                // Generate a new unique ID for the cloned module
+                clonedModule.id = crypto.randomUUID();
+                
+                // Store the module type explicitly
+                clonedModule.type = module.type || ModuleClass.name;
+                
+                // IMPORTANT: Set the gameObject reference first so that 
+                // fromJSON has the correct reference when restoring properties
+                clonedModule.gameObject = cloned;
+                
+                // Now restore data from the original module
+                const data = module.toJSON();
+                if (data) {
+                    clonedModule.fromJSON(data);
+                }
+                
+                // Proper attachment
+                clonedModule.attachTo(cloned);
+                
+                // Add the module to the cloned game object's modules array
+                cloned.modules.push(clonedModule);
+                
+                // Call onAttach explicitly if it exists
+                if (typeof clonedModule.onAttach === 'function') {
+                    clonedModule.onAttach(cloned);
+                }
+                
+                // Deep scan for any missed references
+                deepScanAndReplaceReferences(clonedModule, originalGameObject, cloned);
+                
             } catch (error) {
-                console.error(`Error cloning module ${module.type || module.constructor.name}:`, error);
+                console.error(`Error cloning module ${module.type || module.constructor?.name}:`, error);
             }
         }
         
@@ -1436,6 +1462,8 @@ function copyModuleProperties(sourceModule, targetModule, newGameObject, origina
             }
         }
     }
+
+    targetModule.gameObject = newGameObject;
 }
 
 /**

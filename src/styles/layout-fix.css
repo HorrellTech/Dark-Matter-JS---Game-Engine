@@ -353,9 +353,7 @@ body {
 }
 
 .editor-canvas-container canvas,
-.game-canvas-container canvas,
-#editorCanvas,
-#gameCanvas {
+#editorCanvas {
   object-fit: fill     !important;
   object-position: top left !important;
   margin: 0 !important;

@@ -345,4 +345,4 @@ class Collider extends Module {
 }
 
 // Register the module
-window.Collider = Collider;
+//window.Collider = Collider;

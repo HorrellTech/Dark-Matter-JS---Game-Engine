@@ -36,47 +36,54 @@ class PanelResizer {
         const self = this;
         
         resizer.addEventListener('mousedown', function(e) {
-            e.preventDefault();
             startX = e.clientX;
             const panel = document.querySelector(panelSelector);
             startWidth = panel.offsetWidth;
-            
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = 'col-resize';
-            document.body.classList.add('resizing');
         });
         
         function handleMouseMove(e) {
-            const dx = isGrowing ? (e.clientX - startX) : (startX - e.clientX);
-            const newWidth = Math.max(150, Math.min(window.innerWidth / 2.5, startWidth + dx));
-            
             const panel = document.querySelector(panelSelector);
-            panel.style.width = `${newWidth}px`;
+            let newWidth;
             
-            // This is just to trigger a CSS variable update for horizontal panels
-            if (panelSelector === '.hierarchy-panel') {
-                document.documentElement.style.setProperty('--hierarchy-panel-width', `${newWidth}px`);
-            } else if (panelSelector === '.module-panel') {
-                document.documentElement.style.setProperty('--module-panel-width', `${newWidth}px`);
+            if (isGrowing) {
+                newWidth = startWidth + (e.clientX - startX);
+            } else {
+                newWidth = startWidth - (e.clientX - startX);
             }
             
-            // Update center panel width to maintain layout
-            self.updateCenterPanelWidth();
-            //self.updateCenterPanelHeight()
+            // Apply minimum width to prevent collapsing too small
+            newWidth = Math.max(newWidth, 100);
             
-            // Force canvas refresh
-            self.refreshCanvas();
+            // Update panel width
+            panel.style.width = `${newWidth}px`;
+            
+            // Update CSS custom property
+            document.documentElement.style.setProperty(
+                `--${panelSelector.substring(1)}-width`,
+                `${newWidth}px`
+            );
+            
+            self.updateCenterPanelWidth();
+            
+            // Notify the game engine of panel resize during mouse move
+            if (window.engine) {
+                window.engine.resizeCanvas();
+            }
         }
         
         function handleMouseUp() {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = '';
-            document.body.classList.remove('resizing');
             
-            // One final refresh
-            self.refreshCanvas();
+            // Dispatch custom event for panel resize
+            window.dispatchEvent(new CustomEvent('panel-resized'));
+            
+            // Force canvas resize now that panel resizing is complete
+            if (window.engine) {
+                window.engine.resizeCanvas();
+            }
         }
     }
     
@@ -85,42 +92,65 @@ class PanelResizer {
         const self = this;
         
         resizer.addEventListener('mousedown', function(e) {
-            e.preventDefault();
             startY = e.clientY;
             const bottomPanel = document.querySelector('.bottom-panel');
             startHeight = bottomPanel.offsetHeight;
-            
-            // IMPORTANT: Add a resizing class to body to maintain state
-            document.body.classList.add('resizing-bottom-panel');
-            
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = 'row-resize';
         });
         
         function handleMouseMove(e) {
+            const bottomPanel = document.querySelector('.bottom-panel');
             const deltaY = startY - e.clientY;
-            const newHeight = Math.max(50, Math.min(window.innerHeight * 0.7, startHeight + deltaY));
+            const newHeight = startHeight + deltaY;
             
-            // Update the CSS variable
-            document.documentElement.style.setProperty('--bottom-panel-height', `${newHeight}px`);
+            // Apply minimum height to prevent collapsing too small
+            const appliedHeight = Math.max(newHeight, 50);
             
-            // CRITICAL: DON'T manipulate other element heights directly
-            // ONLY update the CSS variable and let the CSS layout system handle it
+            // Update panel height
+            bottomPanel.style.height = `${appliedHeight}px`;
             
-            // Force canvas refresh WITHOUT changing its position
-            self.refreshCanvas();
+            // Update CSS custom property
+            document.documentElement.style.setProperty(
+                '--bottom-panel-height',
+                `${appliedHeight}px`
+            );
+            
+            self.updateCenterPanelHeight();
+            
+            // Notify the game engine of panel resize during mouse move
+            if (window.engine) {
+                window.engine.resizeCanvas();
+            }
         }
         
         function handleMouseUp() {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
-            document.body.style.cursor = '';
-            document.body.classList.remove('resizing-bottom-panel');
             
-            // Final refresh without position changes
-            self.refreshCanvas();
-            self.updateScrollContainers();
+            // Dispatch custom event for panel resize
+            window.dispatchEvent(new CustomEvent('panel-resized'));
+            
+            // Force canvas resize now that panel resizing is complete
+            if (window.engine) {
+                window.engine.resizeCanvas();
+            }
+        }
+    }
+    
+    updateCenterPanelHeight() {
+        const centerPanel = document.querySelector('.center-panel');
+        const bottomPanel = document.querySelector('.bottom-panel');
+        
+        if (centerPanel && bottomPanel) {
+            const bottomHeight = bottomPanel.offsetHeight;
+            const containerHeight = document.querySelector('.panels-container').offsetHeight;
+            const centerHeight = containerHeight - bottomHeight;
+            
+            centerPanel.style.height = `${centerHeight}px`;
+            
+            // Dispatch panel resized event
+            window.dispatchEvent(new CustomEvent('panel-resized'));
         }
     }
     

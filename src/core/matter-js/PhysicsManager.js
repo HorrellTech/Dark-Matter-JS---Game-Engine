@@ -15,6 +15,7 @@ class PhysicsManager {
         
         // Track all physics bodies and their associated game objects
         this.bodies = new Map(); // Maps Matter.js bodies to game objects
+        this.gameObjectBodies = new Map(); // Maps game objects to physics bodies
         
         // Debug drawing options
         this.debugDraw = false;
@@ -84,18 +85,37 @@ class PhysicsManager {
     }
     
     /**
-     * Register a physics body and associate it with a game object
-     * @param {Matter.Body} body - The physics body
-     * @param {GameObject} gameObject - The game object to associate with the body
+     * Register a body with the physics world and associate it with a game object
+     * @param {Matter.Body} body - Physics body to register
+     * @param {GameObject} gameObject - GameObject that owns this body
      */
     registerBody(body, gameObject) {
-        // Add body to the physics world
-        Matter.Composite.add(this.world, body);
+        if (!body || !gameObject) {
+            console.warn("PhysicsManager.registerBody: Missing body or gameObject");
+            return;
+        }
         
-        // Associate the body with the game object
-        this.bodies.set(body, gameObject);
+        // Ensure maps are initialized
+        if (!this.bodies) this.bodies = new Map();
+        if (!this.gameObjectBodies) this.gameObjectBodies = new Map();
         
-        return body;
+        try {
+            // Store the mapping between body and game object
+            this.bodies.set(body, gameObject);
+            this.gameObjectBodies.set(gameObject, body);
+            
+            // Add body to the physics world if not already added
+            if (this.engine && this.engine.world && !this.engine.world.bodies.includes(body)) {
+                Matter.Composite.add(this.engine.world, body);
+            }
+            
+            // Ensure static bodies are really static
+            if (body.isStatic) {
+                Matter.Body.setStatic(body, true);
+            }
+        } catch (error) {
+            console.error("Error in PhysicsManager.registerBody:", error);
+        }
     }
     
     /**
@@ -191,8 +211,26 @@ class PhysicsManager {
      * Reset the physics world
      */
     reset() {
+        // Get all game objects linked to physics bodies before clearing
+        const objectsToReset = new Map();
+        this.bodies.forEach((gameObject, body) => {
+            // Store the original position and rotation if they need to be reset
+            objectsToReset.set(gameObject.id, {
+                gameObject,
+                originalPosition: gameObject.getOriginalPosition ? gameObject.getOriginalPosition() : gameObject.position.clone(),
+                originalRotation: gameObject.originalRotation || 0
+            });
+        });
+        
         // Clear all bodies and constraints
         Matter.Composite.clear(this.world);
         this.bodies.clear();
+        
+        // Reset positions of affected game objects
+        objectsToReset.forEach(data => {
+            // Reset to original position and rotation if available
+            data.gameObject.position = data.originalPosition;
+            data.gameObject.angle = data.originalRotation;
+        });
     }
 }
