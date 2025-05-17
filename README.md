@@ -10,11 +10,9 @@
   <a href="#features">Features</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#documentation">Documentation</a> •
-  <a href="#examples">Examples</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#contributing">Contributing</a> •
-  <a href="#license">License</a>
-</p>
+  <a href="#examples">Examples</a> 
+  
+https://horrelltech.github.io/Dark-Matter-JS---Game-Engine/
 
 ## Overview
 
@@ -185,12 +183,4 @@ Dark Matter JS consists of several key components:
 - [ ] Animation system
 - [ ] Particle effects
 - [ ] HTML5 export
-- [ ] WebGL functionality for better speeds and 3D
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/yourusername">Your Name</a>
-</p>
+- [ ] WebGL functionality for better performance
