@@ -36,75 +36,301 @@ class KeyboardController extends Module {
         // Current velocity
         this.velocity = new Vector2(0, 0);
         
-        // Expose properties to editor
+        // Configure inspector styling
+        this.setupProperties();
+    }
+
+    /**
+     * Set up properties and inspector styling
+     */
+    setupProperties() {
+        // Movement Properties with styling
         this.exposeProperty("speed", "number", this.speed, {
             description: "Movement speed in pixels per second",
             min: 0,
             max: 1000,
-            step: 10
+            step: 10,
+            style: {
+                header: "Movement Settings",
+                label: "Movement Speed",
+                slider: true
+            }
         });
         
+        this.exposeProperty("moveMode", "enum", this.moveMode, {
+            description: "Movement style",
+            options: ["direct", "rotate-and-move"],
+            style: {
+                label: "Movement Style"
+            }
+        });
+        
+        this.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
+            description: "Allow movement in diagonal directions",
+            style: {
+                label: "Allow Diagonals"
+            }
+        });
+        
+        // Acceleration settings
         this.exposeProperty("useAcceleration", "boolean", this.useAcceleration, {
-            description: "Enable smooth acceleration/deceleration"
+            description: "Enable smooth acceleration/deceleration",
+            style: {
+                label: "Use Acceleration"
+            }
         });
         
         this.exposeProperty("acceleration", "number", this.acceleration, {
             description: "Acceleration rate (0-1, higher is faster)",
             min: 0.01,
             max: 1,
-            step: 0.01
+            step: 0.01,
+            style: {
+                label: "Acceleration Rate",
+                slider: true
+            }
         });
         
         this.exposeProperty("deceleration", "number", this.deceleration, {
             description: "Deceleration rate when no input (0-1)",
             min: 0.01,
             max: 1,
-            step: 0.01
+            step: 0.01,
+            style: {
+                label: "Deceleration Rate",
+                slider: true
+            }
         });
         
         this.exposeProperty("rotationSpeed", "number", this.rotationSpeed, {
             description: "Rotation speed in degrees per second",
             min: 0,
-            max: 360,
-            step: 5
+            max: 360, 
+            step: 5,
+            style: {
+                label: "Rotation Speed",
+                slider: true
+            }
         });
         
-        this.exposeProperty("moveMode", "enum", this.moveMode, {
-            description: "Movement style",
-            options: ["direct", "rotate-and-move"]
-        });
-        
-        this.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
-            description: "Allow movement in diagonal directions"
-        });
-        
+        // Control bindings with styling
         this.exposeProperty("upKey", "string", this.upKey, {
-            description: "Key for upward movement"
+            description: "Key for upward movement",
+            style: {
+                header: "Control Bindings",
+                label: "Up Key"
+            }
         });
         
         this.exposeProperty("downKey", "string", this.downKey, {
-            description: "Key for downward movement"
+            description: "Key for downward movement",
+            style: {
+                label: "Down Key"
+            }
         });
         
         this.exposeProperty("leftKey", "string", this.leftKey, {
-            description: "Key for leftward movement"
+            description: "Key for leftward movement",
+            style: {
+                label: "Left Key"
+            }
         });
         
         this.exposeProperty("rightKey", "string", this.rightKey, {
-            description: "Key for rightward movement"
+            description: "Key for rightward movement",
+            style: {
+                label: "Right Key"
+            }
         });
         
         this.exposeProperty("actionKey", "string", this.actionKey, {
-            description: "Key for primary action"
+            description: "Key for primary action",
+            style: {
+                label: "Action Key"
+            }
         });
         
         this.exposeProperty("rotateLeftKey", "string", this.rotateLeftKey, {
-            description: "Key for rotating counter-clockwise"
+            description: "Key for rotating counter-clockwise",
+            style: {
+                label: "Rotate Left"
+            }
         });
         
         this.exposeProperty("rotateRightKey", "string", this.rotateRightKey, {
-            description: "Key for rotating clockwise"
+            description: "Key for rotating clockwise",
+            style: {
+                label: "Rotate Right"
+            }
         });
+    }
+
+    /**
+     * Optional method for enhanced inspector UI using the Style helper
+     * This will be called by the Inspector if it exists
+     * @param {Style} style - Styling helper
+     */
+    style(style) {
+        style.startGroup("Movement Settings", false, { 
+            backgroundColor: 'rgba(100,150,255,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        
+        style.exposeProperty("speed", "number", this.speed, {
+            description: "Movement speed in pixels per second",
+            min: 0,
+            max: 1000,
+            step: 10,
+            style: {
+                label: "Movement Speed",
+                slider: true
+            }
+        });
+        
+        style.exposeProperty("moveMode", "enum", this.moveMode, {
+            description: "Movement style",
+            options: ["direct", "rotate-and-move"],
+            style: {
+                label: "Movement Style"
+            }
+        });
+        
+        style.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
+            description: "Allow movement in diagonal directions",
+            style: {
+                label: "Allow Diagonals"
+            }
+        });
+        
+        style.exposeProperty("useAcceleration", "boolean", this.useAcceleration, {
+            description: "Enable smooth acceleration/deceleration",
+            style: {
+                label: "Use Acceleration"
+            }
+        });
+        
+        style.exposeProperty("acceleration", "number", this.acceleration, {
+            description: "Acceleration rate (0-1, higher is faster)",
+            min: 0.01,
+            max: 1,
+            step: 0.01,
+            style: {
+                label: "Acceleration Rate",
+                slider: true
+            }
+        });
+        
+        style.exposeProperty("deceleration", "number", this.deceleration, {
+            description: "Deceleration rate when no input (0-1)",
+            min: 0.01,
+            max: 1,
+            step: 0.01,
+            style: {
+                label: "Deceleration Rate",
+                slider: true
+            }
+        });
+        
+        style.exposeProperty("rotationSpeed", "number", this.rotationSpeed, {
+            description: "Rotation speed in degrees per second",
+            min: 0,
+            max: 360, 
+            step: 5,
+            style: {
+                label: "Rotation Speed",
+                slider: true
+            }
+        });
+        
+        style.endGroup();
+        
+        style.addDivider();
+        
+        style.startGroup("Control Bindings", true, {
+            backgroundColor: 'rgba(100,255,150,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        
+        style.addHelpText("Type key names like 'a', 'space', 'arrowup', etc.");
+        
+        style.exposeProperty("upKey", "string", this.upKey, {
+            description: "Key for upward movement",
+            style: {
+                label: "Up Key"
+            }
+        });
+        
+        style.exposeProperty("downKey", "string", this.downKey, {
+            description: "Key for downward movement",
+            style: {
+                label: "Down Key"
+            }
+        });
+        
+        style.exposeProperty("leftKey", "string", this.leftKey, {
+            description: "Key for leftward movement",
+            style: {
+                label: "Left Key"
+            }
+        });
+        
+        style.exposeProperty("rightKey", "string", this.rightKey, {
+            description: "Key for rightward movement",
+            style: {
+                label: "Right Key"
+            }
+        });
+        
+        style.addSpace(10);
+        
+        style.exposeProperty("actionKey", "string", this.actionKey, {
+            description: "Key for primary action",
+            style: {
+                label: "Action Key"
+            }
+        });
+        
+        style.exposeProperty("rotateLeftKey", "string", this.rotateLeftKey, {
+            description: "Key for rotating counter-clockwise",
+            style: {
+                label: "Rotate Left"
+            }
+        });
+        
+        style.exposeProperty("rotateRightKey", "string", this.rotateRightKey, {
+            description: "Key for rotating clockwise",
+            style: {
+                label: "Rotate Right"
+            }
+        });
+        
+        style.endGroup();
+        
+        style.addButton("Reset Controls", () => this.resetControls(), {
+            primary: true,
+            fullWidth: true,
+            tooltip: "Reset all controls to default values"
+        });
+    }
+
+    /**
+     * Reset controls to default values
+     */
+    resetControls() {
+        this.upKey = "arrowup";
+        this.downKey = "arrowdown";
+        this.leftKey = "arrowleft";
+        this.rightKey = "arrowright";
+        this.actionKey = "space";
+        this.rotateLeftKey = "q";
+        this.rotateRightKey = "e";
+        
+        // Refresh the inspector to show updated values
+        if (window.editor && window.editor.inspector) {
+            window.editor.inspector.refreshModuleUI(this);
+        }
     }
 
     /**

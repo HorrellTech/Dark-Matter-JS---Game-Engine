@@ -950,15 +950,54 @@ populateModuleDropdown() {
             </div>
         `;
         
-        // Add to the list
-        this.modulesList.appendChild(moduleContainer);
-        
         // Set up event listeners (existing code)
         const toggleButton = moduleContainer.querySelector('.module-toggle');
         const removeButton = moduleContainer.querySelector('.module-remove');
         const collapseButton = moduleContainer.querySelector('.module-collapse');
         
-        // Add your existing event listeners...
+        if (toggleButton) {
+            toggleButton.addEventListener('click', () => {
+                module.enabled = !module.enabled;
+                
+                // Update UI to reflect the new state
+                toggleButton.innerHTML = `<i class="fas ${module.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>`;
+                toggleButton.title = `${module.enabled ? 'Disable' : 'Enable'} Module`;
+                
+                // Update the module content opacity
+                const moduleContent = moduleContainer.querySelector('.module-content');
+                if (moduleContent) {
+                    moduleContent.style.opacity = module.enabled ? '1' : '0.5';
+                }
+                
+                this.editor.refreshCanvas();
+            });
+        }
+        
+        if (removeButton) {
+            removeButton.addEventListener('click', () => {
+                if (confirm(`Remove ${module.type} module?`)) {
+                    // First remove from DOM
+                    moduleContainer.remove();
+                    
+                    // Then remove from GameObject
+                    this.inspectedObject.removeModule(module);
+                    
+                    // Refresh canvas
+                    this.editor.refreshCanvas();
+                }
+            });
+        }
+
+        if (collapseButton) {
+            collapseButton.addEventListener('click', () => {
+                const moduleContent = moduleContainer.querySelector('.module-content');
+                const isCollapsed = moduleContent.style.display === 'none';
+                moduleContent.style.display = isCollapsed ? '' : 'none';
+                collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+                collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
+                this.saveModuleCollapseState(module.id, !isCollapsed);
+            });
+        }
         
         // Add placeholder-specific event listeners
         if (isPlaceholder) {
@@ -1008,6 +1047,15 @@ populateModuleDropdown() {
                 });
             });
         }
+
+        // Setup module property listeners AFTER adding the module container to DOM
+        this.modulesList.appendChild(moduleContainer);
+        
+        // Add this line to setup drag events for reordering:
+        this.setupModuleDragEvents(moduleContainer);
+        
+        // Add this line to set up property listeners:
+        this.setupModulePropertyListeners(moduleContainer, module);
         
         // Remainder of your existing function
         return moduleContainer;
@@ -2255,56 +2303,56 @@ populateModuleDropdown() {
      * @returns {string} HTML for the vector UI
      */
     generateVectorUI(prop, module, vector) {
-        const propName     = prop.name;
+        const propName = prop.name;
         const collapsibleId = `vector-${module.id}-${propName}`;
-        const isCollapsed  = this.getVectorCollapseState(collapsibleId);
-        const isVector3    = vector.z != null;
+        const isCollapsed = this.getVectorCollapseState(collapsibleId);
+        const isVector3 = vector.z !== undefined;
         
         // Get tooltip from options if available
         const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
-
+    
         return `
         <div class="property-row vector-property">
-        <div class="vector-header">
-            <label title="${tooltip}">${this.formatPropertyName(propName)}</label>
-            <div class="vector-preview">
-            (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
+            <div class="vector-header">
+                <label title="${tooltip}">${this.formatPropertyName(propName)}</label>
+                <div class="vector-preview">
+                    (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
+                </div>
+                <button class="vector-collapse"
+                        data-target="${collapsibleId}"
+                        data-vector-id="${collapsibleId}"
+                        title="${isCollapsed ? 'Expand' : 'Collapse'}">
+                    <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
+                </button>
             </div>
-            <button class="vector-collapse"
-                    data-target="${collapsibleId}"
-                    data-vector-id="${collapsibleId}"
-                    title="${isCollapsed ? 'Expand' : 'Collapse'}">
-            <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
-            </button>
-        </div>
-        <div class="vector-components" id="${collapsibleId}"
-            style="${isCollapsed ? 'display:none' : ''}">
-            <div class="vector-component">
-            <label title="X coordinate">X</label>
-            <input type="number" class="component-input"
-                    data-prop-name="${propName}"
-                    data-component="x"
-                    value="${vector.x}" step="1"
-                    title="${tooltip} (X coordinate)">
+        
+            <div class="vector-components" id="${collapsibleId}" style="${isCollapsed ? 'display:none' : ''}">
+                <div class="vector-component">
+                    <label title="X coordinate">X</label>
+                    <input type="number" class="component-input"
+                        data-prop-name="${propName}"
+                        data-component="x"
+                        value="${vector.x}" step="1"
+                        title="${tooltip} (X coordinate)">
+                </div>
+                <div class="vector-component">
+                    <label title="Y coordinate">Y</label>
+                    <input type="number" class="component-input"
+                        data-prop-name="${propName}"
+                        data-component="y"
+                        value="${vector.y}" step="1"
+                        title="${tooltip} (Y coordinate)">
+                </div>
+                ${isVector3 ? `
+                <div class="vector-component">
+                    <label title="Z coordinate">Z</label>
+                    <input type="number" class="component-input"
+                        data-prop-name="${propName}"
+                        data-component="z"
+                        value="${vector.z}" step="1"
+                        title="${tooltip} (Z coordinate)">
+                </div>` : ''}
             </div>
-            <div class="vector-component">
-            <label title="Y coordinate">Y</label>
-            <input type="number" class="component-input"
-                    data-prop-name="${propName}"
-                    data-component="y"
-                    value="${vector.y}" step="1"
-                    title="${tooltip} (Y coordinate)">
-            </div>
-            ${isVector3 ? `
-            <div class="vector-component">
-            <label title="Z coordinate">Z</label>
-            <input type="number" class="component-input"
-                    data-prop-name="${propName}"
-                    data-component="z"
-                    value="${vector.z}" step="1"
-                    title="${tooltip} (Z coordinate)">
-            </div>` : ''}
-        </div>
         </div>
         `;
     }
@@ -2355,8 +2403,8 @@ populateModuleDropdown() {
             const savedStates = localStorage.getItem('vectorCollapseStates');
             if (savedStates) {
                 const collapseStates = JSON.parse(savedStates);
-                // Return the state if it exists, otherwise default to collapsed
-                return collapseStates[vectorId] !== undefined ? collapseStates[vectorId] : true;
+                // Use nullish coalescing to default to true (collapsed) if undefined
+                return collapseStates[vectorId] ?? true;
             }
         } catch (e) {
             console.warn('Failed to get vector collapse state:', e);
@@ -2370,6 +2418,30 @@ populateModuleDropdown() {
      * @param {Module} module - Module instance
      */
     setupModulePropertyListeners(container, module) {
+        console.log("Setting up module property listeners for:", module.type, module);
+        
+        // Define the update function outside the event handlers for consistent use
+        const updateGameObject = () => {
+            // Mark the scene as dirty for auto-save
+            if (this.editor && this.editor.activeScene) {
+                this.editor.activeScene.dirty = true;
+            }
+            
+            // Force a proper sync by directly calling the engine's sync method
+            if (window.engine && window.engine.running) {
+                if (window.gameEditorSync) {
+                    window.gameEditorSync.syncEditorToGame();
+                } else if (window.engine.syncFromEditor) {
+                    window.engine.syncFromEditor();
+                }
+            }
+            
+            // Refresh the editor canvas to show changes
+            if (this.editor) {
+                this.editor.refreshCanvas();
+            }
+        };
+    
         // First, set up image drag and drop for any property that expects an image
         container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"]').forEach(element => {
             this.setupImageDropTarget(element, module);
@@ -2379,181 +2451,223 @@ populateModuleDropdown() {
         if (module instanceof SpriteRenderer) {
             this.setupSpriteRendererListeners(container, module);
         }
-
+    
         // Collapse toggle for ANY vector block
         container.querySelectorAll('.vector-collapse').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tgt = document.getElementById(btn.dataset.target);
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const targetId = btn.dataset.target;
+                const tgt = document.getElementById(targetId);
+                
+                if (!tgt) {
+                    console.error(`Target element not found: ${targetId}`);
+                    return;
+                }
+                
                 const collapsed = tgt.style.display === 'none';
-                tgt.style.display = collapsed ? '' : 'none';
-                btn.innerHTML = `<i class="fas ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+                console.log(`Toggling vector collapse for ${targetId}: was ${collapsed ? 'collapsed' : 'expanded'}`);
+                
+                // Toggle display
+                tgt.style.display = collapsed ? 'block' : 'none';
+                
+                // Update icon
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = `fas ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}`;
+                }
                 btn.title = collapsed ? 'Collapse' : 'Expand';
+                
+                // Save state
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
             });
         });
-
+    
         // Add Point button for polygon properties
-        container.querySelectorAll('.add-vertex').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const propName = btn.dataset.propName;
-                let vertices = module[propName];
-                if (!Array.isArray(vertices)) return;
+        container.querySelectorAll('.add-vertex').forEach(button => {
+            button.addEventListener('click', () => {
+                const propName = button.dataset.propName;
+                if (!propName || !module[propName]) return;
                 
-                // Create a new vertex close to the last one or at origin
-                const lastVert = vertices.length > 0 ? vertices[vertices.length - 1] : { x: 0, y: 0 };
-                const newVert = { x: lastVert.x + 20, y: lastVert.y };
+                // Get the polygon
+                const polygon = module[propName];
                 
-                // Add to the array
-                vertices.push(newVert);
+                // Calculate a new vertex position
+                const len = polygon.length;
+                let newVertex;
                 
-                // If module has setProperty, call it to ensure change events fire
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, vertices);
+                if (len >= 2) {
+                    const last = polygon[len - 1];
+                    const secondLast = polygon[len - 2];
+                    
+                    const dx = last.x - secondLast.x;
+                    const dy = last.y - secondLast.y;
+                    
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const scale = 30; // Distance from last vertex
+                    
+                    if (length > 0) {
+                        newVertex = new Vector2(
+                            last.x + (dx / length) * scale,
+                            last.y + (dy / length) * scale
+                        );
+                    } else {
+                        newVertex = new Vector2(last.x + 30, last.y);
+                    }
+                } else if (len === 1) {
+                    newVertex = new Vector2(polygon[0].x + 30, polygon[0].y);
+                } else {
+                    newVertex = new Vector2(0, 0);
                 }
                 
-                // Refresh the UI to show the new vertex
-                this.showObjectInspector();
-                this.editor.refreshCanvas();
+                // Add the new vertex
+                if (typeof module.addVertex === 'function') {
+                    module.addVertex(newVertex);
+                } else {
+                    polygon.push(newVertex);
+                    
+                    // If there's no addVertex method, we need to update the property manually
+                    if (typeof module.setProperty === 'function') {
+                        module.setProperty(propName, polygon);
+                    }
+                }
+                
+                // Refresh UI and update
+                this.refreshModuleUI(module);
+                updateGameObject();
             });
         });
-
+    
         // Remove vertex button for polygon properties
-        container.querySelectorAll('.remove-vertex').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const index = parseInt(btn.dataset.index);
-                const propName = btn.dataset.propName;
-                let vertices = module[propName];
+        container.querySelectorAll('.remove-vertex').forEach(button => {
+            button.addEventListener('click', () => {
+                const index = parseInt(button.dataset.index);
+                const propName = button.dataset.propName;
                 
-                if (!Array.isArray(vertices) || index < 0 || index >= vertices.length) return;
+                if (isNaN(index) || !propName || !module[propName]) return;
+                
+                const polygon = module[propName];
+                
+                if (polygon.length <= 3) {
+                    console.warn('Cannot remove vertex: polygon must have at least 3 vertices');
+                    return;
+                }
                 
                 // Remove the vertex
-                vertices.splice(index, 1);
-                
-                // If module has setProperty, call it to ensure change events fire
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, vertices);
+                if (typeof module.removeVertex === 'function') {
+                    module.removeVertex(index);
+                } else {
+                    polygon.splice(index, 1);
+                    
+                    // If there's no removeVertex method, update property manually
+                    if (typeof module.setProperty === 'function') {
+                        module.setProperty(propName, polygon);
+                    }
                 }
                 
-                // Refresh the UI
-                this.showObjectInspector();
-                this.editor.refreshCanvas();
+                // Refresh UI and update
+                this.refreshModuleUI(module);
+                updateGameObject();
             });
         });
-
+    
         // Unified handler for vector components (Vector2/3 & polygon)
         container.querySelectorAll('.component-input').forEach(input => {
             input.addEventListener('change', () => {
-                const propName  = input.dataset.propName;
+                const propName = input.dataset.propName;
                 const component = input.dataset.component;
-                const raw       = parseFloat(input.value) || 0;
-                let current     = typeof module.getProperty === 'function'
-                                ? module.getProperty(propName)
-                                : module[propName];
-
+                const raw = parseFloat(input.value) || 0;
+                
+                let current = typeof module.getProperty === 'function'
+                            ? module.getProperty(propName)
+                            : module[propName];
+        
+                // Ensure we have a valid object to modify
+                if (!current) {
+                    console.warn(`Property ${propName} is undefined on module`, module);
+                    return;
+                }
+                
+                console.log(`Updating vector component: ${propName}.${component} = ${raw}`);
+                
                 if (Array.isArray(current)) {
                     const [i, key] = component.split(':');
                     current[+i][key] = raw;
                 } else {
                     current[component] = raw;
                 }
-
+        
+                // Try different ways to update the property
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, current);
                 } else {
                     module[propName] = current;
                 }
-
-                this.editor.refreshCanvas();
+        
+                // Force immediate update
+                updateGameObject();
+                
+                // Also update any preview displays in the UI
+                const previewEl = container.querySelector(`[data-target="${input.closest('.vector-components').id}"] .vector-preview`);
+                if (previewEl && current) {
+                    // Format based on vector type
+                    if ('z' in current) {
+                        previewEl.textContent = `(${current.x.toFixed(1)}, ${current.y.toFixed(1)}, ${current.z.toFixed(1)})`;
+                    } else {
+                        previewEl.textContent = `(${current.x.toFixed(1)}, ${current.y.toFixed(1)})`;
+                    }
+                }
             });
         });
-
-        // FIXED VERSION: Handle checkboxes with multiple event types
+    
+        // Handle checkboxes
         container.querySelectorAll('.property-input[type="checkbox"]').forEach(checkbox => {
-            const updateCheckboxValue = () => {
+            checkbox.addEventListener('change', () => {
                 const propName = checkbox.dataset.propName;
                 const value = checkbox.checked;
                 
-                console.log(`Checkbox ${propName} changed to ${value}`);
+                console.log(`Checkbox changed: ${propName} = ${value}`);
                 
-                // Apply the new value using the most appropriate method
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
                     module[propName] = value;
-                } else {
-                    // Fallback to using the properties object
-                    module.properties = module.properties || {};
+                } else if (module.properties) {
                     module.properties[propName] = value;
                 }
-
-                const originalHandler = checkbox.onchange;
-                checkbox.onchange = (e) => {
-                    if (originalHandler) originalHandler(e);
-                    updateGameObject();
-                };
                 
-                this.editor.refreshCanvas();
-            };
-            
-            // Use multiple event types to ensure change is captured
-            ['change', 'click', 'input'].forEach(eventType => {
-                checkbox.addEventListener(eventType, updateCheckboxValue);
+                // IMPORTANT: Update game object for immediate effect
+                updateGameObject();
             });
         });
         
-        // FIXED VERSION: Handle color inputs with multiple event types
+        // Handle color inputs
         container.querySelectorAll('.property-input[type="color"]').forEach(colorInput => {
-            const updateColorValue = () => {
+            colorInput.addEventListener('input', () => {
                 const propName = colorInput.dataset.propName;
                 const value = colorInput.value;
                 
-                console.log(`Color ${propName} changed to ${value}`);
+                console.log(`Color changed: ${propName} = ${value}`);
                 
-                // Apply the new value using the most appropriate method
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
                     module[propName] = value;
-                } else {
-                    // Fallback to using the properties object
-                    module.properties = module.properties || {};
+                } else if (module.properties) {
                     module.properties[propName] = value;
                 }
                 
-                this.editor.refreshCanvas();
-            };
-            
-            // Use multiple event types to ensure change is captured
-            ['change', 'input'].forEach(eventType => {
-                colorInput.addEventListener(eventType, updateColorValue);
+                // Update game object for live preview
+                updateGameObject();
             });
-
-            const originalHandler = colorInput.onchange;
-            colorInput.onchange = (e) => {
-                if (originalHandler) originalHandler(e);
-                updateGameObject();
-            };
-        });
-
-        // Vector2 inputs - modify existing handlers
-        container.querySelectorAll('.vector2-input').forEach(vectorInput => {
-
-            const xInput = vectorInput.querySelector('.vector-x');
-            const yInput = vectorInput.querySelector('.vector-y');
             
-            const originalXHandler = xInput.onchange;
-            xInput.onchange = (e) => {
-                if (originalXHandler) originalXHandler(e);
+            // Also handle change event for final value
+            colorInput.addEventListener('change', () => {
                 updateGameObject();
-            };
-            
-            const originalYHandler = yInput.onchange;
-            yInput.onchange = (e) => {
-                if (originalYHandler) originalYHandler(e);
-                updateGameObject();
-            };
+            });
         });
-
+    
         // Generic number/text/select inputs
         container.querySelectorAll('.property-input:not([type="checkbox"]):not([type="color"])').forEach(input => {
             input.addEventListener('change', () => {
@@ -2567,34 +2681,20 @@ populateModuleDropdown() {
                     value = input.value;
                 }
                 
-                console.log(`Input ${propName} changed to ${value}`);
+                console.log(`Property changed: ${propName} = ${value}`);
                 
-                // Apply the new value using the most appropriate method
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
                     module[propName] = value;
-                } else {
-                    // Fallback to using the properties object
-                    module.properties = module.properties || {};
+                } else if (module.properties) {
                     module.properties[propName] = value;
                 }
-
-                const originalHandler = input.onchange;
-                input.onchange = (e) => {
-                    if (originalHandler) originalHandler(e);
-                    updateGameObject();
-                };
                 
-                this.editor.refreshCanvas();
+                // IMPORTANT: Update game object for immediate effect
+                updateGameObject();
             });
         });
-
-        const updateGameObject = () => {
-            if (window.engine && window.engine.running && window.gameEditorSync) {
-                window.gameEditorSync.syncEditorToGame();
-            }
-        };
     }
 
     /**
@@ -2704,6 +2804,7 @@ populateModuleDropdown() {
         const styleElement = document.createElement('style');
         styleElement.id = 'inspector-drag-drop-styles';
         styleElement.textContent = `
+            /* Image drop target styles (existing) */
             .image-drop-target {
                 position: relative;
                 border: 2px dashed #555;
@@ -2746,6 +2847,110 @@ populateModuleDropdown() {
                 background-position: right 8px center;
                 background-size: 16px;
                 padding-right: 32px;
+            }
+    
+            /* Vector component layout - UPDATED TO SHOW SIDE BY SIDE */
+            .vector-components {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                padding: 8px 0;
+                gap: 8px;
+            }
+            
+            /* Now the vector component layout has labels above inputs */
+            .vector-component {
+                display: flex;
+                width: 100%;
+                gap: 8px;
+            }
+            
+            .vector-component label {
+                width: 20px;
+                text-align: center;
+                font-weight: bold;
+                color: #aaa;
+                margin-bottom: 0;
+                margin-top: 2px;
+            }
+            
+            .vector-component input {
+                flex: 1;
+                width: auto;
+            }
+            
+            /* Make vector header more distinct */
+            .vector-header {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                padding: 4px 0;
+                border-bottom: 1px solid #444;
+            }
+            
+            .vector-preview {
+                margin: 0 8px;
+                opacity: 0.7;
+                font-size: 0.9em;
+                color: #aaa;
+            }
+            
+            .vector-collapse {
+                cursor: pointer;
+                background: none;
+                border: none;
+                color: #aaa;
+                font-size: 14px;
+                padding: 2px 6px;
+                margin-left: auto;
+            }
+            
+            .vector-collapse:hover {
+                color: #fff;
+            }
+            
+            /* Polygon specific styles need special handling for side-by-side */
+            .polygon-property .vector-component {
+                display: grid;
+                grid-template-columns: 30px 1fr 1fr 30px;
+                gap: 8px;
+            }
+            
+            .remove-vertex {
+                width: 24px;
+                height: 24px;
+                padding: 0;
+                background: none;
+                border: none;
+                color: #f44;
+                cursor: pointer;
+                font-size: 16px;
+                opacity: 0.7;
+            }
+            
+            .remove-vertex:hover:not([disabled]) {
+                opacity: 1;
+            }
+            
+            .remove-vertex[disabled] {
+                opacity: 0.3;
+                cursor: not-allowed;
+            }
+            
+            .add-vertex {
+                margin-top: 6px;
+                padding: 4px 8px;
+                background: #444;
+                border: none;
+                border-radius: 4px;
+                color: #fff;
+                cursor: pointer;
+                font-size: 12px;
+                align-self: flex-start;
+            }
+            
+            .add-vertex:hover {
+                background: #555;
             }
         `;
         

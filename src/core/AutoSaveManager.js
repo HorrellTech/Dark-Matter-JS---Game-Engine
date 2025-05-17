@@ -18,12 +18,91 @@ class AutoSaveManager {
         this.loadState = this.loadState.bind(this);
         
         // Setup handlers for window close/unload events
-        window.addEventListener('beforeunload', this.saveState);
+       // window.addEventListener('beforeunload', this.saveState);
         
         // Setup periodic auto-save
-        this.startAutoSave();
+       // this.startAutoSave();
+
+       // Create a new project instead of restoring auto-saved state
+       this.createNewProject();
         
         console.log("AutoSaveManager initialized");
+    }
+
+    /**
+     * Create a new project instead of loading auto-saved state
+     */
+    async createNewProject() {
+        try {
+            console.log("Creating new project on startup...");
+            
+            // Check if we can use the ProjectManager
+            if (this.editor.projectManager && typeof this.editor.projectManager.newProject === 'function') {
+                await this.editor.projectManager.newProject();
+                console.log("Created new project using ProjectManager");
+            } else {
+                // Fallback if no ProjectManager available
+                // Clear existing scenes
+                this.editor.scenes = [];
+                
+                // Create a default scene
+                if (typeof this.editor.createDefaultScene === 'function') {
+                    this.editor.createDefaultScene();
+                } else if (window.Scene) {
+                    const defaultScene = new Scene("Default Scene");
+                    this.editor.scenes.push(defaultScene);
+                    this.editor.setActiveScene(defaultScene);
+                }
+                
+                // Reset camera and other settings
+                if (this.editor.camera) {
+                    if (typeof this.editor.camera.position.set === 'function') {
+                        this.editor.camera.position.set(0, 0);
+                    } else {
+                        this.editor.camera.position = { x: 0, y: 0 };
+                    }
+                    this.editor.camera.zoom = 1.0;
+                }
+                
+                // Reset grid settings
+                if (this.editor.grid) {
+                    this.editor.grid.showGrid = true;
+                    this.editor.grid.gridSize = 32;
+                    this.editor.grid.snapToGrid = false;
+                }
+                
+                // Reset UI elements
+                if (this.editor.updateZoomLevelDisplay) {
+                    this.editor.updateZoomLevelDisplay();
+                }
+                
+                // Update UI controls
+                document.getElementById('showGrid')?.setAttribute('checked', this.editor.grid?.showGrid);
+                document.getElementById('gridSize')?.setAttribute('value', this.editor.grid?.gridSize);
+                document.getElementById('snapToGrid')?.setAttribute('checked', this.editor.grid?.snapToGrid);
+                
+                // Refresh UI
+                if (this.editor.refreshCanvas) {
+                    this.editor.refreshCanvas();
+                }
+                
+                // Reset hierarchy
+                if (this.editor.hierarchy) {
+                    this.editor.hierarchy.selectedObject = null;
+                    this.editor.hierarchy.refreshHierarchy();
+                }
+                
+                console.log("Created new project using fallback method");
+            }
+            
+            // Clear auto-saved data (optional - you can comment this out if you want to keep it)
+            this.clearSavedState();
+            
+            return true;
+        } catch (error) {
+            console.error("Error creating new project:", error);
+            return false;
+        }
     }
     
     /**
@@ -55,6 +134,11 @@ class AutoSaveManager {
         if (this.editor.scenes.some(scene => scene.dirty)) {
             this.saveState();
         }
+    }
+
+    manualSave() {
+        console.log("Manual save triggered");
+        this.saveState();
     }
     
     /**

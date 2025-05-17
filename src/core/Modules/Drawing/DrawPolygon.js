@@ -22,10 +22,14 @@ class DrawPolygon extends Module {
             minItems: 3,
             onChange: (val) => {
                 this.vertices = val;
-                this._onVerticesChanged();
+                // Only call _onVerticesChanged if gameObject exists
+                if (this.gameObject) {
+                    this._onVerticesChanged();
+                }
             }
         });
         
+        // Remaining property exposures...
         this.exposeProperty("offset", "vector2", this.offset, { 
             description: "Offset from center",
             onChange: (val) => this.offset = val
@@ -61,12 +65,20 @@ class DrawPolygon extends Module {
     }
 
     _onVerticesChanged() {
+        // Safety check: only continue if gameObject exists
+        if (!this.gameObject) return;
+        
         // if there's a Rigidbody on this object, sync its polygon verts
-        const rb = this.gameObject.getModule("RigidBody") 
-                || this.gameObject.getModule(RigidBody);
-        if (rb) {
-            rb.vertices = this.vertices.slice();
-            rb.rebuildBody();
+        try {
+            const rb = this.gameObject.getModule("RigidBody") || 
+                     (typeof RigidBody !== 'undefined' ? this.gameObject.getModule(RigidBody) : null);
+            
+            if (rb) {
+                rb.vertices = this.vertices.slice();
+                rb.rebuildBody();
+            }
+        } catch (e) {
+            console.warn("Error syncing polygon vertices with RigidBody:", e);
         }
     }
 
@@ -91,11 +103,167 @@ class DrawPolygon extends Module {
         if (this.outline) {
             ctx.strokeStyle = this.outlineColor;
             ctx.lineWidth = this.outlineWidth;
+            ctx.beginPath();
+            ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+            for (let i = 1; i < this.vertices.length; i++) {
+                ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+            }
+            ctx.closePath();
             ctx.stroke();
         }
         
         ctx.restore();
     }
+
+    /**
+     * Called when the module is attached to a game object
+     * This is a good place to sync vertices with RigidBody
+     */
+    onAttach() {
+        // Now it's safe to sync with RigidBody if needed
+        if (this.vertices && this.vertices.length >= 3) {
+            this._onVerticesChanged();
+        }
+    }
+
+    /**
+     * Ensure Vector2 objects are properly serialized
+     */
+    toJSON() {
+        const json = super.toJSON();
+        
+        // Serialize vertices array - ensure each Vector2 is represented as an object
+        if (this.vertices && Array.isArray(this.vertices)) {
+            json.vertices = this.vertices.map(v => ({
+                x: v.x || 0,
+                y: v.y || 0
+            }));
+        }
+        
+        // Serialize offset Vector2
+        if (this.offset) {
+            json.offset = {
+                x: this.offset.x || 0,
+                y: this.offset.y || 0
+            };
+        }
+        
+        return json;
+    }
+
+    /**
+     * Ensure Vector2 objects are properly reconstructed from serialized data
+     * @param {Object} json - Serialized data
+     */
+    fromJSON(json) {
+        super.fromJSON(json);
+        
+        // Reconstruct vertices array - check for valid data first
+        if (json.vertices && Array.isArray(json.vertices)) {
+            try {
+                this.vertices = json.vertices.map(v => new Vector2(v.x || 0, v.y || 0));
+            } catch (e) {
+                console.warn("Error reconstructing polygon vertices:", e);
+                // Fallback to default triangle
+                this.vertices = [
+                    new Vector2(0, -50),
+                    new Vector2(50, 50),
+                    new Vector2(-50, 50)
+                ];
+            }
+        }
+        
+        // Reconstruct offset Vector2 - check for valid data first
+        if (json.offset && typeof json.offset === 'object') {
+            try {
+                this.offset = new Vector2(json.offset.x || 0, json.offset.y || 0);
+            } catch (e) {
+                console.warn("Error reconstructing polygon offset:", e);
+                this.offset = new Vector2(0, 0);
+            }
+        }
+        
+        // Don't call _onVerticesChanged here, as the gameObject may not be set yet
+        // It will be called in onAttach
+        
+        return this;
+    }
+    
+    /**
+     * Set a vertex at a specific index
+     * @param {number} index - Index of the vertex to modify
+     * @param {Vector2|Object} value - New vertex value
+     */
+    setVertex(index, value) {
+        if (!this.vertices || index < 0 || index >= this.vertices.length) {
+            console.warn(`Vertex index out of bounds: ${index}`);
+            return;
+        }
+        
+        // Ensure we're working with a Vector2
+        const vertex = value instanceof Vector2 ? value : new Vector2(value.x || 0, value.y || 0);
+        
+        // Update the vertex
+        this.vertices[index] = vertex;
+        
+        // Trigger any necessary updates - only if we have a gameObject
+        if (this.gameObject) {
+            this._onVerticesChanged();
+        }
+    }
+
+    /**
+     * Add a new vertex to the polygon
+     * @param {Vector2|Object} vertex - New vertex to add
+     * @param {number} [index] - Optional position to insert (defaults to end)
+     */
+    addVertex(vertex, index = undefined) {
+        if (!this.vertices) {
+            this.vertices = [];
+        }
+        
+        // Ensure we're working with a Vector2
+        const newVertex = vertex instanceof Vector2 ? vertex : new Vector2(vertex.x || 0, vertex.y || 0);
+        
+        if (index !== undefined) {
+            // Insert at specific position
+            this.vertices.splice(index, 0, newVertex);
+        } else {
+            // Add to end
+            this.vertices.push(newVertex);
+        }
+        
+        // Trigger any necessary updates - only if we have a gameObject
+        if (this.gameObject) {
+            this._onVerticesChanged();
+        }
+    }
+
+    /**
+     * Remove a vertex at the specified index
+     * @param {number} index - Index of vertex to remove
+     */
+    removeVertex(index) {
+        if (!this.vertices || index < 0 || index >= this.vertices.length) {
+            console.warn(`Vertex index out of bounds: ${index}`);
+            return;
+        }
+        
+        // Don't allow removing if we'll have fewer than 3 vertices
+        if (this.vertices.length <= 3) {
+            console.warn("Cannot remove vertex: polygon must have at least 3 vertices");
+            return;
+        }
+        
+        // Remove the vertex
+        this.vertices.splice(index, 1);
+        
+        // Trigger any necessary updates - only if we have a gameObject
+        if (this.gameObject) {
+            this._onVerticesChanged();
+        }
+    }
 }
 
+// Register the module globally
 window.DrawPolygon = DrawPolygon;
