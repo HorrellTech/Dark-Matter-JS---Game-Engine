@@ -7,9 +7,26 @@ class FileBrowser {
         this.dbName = 'FileSystemDB';
         this.dbVersion = 1;
         this.fileTypes = {}; // Initialize fileTypes object first
+        // Add clipboard state
+        this.clipboard = {
+            items: [],
+            operation: null // 'copy' or 'cut'
+        };
 
         this.initializeUI();
-        this.initializeDB();
+        this.initializeDB().then(() => {
+            // Initialize directory tree after DB is ready
+            this.directoryTree = new DirectoryTree(this);
+            this.treePanel.appendChild(this.directoryTree.container);
+            this.directoryTree.initialize();
+            
+            // Register file types
+            this.fileTypes['.scene'] = {
+                icon: 'fa-gamepad',
+                color: '#64B5F6',
+                onDoubleClick: (file) => this.openSceneFile(file)
+            };
+        });
 
         this.assetManager = new AssetManager(this);
 
@@ -59,7 +76,7 @@ class FileBrowser {
         this.fbContainer.style.flexDirection = 'column';
         this.fbContainer.style.height = '100%';
         this.fbContainer.style.overflow = 'hidden';
-
+    
         // Create toolbar
         this.toolbar = document.createElement('div');
         this.toolbar.className = 'file-browser-toolbar';
@@ -73,25 +90,56 @@ class FileBrowser {
             <button class="fb-button" id="fbExportAssets" title="Export Assets"><i class="fas fa-file-export"></i></button>
             <button class="fb-button" id="fbImportAssets" title="Import Assets"><i class="fas fa-file-import"></i></button>
         `;
-
+    
         this.breadcrumb = document.createElement('div');
         this.breadcrumb.className = 'fb-breadcrumb';
         this.toolbar.appendChild(this.breadcrumb);
-
-        // Create content area with proper scrolling
+    
+        // Create the split container for directory tree and file browser
+        this.splitContainer = document.createElement('div');
+        this.splitContainer.className = 'fb-split-container';
+        this.splitContainer.style.display = 'flex';
+        this.splitContainer.style.flex = '1';
+        this.splitContainer.style.overflow = 'hidden';
+    
+        // Create the tree panel container
+        this.treePanel = document.createElement('div');
+        this.treePanel.className = 'fb-tree-panel';
+        this.treePanel.style.width = '25%'; // Default width
+        this.treePanel.style.borderRight = '1px solid #1e1e1e';
+        this.treePanel.style.overflow = 'auto';
+        
+        // Create the content area (file browser)
         this.content = document.createElement('div');
         this.content.className = 'file-browser-content';
-        this.content.style.overflowY = 'auto';
-        this.content.style.flexGrow = '1';
-
-        // Add to container
+        this.content.style.flex = '1';
+        this.content.style.overflow = 'auto';
+    
+        // Create a resizer handle for the tree panel
+        this.treePanelResizer = document.createElement('div');
+        this.treePanelResizer.className = 'fb-tree-resizer';
+        this.treePanelResizer.style.width = '5px';
+        this.treePanelResizer.style.cursor = 'col-resize';
+        this.treePanelResizer.style.backgroundColor = '#1e1e1e';
+        
+        // Add components to container
+        this.splitContainer.appendChild(this.treePanel);
+        this.splitContainer.appendChild(this.treePanelResizer);
+        this.splitContainer.appendChild(this.content);
+        
+        // Add to main container
         this.fbContainer.appendChild(this.toolbar);
-        this.fbContainer.appendChild(this.content);
+        this.fbContainer.appendChild(this.splitContainer);
+        
+        // IMPORTANT: Append to the DOM before setting up event listeners
         this.container.appendChild(this.fbContainer);
-
+    
         // Setup event listeners
         this.setupEventListeners();
-
+    
+        // Set up resizer for tree panel
+        this.setupTreePanelResizer();
+    
         // Set up module drop target functionality
         this.setupModuleDropTarget();
     }
@@ -167,6 +215,32 @@ class FileBrowser {
                 this.openFile(item.dataset.path);
             }
         });
+
+        this.content.addEventListener('keydown', (e) => {
+            // Only process if target is the content div (to avoid interfering with other inputs)
+            if (e.target !== this.content) return;
+            
+            // Ctrl+C: Copy
+            if (e.ctrlKey && e.key === 'c') {
+                e.preventDefault();
+                this.copySelectedToClipboard();
+            }
+            
+            // Ctrl+X: Cut
+            if (e.ctrlKey && e.key === 'x') {
+                e.preventDefault();
+                this.cutSelectedToClipboard();
+            }
+            
+            // Ctrl+V: Paste
+            if (e.ctrlKey && e.key === 'v') {
+                e.preventDefault();
+                this.pasteFromClipboard();
+            }
+        });
+        
+        // Make the content div focusable to receive keyboard events
+        this.content.setAttribute('tabindex', '0');
 
         // Add dataset attributes for draggable module files
         this.content.addEventListener('dragstart', (e) => {
@@ -260,6 +334,42 @@ class FileBrowser {
                 } catch (err) {
                     console.error('Error processing drag data:', err);
                 }
+            }
+        });
+    }
+
+    setupTreePanelResizer() {
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        
+        this.treePanelResizer.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = this.treePanel.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const containerWidth = this.splitContainer.offsetWidth;
+            const newWidth = startWidth + (e.clientX - startX);
+            
+            // Limit width to a reasonable range (10% to 50% of container)
+            const minWidth = containerWidth * 0.1;
+            const maxWidth = containerWidth * 0.5;
+            const clampedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+            
+            this.treePanel.style.width = `${clampedWidth}px`;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
             }
         });
     }
@@ -366,6 +476,12 @@ class FileBrowser {
         
         // Different menu if no item is selected (background context menu)
         if (!item) {
+            // If we have items in clipboard, show paste option
+            if (this.clipboard.items && this.clipboard.items.length > 0) {
+                menuHTML += `<div class="fb-menu-item fb-menu-paste">Paste</div>
+                <div class="context-menu-separator"></div>`;
+            }
+
             menuHTML += `
                 <div class="fb-menu-item fb-menu-new-folder">New Folder</div>
                 <div class="fb-menu-item fb-menu-new-script">New Script</div>
@@ -377,14 +493,11 @@ class FileBrowser {
                 <div class="fb-menu-item fb-menu-rename">Rename</div>
                 <div class="fb-menu-item fb-menu-delete">Delete</div>
                 <div class="context-menu-separator"></div>
+                <div class="fb-menu-item fb-menu-copy-link">Copy Link</div>
+                <div class="context-menu-separator"></div>
                 <div class="fb-menu-item fb-menu-copy">Copy</div>
                 <div class="fb-menu-item fb-menu-cut">Cut</div>
             `;
-        }
-        
-        // If we have items in clipboard, show paste option
-        if (this.clipboardItems && this.clipboardItems.length > 0) {
-            menuHTML += `<div class="fb-menu-item fb-menu-paste">Paste</div>`;
         }
         
         menu.innerHTML = menuHTML;
@@ -408,21 +521,33 @@ class FileBrowser {
             });
             
             menu.querySelector('.fb-menu-copy-link')?.addEventListener('click', () => {
-                this.copyToClipboard(item.path);
+                this.copySelectedToClipboard(item.path);
+                menu.remove();
+            });
+
+            menu.querySelector('.fb-menu-copy')?.addEventListener('click', () => {
+                this.copySelectedToClipboard();
+                menu.remove();
+            });
+            
+            menu.querySelector('.fb-menu-cut')?.addEventListener('click', () => {
+                this.cutSelectedToClipboard();
+                menu.remove();
+            });
+            
+            menu.querySelector('.fb-menu-delete')?.addEventListener('click', () => {
+                // Get the actual name from the dataset
+                const itemName = item.dataset.name;
+                
+                if (confirm(`Delete ${itemName}?`)) {
+                    this.deleteItem(item.dataset.path).then(() => this.refreshFiles());
+                }
                 menu.remove();
             });
             
             // Add rename listener
             menu.querySelector('.fb-menu-rename')?.addEventListener('click', () => {
                 this.promptRename(item);
-                menu.remove();
-            });
-            
-            // Add delete listener
-            menu.querySelector('.fb-menu-delete')?.addEventListener('click', () => {
-                if (confirm(`Delete ${item.name}?`)) {
-                    this.deleteItem(item.path).then(() => this.refreshFiles());
-                }
                 menu.remove();
             });
         } else {
@@ -439,6 +564,11 @@ class FileBrowser {
             
             menu.querySelector('.fb-menu-upload')?.addEventListener('click', () => {
                 this.uploadFile();
+                menu.remove();
+            });
+
+            menu.querySelector('.fb-menu-paste')?.addEventListener('click', () => {
+                this.pasteFromClipboard();
                 menu.remove();
             });
         }
@@ -928,8 +1058,36 @@ window.${pascalCaseName} = ${pascalCaseName};
     async deleteSelected() {
         if (this.selectedItems.size === 0) return;
         
-        if (!confirm(`Delete ${this.selectedItems.size} item(s)?`)) return;
-
+        // Count files and folders for more informative prompt
+        let fileCount = 0;
+        let folderCount = 0;
+        
+        Array.from(this.selectedItems).forEach(item => {
+            if (item.dataset.type === 'folder') {
+                folderCount++;
+            } else {
+                fileCount++;
+            }
+        });
+        
+        // Create a more specific confirmation message
+        let message = 'Delete ';
+        if (fileCount > 0) {
+            message += `${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+        }
+        if (folderCount > 0) {
+            if (fileCount > 0) message += ' and ';
+            message += `${folderCount} folder${folderCount !== 1 ? 's' : ''}`;
+        }
+        message += '?';
+        
+        // Add warning for folders
+        if (folderCount > 0) {
+            message += '\n\nWARNING: Deleting folders will also delete all contents!';
+        }
+        
+        if (!confirm(message)) return;
+    
         try {
             const promises = Array.from(this.selectedItems).map(item => 
                 this.deleteItem(item.dataset.path)
@@ -939,27 +1097,53 @@ window.${pascalCaseName} = ${pascalCaseName};
             await this.loadContent(this.currentPath);
         } catch (error) {
             console.error('Failed to delete items:', error);
+            this.showNotification('Error deleting items', 'error');
         }
     }
 
     async deleteItem(path) {
-        const transaction = this.db.transaction(['files'], 'readwrite');
-        const store = transaction.objectStore('files');
+        if (!this.db) return false;
         
         try {
-            // Recursively delete if it's a folder
-            const index = store.index('parentPath');
-            const items = await this.getAllItems(index, path);
-            for (const item of items) {
-                await this.deleteItem(item.path);
+            // First, check if the item exists and get its type
+            const item = await this.getFile(path);
+            if (!item) {
+                console.warn(`Item not found for deletion: ${path}`);
+                return false;
             }
             
-            // Use a Promise to ensure deletion completes before continuing
+            // Save parent path before deleting the item for tree refresh
+            const parentPath = item.parentPath;
+            const isFolder = item.type === 'folder';
+            
+            const transaction = this.db.transaction(['files'], 'readwrite');
+            const store = transaction.objectStore('files');
+            
+            // Only recursively delete children if it's a folder
+            if (isFolder) {
+                const index = store.index('parentPath');
+                const children = await this.getAllItems(index, path);
+                
+                // Delete all children first
+                for (const child of children) {
+                    await this.deleteItem(child.path);
+                }
+            }
+            
+            // Finally delete the item itself
             await new Promise((resolve, reject) => {
                 const request = store.delete(path);
                 request.onsuccess = () => resolve();
                 request.onerror = (e) => reject(e.target.error);
             });
+            
+            console.log(`Successfully deleted: ${path}`);
+            
+            // Refresh the parent folder in the directory tree if this was a folder
+            // or if the parent path is not the current path
+            if (this.directoryTree && (isFolder || parentPath !== this.currentPath)) {
+                await this.directoryTree.refreshFolder(parentPath);
+            }
             
             return true;
         } catch (error) {
@@ -998,9 +1182,9 @@ window.${pascalCaseName} = ${pascalCaseName};
                 }
             });
             
-            // If folder, update all child paths
-            if (item.type === 'folder') {
-                await this.updateChildPaths(store, path, newPath);
+            // If it was a folder, refresh the parent folder in the directory tree
+            if (item.type === 'folder' && this.directoryTree) {
+                await this.directoryTree.refreshFolder(item.parentPath);
             }
             
             await this.loadContent(this.currentPath);
@@ -1561,6 +1745,11 @@ async loadModuleScript(scriptPath) {
             if (result) {
                 // Refresh the UI to show the new folder
                 this.refreshFiles();
+                
+                // Also refresh the parent folder in the directory tree
+                if (this.directoryTree) {
+                    await this.directoryTree.refreshFolder(path);
+                }
             }
             
             return result;
@@ -1785,6 +1974,285 @@ async loadModuleScript(scriptPath) {
     }
 
     /**
+     * Copy selected items to clipboard
+     */
+    copySelectedToClipboard() {
+        if (this.selectedItems.size === 0) {
+            this.showNotification('No items selected', 'warning');
+            return;
+        }
+
+        this.clipboard.items = Array.from(this.selectedItems).map(item => ({
+            path: item.dataset.path,
+            name: item.dataset.name,
+            type: item.dataset.type
+        }));
+        this.clipboard.operation = 'copy';
+        
+        const count = this.clipboard.items.length;
+        this.showNotification(`${count} item${count !== 1 ? 's' : ''} copied to clipboard`, 'info');
+    }
+
+    /**
+     * Cut selected items to clipboard
+     */
+    cutSelectedToClipboard() {
+        if (this.selectedItems.size === 0) {
+            this.showNotification('No items selected', 'warning');
+            return;
+        }
+
+        this.clipboard.items = Array.from(this.selectedItems).map(item => ({
+            path: item.dataset.path,
+            name: item.dataset.name,
+            type: item.dataset.type
+        }));
+        this.clipboard.operation = 'cut';
+        
+        const count = this.clipboard.items.length;
+        this.showNotification(`${count} item${count !== 1 ? 's' : ''} cut to clipboard`, 'info');
+        
+        // Visual indication of cut items
+        this.selectedItems.forEach(item => {
+            item.classList.add('fb-item-cut');
+        });
+    }
+
+    /**
+     * Paste items from clipboard to current directory
+     */
+    async pasteFromClipboard() {
+        if (!this.clipboard.items || this.clipboard.items.length === 0) {
+            this.showNotification('Clipboard is empty', 'warning');
+            return;
+        }
+
+        const targetPath = this.currentPath;
+        console.log(`Pasting into ${targetPath}`);
+        
+        try {
+            // Process clipboard items
+            for (const item of this.clipboard.items) {
+                // Check if pasting into the same folder as the source
+                const sourceParentPath = item.path.substring(0, item.path.lastIndexOf('/'));
+                if (sourceParentPath === targetPath) {
+                    // Skip if trying to paste in same folder during a cut operation
+                    if (this.clipboard.operation === 'cut') {
+                        continue;
+                    }
+                    
+                    // For copy operation, create a copy with a new name
+                    await this.duplicateItem(item.path, targetPath);
+                } else {
+                    if (this.clipboard.operation === 'copy') {
+                        // Copy item to new location
+                        await this.copyItem(item.path, `${targetPath}/${item.name}`);
+                    } else {
+                        // Move item to new location
+                        await this.moveItem(item.path, `${targetPath}/${item.name}`);
+                    }
+                }
+            }
+            
+            // Clear the cut style if it was a cut operation
+            if (this.clipboard.operation === 'cut') {
+                document.querySelectorAll('.fb-item-cut').forEach(el => {
+                    el.classList.remove('fb-item-cut');
+                });
+                
+                // Clear clipboard after cut & paste
+                this.clipboard.items = [];
+                this.clipboard.operation = null;
+            }
+            
+            // Refresh file browser
+            await this.loadContent(this.currentPath);
+            
+            const operationText = this.clipboard.operation === 'cut' ? 'moved' : 'copied';
+            this.showNotification(`Items ${operationText} successfully`, 'success');
+        } catch (error) {
+            console.error('Error pasting items:', error);
+            this.showNotification(`Error pasting items: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Copy an item (file or folder) to a new location
+     * @param {string} sourcePath - Source path
+     * @param {string} destPath - Destination path
+     */
+    async copyItem(sourcePath, destPath) {
+        try {
+            console.log(`Copying from ${sourcePath} to ${destPath}`);
+            const sourceItem = await this.getFile(sourcePath);
+            if (!sourceItem) {
+                console.error(`Source item not found: ${sourcePath}`);
+                throw new Error(`Source item not found: ${sourcePath}`);
+            }
+            
+            // Get destination folder path and filename
+            const destName = destPath.split('/').pop();
+            const destFolder = destPath.substring(0, destPath.lastIndexOf('/'));
+            
+            // Check if destination already exists and generate new name if needed
+            if (await this.exists(destPath)) {
+                console.log(`Destination already exists: ${destPath}. Generating unique name.`);
+                
+                // Extract base name and extension
+                let baseName = destName;
+                let extension = '';
+                
+                if (sourceItem.type === 'file' && destName.includes('.')) {
+                    const parts = destName.split('.');
+                    extension = '.' + parts.pop();
+                    baseName = parts.join('.');
+                }
+                
+                // Generate unique name with copy suffix
+                let newName = `${baseName} (copy)${extension}`;
+                let counter = 1;
+                
+                // Find a unique name
+                while (await this.exists(`${destFolder}/${newName}`)) {
+                    counter++;
+                    newName = `${baseName} (copy ${counter})${extension}`;
+                }
+                
+                // Update destination path with new name
+                destPath = `${destFolder}/${newName}`;
+                console.log(`Generated unique destination path: ${destPath}`);
+            }
+            
+            if (sourceItem.type === 'file') {
+                // For files, just copy the content directly with the updated path
+                await this.createFile(destPath, sourceItem.content, false);
+            } else {
+                // For folders, first create the destination folder
+                await this.createDirectory(destPath);
+                
+                // Then manually get all children
+                const transaction = this.db.transaction(['files'], 'readonly');
+                const store = transaction.objectStore('files');
+                const index = store.index('parentPath');
+                
+                // Get all children with this parent path
+                const children = await new Promise(resolve => {
+                    index.getAll(sourcePath).onsuccess = e => resolve(e.target.result || []);
+                });
+                
+                console.log(`Found ${children.length} children to copy from ${sourcePath}`);
+                
+                // Recursively copy all children
+                for (const child of children) {
+                    const childDestPath = destPath + child.path.substring(sourcePath.length);
+                    await this.copyItem(child.path, childDestPath);
+                }
+            }
+            
+            return true;
+        } catch (error) {
+            console.error(`Error copying ${sourcePath} to ${destPath}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Move an item to a new location
+     * @param {string} sourcePath - Source path
+     * @param {string} destPath - Destination path
+     */
+    async moveItem(sourcePath, destPath) {
+        try {
+            const sourceItem = await this.getFile(sourcePath);
+            if (!sourceItem) throw new Error(`Source item not found: ${sourcePath}`);
+            
+            // Calculate new parent path for the destination
+            const destParentPath = destPath.substring(0, destPath.lastIndexOf('/'));
+            const destName = destPath.split('/').pop();
+            
+            // Create a copy of the item with the new path information
+            const updatedItem = {
+                ...sourceItem,
+                name: destName,
+                path: destPath,
+                parentPath: destParentPath,
+                modified: Date.now()
+            };
+            
+            // First, add the new item
+            const transaction = this.db.transaction(['files'], 'readwrite');
+            const store = transaction.objectStore('files');
+            
+            await new Promise((resolve, reject) => {
+                const request = store.add(updatedItem);
+                request.onsuccess = resolve;
+                request.onerror = (e) => reject(e.target.error);
+            });
+            
+            // For folders, need to recursively update all children
+            if (sourceItem.type === 'folder') {
+                await this.updateChildPaths(store, sourcePath, destPath);
+            }
+            
+            // Delete the original item
+            await new Promise((resolve, reject) => {
+                const request = store.delete(sourcePath);
+                request.onsuccess = resolve;
+                request.onerror = (e) => reject(e.target.error);
+            });
+            
+            return true;
+        } catch (error) {
+            console.error(`Error moving ${sourcePath} to ${destPath}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a duplicate of an item with a copy suffix
+     * @param {string} sourcePath - The path of the item to duplicate
+     * @param {string} destFolderPath - The folder to create the copy in
+     */
+    async duplicateItem(sourcePath, destFolderPath) {
+        try {
+            const sourceItem = await this.getFile(sourcePath);
+            if (!sourceItem) throw new Error(`Source item not found: ${sourcePath}`);
+            
+            // Generate a unique name for the duplicate
+            let baseName = sourceItem.name;
+            let extension = '';
+            
+            // Extract extension for files
+            if (sourceItem.type === 'file' && baseName.includes('.')) {
+                const parts = baseName.split('.');
+                extension = '.' + parts.pop();
+                baseName = parts.join('.');
+            }
+            
+            // Generate a new name with copy suffix
+            let newName = `${baseName} - Copy${extension}`;
+            let counter = 1;
+            
+            // Check if the name already exists and create a unique one if needed
+            while (await this.checkNameClash(destFolderPath, newName)) {
+                counter++;
+                newName = `${baseName} - Copy (${counter})${extension}`;
+            }
+            
+            // Create the destination path
+            const destPath = `${destFolderPath}/${newName}`;
+            
+            // Use the copyItem method to duplicate
+            await this.copyItem(sourcePath, destPath);
+            
+            return destPath;
+        } catch (error) {
+            console.error(`Error duplicating ${sourcePath}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Reset the entire filesystem database (use with caution)
      * @returns {Promise<boolean>} Success indicator
      */
@@ -1837,7 +2305,13 @@ async loadModuleScript(scriptPath) {
         
         // Update breadcrumb navigation
         this.updateBreadcrumb();
+        
+        // Refresh the directory tree
+        if (this.directoryTree) {
+            await this.directoryTree.refresh();
+        }
     }
+
     async promptDialog(title, message, defaultValue = '') {
         return new Promise(resolve => {
             const dialog = document.createElement('div');
@@ -1906,6 +2380,13 @@ async loadModuleScript(scriptPath) {
         
         // Update UI
         this.updateBreadcrumb();
+        
+        // Update tree selection
+        if (this.directoryTree) {
+            this.directoryTree.container.querySelectorAll('.tree-item').forEach(item => {
+                item.classList.toggle('selected', item.dataset.path === path);
+            });
+        }
     }
 
     setupModuleDropTarget() {

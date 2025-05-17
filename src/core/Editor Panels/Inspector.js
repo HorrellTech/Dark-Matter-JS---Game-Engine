@@ -1227,20 +1227,21 @@ populateModuleDropdown() {
      */
     generateSpriteRendererUI(module) {
         // Create image preview display
-        const hasImage = module.imageAsset && module.imageAsset.path;
+        const hasImage = module.imageAsset && (typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path);
         const imageSrc = module._image ? module._image.src : '';
-        const imagePath = module.imageAsset?.path || 'No image selected';
+        const imagePath = typeof module.imageAsset === 'string' ? module.imageAsset : 
+                        (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
         
         return `
             <div class="property-row">
                 <label>Image</label>
                 <div class="image-selector" data-module-id="${module.id}">
                     <div class="image-preview ${hasImage ? '' : 'empty'}" 
-                         title="${hasImage ? `Path: ${imagePath}` : 'Drag an image here or click to select'}"
-                         data-property="imageAsset">
+                        title="${hasImage ? `Path: ${imagePath}` : 'Drag an image here or click to select'}"
+                        data-property="imageAsset">
                         ${hasImage ? 
                             `<img src="${imageSrc}" alt="Sprite">
-                             <div class="image-path">${this.formatImagePath(imagePath)}</div>` 
+                            <div class="image-path">${this.formatImagePath(imagePath)}</div>` 
                             : '<i class="fas fa-image"></i><div>No Image</div>'}
                     </div>
                     <div class="image-actions">
@@ -1261,87 +1262,99 @@ populateModuleDropdown() {
                 <label title="Height of the sprite in pixels">Height</label>
                 <input type="number" class="property-input" data-prop-name="height" value="${module.height || 0}" step="1" min="1">
             </div>
+            
+            <!-- Scale Mode Dropdown -->
+            <div class="property-row">
+                <label title="How the image should be scaled to fit the dimensions">Scale Mode</label>
+                <select class="property-input scale-mode-dropdown" data-prop-name="scaleMode">
+                    <option value="stretch" ${module.scaleMode === 'stretch' ? 'selected' : ''}>Stretch</option>
+                    <option value="fit" ${module.scaleMode === 'fit' ? 'selected' : ''}>Fit (preserve aspect ratio)</option>
+                    <option value="fill" ${module.scaleMode === 'fill' ? 'selected' : ''}>Fill (preserve aspect ratio, may crop)</option>
+                    <option value="tile" ${module.scaleMode === 'tile' ? 'selected' : ''}>Tile (repeat image)</option>
+                    <option value="9-slice" ${module.scaleMode === '9-slice' ? 'selected' : ''}>9-Slice (stretchable borders)</option>
+                </select>
+            </div>
+            
+            ${module.scaleMode === '9-slice' ? `
+            <!-- 9-Slice Border Controls -->
+            <div class="property-row">
+                <label title="Left border size for 9-slice">Border Left</label>
+                <input type="number" class="property-input" data-prop-name="sliceBorder.left" value="${module.sliceBorder.left}" min="0" max="100" step="1">
+            </div>
+            <div class="property-row">
+                <label title="Right border size for 9-slice">Border Right</label>
+                <input type="number" class="property-input" data-prop-name="sliceBorder.right" value="${module.sliceBorder.right}" min="0" max="100" step="1">
+            </div>
+            <div class="property-row">
+                <label title="Top border size for 9-slice">Border Top</label>
+                <input type="number" class="property-input" data-prop-name="sliceBorder.top" value="${module.sliceBorder.top}" min="0" max="100" step="1">
+            </div>
+            <div class="property-row">
+                <label title="Bottom border size for 9-slice">Border Bottom</label>
+                <input type="number" class="property-input" data-prop-name="sliceBorder.bottom" value="${module.sliceBorder.bottom}" min="0" max="100" step="1">
+            </div>
+            ` : ''}
+            
+            <!-- Color Tint -->
+            <div class="property-row">
+                <label title="Tint color for the sprite">Color</label>
+                <input type="color" class="property-input" data-prop-name="color" value="${module.color || '#ffffff'}">
+            </div>
+            
+            <!-- Flip Options -->
+            <div class="property-row">
+                <label title="Flip the sprite horizontally">Flip X</label>
+                <input type="checkbox" class="property-input" data-prop-name="flipX" ${module.flipX ? 'checked' : ''}>
+            </div>
+            
+            <div class="property-row">
+                <label title="Flip the sprite vertically">Flip Y</label>
+                <input type="checkbox" class="property-input" data-prop-name="flipY" ${module.flipY ? 'checked' : ''}>
+            </div>
+            
+            <!-- Pivot Point (displayed as vector) -->
+            <div class="property-row vector-property">
+                <div class="vector-header">
+                    <label title="Pivot point for rotation (0,0 = top left, 1,1 = bottom right)">Pivot</label>
+                    <div class="vector-preview">
+                    (${module.pivot.x.toFixed(2)}, ${module.pivot.y.toFixed(2)})
+                    </div>
+                    <button class="vector-collapse"
+                            data-target="pivot-${module.id}"
+                            data-vector-id="pivot-${module.id}"
+                            title="Expand">
+                    <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="vector-components" id="pivot-${module.id}" style="display:none">
+                    <div class="vector-component">
+                    <label title="X coordinate">X</label>
+                    <input type="number" class="component-input"
+                            data-prop-name="pivot"
+                            data-component="x"
+                            value="${module.pivot.x}" step="0.1" min="0" max="1"
+                            title="Pivot X coordinate (0 = left, 1 = right)">
+                    </div>
+                    <div class="vector-component">
+                    <label title="Y coordinate">Y</label>
+                    <input type="number" class="component-input"
+                            data-prop-name="pivot"
+                            data-component="y"
+                            value="${module.pivot.y}" step="0.1" min="0" max="1"
+                            title="Pivot Y coordinate (0 = top, 1 = bottom)">
+                    </div>
+                </div>
+            </div>
         `;
-    }
-
-    /**
-     * Setup listeners for SpriteRenderer properties
-     */
-    setupSpriteRendererListeners(container, module) {
-        const imagePreview = container.querySelector('.image-preview');
-        const selectImageButton = container.querySelector('.select-image-button');
-        const clearImageButton = container.querySelector('.clear-image-button');
-        
-        // Make the image preview a drop target
-        if (imagePreview) {
-            // Enable drag & drop
-            imagePreview.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                imagePreview.classList.add('drag-over');
-            });
-            
-            imagePreview.addEventListener('dragleave', () => {
-                imagePreview.classList.remove('drag-over');
-            });
-            
-            imagePreview.addEventListener('drop', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                imagePreview.classList.remove('drag-over');
-                
-                const success = await module.handleImageDrop(e.dataTransfer);
-                if (success) {
-                    this.refreshModuleUI(module);
-                }
-            });
-            
-            // Show image selector on click
-            imagePreview.addEventListener('click', () => {
-                this.showImageSelector(module);
-            });
-        }
-        
-        // Set up select button
-        if (selectImageButton) {
-            selectImageButton.addEventListener('click', () => {
-                this.showImageSelector(module);
-            });
-        }
-        
-        // Set up clear button
-        if (clearImageButton) {
-            clearImageButton.addEventListener('click', () => {
-                module.setSprite(null);
-                this.refreshModuleUI(module);
-                this.editor.refreshCanvas();
-            });
-        }
-        
-        // Standard property handlers
-        container.querySelectorAll('.property-input').forEach(input => {
-            input.addEventListener('change', () => {
-                const propName = input.dataset.propName;
-                let value;
-                
-                if (input.type === 'number') {
-                    value = parseFloat(input.value);
-                    if (isNaN(value)) value = 0;
-                } else {
-                    value = input.value;
-                }
-                
-                module[propName] = value;
-                this.editor.refreshCanvas();
-            });
-        });
     }
 
     /**
      * Format an image path for display (truncate if too long)
      */
     formatImagePath(path) {
-        if (!path) return 'No image';
+        // Handle null, undefined, or non-string values
+        if (!path || typeof path !== 'string') return 'No image';
+        
         if (path.length <= 20) return path;
         
         // Extract filename
@@ -1896,6 +1909,9 @@ populateModuleDropdown() {
             value = prop.value;
         }
 
+        // Add drag and drop styles on first call
+        this.addDragAndDropStyles();
+
         const inputId = `prop-${module.id}-${prop.name}`;
         
         // Get description for tooltip from options if available
@@ -1906,6 +1922,45 @@ populateModuleDropdown() {
             (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
             // Generate collapsible vector fields
             return this.generateVectorUI(prop, module, value);
+        }
+
+        // Handle image assets specially
+        if (prop.type === 'image' || prop.type === 'asset' && prop.options?.assetType === 'image') {
+            const inputId = `prop-${module.id}-${prop.name}`;
+            const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+            
+            // Get current value
+            let value;
+            if (typeof module.getProperty === 'function') {
+                value = module.getProperty(prop.name, prop.value);
+            } else if (prop.name in module) {
+                value = module[prop.name];
+            } else if (module.properties && prop.name in module.properties) {
+                value = module.properties[prop.name];
+            } else {
+                value = prop.value;
+            }
+            
+            // Get path from value (handle both string paths and AssetReference objects)
+            const path = value?.path || value || '';
+            
+            return `
+                <div class="property-row">
+                    <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
+                    <div class="image-drop-target" 
+                        data-property="${prop.name}" 
+                        ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
+                        title="Drag an image here or click to select">
+                        ${path ? `
+                            <div class="image-path">${this.formatImagePath(path)}</div>
+                        ` : ''}
+                    </div>
+                    <input type="text" id="${inputId}" class="property-input" 
+                        data-prop-name="${prop.name}" 
+                        ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
+                        value="${path}" title="${tooltip}">
+                </div>
+            `;
         }
         
         switch (prop.type) {
@@ -2288,7 +2343,12 @@ populateModuleDropdown() {
      * @param {Module} module - Module instance
      */
     setupModulePropertyListeners(container, module) {
-        // SpriteRenderer special handlers...
+        // First, set up image drag and drop for any property that expects an image
+        container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"]').forEach(element => {
+            this.setupImageDropTarget(element, module);
+        });
+        
+        // SpriteRenderer special handlers
         if (module instanceof SpriteRenderer) {
             this.setupSpriteRendererListeners(container, module);
         }
@@ -2511,44 +2571,283 @@ populateModuleDropdown() {
     }
 
     /**
-     * Setup listeners for SpriteRenderer properties
+     * Check if the drag event contains an image
+     * @param {DataTransfer} dataTransfer - The drag data
+     * @returns {boolean} - True if this appears to be an image drag
      */
-    setupSpriteRendererListeners(container, module) {
-        const selectImageButton = container.querySelector('.select-image-button');
-        const widthInput = container.querySelector('.sprite-width');
-        const heightInput = container.querySelector('.sprite-height');
+    isImageDragEvent(dataTransfer) {
+        // Check for files (from OS)
+        if (dataTransfer.items && dataTransfer.items.length > 0) {
+            for (let i = 0; i < dataTransfer.items.length; i++) {
+                if (dataTransfer.items[i].kind === 'file' && 
+                    dataTransfer.items[i].type.startsWith('image/')) {
+                    return true;
+                }
+            }
+        }
         
-        selectImageButton.addEventListener('click', () => {
-            // In a real implementation, this would open a file dialog
-            const imageSrc = prompt('Enter image URL:', module.imageSrc || '');
-            if (imageSrc) {
-                module.loadImage(imageSrc)
-                    .then(() => {
-                        const preview = container.querySelector('.image-preview');
-                        preview.style.display = 'block';
-                        preview.innerHTML = `<img src="${module.imageSrc}" alt="Sprite">`;
-                        
-                        // Update width and height inputs
-                        widthInput.value = module.width;
-                        heightInput.value = module.height;
-                        
-                        this.editor.refreshCanvas();
-                    })
-                    .catch(err => {
-                        console.error('Error loading image:', err);
-                        alert('Failed to load image.');
-                    });
+        // Check for JSON data (from internal file browser)
+        if (dataTransfer.types.includes('application/json')) {
+            return true;
+        }
+        
+        // Check for plain text URLs that might be images
+        if (dataTransfer.types.includes('text/plain')) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Extract an image path from a drop event
+     * @param {DataTransfer} dataTransfer - The drop data
+     * @returns {Promise<string|null>} - The image path or null if not found
+     */
+    async getImagePathFromDropEvent(dataTransfer) {
+        // Check for files directly dropped
+        if (dataTransfer.files && dataTransfer.files.length > 0) {
+            const file = dataTransfer.files[0];
+            
+            // Validate it's an image
+            if (!file.type.startsWith('image/')) {
+                console.warn('Dropped file is not an image:', file.type);
+                return null;
+            }
+            
+            // Get the FileBrowser instance
+            const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
+            if (!fileBrowser) {
+                console.warn('FileBrowser not available for image upload');
+                return null;
+            }
+            
+            // Upload to FileBrowser
+            await fileBrowser.handleFileUpload(file);
+            
+            // Return the path to the uploaded file
+            return `${fileBrowser.currentPath}/${file.name}`;
+        }
+        
+        // Check for JSON data (from internal drag & drop from file browser)
+        const jsonData = dataTransfer.getData('application/json');
+        if (jsonData) {
+            try {
+                const items = JSON.parse(jsonData);
+                if (items && items.length > 0) {
+                    // Get the first item's path
+                    const path = items[0].path;
+                    if (path && this.isImagePath(path)) {
+                        return path;
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing drag JSON data:', e);
+            }
+        }
+        
+        // Check for plain text (from copy link etc)
+        const textData = dataTransfer.getData('text/plain');
+        if (textData && this.isImagePath(textData)) {
+            return textData;
+        }
+        
+        return null;
+    }
+
+    /**
+     * Check if a path is an image file based on extension
+     * @param {string} path - File path to check
+     * @returns {boolean} - True if it's an image path
+     */
+    isImagePath(path) {
+        if (!path) return false;
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+        const lowercasePath = path.toLowerCase();
+        return imageExtensions.some(ext => lowercasePath.endsWith(ext));
+    }
+
+    /**
+     * Update the Inspector CSS to support image drop targets
+     */
+    addDragAndDropStyles() {
+        // Check if styles already exist
+        if (document.getElementById('inspector-drag-drop-styles')) return;
+        
+        const styleElement = document.createElement('style');
+        styleElement.id = 'inspector-drag-drop-styles';
+        styleElement.textContent = `
+            .image-drop-target {
+                position: relative;
+                border: 2px dashed #555;
+                border-radius: 4px;
+                min-height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+            
+            .image-drop-target:hover {
+                border-color: #0078D7;
+            }
+            
+            .image-drop-target.drag-over {
+                border-color: #0078D7;
+                background-color: rgba(0, 120, 215, 0.05);
+            }
+            
+            .image-drop-target::after {
+                content: "Drag image here";
+                position: absolute;
+                color: #888;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.2s ease;
+            }
+            
+            .image-drop-target:empty::after,
+            .image-drop-target.drag-over::after {
+                opacity: 1;
+            }
+            
+            .property-input[data-property-type="image"],
+            .property-input[data-asset-type="image"] {
+                background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path fill="%23888" d="M447.1 32h-384C28.64 32-.0091 60.65-.0091 96v320c0 35.35 28.65 64 63.1 64h384c35.35 0 64-28.65 64-64V96C511.1 60.65 483.3 32 447.1 32zM111.1 96c26.51 0 48 21.49 48 48S138.5 192 111.1 192s-48-21.49-48-48S85.48 96 111.1 96zM446.1 407.6C443.3 412.8 437.9 416 432 416H82.01c-6.021 0-11.53-3.379-14.26-8.75c-2.73-5.367-2.215-11.81 1.334-16.68l70-96C142.1 290.4 146.9 288 152 288s9.916 2.441 12.93 6.574l32.46 44.51l93.3-139.1C293.7 194.7 298.7 192 304 192s10.35 2.672 13.31 7.125l128 192C448.6 396 448.9 402.3 446.1 407.6z"/></svg>');
+                background-repeat: no-repeat;
+                background-position: right 8px center;
+                background-size: 16px;
+                padding-right: 32px;
+            }
+        `;
+        
+        document.head.appendChild(styleElement);
+    }
+
+    /**
+     * Set up drag and drop for image properties
+     * @param {HTMLElement} element - The element that should accept image drops
+     * @param {Module} module - The module with the image property
+     */
+    setupImageDropTarget(element, module) {
+        const propertyName = element.dataset.propName || element.dataset.property;
+        if (!propertyName) return;
+        
+        // Make the element visually show it's a drop target
+        element.classList.add('image-drop-target');
+        
+        // Handle dragover to show visual feedback
+        element.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Check if it's likely an image being dragged
+            const isValidDrag = this.isImageDragEvent(e.dataTransfer);
+            if (isValidDrag) {
+                element.classList.add('drag-over');
+                e.dataTransfer.dropEffect = 'copy';
             }
         });
         
-        widthInput.addEventListener('change', () => {
-            module.width = parseFloat(widthInput.value);
-            this.editor.refreshCanvas();
+        // Remove highlight when drag leaves
+        element.addEventListener('dragleave', () => {
+            element.classList.remove('drag-over');
         });
         
-        heightInput.addEventListener('change', () => {
-            module.height = parseFloat(heightInput.value);
-            this.editor.refreshCanvas();
+        // Handle the actual drop
+        element.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            element.classList.remove('drag-over');
+            
+            try {
+                const imagePath = await this.getImagePathFromDropEvent(e.dataTransfer);
+                if (!imagePath) return false;
+                
+                // Update the module property
+                if (typeof module.setProperty === 'function') {
+                    module.setProperty(propertyName, imagePath);
+                } else if (typeof module.setSprite === 'function' && propertyName === 'imageAsset') {
+                    await module.setSprite(imagePath);
+                } else {
+                    module[propertyName] = imagePath;
+                }
+                
+                // Refresh UI and canvas
+                this.refreshModuleUI(module);
+                this.editor?.refreshCanvas();
+                
+                return true;
+            } catch (error) {
+                console.error('Error handling image drop:', error);
+                return false;
+            }
+        });
+        
+        // Make it clickable to open file browser if module supports it
+        if (typeof module.loadImageFromFile === 'function') {
+            element.addEventListener('click', () => {
+                module.loadImageFromFile();
+            });
+        }
+    }
+
+    /**
+     * Setup listeners for SpriteRenderer properties
+     */
+    setupSpriteRendererListeners(container, module) {
+        // Find the image preview element
+        const imagePreview = container.querySelector('.image-preview');
+        const selectImageButton = container.querySelector('.select-image-button');
+        const clearImageButton = container.querySelector('.clear-image-button');
+        
+        // Set up the image preview drag and drop if the module has setupDragAndDrop method
+        if (imagePreview && typeof module.setupDragAndDrop === 'function') {
+            module.setupDragAndDrop(imagePreview);
+        }
+        
+        // Set up select button
+        if (selectImageButton) {
+            selectImageButton.addEventListener('click', () => {
+                if (typeof this.showImageSelector === 'function') {
+                    this.showImageSelector(module);
+                } else if (typeof module.loadImageFromFile === 'function') {
+                    module.loadImageFromFile();
+                }
+            });
+        }
+        
+        // Set up clear button
+        if (clearImageButton) {
+            clearImageButton.addEventListener('click', () => {
+                if (typeof module.setSprite === 'function') {
+                    module.setSprite(null);
+                    this.refreshModuleUI(module);
+                    this.editor.refreshCanvas();
+                }
+            });
+        }
+        
+        // Standard property handlers for width and height inputs
+        container.querySelectorAll('.property-input').forEach(input => {
+            if (!input) return;
+            
+            input.addEventListener('change', () => {
+                const propName = input.dataset.propName;
+                if (!propName) return;
+                
+                let value;
+                if (input.type === 'number') {
+                    value = parseFloat(input.value);
+                    if (isNaN(value)) value = 0;
+                } else {
+                    value = input.value;
+                }
+                
+                module[propName] = value;
+                this.editor.refreshCanvas();
+            });
         });
     }
 

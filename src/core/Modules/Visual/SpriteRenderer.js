@@ -38,6 +38,9 @@ class SpriteRenderer extends Module {
         this.sliceMode = false; // 9-slice rendering mode
         this.sliceBorder = { left: 10, right: 10, top: 10, bottom: 10 };
         
+        // New scaling property
+        this.scaleMode = "stretch"; // Options: stretch, fit, fill, tile
+        
         // Animation properties
         this.frameX = 0;
         this.frameY = 0;
@@ -51,57 +54,206 @@ class SpriteRenderer extends Module {
         this._imageWidth = 0;
         this._imageHeight = 0;
         
-        // Expose properties
+       // Make sure this is called after all properties are set up
+        this.registerProperties();
+        
+        // Attempt to refresh Inspector if already available
+        setTimeout(() => this.refreshInspector(), 100);
+        
+        // Add custom styles to the document
+        this.addCustomStyles();
+    }
+
+    /**
+     * Register all properties for this module
+     */
+    registerProperties() {
+        // Clear any previously registered properties
+        this.clearProperties();
+        
+        // Re-register all properties
         this.exposeProperty("imageAsset", "asset", this.imageAsset, {
             description: "Sprite image to display",
             assetType: 'image',
             fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
             onDropCallback: this.handleImageDrop.bind(this),
-            showImageDropdown: true, // Enable the dropdown menu
-            customButtons: [
-                { 
-                    icon: 'fa-file', 
-                    label: 'Load from File', 
-                    action: this.loadImageFromFile.bind(this) 
-                },
-                { 
-                    icon: 'fa-link', 
-                    label: 'Load from URL', 
-                    action: this.loadImageFromUrl.bind(this) 
-                }
-            ]
+            showImageDropdown: true
         });
         
-        // Additional properties (width, height, color, etc.)
         this.exposeProperty("width", "number", this.width, {
             description: "Width of the sprite in pixels",
             min: 1,
             max: 2048,
-            step: 1
+            step: 1,
+            onChange: (value) => {
+                this.width = value;
+                window.editor?.refreshCanvas();
+            }
         });
         
         this.exposeProperty("height", "number", this.height, {
             description: "Height of the sprite in pixels",
             min: 1,
             max: 2048,
-            step: 1
+            step: 1,
+            onChange: (value) => {
+                this.height = value;
+                window.editor?.refreshCanvas();
+            }
         });
         
+        // Make sure the scaleMode property is correctly registered with onChange handler
+        this.exposeProperty("scaleMode", "enum", this.scaleMode, {
+            description: "How the image should be scaled to fit the dimensions",
+            enumValues: [
+                { value: "stretch", label: "Stretch" },
+                { value: "fit", label: "Fit (preserve aspect ratio)" },
+                { value: "fill", label: "Fill (preserve aspect ratio, may crop)" },
+                { value: "tile", label: "Tile (repeat image)" },
+                { value: "9-slice", label: "9-Slice (stretchable borders)" }
+            ],
+            onChange: (value) => {
+                // Store previous mode to check for changes
+                const previousMode = this.scaleMode;
+                
+                // Update the scale mode
+                this.scaleMode = value;
+                
+                // Handle 9-slice mode toggle
+                if (value === "9-slice") {
+                    this.sliceMode = true;
+                    
+                    // Only refresh border controls if we're switching TO 9-slice mode
+                    if (previousMode !== "9-slice") {
+                        this.refreshBorderControls();
+                    }
+                } else {
+                    this.sliceMode = false;
+                    
+                    // If we're switching FROM 9-slice mode, refresh to remove border controls
+                    if (previousMode === "9-slice") {
+                        this.refreshBorderControls();
+                    }
+                }
+                
+                // Refresh the canvas
+                window.editor?.refreshCanvas();
+            },
+            cssClass: "scale-mode-dropdown" // Add custom CSS class for styling
+        });
+        
+        // Register remaining properties
         this.exposeProperty("color", "color", this.color, {
-            description: "Tint color for the sprite"
+            description: "Tint color for the sprite",
+            onChange: (value) => {
+                this.color = value;
+                window.editor?.refreshCanvas();
+            }
         });
         
         this.exposeProperty("flipX", "boolean", this.flipX, {
-            description: "Flip the sprite horizontally"
+            description: "Flip the sprite horizontally",
+            onChange: (value) => {
+                this.flipX = value;
+                window.editor?.refreshCanvas();
+            }
         });
         
         this.exposeProperty("flipY", "boolean", this.flipY, {
-            description: "Flip the sprite vertically"
+            description: "Flip the sprite vertically",
+            onChange: (value) => {
+                this.flipY = value;
+                window.editor?.refreshCanvas();
+            }
         });
         
         this.exposeProperty("pivot", "vector2", this.pivot, {
-            description: "Pivot point for rotation (0,0 = top left, 1,1 = bottom right)"
+            description: "Pivot point for rotation (0,0 = top left, 1,1 = bottom right)",
+            onChange: (value) => {
+                this.pivot = value;
+                window.editor?.refreshCanvas();
+            }
         });
+        
+        // Only show slice border options when 9-slice mode is active
+        if (this.scaleMode === "9-slice" || this.sliceMode) {
+            this.addSliceBorderProperties();
+        }
+    }
+
+    /**
+     * Add 9-slice border properties to the inspector
+     */
+    addSliceBorderProperties() {
+        this.exposeProperty("sliceBorder.left", "number", this.sliceBorder.left, {
+            description: "Left border size for 9-slice",
+            min: 0,
+            max: 100,
+            step: 1,
+            label: "Border Left",
+            onChange: (value) => {
+                this.sliceBorder.left = value;
+                window.editor?.refreshCanvas();
+            }
+        });
+        
+        this.exposeProperty("sliceBorder.right", "number", this.sliceBorder.right, {
+            description: "Right border size for 9-slice",
+            min: 0,
+            max: 100,
+            step: 1,
+            label: "Border Right",
+            onChange: (value) => {
+                this.sliceBorder.right = value;
+                window.editor?.refreshCanvas();
+            }
+        });
+        
+        this.exposeProperty("sliceBorder.top", "number", this.sliceBorder.top, {
+            description: "Top border size for 9-slice",
+            min: 0,
+            max: 100,
+            step: 1,
+            label: "Border Top",
+            onChange: (value) => {
+                this.sliceBorder.top = value;
+                window.editor?.refreshCanvas();
+            }
+        });
+        
+        this.exposeProperty("sliceBorder.bottom", "number", this.sliceBorder.bottom, {
+            description: "Bottom border size for 9-slice",
+            min: 0,
+            max: 100,
+            step: 1,
+            label: "Border Bottom",
+            onChange: (value) => {
+                this.sliceBorder.bottom = value;
+                window.editor?.refreshCanvas();
+            }
+        });
+    }
+
+    clearProperties() {
+        // Clear any previously registered properties
+        if (this.properties) {
+            for (const prop in this.properties) {
+                if (this.properties.hasOwnProperty(prop)) {
+                    delete this.properties[prop];
+                }
+            }
+        }
+    }
+
+    /**
+     * Refresh border controls when switching to 9-slice mode
+     */
+    refreshBorderControls() {
+        // Re-register all properties to include/exclude slice border properties
+        this.registerProperties();
+        
+        // Force a refresh of the inspector UI
+        this.refreshInspector();
     }
     
     /**
@@ -144,6 +296,9 @@ class SpriteRenderer extends Module {
                     this.height = this._imageHeight;
                 }
                 
+                // Refresh canvas after image is loaded to ensure proper rendering
+                window.editor?.refreshCanvas();
+                
                 return image;
             }
             
@@ -153,6 +308,24 @@ class SpriteRenderer extends Module {
             this._image = null;
             this._isLoaded = false;
             return null;
+        }
+    }
+
+    /**
+     * Force a refresh of the Inspector UI for this module
+     */
+    refreshInspector() {
+        if (window.editor && window.editor.inspector) {
+            // Clear any cached property data
+            if (window.editor.inspector.clearModuleCache) {
+                window.editor.inspector.clearModuleCache(this);
+            }
+            
+            // Re-generate the module UI
+            window.editor.inspector.refreshModuleUI(this);
+            
+            // Refresh the canvas to show visual changes
+            window.editor.refreshCanvas();
         }
     }
     
@@ -202,7 +375,7 @@ class SpriteRenderer extends Module {
         }
     }
     
-    /**
+   /**
      * Draw the sprite
      * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
      */
@@ -220,49 +393,106 @@ class SpriteRenderer extends Module {
         // Save current context state
         ctx.save();
         
-        // Apply color tint if not white
-        if (this.color !== "#ffffff") {
-            ctx.globalCompositeOperation = 'multiply';
-            ctx.fillStyle = this.color;
-            ctx.fillRect(-pivotX, -pivotY, this.width, this.height);
-            ctx.globalCompositeOperation = 'source-atop';
-        }
-        
         // Apply flipping
         if (this.flipX || this.flipY) {
             ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
         }
         
-        // Draw image
-        if (this.frameWidth < this._imageWidth || this.frameHeight < this._imageHeight) {
+        // Handle drawing based on frame/slice/scale mode
+        //if (this.frameWidth < this._imageWidth || this.frameHeight < this._imageHeight) {
             // Draw a specific frame from a spritesheet
-            ctx.drawImage(
-                this._image,
-                this.frameX * this.frameWidth,
-                this.frameY * this.frameHeight,
-                this.frameWidth,
-                this.frameHeight,
-                -pivotX,
-                -pivotY,
-                this.width,
-                this.height
-            );
-        } else if (this.sliceMode) {
-            // Draw using 9-slice mode
-            this.drawNineSlice(ctx, -pivotX, -pivotY);
-        } else {
-            // Draw the entire image
-            ctx.drawImage(
-                this._image,
-                -pivotX,
-                -pivotY,
-                this.width,
-                this.height
-            );
+        //    this.drawFrame(ctx, -pivotX, -pivotY);
+        //} else {
+            // Draw based on scale mode - Always use drawWithScaleMode
+            this.drawWithScaleMode(ctx, -pivotX, -pivotY);
+        //}
+        
+        // Apply color tint if not white (after drawing the image)
+        if (this.color !== "#ffffff") {
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.fillStyle = this.color;
+            ctx.fillRect(-pivotX, -pivotY, this.width, this.height);
         }
         
         // Restore context state
         ctx.restore();
+    }
+
+    /**
+     * Draw a frame from a spritesheet
+     */
+    drawFrame(ctx, x, y) {
+        ctx.drawImage(
+            this._image,
+            this.frameX * this.frameWidth,
+            this.frameY * this.frameHeight,
+            this.frameWidth,
+            this.frameHeight,
+            x, y,
+            this.width,
+            this.height
+        );
+    }
+
+    /**
+     * Register this module with the Inspector to handle custom UI
+     */
+    registerCustomInspectorHandlers() {
+        if (!window.editor || !window.editor.inspector) return;
+        
+        // Register a custom UI creator for this module type
+        window.editor.inspector.registerCustomUIHandler(
+            'SpriteRenderer', 
+            'imageAsset',
+            (element, module) => {
+                // Set up drag and drop for the image preview
+                if (element.classList.contains('image-preview')) {
+                    module.setupDragAndDrop(element);
+                }
+            }
+        );
+    }
+
+    /**
+     * Override to handle image preview in the Inspector
+     */
+    onInspectorCreated() {
+        // Register custom handlers for the Inspector
+        this.registerCustomInspectorHandlers();
+    }
+
+    /**
+     * Set up the image preview element to handle drag and drop
+     * @param {HTMLElement} imagePreview - The image preview element 
+     */
+    setupDragAndDrop(imagePreview) {
+        if (!imagePreview) return;
+        
+        // Enable drag & drop
+        imagePreview.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            imagePreview.classList.add('drag-over');
+        });
+        
+        imagePreview.addEventListener('dragleave', () => {
+            imagePreview.classList.remove('drag-over');
+        });
+        
+        imagePreview.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            imagePreview.classList.remove('drag-over');
+            
+            const success = await this.handleImageDrop(e.dataTransfer);
+            if (success) {
+                // Find the parent Inspector instance to refresh UI
+                if (window.editor && window.editor.inspector) {
+                    window.editor.inspector.refreshModuleUI(this);
+                    window.editor.refreshCanvas();
+                }
+            }
+        });
     }
 
     /**
@@ -272,7 +502,7 @@ class SpriteRenderer extends Module {
      */
     async handleImageDrop(dataTransfer) {
         try {
-            // Check if we have files
+            // Check if we have files directly dropped
             if (dataTransfer.files && dataTransfer.files.length > 0) {
                 const file = dataTransfer.files[0];
                 
@@ -298,7 +528,7 @@ class SpriteRenderer extends Module {
                 return true;
             }
             
-            // Check if we have JSON data (from internal drag & drop)
+            // Check if we have JSON data (from internal drag & drop from file browser)
             const jsonData = dataTransfer.getData('application/json');
             if (jsonData) {
                 try {
@@ -314,6 +544,13 @@ class SpriteRenderer extends Module {
                 } catch (e) {
                     console.error('Error parsing drag JSON data:', e);
                 }
+            }
+            
+            // Check if we have plain text (from copy link etc)
+            const textData = dataTransfer.getData('text/plain');
+            if (textData && this.isImagePath(textData)) {
+                await this.setSprite(textData);
+                return true;
             }
             
             return false;
@@ -624,68 +861,219 @@ class SpriteRenderer extends Module {
     }
 
     /**
-     * Handle dropped image files
-     * @param {DataTransfer} dataTransfer - Drop event data
-     * @returns {Promise<boolean>} - Success status
+     * Draw the image using the selected scale mode
      */
-    async handleImageDrop(dataTransfer) {
-        try {
-            // Check if we have files directly dropped
-            if (dataTransfer.files && dataTransfer.files.length > 0) {
-                const file = dataTransfer.files[0];
-                
-                // Validate it's an image
-                if (!file.type.startsWith('image/')) {
-                    console.warn('Dropped file is not an image:', file.type);
-                    return false;
-                }
-                
-                // Get the FileBrowser instance
-                const fileBrowser = window.editor?.fileBrowser;
-                if (!fileBrowser) {
-                    console.warn('FileBrowser not available for image upload');
-                    return false;
-                }
-                
-                // Upload to FileBrowser
-                await fileBrowser.handleFileUpload(file);
-                
-                // Set the image asset to this path
-                const path = `${fileBrowser.currentPath}/${file.name}`;
-                await this.setSprite(path);
-                return true;
-            }
-            
-            // Check if we have JSON data (from internal drag & drop from file browser)
-            const jsonData = dataTransfer.getData('application/json');
-            if (jsonData) {
-                try {
-                    const items = JSON.parse(jsonData);
-                    if (items && items.length > 0) {
-                        // Get the first item's path
-                        const path = items[0].path;
-                        if (path && this.isImagePath(path)) {
-                            await this.setSprite(path);
-                            return true;
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error parsing drag JSON data:', e);
-                }
-            }
-            
-            // Check if we have plain text (from copy link etc)
-            const textData = dataTransfer.getData('text/plain');
-            if (textData && this.isImagePath(textData)) {
-                await this.setSprite(textData);
-                return true;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error('Error handling image drop:', error);
-            return false;
+    drawWithScaleMode(ctx, x, y) {
+        // Add some debugging
+        //console.log(`Drawing with scale mode: ${this.scaleMode}`);
+        
+        switch (this.scaleMode) {
+            case "fit":
+                this.drawFit(ctx, x, y);
+                break;
+            case "fill":
+                this.drawFill(ctx, x, y);
+                break;
+            case "tile":
+                this.drawTile(ctx, x, y);
+                break;
+            case "9-slice":
+                this.drawNineSlice(ctx, x, y);
+                break;
+            case "stretch":
+            default:
+                // Default to stretch (simple drawImage)
+                ctx.drawImage(this._image, x, y, this.width, this.height);
+                break;
         }
+    }
+    
+    /**
+     * Draw the image preserving aspect ratio and fitting inside dimensions
+     */
+    drawFit(ctx, x, y) {
+        // Calculate aspect ratios
+        const imageRatio = this._imageWidth / this._imageHeight;
+        const targetRatio = this.width / this.height;
+        
+        let drawWidth, drawHeight, offsetX, offsetY;
+        
+        if (imageRatio > targetRatio) {
+            // Image is wider than the target area relative to height
+            drawWidth = this.width;
+            drawHeight = this.width / imageRatio;
+            offsetX = 0;
+            offsetY = (this.height - drawHeight) / 2;
+        } else {
+            // Image is taller than the target area relative to width
+            drawHeight = this.height;
+            drawWidth = this.height * imageRatio;
+            offsetX = (this.width - drawWidth) / 2;
+            offsetY = 0;
+        }
+        
+        // Draw the image centered
+        ctx.drawImage(this._image, 0, 0, this._imageWidth, this._imageHeight, 
+                    x + offsetX, y + offsetY, drawWidth, drawHeight);
+    }
+
+    /**
+     * Draw the image preserving aspect ratio and filling the entire area (may crop)
+     */
+    drawFill(ctx, x, y) {
+        // Calculate aspect ratios
+        const imageRatio = this._imageWidth / this._imageHeight;
+        const targetRatio = this.width / this.height;
+        
+        let sourceX, sourceY, sourceWidth, sourceHeight;
+        
+        if (imageRatio > targetRatio) {
+            // Image is wider than the target area relative to height
+            sourceHeight = this._imageHeight;
+            sourceWidth = this._imageHeight * targetRatio;
+            sourceX = (this._imageWidth - sourceWidth) / 2;
+            sourceY = 0;
+        } else {
+            // Image is taller than the target area relative to width
+            sourceWidth = this._imageWidth;
+            sourceHeight = this._imageWidth / targetRatio;
+            sourceX = 0;
+            sourceY = (this._imageHeight - sourceHeight) / 2;
+        }
+        
+        // Draw the image cropped to fill the entire target area
+        ctx.drawImage(
+            this._image,
+            sourceX, sourceY, sourceWidth, sourceHeight,
+            x, y, this.width, this.height
+        );
+    }
+
+    /**
+     * Draw the image tiled to fill the entire area
+     */
+    drawTile(ctx, x, y) {
+        // Create a pattern and fill the area
+        const pattern = ctx.createPattern(this._image, 'repeat');
+        if (!pattern) {
+            // Fallback if pattern creation fails
+            ctx.drawImage(this._image, x, y, this.width, this.height);
+            return;
+        }
+        
+        // Save context to isolate the pattern drawing
+        ctx.save();
+        
+        // Clip to the target rectangle
+        ctx.beginPath();
+        ctx.rect(x, y, this.width, this.height);
+        ctx.clip();
+        
+        // Fill with the pattern
+        ctx.fillStyle = pattern;
+        ctx.fillRect(x, y, this.width, this.height);
+        
+        // Restore context
+        ctx.restore();
+    }
+    
+    /**
+     * Draw a nine-slice image
+     */
+    drawNineSlice(ctx, x, y) {
+        // Implementation of 9-slice rendering
+        const img = this._image;
+        const w = this.width;
+        const h = this.height;
+        const border = this.sliceBorder;
+        
+        // Ensure border values are valid and don't exceed image dimensions
+        const validLeft = Math.min(border.left, this._imageWidth / 3);
+        const validRight = Math.min(border.right, this._imageWidth / 3);
+        const validTop = Math.min(border.top, this._imageHeight / 3);
+        const validBottom = Math.min(border.bottom, this._imageHeight / 3);
+        
+        // Ensure borders don't overlap
+        const maxHorizontalBorder = Math.floor(this._imageWidth / 2);
+        const maxVerticalBorder = Math.floor(this._imageHeight / 2);
+        
+        const safeLeft = Math.min(validLeft, maxHorizontalBorder);
+        const safeRight = Math.min(validRight, maxHorizontalBorder);
+        const safeTop = Math.min(validTop, maxVerticalBorder);
+        const safeBottom = Math.min(validBottom, maxVerticalBorder);
+        
+        // Source coordinates (slices from the original image)
+        const srcX = [0, safeLeft, this._imageWidth - safeRight, this._imageWidth];
+        const srcY = [0, safeTop, this._imageHeight - safeBottom, this._imageHeight];
+        
+        // Destination coordinates (where to draw on the canvas)
+        const dstX = [x, x + safeLeft, x + w - safeRight, x + w];
+        const dstY = [y, y + safeTop, y + h - safeBottom, y + h];
+        
+        // Draw all 9 slices
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                const sx = srcX[col];
+                const sy = srcY[row];
+                const sw = srcX[col + 1] - sx;
+                const sh = srcY[row + 1] - sy;
+                
+                const dx = dstX[col];
+                const dy = dstY[row];
+                const dw = dstX[col + 1] - dx;
+                const dh = dstY[row + 1] - dy;
+                
+                // Only draw if width and height are positive
+                if (sw > 0 && sh > 0 && dw > 0 && dh > 0) {
+                    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+                }
+            }
+        }
+    }
+
+    /**
+     * Add custom styles for the SpriteRenderer's UI
+     */
+    addCustomStyles() {
+        // Check if styles already exist
+        if (document.getElementById('sprite-renderer-styles')) {
+            return;
+        }
+        
+        // Create style element
+        const style = document.createElement('style');
+        style.id = 'sprite-renderer-styles';
+        style.innerHTML = `
+            .scale-mode-dropdown {
+                width: 100%;
+                background-color: #333;
+                color: #eee;
+                border: 1px solid #555;
+                padding: 8px;
+                border-radius: 3px;
+                font-size: 12px;
+                height: auto !important;
+                appearance: menulist; /* Show dropdown arrow */
+            }
+            
+            .scale-mode-dropdown option {
+                background-color: #333;
+                color: #eee;
+                padding: 6px;
+            }
+            
+            .scale-mode-dropdown:focus {
+                outline: none;
+                border-color: #2196F3;
+            }
+            
+            /* Ensure border controls are correctly aligned */
+            .property-row input[data-prop-name^="sliceBorder"] {
+                width: 60px;
+                text-align: right;
+            }
+        `;
+        document.head.appendChild(style);
     }
     
     /**
@@ -702,6 +1090,7 @@ class SpriteRenderer extends Module {
         json.flipX = this.flipX;
         json.flipY = this.flipY;
         json.pivot = { x: this.pivot.x, y: this.pivot.y };
+        json.scaleMode = this.scaleMode;
         
         // Animation properties
         json.frameX = this.frameX;
@@ -750,6 +1139,7 @@ class SpriteRenderer extends Module {
         if (json.color !== undefined) this.color = json.color;
         if (json.flipX !== undefined) this.flipX = json.flipX;
         if (json.flipY !== undefined) this.flipY = json.flipY;
+        if (json.scaleMode !== undefined) this.scaleMode = json.scaleMode;
         
         if (json.pivot) {
             this.pivot = new Vector2(json.pivot.x, json.pivot.y);
