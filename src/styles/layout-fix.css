@@ -109,12 +109,13 @@ body {
 /* Center panel fills remaining space and manages its children with flexbox */
 .center-panel {
   position: relative !important;
-  flex: 1 !important; /* Takes remaining width in .main-content flex row */
-  height: 100% !important; /* Takes full height of .main-content */
+  flex: 1 !important;
+  height: 100% !important;
   overflow: hidden !important;
-  background-color: #252525; /* Center panel background */
+  background-color: #252525;
   display: flex !important;
-  flex-direction: column !important; /* Stack .canvas-tabs and .canvas-container vertically */
+  flex-direction: column !important;
+  min-width: 400px !important; /* Add minimum width to prevent excessive shrinking */
 }
 
 /* Canvas Tabs (Scene/Game buttons) */
@@ -177,20 +178,38 @@ body {
 
 /* Ensure the canvas container is properly positioned within .canvas-view.active */
 .editor-canvas-container {
-  flex-grow: 1 !important; /* Takes remaining space in .canvas-view.active */
-  position: relative !important; /* For #editorCanvas absolute positioning */
-  overflow: hidden !important;
+  flex-grow: 1 !important;
+  position: relative !important;
+  overflow: auto !important; /* Allow scrolling if needed */
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+}
+
+.editor-canvas-wrapper {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: auto !important; /* Allow scrolling if canvas is larger than viewport */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
 }
 
 /* Make sure canvas fills the container */
 #editorCanvas {
+  width: auto !important; /* Override the 100% width that causes stretching */
+  height: 100% !important;
+  max-width: none !important; /* Remove any max-width constraints */
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
   display: block !important;
-  background-color: #1e1e1e; /* Canvas background */
+  margin: 0 !important;
+  min-height: 0 !important;
+  object-fit: contain !important; /* Use contain instead of fill */
+  transform-origin: top left !important;
 }
 
 /* Ensure vertical resizers are properly positioned */
@@ -358,4 +377,81 @@ body {
   object-position: top left !important;
   margin: 0 !important;
   min-height: 0 !important;
+}
+
+body.panel-resizing {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: col-resize !important;
+}
+
+/* Touch controls enhancements */
+.editor-canvas-container {
+  touch-action: none !important; /* Prevent browser's default touch actions */
+}
+
+#editorCanvas {
+  touch-action: none !important; /* Disable browser gestures like pinch zoom */
+}
+
+/* Make objects easier to select on touch devices */
+.game-object-handle {
+  min-width: 24px !important;
+  min-height: 24px !important;
+}
+
+/* Enhanced styles for touch dragging */
+body.touch-dragging {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  overflow: hidden !important;
+}
+
+/* Larger transform handles for touch devices */
+@media (pointer: coarse) {
+  /* Styles specifically for touch devices */
+  .toolbar-button, .game-button, .tab-button, .canvas-tab {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+  
+  /* Increase padding for better touch targets */
+  .hierarchy-item {
+    padding: 8px 8px 8px 24px !important;
+    min-height: 32px !important;
+  }
+  
+  /* Larger scrollbars for touch scrolling */
+  ::-webkit-scrollbar {
+    width: 12px !important;
+    height: 12px !important;
+  }
+}
+
+/* Add visual feedback during touches */
+.touch-active {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.no-selection-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #999;
+  text-align: center;
+  height: 100%;
+}
+
+.no-selection-message .fas {
+  font-size: 24px;
+  margin-bottom: 15px;
+  opacity: 0.5;
+}
+
+.no-selection-message .hint {
+  margin-top: 15px;
+  font-size: 0.9em;
+  opacity: 0.7;
 }

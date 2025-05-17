@@ -49,6 +49,30 @@ class HierarchyManager {
         this.container.classList.add('hierarchy-container');
         
         this.listContainer = this.container.querySelector('.hierarchy-list');
+
+        this.listContainer.addEventListener('click', (e) => {
+            // Only handle clicks directly on the list container, not its children
+            if (e.target === this.listContainer) {
+              // If we have a currently selected object, deselect it
+              if (this.selectedObject) {
+                this.selectedObject.setSelected(false);
+                this.selectedObject = null;
+                
+                // Update hierarchy UI
+                document.querySelectorAll('.hierarchy-item').forEach(item => {
+                  item.classList.remove('selected');
+                });
+                
+                // Inform the inspector
+                if (this.editor.inspector) {
+                  this.editor.inspector.inspectObject(null);
+                }
+                
+                // Refresh the canvas
+                this.editor.refreshCanvas();
+              }
+            }
+          });
         
         // Setup toolbar button event listeners
         document.getElementById('addGameObject').addEventListener('click', () => {

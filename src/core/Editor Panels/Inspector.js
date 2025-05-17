@@ -597,10 +597,13 @@ populateModuleDropdown() {
      * Show "no object selected" message
      */
     showNoObjectMessage() {
-        // Hide the "Add Module" button container when no object is selected
+        // First make sure the inspectedObject is null
+        this.inspectedObject = null;
+      
+        // Hide the "Add Module" button container
         const addModuleContainer = this.container.querySelector('.add-module-container');
         if (addModuleContainer) {
-            addModuleContainer.style.display = 'none';
+          addModuleContainer.style.display = 'none';
         }
         
         // Hide object header and show "no object" message
@@ -612,13 +615,13 @@ populateModuleDropdown() {
         
         // Add a more descriptive message with instructions
         this.modulesList.innerHTML = `
-            <div class="no-selection-message">
-                <i class="fas fa-info-circle"></i>
-                <p>Select a GameObject in the scene or hierarchy to view and edit its properties.</p>
-                <p class="hint">Tip: Right-click in the scene to create a new GameObject.</p>
-            </div>
+          <div class="no-selection-message">
+            <i class="fas fa-info-circle"></i>
+            <p>Select a GameObject in the scene or hierarchy to view and edit its properties.</p>
+            <p class="hint">Tip: Right-click in the scene to create a new GameObject.</p>
+          </div>
         `;
-    }
+      }
 
     /**
      * Show inspector for the selected object
