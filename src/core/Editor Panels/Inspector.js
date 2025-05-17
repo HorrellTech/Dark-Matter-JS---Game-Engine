@@ -851,7 +851,7 @@ populateModuleDropdown() {
      */
     addModuleUI(module) {
         if (!module) return;
-
+    
         const moduleContainer = document.createElement('div');
         moduleContainer.className = 'module-container';
         moduleContainer.dataset.moduleId = module.id;
@@ -862,7 +862,8 @@ populateModuleDropdown() {
         const moduleDescription = module.constructor.description || '';
         const combinedTooltip = moduleDescription ? `${moduleDisplayName}: ${moduleDescription}` : moduleDisplayName;
         
-        const isMissingModule = module.missingModule === true;
+        // Check if this is a placeholder
+        const isPlaceholder = module.isPlaceholder === true || module.constructor.isPlaceholder === true;
         
         // Check if this module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState(module.id);
@@ -887,31 +888,39 @@ populateModuleDropdown() {
         if (iconUrl) {
             iconHtml = `<img src="${iconUrl}" class="module-icon" alt="${moduleDisplayName} icon">`;
         }
-        
-        // Prepare requirements section
-        let requirementsHtml = '';
-        const requirements = module.getRequirements ? module.getRequirements() : [];
-        if (requirements.length > 0) {
-            let requirementsList = requirements.map(req => `<span class="requirement-badge">${req}</span>`).join('');
-            
-            requirementsHtml = `
-            <div class="module-requirements">
-                <span>Requires:</span> ${requirementsList}
-            </div>
-            `;
-        }
-
-        // Add warning for missing modules
-        let warningHtml = '';
-        if (isMissingModule) {
-            warningHtml = `
-            <div class="module-warning">
+    
+        // Special warning for placeholder modules
+        let placeholderHtml = '';
+        if (isPlaceholder) {
+            placeholderHtml = `
+            <div class="module-placeholder-info">
                 <i class="fas fa-exclamation-triangle"></i>
-                <span>Module class not found. Data preserved but functionality is limited.</span>
+                <span>This module type is not currently loaded. Data has been preserved, but functionality is limited.</span>
+                <button class="placeholder-actions-btn" title="View Placeholder Options">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <div class="placeholder-actions-menu">
+                    <div class="placeholder-action" data-action="reimport">
+                        <i class="fas fa-file-import"></i> Reimport Module
+                    </div>
+                    <div class="placeholder-action" data-action="reimplement">
+                        <i class="fas fa-code"></i> Create Implementation
+                    </div>
+                    <div class="placeholder-action" data-action="view-data">
+                        <i class="fas fa-database"></i> View Data
+                    </div>
+                    <div class="placeholder-action" data-action="remove">
+                        <i class="fas fa-trash"></i> Remove Module
+                    </div>
+                </div>
             </div>
             `;
-            moduleContainer.classList.add('missing-module');
+            
+            // Mark module container for styling
+            moduleContainer.classList.add('placeholder-module');
         }
+        
+        // Rest of your existing code...
         
         moduleContainer.innerHTML = `
             <div class="module-header">
@@ -921,6 +930,7 @@ populateModuleDropdown() {
                     </div>
                     ${iconHtml}
                     <span title="${combinedTooltip}">${moduleDisplayName}</span>
+                    ${isPlaceholder ? '<span class="placeholder-badge">PLACEHOLDER</span>' : ''}
                 </div>
                 <div class="module-actions">
                     <button class="module-toggle" title="${module.enabled ? 'Disable' : 'Enable'} Module">
@@ -935,57 +945,71 @@ populateModuleDropdown() {
                 </div>
             </div>
             <div class="module-content" style="${!module.enabled ? 'opacity: 0.5;' : ''}${isCollapsed ? 'display: none;' : ''}">
-                ${warningHtml}
-                ${requirementsHtml}
+                ${placeholderHtml}
                 ${this.generateModulePropertiesUI(module)}
             </div>
         `;
         
+        // Add to the list
         this.modulesList.appendChild(moduleContainer);
         
-        // Add event listeners
+        // Set up event listeners (existing code)
         const toggleButton = moduleContainer.querySelector('.module-toggle');
         const removeButton = moduleContainer.querySelector('.module-remove');
         const collapseButton = moduleContainer.querySelector('.module-collapse');
         
-        toggleButton.addEventListener('click', () => {
-            module.enabled = !module.enabled;
-            toggleButton.innerHTML = `<i class="fas ${module.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>`;
-            toggleButton.title = `${module.enabled ? 'Disable' : 'Enable'} Module`;
-            
-            const moduleContent = moduleContainer.querySelector('.module-content');
-            moduleContent.style.opacity = module.enabled ? '1' : '0.5';
-            
-            this.editor.refreshCanvas();
-        });
+        // Add your existing event listeners...
         
-        collapseButton.addEventListener('click', () => {
-            const moduleContent = moduleContainer.querySelector('.module-content');
-            const isCollapsed = moduleContent.style.display === 'none';
+        // Add placeholder-specific event listeners
+        if (isPlaceholder) {
+            const actionsButton = moduleContainer.querySelector('.placeholder-actions-btn');
+            const actionsMenu = moduleContainer.querySelector('.placeholder-actions-menu');
             
-            // Toggle collapse state
-            moduleContent.style.display = isCollapsed ? '' : 'none';
-            collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
-            collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
-            
-            // Save collapse state
-            this.saveModuleCollapseState(module.id, !isCollapsed);
-        });
-        
-        removeButton.addEventListener('click', () => {
-            if (confirm(`Remove ${module.type} module?`)) {
-                this.inspectedObject.removeModule(module);
-                moduleContainer.remove();
-                this.editor.refreshCanvas();
+            if (actionsButton) {
+                actionsButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    actionsMenu.classList.toggle('visible');
+                });
             }
-        });
+            
+            // Hide menu when clicking elsewhere
+            document.addEventListener('click', () => {
+                if (actionsMenu) actionsMenu.classList.remove('visible');
+            });
+            
+            // Handle action menu clicks
+            const actionButtons = moduleContainer.querySelectorAll('.placeholder-action');
+            actionButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    
+                    const action = btn.dataset.action;
+                    switch (action) {
+                        case 'reimport':
+                            this.handlePlaceholderReimport(module);
+                            break;
+                        case 'reimplement':
+                            this.handlePlaceholderReimplement(module);
+                            break;
+                        case 'view-data':
+                            this.handlePlaceholderViewData(module);
+                            break;
+                        case 'remove':
+                            if (confirm(`Remove ${moduleDisplayName} module?`)) {
+                                this.inspectedObject.removeModule(module);
+                                moduleContainer.remove();
+                                this.editor.refreshCanvas();
+                            }
+                            break;
+                    }
+                    
+                    // Hide menu after action
+                    actionsMenu.classList.remove('visible');
+                });
+            });
+        }
         
-        // Add event listeners for module-specific properties
-        this.setupModulePropertyListeners(moduleContainer, module);
-        
-        // Set up drag and drop for reordering
-        this.setupModuleDragEvents(moduleContainer);
-        
+        // Remainder of your existing function
         return moduleContainer;
     }
 
@@ -1194,9 +1218,9 @@ populateModuleDropdown() {
      * @returns {string} HTML for the module properties
      */
     generateModulePropertiesUI(module) {
-        // Handle specific module types first
-        if (module instanceof SpriteRenderer) {
-            return this.generateSpriteRendererUI(module);
+        // If this is a placeholder module, use the placeholder UI
+        if (module.isPlaceholder || module.constructor.isPlaceholder) {
+            return this.generatePlaceholderPropertiesUI(module);
         }
         
         // For generic modules, first try to use exposedProperties
@@ -2852,6 +2876,401 @@ populateModuleDropdown() {
                 this.editor.refreshCanvas();
             });
         });
+    }
+
+    /**
+     * Handle placeholder module reimport action
+     */
+    async handlePlaceholderReimport(module) {
+        // Show a dialog to browse for the module file
+        if (!window.fileBrowser) {
+            alert("File browser not available. Please create or import the module file manually.");
+            return;
+        }
+        
+        try {
+            // Open file browsing dialog
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.js';
+            
+            fileInput.onchange = async (e) => {
+                if (e.target.files.length === 0) return;
+                
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = async (event) => {
+                    const content = event.target.result;
+                    
+                    // Check if the file contains a class with the correct name
+                    const moduleName = module.type;
+                    if (!content.includes(`class ${moduleName}`)) {
+                        alert(`This file does not contain a class named ${moduleName}. Please select the correct file.`);
+                        return;
+                    }
+                    
+                    try {
+                        // Create the file in the project
+                        const path = `/modules/${moduleName}.js`;
+                        await window.fileBrowser.createFile(path, content);
+                        
+                        // Try to load the module
+                        const ModuleClass = await window.fileBrowser.loadModuleScript(path);
+                        
+                        if (ModuleClass) {
+                            // Replace the placeholder with the real module
+                            this.replacePlaceholderModule(module, ModuleClass);
+                            alert(`Successfully reimported module: ${moduleName}`);
+                        } else {
+                            alert(`Failed to load module: ${moduleName}`);
+                        }
+                    } catch (error) {
+                        console.error("Module reimport error:", error);
+                        alert(`Error during reimport: ${error.message}`);
+                    }
+                };
+                
+                reader.readAsText(file);
+            };
+            
+            fileInput.click();
+        } catch (error) {
+            console.error("Failed to open file dialog:", error);
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle placeholder view data action
+     */
+    handlePlaceholderViewData(module) {
+        if (!module._originalData && !module.toJSON) {
+            alert("No data available for this module.");
+            return;
+        }
+        
+        const data = module._originalData || module.toJSON();
+        
+        // Create a dialog to display the data
+        const dialog = document.createElement('div');
+        dialog.className = 'module-data-dialog';
+        dialog.innerHTML = `
+            <div class="module-data-content">
+                <div class="module-data-header">
+                    <h3>Module Data: ${module.type}</h3>
+                    <button class="close-button"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="module-data-body">
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            </div>
+        `;
+        
+        // Add styles
+        const style = document.createElement('style');
+        style.textContent = `
+            .module-data-dialog {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.7);
+                z-index: 10000;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .module-data-content {
+                background: #2a2a2a;
+                border-radius: 4px;
+                width: 80%;
+                max-width: 800px;
+                max-height: 80vh;
+                display: flex;
+                flex-direction: column;
+            }
+            .module-data-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 15px;
+                border-bottom: 1px solid #444;
+            }
+            .module-data-header h3 {
+                margin: 0;
+                color: #eee;
+            }
+            .close-button {
+                background: none;
+                border: none;
+                color: #eee;
+                cursor: pointer;
+            }
+            .module-data-body {
+                padding: 15px;
+                overflow: auto;
+                max-height: calc(80vh - 50px);
+            }
+            .module-data-body pre {
+                margin: 0;
+                color: #eee;
+                white-space: pre-wrap;
+            }
+        `;
+        
+        document.head.appendChild(style);
+        document.body.appendChild(dialog);
+        
+        // Add close button event
+        dialog.querySelector('.close-button').addEventListener('click', () => {
+            document.body.removeChild(dialog);
+        });
+    }
+
+    /**
+     * Replace a placeholder module with a real implementation
+     */
+    replacePlaceholderModule(placeholderModule, RealModuleClass) {
+        if (!this.inspectedObject) return;
+        
+        try {
+            // Get original data from placeholder
+            const originalData = placeholderModule._originalData || placeholderModule.toJSON();
+            
+            // Create new instance of real module
+            const newModule = new RealModuleClass();
+            
+            // Copy properties from original data
+            if (originalData) {
+                for (const key in originalData) {
+                    if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
+                        key !== 'isPlaceholder' && key !== '_originalData') {
+                        try {
+                            newModule[key] = originalData[key];
+                        } catch (e) {
+                            console.warn(`Could not copy property ${key} to new module`);
+                        }
+                    }
+                }
+            }
+            
+            // Remove the placeholder
+            this.inspectedObject.removeModule(placeholderModule);
+            
+            // Add the real module
+            this.inspectedObject.addModule(newModule);
+            
+            // Refresh the inspector
+            this.showObjectInspector();
+            
+            // Refresh canvas
+            if (this.editor) {
+                this.editor.refreshCanvas();
+            }
+        } catch (error) {
+            console.error("Error replacing placeholder module:", error);
+            alert(`Failed to replace placeholder: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle placeholder module reimplement action - create a new implementation
+     */
+    async handlePlaceholderReimplement(module) {
+        try {
+            const moduleName = module.type;
+            const namespace = module.constructor.namespace || 'General';
+            
+            // Create a template for the module
+            const template = this.generateModuleTemplate(moduleName, namespace, module);
+            
+            // Create the file in the project
+            const path = `/modules/${moduleName}.js`;
+            
+            if (window.fileBrowser) {
+                // Check if file already exists
+                try {
+                    const existing = await window.fileBrowser.readFile(path);
+                    if (existing) {
+                        const overwrite = confirm(`Module file ${path} already exists. Overwrite?`);
+                        if (!overwrite) return;
+                    }
+                } catch (e) {
+                    // File doesn't exist, which is fine
+                }
+                
+                // Create the file
+                await window.fileBrowser.createFile(path, template);
+                
+                // Open in script editor if available
+                if (window.scriptEditor) {
+                    window.scriptEditor.loadFile(path, template);
+                    window.scriptEditor.open();
+                } else {
+                    alert(`Module template created at ${path}. Please edit it to implement the functionality.`);
+                }
+                
+                // Try to load the module
+                try {
+                    const ModuleClass = await window.fileBrowser.loadModuleScript(path);
+                    if (ModuleClass) {
+                        // Replace the placeholder with the real module
+                        this.replacePlaceholderModule(module, ModuleClass);
+                    }
+                } catch (e) {
+                    console.warn("Could not automatically load the new module:", e);
+                }
+            } else {
+                // No file browser, just show the template
+                alert("File browser not available. Here's the template you can use:");
+                console.log(template);
+            }
+        } catch (error) {
+            console.error("Failed to create module implementation:", error);
+            alert(`Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Generate a template for a module implementation
+     */
+    generateModuleTemplate(moduleName, namespace, placeholder) {
+        let template = `/**
+    * ${moduleName} - Custom module for Dark Matter JS
+    * @namespace ${namespace}
+    * @extends Module
+    */
+    class ${moduleName} extends Module {
+        static namespace = "${namespace}";
+        static description = "Reimplemented module from placeholder";
+        
+        constructor() {
+            super("${moduleName}");
+            
+            // Add properties based on the placeholder data
+    `;
+        
+        // Add properties based on the original data
+        const originalData = placeholder._originalData || {};
+        
+        // Add property initialization
+        for (const key in originalData) {
+            if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
+                key !== 'isPlaceholder' && key !== '_originalData' && 
+                key !== 'id' && key !== 'enabled') {
+                
+                const value = originalData[key];
+                let valueStr = '';
+                
+                if (value === null) {
+                    valueStr = 'null';
+                } else if (value === undefined) {
+                    valueStr = 'undefined';
+                } else if (typeof value === 'string') {
+                    valueStr = `"${value.replace(/"/g, '\\"')}"`;
+                } else if (typeof value === 'object') {
+                    if (Array.isArray(value)) {
+                        valueStr = '[]';
+                    } else if ('x' in value && 'y' in value) {
+                        valueStr = `new Vector2(${value.x}, ${value.y})`;
+                    } else {
+                        valueStr = '{}';
+                    }
+                } else {
+                    valueStr = String(value);
+                }
+                
+                template += `        this.${key} = ${valueStr};\n`;
+            }
+        }
+        
+        // Add more template code
+        template += `
+            // TODO: Add property exposure for the inspector
+            // Example: this.exposeProperty("speed", "number", this.speed, { min: 0, max: 10 });
+        }
+        
+        /**
+         * Called once when the module is first activated
+         */
+        start() {
+            console.log("${moduleName} started on " + this.gameObject.name);
+        }
+        
+        /**
+         * Called every frame (main update logic)
+         * @param {number} deltaTime - Time in seconds since the last frame
+         */
+        loop(deltaTime) {
+            // Main logic here
+        }
+        
+        /**
+         * Convert to JSON for serialization
+         */
+        toJSON() {
+            return {
+                ...super.toJSON(),
+                // Add any custom properties that need serialization
+            };
+        }
+    }
+
+    // Register the module globally
+    window.${moduleName} = ${moduleName};
+    `;
+        
+        return template;
+    }
+
+    /**
+     * Generate module properties UI for placeholder modules
+     */
+    generatePlaceholderPropertiesUI(module) {
+        if (!module._originalData) return '<div class="no-properties">No properties available for this placeholder module.</div>';
+        
+        const originalData = module._originalData;
+        let html = '';
+        
+        // Extract and display properties
+        for (const key in originalData) {
+            if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
+                key !== 'isPlaceholder' && key !== '_originalData' && 
+                key !== 'id' && key !== 'enabled') {
+                
+                const value = originalData[key];
+                let displayValue = '';
+                
+                if (value === null) {
+                    displayValue = 'null';
+                } else if (value === undefined) {
+                    displayValue = 'undefined';
+                } else if (typeof value === 'string') {
+                    displayValue = `"${value}"`;
+                } else if (typeof value === 'object') {
+                    if (Array.isArray(value)) {
+                        displayValue = `Array[${value.length}]`;
+                    } else if ('x' in value && 'y' in value) {
+                        displayValue = `Vector2(${value.x}, ${value.y})`;
+                    } else {
+                        displayValue = 'Object';
+                    }
+                } else {
+                    displayValue = String(value);
+                }
+                
+                html += `
+                <div class="property-row placeholder-property">
+                    <label>${this.formatPropertyName(key)}</label>
+                    <div class="placeholder-value">${displayValue}</div>
+                </div>
+                `;
+            }
+        }
+        
+        return html || '<div class="no-properties">No properties available for this placeholder module.</div>';
     }
 
     /**

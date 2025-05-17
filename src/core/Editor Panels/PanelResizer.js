@@ -36,6 +36,17 @@ class PanelResizer {
             this.setupVerticalResizer(bottomResizer);
         }
     }
+
+    listenForWindowResize() {
+        window.addEventListener('resize', () => {
+            this.updateCenterPanelWidth();
+            this.updateCenterPanelHeight();
+            this.maintainCanvasAspectRatio();
+            
+            // Dispatch panel resized event
+            window.dispatchEvent(new CustomEvent('panel-resized'));
+        });
+    }
     
     setupHorizontalResizer(resizer, panelSelector, isGrowing) {
         let startX, startWidth;
@@ -262,6 +273,17 @@ class PanelResizer {
             
             // Add this call to maintain canvas aspect ratio
             this.maintainCanvasAspectRatio();
+        }
+    }
+
+    setupEditorCanvasHandling() {
+        // Add a resize observer to the editor canvas if available
+        const editorCanvas = document.getElementById('editorCanvas');
+        if (editorCanvas && window.ResizeObserver) {
+            const resizeObserver = new ResizeObserver(() => {
+                this.maintainCanvasAspectRatio();
+            });
+            resizeObserver.observe(editorCanvas);
         }
     }
 }

@@ -169,6 +169,22 @@ document.addEventListener('DOMContentLoaded', () => {
         contextMenu.style.display = 'none';
     });
 
+    // Initialize AutoSaveManager after editor is initialized
+    if (!window.autoSaveManager) {
+        window.autoSaveManager = new AutoSaveManager(window.editor);
+        
+        // Automatically restore previous session when starting
+        window.autoSaveManager.loadState().then(success => {
+            if (!success && window.editor.scenes.length === 0) {
+                // If no saved state or failed to load, create a default scene
+                const scene = new Scene("Default Scene");
+                window.editor.scenes.push(scene);
+                window.editor.setActiveScene(scene);
+                window.editor.hierarchy.refreshHierarchy();
+            }
+        });
+    }
+
     // Add this near the beginning of your main initialization code
     function initializeMobileSupport() {
         // Check if panel manager exists, create if needed

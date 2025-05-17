@@ -79,8 +79,12 @@ class HierarchyManager {
             const position = this.editor.getWorldCenterOfView();
             this.addGameObject("New GameObject", position);
         });
-        document.getElementById('removeGameObject').addEventListener('click', () => this.removeSelectedGameObject());
-        document.getElementById('duplicateGameObject').addEventListener('click', () => this.duplicateSelectedGameObject());
+        document.getElementById('removeGameObject').addEventListener('click', () => {
+            this.removeSelectedGameObject();
+        });
+        document.getElementById('duplicateGameObject').addEventListener('click', () => {
+            this.duplicateSelectedGameObject();
+        });
     
         // Context menu for right-clicks on any part of the hierarchy panel
         this.container.addEventListener('contextmenu', (e) => {
@@ -497,6 +501,14 @@ class HierarchyManager {
                 // Update inspector if this is the selected object
                 if (this.selectedObject === gameObject && this.editor.inspector) {
                     this.editor.inspector.inspectObject(gameObject);
+
+                    // Mark scene as dirty
+                    this.editor.activeScene.markDirty();
+
+                    // Trigger auto-save if available
+                    if (window.autoSaveManager) {
+                        window.autoSaveManager.autoSave();
+                    }
                 }
             } else {
                 // Reset to original name if empty or unchanged
@@ -837,6 +849,14 @@ class HierarchyManager {
         // Refresh the hierarchy
         this.refreshHierarchy();
         this.editor.refreshCanvas();
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
     }
     
     /**
@@ -861,6 +881,14 @@ class HierarchyManager {
         // Refresh the hierarchy
         this.refreshHierarchy();
         this.editor.refreshCanvas();
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
     }
     
     /**
@@ -894,6 +922,14 @@ class HierarchyManager {
         this.refreshHierarchy();
         this.selectGameObject(obj);
         this.editor.refreshCanvas();
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
         
         return obj;
     }
@@ -904,6 +940,14 @@ class HierarchyManager {
     removeSelectedGameObject() {
         if (!this.selectedObject) return;
         this.confirmDeleteGameObject(this.selectedObject);
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
     }
     
     /**
@@ -926,6 +970,14 @@ class HierarchyManager {
         this.refreshHierarchy();
         this.selectGameObject(duplicate);
         this.editor.refreshCanvas();
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
     }
     
     /**
@@ -1056,5 +1108,13 @@ class HierarchyManager {
         
         this.refreshHierarchy();
         this.editor.refreshCanvas();
+
+        // Mark scene as dirty
+        this.editor.activeScene.markDirty();
+
+        // Trigger auto-save if available
+        if (window.autoSaveManager) {
+            window.autoSaveManager.autoSave();
+        }
     }
 }

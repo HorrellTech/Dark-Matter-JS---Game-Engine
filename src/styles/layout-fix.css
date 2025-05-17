@@ -455,3 +455,100 @@ body.touch-dragging {
   font-size: 0.9em;
   opacity: 0.7;
 }
+
+/* Placeholder module styles */
+.placeholder-module {
+  border-left: 3px solid #f39c12;
+}
+
+.placeholder-badge {
+  background-color: #f39c12;
+  color: #1e1e1e;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin-left: 8px;
+  font-weight: bold;
+}
+
+.module-placeholder-info {
+  background-color: rgba(243, 156, 18, 0.1);
+  border: 1px solid rgba(243, 156, 18, 0.3);
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.module-placeholder-info i {
+  color: #f39c12;
+  margin-right: 10px;
+  font-size: 16px;
+}
+
+.module-placeholder-info span {
+  flex: 1;
+  font-size: 12px;
+  color: #ddd;
+}
+
+.placeholder-actions-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.placeholder-actions-btn:hover {
+  color: #fff;
+}
+
+.placeholder-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 3px;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+  z-index: 100;
+  display: none;
+}
+
+.placeholder-actions-menu.visible {
+  display: block;
+}
+
+.placeholder-action {
+  padding: 8px 15px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #eee;
+  transition: background-color 0.2s;
+}
+
+.placeholder-action:hover {
+  background-color: #3a3a3a;
+}
+
+.placeholder-action i {
+  margin-right: 8px;
+  color: #f39c12;
+}
+
+.placeholder-property {
+  opacity: 0.7;
+}
+
+.placeholder-value {
+  background-color: #333;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 3px 6px;
+  color: #bbb;
+  font-family: monospace;
+  font-size: 12px;
+}
