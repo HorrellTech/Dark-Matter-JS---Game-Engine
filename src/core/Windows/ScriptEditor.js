@@ -51,6 +51,14 @@ class ScriptEditor {
                 <div class="se-modal-editor-container">
                     <textarea id="se-editor"></textarea>
                 </div>
+                <div class="se-hint-resizer"></div>
+                <div class="se-hint-box">
+                    <div class="se-hint-header">
+                        <div class="se-hint-title">Documentation</div>
+                        <div class="se-hint-close"><i class="fas fa-chevron-down"></i></div>
+                    </div>
+                    <div class="se-hint-content"></div>
+                </div>
                 <div class="se-modal-status">
                     <span class="se-status-position">Ln 1, Col 1</span>
                     <span class="se-status-modified">No changes</span>
@@ -152,11 +160,47 @@ class ScriptEditor {
         document.getElementById('se-cancel').addEventListener('click', () => {
             this.hideConfirmDialog();
         });
+
+        // Hint box resizing
+        const resizer = this.modal.querySelector('.se-hint-resizer');
+        const hintBox = this.modal.querySelector('.se-hint-box');
+        
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const startY = e.clientY;
+            const startHeight = hintBox.offsetHeight;
+            
+            const onMouseMove = (moveEvent) => {
+                const deltaY = startY - moveEvent.clientY;
+                const newHeight = Math.max(32, Math.min(500, startHeight + deltaY));
+                hintBox.style.height = `${newHeight}px`;
+                this.editor?.refresh();
+            };
+            
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            };
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+        
+        // Toggle hint box collapse
+        const hintToggle = this.modal.querySelector('.se-hint-close');
+        hintToggle.addEventListener('click', () => {
+            hintBox.classList.toggle('collapsed');
+            const isCollapsed = hintBox.classList.contains('collapsed');
+            hintToggle.innerHTML = isCollapsed 
+                ? '<i class="fas fa-chevron-up"></i>' 
+                : '<i class="fas fa-chevron-down"></i>';
+            this.editor?.refresh();
+        });
     }
 
     async loadFile(path, content) {
         if (!path) return;
-
+    
         this.currentPath = path;
         this.originalContent = content;
         
@@ -168,8 +212,12 @@ class ScriptEditor {
             this.editor.setValue(content);
             this.editor.clearHistory();
             this.editor.focus();
+            // Initialize the hint box
+            this.updateHintBox();
         } else {
             await this.initCodeMirror(content);
+            // Initialize the hint box once CodeMirror is ready
+            this.updateHintBox();
         }
         
         this.updateModifiedStatus(false);
@@ -205,6 +253,16 @@ class ScriptEditor {
 
         this.editor.setValue(content);
         this.editor.clearHistory();
+
+        // Setup cursor activity for hint display
+        this.editor.on("cursorActivity", () => {
+            const position = this.editor.getCursor();
+            const lineCol = `Ln ${position.line + 1}, Col ${position.ch + 1}`;
+            this.modal.querySelector('.se-status-position').textContent = lineCol;
+            
+            // Update the hint box with documentation for word under cursor
+            this.updateHintBox();
+        });
         
         // Setup change event to track modifications
         this.editor.on("change", () => {
@@ -281,7 +339,11 @@ class ScriptEditor {
             
             // Hint addons
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/show-hint.min.js"),
-            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/javascript-hint.min.js")
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/javascript-hint.min.js"),
+
+            // Load token highlighter addon
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/selection/active-line.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/edit/matchbrackets.min.js")
         ]);
     }
 
@@ -294,6 +356,95 @@ class ScriptEditor {
             statusEl.textContent = "No changes";
             statusEl.classList.remove('modified');
         }
+    }
+
+    updateHintBox() {
+        const hintContent = this.modal.querySelector('.se-hint-content');
+        const doc = this.getDocumentationForCursor();
+        
+        if (!doc) {
+            hintContent.innerHTML = '<p>No documentation available for current selection.</p>';
+            return;
+        }
+        
+        let html = `<h3>${doc.name || 'Documentation'}</h3>`;
+        
+        if (doc.description) {
+            html += `<p>${doc.description}</p>`;
+        }
+        
+        if (doc.example) {
+            html += `<p><strong>Example:</strong></p>
+                     <code>${doc.example}</code>`;
+        }
+        
+        if (doc.params && doc.params.length > 0) {
+            html += `<p><strong>Parameters:</strong></p>`;
+            doc.params.forEach(param => {
+                html += `<div class="param">
+                          <span class="param-name">${param.name}</span>
+                          <span class="param-type">${param.type ? `: ${param.type}` : ''}</span>
+                          <div>${param.description || ''}</div>
+                        </div>`;
+            });
+        }
+        
+        if (doc.returns) {
+            html += `<p><strong>Returns:</strong></p>
+                    <div class="param">
+                      <span class="param-type">${doc.returns.type || ''}</span>
+                      <div>${doc.returns.description || ''}</div>
+                    </div>`;
+        }
+        
+        hintContent.innerHTML = html;
+    }
+    
+    getDocumentationForCursor() {
+        if (!this.editor) return null;
+        
+        const cursor = this.editor.getCursor();
+        const line = this.editor.getLine(cursor.line);
+        
+        // Check if the cursor is inside a function call parentheses
+        const leftPart = line.substring(0, cursor.ch);
+        const rightPart = line.substring(cursor.ch);
+        
+        // If we're inside parentheses, check for a function name before them
+        const insideParenMatch = /([a-zA-Z0-9_$]+)\s*\([^()]*$/.exec(leftPart);
+        if (insideParenMatch && rightPart.match(/^[^()]*\)/)) {
+            const functionName = insideParenMatch[1];
+            
+            // Try to find documentation for this function
+            for (const category in window.DarkMatterDocs) {
+                if (window.DarkMatterDocs[category].functions && 
+                    window.DarkMatterDocs[category].functions[functionName]) {
+                    return {
+                        name: functionName,
+                        ...window.DarkMatterDocs[category].functions[functionName]
+                    };
+                }
+            }
+        }
+        
+        // If not in parentheses, or function not found, check word under cursor
+        const token = this.editor.getTokenAt(cursor);
+        if (token && token.type && (token.type.includes('variable') || token.type.includes('property'))) {
+            const word = token.string;
+            
+            // Look for the word in the documentation
+            for (const category in window.DarkMatterDocs) {
+                if (window.DarkMatterDocs[category].functions && 
+                    window.DarkMatterDocs[category].functions[word]) {
+                    return {
+                        name: word,
+                        ...window.DarkMatterDocs[category].functions[word]
+                    };
+                }
+            }
+        }
+        
+        return null;
     }
 
     formatCode() {
@@ -467,7 +618,7 @@ class ScriptEditor {
         // Proceed with normal close
         this.modal.style.display = 'none';
         this.isOpen = false;
-        this.currentPath = null;
+        this.currentPath = null; 
     }
 }
 

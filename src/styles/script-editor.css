@@ -246,3 +246,113 @@
 #se-discard:hover {
     background-color: #e45555;
 }
+
+/* Hint box styles */
+.se-hint-resizer {
+    height: 6px;
+    background-color: #333;
+    cursor: ns-resize;
+    position: relative;
+}
+
+.se-hint-resizer:hover {
+    background-color: #555;
+}
+
+.se-hint-resizer:before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 2px;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 2px;
+    background-color: #777;
+    border-radius: 1px;
+}
+
+.se-hint-box {
+    background-color: #252526;
+    border-top: 1px solid #333;
+    height: 150px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.se-hint-header {
+    height: 32px;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+}
+
+.se-hint-title {
+    font-weight: bold;
+    font-size: 13px;
+    color: #e0e0e0;
+    flex-grow: 1;
+}
+
+.se-hint-close {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #999;
+}
+
+.se-hint-close:hover {
+    color: #fff;
+}
+
+.se-hint-content {
+    overflow-y: auto;
+    flex-grow: 1;
+    padding: 12px;
+    color: #e0e0e0;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.se-hint-content h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: #6695ee;
+}
+
+.se-hint-content p {
+    margin: 0 0 12px 0;
+}
+
+.se-hint-content code {
+    display: block;
+    padding: 8px;
+    margin: 10px 0;
+    background-color: #1e1e1e;
+    border-radius: 3px;
+    overflow-x: auto;
+    font-family: Consolas, monospace;
+    white-space: pre;
+}
+
+.se-hint-content .param {
+    margin-bottom: 8px;
+}
+
+.se-hint-content .param-name {
+    color: #ce9178;
+    font-weight: bold;
+}
+
+.se-hint-content .param-type {
+    color: #569cd6;
+}
+
+.se-hint-box.collapsed {
+    height: 32px;
+}

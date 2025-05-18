@@ -125,6 +125,20 @@ document.addEventListener('DOMContentLoaded', () => {
         editor.sceneManager = new SceneManager(editor);
     }
 
+    if (!window.scriptEditor) {
+        console.log("Initializing Script Editor...");
+        const initResult = initScriptEditor();
+        if (initResult instanceof Promise) {
+            initResult.then(success => {
+                if (!success) {
+                    console.error("ERROR: Failed to initialize script editor");
+                }
+            });
+        } else if (!initResult) {
+            console.error("ERROR: Failed to initialize script editor");
+        }
+    }
+
     let projectManager;
 
     // Initialize ProjectManager
@@ -316,6 +330,58 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Ensure ScriptEditor is properly initialized
+    function initScriptEditor() {
+        // Check if script file is already loaded
+        if (typeof window.ScriptEditor === 'function') {
+            if (!window.scriptEditor) {
+                try {
+                    window.scriptEditor = new ScriptEditor();
+                    console.log("ScriptEditor successfully initialized");
+                    return true;
+                } catch (err) {
+                    console.error("Error initializing ScriptEditor:", err);
+                }
+            } else {
+                console.log("ScriptEditor already initialized");
+                return true;
+            }
+        } else {
+            console.warn("ScriptEditor class not found, attempting to load it dynamically");
+            
+            // Dynamically load the script
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = './core/ScriptEditor.js';
+                script.onload = () => {
+                    console.log("ScriptEditor.js loaded, initializing...");
+                    setTimeout(() => {
+                        if (typeof window.ScriptEditor === 'function') {
+                            try {
+                                window.scriptEditor = new ScriptEditor();
+                                console.log("ScriptEditor successfully initialized after loading");
+                                resolve(true);
+                            } catch (err) {
+                                console.error("Error initializing ScriptEditor after loading:", err);
+                                resolve(false);
+                            }
+                        } else {
+                            console.error("ScriptEditor class still not available after script load");
+                            resolve(false);
+                        }
+                    }, 100); // Small delay to ensure script is fully processed
+                };
+                script.onerror = () => {
+                    console.error("Failed to load ScriptEditor.js");
+                    resolve(false);
+                };
+                document.body.appendChild(script);
+            });
+        }
+        
+        return false;
+    }
 
     // Set up canvas tab switching
     function setupCanvasTabs() {

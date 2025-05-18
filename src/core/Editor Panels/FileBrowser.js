@@ -1387,12 +1387,33 @@ async loadModuleScript(scriptPath) {
      * Load a script from a URL
      */
     loadScriptFromUrl(url) {
+        console.log(`Loading script from URL: ${url}`);
         return new Promise((resolve, reject) => {
+            // Check if script is already loaded
+            const existingScript = document.querySelector(`script[src="${url}"]`);
+            if (existingScript) {
+                console.log(`Script ${url} already in page, waiting for it to load...`);
+                setTimeout(resolve, 100); // Give it a moment and assume it will load
+                return;
+            }
+            
+            // Create a new script element
             const script = document.createElement('script');
             script.src = url;
             script.type = 'text/javascript';
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+            
+            // Set up event handlers
+            script.onload = () => {
+                console.log(`Script loaded successfully: ${url}`);
+                resolve();
+            };
+            
+            script.onerror = (e) => {
+                console.error(`Failed to load script: ${url}`, e);
+                reject(new Error(`Failed to load script: ${url}`));
+            };
+            
+            // Add to document
             document.head.appendChild(script);
         });
     }
@@ -1634,9 +1655,9 @@ async loadModuleScript(scriptPath) {
             this.showNotification(`File not found: ${path}`, 'error');
             return;
         }
-
+    
         const fileName = file.name.toLowerCase();
-
+    
         if (fileName.endsWith('.scene')) {
             await this.openSceneFile(file);
         } else if (/\.(png|jpg|jpeg|gif|svg|ico|webp)$/i.test(fileName)) {
@@ -1644,18 +1665,73 @@ async loadModuleScript(scriptPath) {
         } else if (/\.(mp3|wav|ogg|aac|flac)$/i.test(fileName)) {
             this.showAudioPlayerModal(file);
         } else if (this.isEditableFile(file.name)) {
-            if (!window.scriptEditor) {
-                // Assuming ScriptEditor is globally available or imported
-             window.scriptEditor = new ScriptEditor(); 
-                console.warn("ScriptEditor not initialized. Please initialize it.");
-                this.showNotification("Script editor is not available.", "error");
-                return;
+            try {
+                // Check if ScriptEditor.js is loaded first
+                if (!window.ScriptEditor) {
+                    console.log("ScriptEditor not found, attempting to load it dynamically...");
+                    try {
+                        // Try to load the script directly
+                        await this.loadScriptFromUrl('/src/core/ScriptEditor.js');
+                        
+                        // Wait a moment to ensure the script is initialized
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        
+                        // Check if it's available now
+                        if (!window.ScriptEditor) {
+                            throw new Error("ScriptEditor class still not available after loading");
+                        }
+                    } catch (err) {
+                        console.error("Failed to load ScriptEditor.js:", err);
+                        this.showNotification("Cannot load Script Editor. Please check console for details.", "error");
+                        return;
+                    }
+                }
+                
+                // Now try to initialize ScriptEditor
+                if (!window.scriptEditor) {
+                    try {
+                        window.scriptEditor = new window.ScriptEditor();
+                        console.log("ScriptEditor initialized on demand");
+                    } catch (err) {
+                        console.error("Error instantiating ScriptEditor:", err);
+                        this.showNotification("Failed to initialize Script Editor", "error");
+                        return;
+                    }
+                }
+                
+                // Now open the file with the editor
+                window.scriptEditor.loadFile(path, file.content);
+            } catch (error) {
+                console.error("Failed to initialize ScriptEditor:", error);
+                this.showNotification("Failed to initialize script editor", "error");
             }
-            window.scriptEditor.loadFile(path, file.content);
         } else {
             this.showNotification(`Cannot open file type: ${file.name}`, 'info');
             console.log(`Opening unhandled file type: ${path}`);
         }
+    }
+
+    async loadScriptIfNeeded(scriptName) {
+        // Check if script is already in page
+        const existingScript = document.querySelector(`script[src*="${scriptName}.js"]`);
+        if (existingScript) return;
+        
+        console.log(`Dynamically loading ${scriptName}.js`);
+        
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            // Fix the path to use the correct directory structure
+            script.src = `src/core/${scriptName}.js`; // Remove the leading slash
+            script.onload = () => {
+                console.log(`${scriptName}.js loaded successfully`);
+                resolve();
+            };
+            script.onerror = (err) => {
+                console.error(`Failed to load ${scriptName}.js:`, err);
+                reject(new Error(`Failed to load ${scriptName}.js`));
+            };
+            document.head.appendChild(script);
+        });
     }
 
     async exists(path) {
