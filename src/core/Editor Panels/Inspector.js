@@ -2849,37 +2849,13 @@ populateModuleDropdown() {
                 padding-right: 32px;
             }
     
-            /* Vector component layout - UPDATED TO SHOW SIDE BY SIDE */
-            .vector-components {
-                display: flex;
-                flex-direction: column;
-                width: 100%;
-                padding: 8px 0;
-                gap: 8px;
+            /* ----- VECTOR COMPONENT STYLING ----- */
+            /* Vector property container */
+            .vector-property {
+                margin-bottom: 12px;
             }
             
-            /* Now the vector component layout has labels above inputs */
-            .vector-component {
-                display: flex;
-                width: 100%;
-                gap: 8px;
-            }
-            
-            .vector-component label {
-                width: 20px;
-                text-align: center;
-                font-weight: bold;
-                color: #aaa;
-                margin-bottom: 0;
-                margin-top: 2px;
-            }
-            
-            .vector-component input {
-                flex: 1;
-                width: auto;
-            }
-            
-            /* Make vector header more distinct */
+            /* Vector header styling */
             .vector-header {
                 display: flex;
                 align-items: center;
@@ -2909,11 +2885,50 @@ populateModuleDropdown() {
                 color: #fff;
             }
             
-            /* Polygon specific styles need special handling for side-by-side */
+            /* Vector components container - horizontal layout with background */
+            .vector-components {
+                display: flex;
+                flex-direction: row;
+                width: 100%;
+                padding: 8px;
+                gap: 8px;
+                margin-top: 4px;
+                background-color: rgba(40, 40, 40, 0.5);
+                border-radius: 4px;
+            }
+            
+            /* Individual component (X, Y, Z) - vertical layout */
+            .vector-component {
+                display: flex;
+                flex-direction: column;
+                width: 60px; /* Fixed narrower width */
+                max-width: 60px;
+                min-width: 60px;
+            }
+            
+            /* Component labels */
+            .vector-component label {
+                width: 100%;
+                text-align: center;
+                font-weight: bold;
+                color: #aaa;
+                margin-bottom: 4px;
+                font-size: 12px;
+            }
+            
+            /* Component inputs */
+            .vector-component input {
+                width: 100%;
+                max-width: 60px;
+            }
+            
+            /* ----- POLYGON SPECIFIC STYLES ----- */
             .polygon-property .vector-component {
                 display: grid;
                 grid-template-columns: 30px 1fr 1fr 30px;
                 gap: 8px;
+                width: auto;
+                max-width: none;
             }
             
             .remove-vertex {
