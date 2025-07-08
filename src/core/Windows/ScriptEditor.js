@@ -4,8 +4,26 @@ class ScriptEditor {
         this.currentPath = null;
         this.originalContent = '';
         this.editor = null;
+        this.aiPanel = null;
+        this.aiSettings = this.loadAISettings();
         this.createModal();
         this.setupEventListeners();
+    }
+
+    loadAISettings() {
+        const saved = localStorage.getItem('scriptEditorAISettings');
+        return saved ? JSON.parse(saved) : {
+            provider: 'chatgpt',
+            apiKeys: {
+                chatgpt: '',
+                gemini: '',
+                claude: ''
+            }
+        };
+    }
+
+    saveAISettings() {
+        localStorage.setItem('scriptEditorAISettings', JSON.stringify(this.aiSettings));
     }
 
     createModal() {
@@ -14,13 +32,21 @@ class ScriptEditor {
         this.modal.className = 'se-modal';
         this.modal.style.display = 'none';
 
-        // Create modal content
+        // Create modal content with AI panel
         this.modal.innerHTML = `
             <div class="se-modal-content">
                 <div class="se-modal-header">
                     <div class="se-modal-title">Script Editor</div>
                     <div class="se-modal-path"></div>
-                    <div class="se-modal-close"><i class="fas fa-times"></i></div>
+                    <div class="se-modal-controls">
+                        <button class="se-button se-icon-button" id="se-ai-settings" title="AI Settings">
+                            <i class="fas fa-cog"></i>
+                        </button>
+                        <button class="se-button se-icon-button" id="se-ai-toggle" title="Toggle AI Assistant">
+                            <i class="fas fa-robot"></i>
+                        </button>
+                        <div class="se-modal-close"><i class="fas fa-times"></i></div>
+                    </div>
                 </div>
                 <div class="se-modal-toolbar">
                     <button class="se-button" id="se-save" title="Save (Ctrl+S)">
@@ -48,8 +74,47 @@ class ScriptEditor {
                         <i class="fas fa-book"></i>
                     </button>
                 </div>
-                <div class="se-modal-editor-container">
-                    <textarea id="se-editor"></textarea>
+                <div class="se-editor-container">
+                    <div class="se-modal-editor-container">
+                        <textarea id="se-editor"></textarea>
+                    </div>
+                    <div class="se-ai-panel" id="se-ai-panel">
+                        <div class="se-ai-header">
+                            <div class="se-ai-title">
+                                <i class="fas fa-robot"></i>
+                                AI Assistant
+                            </div>
+                            <div class="se-ai-provider">
+                                <select id="se-ai-provider-select">
+                                    <option value="chatgpt">ChatGPT</option>
+                                    <option value="gemini">Gemini</option>
+                                    <option value="claude">Claude</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="se-ai-chat">
+                            <div class="se-ai-messages" id="se-ai-messages"></div>
+                            <div class="se-ai-input-container">
+                                <div class="se-ai-context-buttons">
+                                    <button class="se-button se-small" id="se-include-current" title="Include current module">
+                                        <i class="fas fa-file-code"></i> Current Module
+                                    </button>
+                                    <button class="se-button se-small" id="se-include-selection" title="Include selection">
+                                        <i class="fas fa-selection"></i> Selection
+                                    </button>
+                                    <button class="se-button se-small" id="se-module-help" title="Module system help">
+                                        <i class="fas fa-question-circle"></i> Module Help
+                                    </button>
+                                </div>
+                                <div class="se-ai-input-row">
+                                    <textarea id="se-ai-input" placeholder="Ask about your code, request modifications, or get help with the module system..."></textarea>
+                                    <button class="se-button se-primary" id="se-ai-send">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="se-hint-resizer"></div>
                 <div class="se-hint-box">
@@ -68,6 +133,9 @@ class ScriptEditor {
 
         document.body.appendChild(this.modal);
         
+        // Create AI settings dialog
+        this.createAISettingsDialog();
+        
         // Create save confirmation dialog
         this.confirmDialog = document.createElement('div');
         this.confirmDialog.className = 'se-confirm-dialog';
@@ -84,6 +152,95 @@ class ScriptEditor {
         `;
         this.confirmDialog.style.display = 'none';
         document.body.appendChild(this.confirmDialog);
+
+        // Initialize AI panel
+        this.aiPanel = this.modal.querySelector('#se-ai-panel');
+        this.setupAIPanel();
+    }
+
+    createAISettingsDialog() {
+        this.aiSettingsDialog = document.createElement('div');
+        this.aiSettingsDialog.className = 'se-ai-settings-dialog';
+        this.aiSettingsDialog.innerHTML = `
+            <div class="se-ai-settings-content">
+                <div class="se-ai-settings-header">
+                    <h3>AI Assistant Settings</h3>
+                    <button class="se-close-settings"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="se-ai-settings-body">
+                    <div class="se-setting-group">
+                        <label>Default AI Provider:</label>
+                        <select id="se-default-provider">
+                            <option value="chatgpt">ChatGPT (OpenAI)</option>
+                            <option value="gemini">Gemini (Google)</option>
+                            <option value="claude">Claude (Anthropic)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="se-setting-group">
+                        <label>ChatGPT API Key:</label>
+                        <input type="password" id="se-chatgpt-key" placeholder="sk-...">
+                        <small>Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI</a></small>
+                    </div>
+                    
+                    <div class="se-setting-group">
+                        <label>Gemini API Key:</label>
+                        <input type="password" id="se-gemini-key" placeholder="AI...">
+                        <small>Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+                    </div>
+                    
+                    <div class="se-setting-group">
+                        <label>Claude API Key:</label>
+                        <input type="password" id="se-claude-key" placeholder="sk-ant-...">
+                        <small>Get your API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a></small>
+                    </div>
+                </div>
+                <div class="se-ai-settings-footer">
+                    <button class="se-button" id="se-save-ai-settings">Save Settings</button>
+                    <button class="se-button" id="se-cancel-ai-settings">Cancel</button>
+                </div>
+            </div>
+        `;
+        this.aiSettingsDialog.style.display = 'none';
+        document.body.appendChild(this.aiSettingsDialog);
+    }
+
+    setupAIPanel() {
+        // Set initial provider
+        const providerSelect = this.modal.querySelector('#se-ai-provider-select');
+        providerSelect.value = this.aiSettings.provider;
+
+        // Provider change handler
+        providerSelect.addEventListener('change', (e) => {
+            this.aiSettings.provider = e.target.value;
+            this.saveAISettings();
+        });
+
+        // Context buttons
+        this.modal.querySelector('#se-include-current').addEventListener('click', () => {
+            this.includeCurrentModule();
+        });
+
+        this.modal.querySelector('#se-include-selection').addEventListener('click', () => {
+            this.includeSelection();
+        });
+
+        this.modal.querySelector('#se-module-help').addEventListener('click', () => {
+            this.includeModuleHelp();
+        });
+
+        // Send button and input
+        const sendButton = this.modal.querySelector('#se-ai-send');
+        const inputArea = this.modal.querySelector('#se-ai-input');
+
+        sendButton.addEventListener('click', () => this.sendAIMessage());
+        
+        inputArea.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                this.sendAIMessage();
+            }
+        });
     }
 
     setupEventListeners() {
@@ -120,6 +277,28 @@ class ScriptEditor {
             if (window.docModal) {
                 window.docModal.toggle();
             }
+        });
+        // AI Toggle button
+        this.modal.querySelector('#se-ai-toggle').addEventListener('click', () => {
+            this.toggleAIPanel();
+        });
+
+        // AI Settings button
+        this.modal.querySelector('#se-ai-settings').addEventListener('click', () => {
+            this.showAISettings();
+        });
+
+        // AI Settings dialog handlers
+        this.aiSettingsDialog.querySelector('.se-close-settings').addEventListener('click', () => {
+            this.hideAISettings();
+        });
+
+        this.aiSettingsDialog.querySelector('#se-save-ai-settings').addEventListener('click', () => {
+            this.saveAISettingsFromDialog();
+        });
+
+        this.aiSettingsDialog.querySelector('#se-cancel-ai-settings').addEventListener('click', () => {
+            this.hideAISettings();
         });
 
         // Handle keyboard shortcuts
@@ -619,6 +798,442 @@ class ScriptEditor {
         this.modal.style.display = 'none';
         this.isOpen = false;
         this.currentPath = null; 
+    }
+
+    // AI STUFF
+    toggleAIPanel() {
+        this.aiPanel.classList.toggle('open');
+        const button = this.modal.querySelector('#se-ai-toggle');
+        if (this.aiPanel.classList.contains('open')) {
+            button.classList.add('active');
+        } else {
+            button.classList.remove('active');
+        }
+    }
+
+    showAISettings() {
+        // Populate current settings
+        this.aiSettingsDialog.querySelector('#se-default-provider').value = this.aiSettings.provider;
+        this.aiSettingsDialog.querySelector('#se-chatgpt-key').value = this.aiSettings.apiKeys.chatgpt;
+        this.aiSettingsDialog.querySelector('#se-gemini-key').value = this.aiSettings.apiKeys.gemini;
+        this.aiSettingsDialog.querySelector('#se-claude-key').value = this.aiSettings.apiKeys.claude;
+        
+        this.aiSettingsDialog.style.display = 'flex';
+    }
+
+    hideAISettings() {
+        this.aiSettingsDialog.style.display = 'none';
+    }
+
+    saveAISettingsFromDialog() {
+        this.aiSettings.provider = this.aiSettingsDialog.querySelector('#se-default-provider').value;
+        this.aiSettings.apiKeys.chatgpt = this.aiSettingsDialog.querySelector('#se-chatgpt-key').value;
+        this.aiSettings.apiKeys.gemini = this.aiSettingsDialog.querySelector('#se-gemini-key').value;
+        this.aiSettings.apiKeys.claude = this.aiSettingsDialog.querySelector('#se-claude-key').value;
+        
+        this.saveAISettings();
+        this.hideAISettings();
+        
+        // Update provider select
+        this.modal.querySelector('#se-ai-provider-select').value = this.aiSettings.provider;
+        
+        this.showStatusMessage('AI settings saved');
+    }
+
+    includeCurrentModule() {
+        if (!this.editor) return;
+        
+        const currentCode = this.editor.getValue();
+        const inputArea = this.modal.querySelector('#se-ai-input');
+        
+        const contextText = `\n\n**Current Module Code:**\n\`\`\`javascript\n${currentCode}\n\`\`\`\n\n`;
+        inputArea.value = contextText + inputArea.value;
+        inputArea.focus();
+    }
+
+    includeSelection() {
+        if (!this.editor) return;
+        
+        const selection = this.editor.getSelection();
+        if (!selection) {
+            this.showStatusMessage('No text selected', true);
+            return;
+        }
+        
+        const inputArea = this.modal.querySelector('#se-ai-input');
+        const contextText = `\n\n**Selected Code:**\n\`\`\`javascript\n${selection}\n\`\`\`\n\n`;
+        inputArea.value = contextText + inputArea.value;
+        inputArea.focus();
+    }
+
+    includeModuleHelp() {
+        const inputArea = this.modal.querySelector('#se-ai-input');
+        const moduleHelp = this.generateModuleSystemContext();
+        inputArea.value = moduleHelp + inputArea.value;
+        inputArea.focus();
+    }
+
+    generateModuleSystemContext() {
+        return `
+**Dark Matter JS Module System Quick Reference:**
+
+**GameObject Properties:**
+- position: Vector2 - Local position
+- scale: Vector2 - Scale factors
+- angle: number - Rotation in degrees  
+- size: Vector2 - Collision size
+- active: boolean - GameObject active state
+- visible: boolean - Visibility state
+
+**Module Lifecycle:**
+- start() - Called once when game starts
+- loop(deltaTime) - Called every frame
+- draw(ctx) - Called for rendering
+
+**Common Patterns:**
+\`\`\`javascript
+// Movement
+this.gameObject.position.x += speed * deltaTime;
+
+// Input checking
+if (window.input.keyDown("w")) {
+    // Move up
+}
+
+// Get other modules
+const sprite = this.gameObject.getModule("SpriteRenderer");
+const rigidbody = this.gameObject.getModule("RigidBody");
+
+// Expose properties
+this.exposeProperty("speed", "number", 200, {
+    min: 0, max: 1000, 
+    description: "Movement speed in pixels/sec"
+});
+\`\`\`
+
+**Available Modules:** SpriteRenderer, RigidBody, Collider, KeyboardController, SimpleMovementController, AudioPlayer, SimpleHealth, BehaviorTrigger
+
+Ask me to create, fix, or improve modules for your game!
+`;
+    }
+
+    getAvailableModulesContext() {
+        // Generate context about available modules from the attachment
+        return `
+**Controllers:**
+- SimpleMovementController: Basic character movement
+- KeyboardController: Keyboard input handling  
+- CameraController: Camera control and following
+
+**Colliders:**
+- BoundingBoxCollider: Custom bounding box collision
+- Collider: Sensor-only collision detection
+
+**Drawing:**
+- DrawCircle: Draws circles
+- DrawRectangle: Draws rectangles
+- DrawPolygon: Draws polygons
+
+**Visual:**
+- SpriteRenderer: Displays sprites
+- SpriteSheetRenderer: Animated sprite sheets
+
+**Logic:**
+- BehaviorTrigger: Event-based actions and triggers
+- SimpleHealth: Health and damage system
+
+**Physics:**
+- RigidBody: Physics body component
+
+**Audio:**
+- AudioPlayer: Audio playback with spatial audio
+`;
+    }
+
+    async sendAIMessage() {
+        const inputArea = this.modal.querySelector('#se-ai-input');
+        const message = inputArea.value.trim();
+        
+        if (!message) return;
+        
+        const provider = this.aiSettings.provider;
+        const apiKey = this.aiSettings.apiKeys[provider];
+        
+        if (!apiKey) {
+            this.showStatusMessage(`Please set your ${provider.toUpperCase()} API key in settings`, true);
+            this.showAISettings();
+            return;
+        }
+        
+        // Add user message to chat
+        this.addMessageToChat('user', message);
+        inputArea.value = '';
+        
+        // Show loading
+        const loadingId = this.addMessageToChat('assistant', 'Thinking...', true);
+        
+        try {
+            const response = await this.callAI(provider, apiKey, message);
+            this.updateMessageInChat(loadingId, response);
+        } catch (error) {
+            console.error('AI request failed:', error);
+            this.updateMessageInChat(loadingId, `Error: ${error.message}`);
+        }
+    }
+
+    async callAI(provider, apiKey, message) {
+        const systemPrompt = `You are an AI assistant specialized in the Dark Matter JS game engine module system.
+
+**Module System Basics:**
+- Modules extend GameObject functionality
+- GameObjects have: position (Vector2), scale (Vector2), angle (degrees), size (Vector2)
+- All modules extend the Module base class
+- Use this.gameObject to access the GameObject
+- Access other modules: this.gameObject.getModule("ModuleName")
+
+**Module Template:**
+\`\`\`javascript
+class MyModule extends Module {
+    static namespace = "Category";
+    static description = "Brief description";
+    static allowMultiple = false; // or true
+
+    constructor() {
+        super("MyModule");
+        
+        // Expose properties for inspector
+        this.exposeProperty("speed", "number", 100, {
+            description: "Movement speed",
+            min: 0, max: 500
+        });
+    }
+
+    start() {
+        // Initialize when game starts
+    }
+
+    loop(deltaTime) {
+        // Update logic every frame
+        // deltaTime is in seconds
+    }
+
+    draw(ctx) {
+        // Render to canvas
+    }
+}
+
+window.MyModule = MyModule;
+\`\`\`
+
+**Common Property Types:**
+- "number", "string", "boolean", "color"
+- "enum" (needs options: ["A", "B", "C"])
+- "vector2" (for Vector2 objects)
+
+**Available Input:**
+- window.input.keyDown("w") - check if key held
+- window.input.keyPressed("space") - check if key just pressed
+- window.input.mouseDown("left") - mouse button states
+
+**Transform Access:**
+- this.gameObject.position (Vector2)
+- this.gameObject.angle (degrees)
+- this.gameObject.scale (Vector2)
+- this.gameObject.getWorldPosition()
+
+Provide working, complete modules. Keep code concise but functional.`;
+
+        switch (provider) {
+            case 'chatgpt':
+                return await this.callOpenAI(apiKey, systemPrompt, message);
+            case 'gemini':
+                return await this.callGemini(apiKey, systemPrompt, message);
+            case 'claude':
+                return await this.callClaude(apiKey, systemPrompt, message);
+            default:
+                throw new Error('Unknown AI provider');
+        }
+    }
+
+    async callOpenAI(apiKey, systemPrompt, message) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: message }
+                ],
+                max_tokens: 2000,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`OpenAI API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.choices[0].message.content;
+    }
+
+    async callGemini(apiKey, systemPrompt, message) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{ text: `${systemPrompt}\n\nUser: ${message}` }]
+                }],
+                generationConfig: {
+                    maxOutputTokens: 2000,
+                    temperature: 0.7
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Gemini API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    async callClaude(apiKey, systemPrompt, message) {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'x-api-key': apiKey,
+                'Content-Type': 'application/json',
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-3-sonnet-20240229',
+                max_tokens: 2000,
+                system: systemPrompt,
+                messages: [
+                    { role: 'user', content: message }
+                ]
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Claude API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.content[0].text;
+    }
+
+    addMessageToChat(role, content, isLoading = false) {
+        const messagesContainer = this.modal.querySelector('#se-ai-messages');
+        const messageId = 'msg-' + Date.now();
+        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `se-ai-message ${role}`;
+        messageDiv.id = messageId;
+        
+        const icon = role === 'user' ? 'fas fa-user' : 'fas fa-robot';
+        const formattedContent = isLoading ? content : this.formatMessage(content);
+        
+        messageDiv.innerHTML = `
+            <div class="se-message-icon">
+                <i class="${icon}"></i>
+            </div>
+            <div class="se-message-content">${formattedContent}</div>
+            ${role === 'assistant' && !isLoading ? '<div class="se-message-actions"><button class="se-button se-small" onclick="this.closest(\'.se-script-editor\').scriptEditor.insertCodeFromMessage(this)"><i class="fas fa-plus"></i> Insert</button></div>' : ''}
+        `;
+        
+        messagesContainer.appendChild(messageDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        
+        return messageId;
+    }
+
+    updateMessageInChat(messageId, content) {
+        const messageEl = this.modal.querySelector(`#${messageId}`);
+        if (messageEl) {
+            const contentEl = messageEl.querySelector('.se-message-content');
+            contentEl.innerHTML = this.formatMessage(content);
+            
+            // Add insert button for assistant messages
+            if (!messageEl.querySelector('.se-message-actions')) {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'se-message-actions';
+                actionsDiv.innerHTML = '<button class="se-button se-small" onclick="this.closest(\'.se-modal\').parentElement.querySelector(\'.se-modal\').scriptEditor.insertCodeFromMessage(this)"><i class="fas fa-plus"></i> Insert</button>';
+                messageEl.appendChild(actionsDiv);
+            }
+        }
+    }
+
+    formatMessage(content) {
+        // Convert markdown-style code blocks to HTML
+        return content
+            .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>');
+    }
+
+    insertCodeFromMessage(button) {
+        if (!this.editor) return;
+        
+        const messageContent = button.closest('.se-ai-message').querySelector('.se-message-content');
+        const codeBlocks = messageContent.querySelectorAll('code, pre code');
+        
+        if (codeBlocks.length === 1) {
+            // Single code block - insert directly
+            const code = codeBlocks[0].textContent;
+            this.editor.replaceSelection(code);
+        } else if (codeBlocks.length > 1) {
+            // Multiple code blocks - show selection dialog
+            this.showCodeSelectionDialog(codeBlocks);
+        } else {
+            this.showStatusMessage('No code found in message', true);
+        }
+    }
+
+    showCodeSelectionDialog(codeBlocks) {
+        // Create a simple selection dialog for multiple code blocks
+        const dialog = document.createElement('div');
+        dialog.className = 'se-code-selection-dialog';
+        dialog.innerHTML = `
+            <div class="se-code-selection-content">
+                <h3>Select code to insert:</h3>
+                <div class="se-code-options">
+                    ${Array.from(codeBlocks).map((block, index) => `
+                        <div class="se-code-option" data-index="${index}">
+                            <pre><code>${block.textContent.substring(0, 100)}${block.textContent.length > 100 ? '...' : ''}</code></pre>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="se-code-selection-buttons">
+                    <button class="se-button" id="se-cancel-code-selection">Cancel</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+        
+        // Handle selection
+        dialog.querySelectorAll('.se-code-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const index = parseInt(option.dataset.index);
+                const code = codeBlocks[index].textContent;
+                this.editor.replaceSelection(code);
+                document.body.removeChild(dialog);
+            });
+        });
+        
+        dialog.querySelector('#se-cancel-code-selection').addEventListener('click', () => {
+            document.body.removeChild(dialog);
+        });
     }
 }
 
