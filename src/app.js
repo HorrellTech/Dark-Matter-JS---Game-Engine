@@ -867,6 +867,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Add event listeners for modal buttons here
+    const docButton = document.querySelector('.toolbar-button[title="Documentation"]'); // Replace with actual selector
+    if (docButton && window.docModal) {
+        docButton.addEventListener('click', () => {
+            console.log('Documentation button clicked');
+            window.docModal.open();
+        });
+    } else {
+        console.warn("Documentation button or modal not found.");
+    }
+
+    const settingsButton = document.querySelector('.toolbar-button[title="Settings"]'); // Replace with actual selector
+    if (settingsButton && window.settingsModal) {
+        settingsButton.addEventListener('click', () => {
+            console.log('Settings button clicked');
+            window.settingsModal.open();
+        });
+    } else {
+         console.warn("Settings button or modal not found.");
+    }
+
     // Call this after engine initialization
     setupGameViewControls();
     
