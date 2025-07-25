@@ -878,14 +878,29 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn("Documentation button or modal not found.");
     }
 
-    const settingsButton = document.querySelector('.toolbar-button[title="Settings"]'); // Replace with actual selector
-    if (settingsButton && window.settingsModal) {
+    const settingsButton = document.querySelector('.toolbar-button[title="Settings"]');
+    if (settingsButton) {
         settingsButton.addEventListener('click', () => {
             console.log('Settings button clicked');
-            window.settingsModal.open();
+            if (window.settingsModal) {
+                window.settingsModal.open();
+            } else {
+                console.error('Settings modal not initialized');
+            }
         });
     } else {
-         console.warn("Settings button or modal not found.");
+         console.warn("Settings button not found.");
+    }
+
+    // Connect export button
+    const exportButton = document.querySelector('.toolbar-button[title="Export Project"]');
+    if (exportButton && window.exportManager) {
+        exportButton.addEventListener('click', () => {
+            console.log('Export button clicked');
+            window.exportManager.showExportDialog();
+        });
+    } else {
+        console.warn("Export button or export manager not found.");
     }
 
     // Call this after engine initialization

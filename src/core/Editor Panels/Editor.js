@@ -536,51 +536,210 @@ class Editor {
      * Handle touch start events for panning
      */
     handleTouchStart(e) {
-        if (e.touches.length !== 1) return;
-        
         // Prevent default behavior to avoid scrolling the page
         e.preventDefault();
         
-        // Start panning
-        this.dragInfo.dragging = true;
-        this.dragInfo.isPanning = true;
-        this.dragInfo.startPos = new Vector2(
-            e.touches[0].clientX - this.canvas.getBoundingClientRect().left,
-            e.touches[0].clientY - this.canvas.getBoundingClientRect().top
-        );
-        this.dragInfo.cameraStartPos = this.camera.position instanceof Vector2 ? 
-        this.camera.position.clone() : 
-        new Vector2(this.camera.position.x, this.camera.position.y);
+        if (e.touches.length === 1) {
+            // Single touch - handle like mouse click
+            const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
+            const screenPos = new Vector2(
+                (touch.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            const worldPos = this.screenToWorldPosition(screenPos);
+            
+            // Store touch data
+            this.touchData = {
+                startPos: screenPos.clone(),
+                startWorldPos: worldPos.clone(),
+                startTime: Date.now(),
+                moved: false,
+                totalDistance: 0
+            };
+            
+            // Check for object interaction first
+            const clickedObj = this.findObjectAtPosition(worldPos);
+            
+            if (clickedObj) {
+                // Start dragging the object
+                this.dragInfo.dragging = true;
+                this.dragInfo.object = clickedObj;
+                this.dragInfo.startPos = worldPos;
+                this.dragInfo.objectStartPos = clickedObj.position.clone();
+                this.dragInfo.dragMode = 'free';
+                
+                // Select the object
+                if (this.hierarchy) {
+                    this.hierarchy.selectGameObject(clickedObj);
+                }
+            } else {
+                // Start camera panning
+                this.dragInfo.dragging = true;
+                this.dragInfo.isPanning = true;
+                this.dragInfo.startPos = screenPos;
+                this.dragInfo.cameraStartPos = this.camera.position instanceof Vector2 ?
+                    this.camera.position.clone() :
+                    new Vector2(this.camera.position.x, this.camera.position.y);
+            }
+        } else if (e.touches.length === 2) {
+            // Two finger touch - prepare for pinch zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const rect = this.canvas.getBoundingClientRect();
+            const pos1 = new Vector2(
+                (touch1.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch1.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            const pos2 = new Vector2(
+                (touch2.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch2.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            
+            this.pinchData = {
+                initialDistance: pos1.distance(pos2),
+                initialZoom: this.camera.zoom,
+                center: new Vector2((pos1.x + pos2.x) / 2, (pos1.y + pos2.y) / 2)
+            };
+            
+            // Stop any current dragging
+            this.dragInfo.dragging = false;
+            this.dragInfo.isPanning = false;
+        }
     }
 
     /**
      * Handle touch move events for panning
      */
     handleTouchMove(e) {
-        if (!this.dragInfo.isPanning || e.touches.length !== 1) return;
-        
         // Prevent default behavior
         e.preventDefault();
         
-        // Update camera position based on touch movement
-        const currentPos = new Vector2(
-            e.touches[0].clientX - this.canvas.getBoundingClientRect().left,
-            e.touches[0].clientY - this.canvas.getBoundingClientRect().top
-        );
-        const delta = currentPos.subtract(this.dragInfo.startPos);
-        
-        this.camera.position = this.dragInfo.cameraStartPos.add(delta);
-        this.refreshCanvas();
+        if (e.touches.length === 1 && this.dragInfo.dragging) {
+            const touch = e.touches[0];
+            const rect = this.canvas.getBoundingClientRect();
+            const screenPos = new Vector2(
+                (touch.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            
+            // Update touch tracking
+            if (this.touchData) {
+                const distance = screenPos.distance(this.touchData.startPos);
+                this.touchData.totalDistance += distance;
+                this.touchData.moved = distance > 5; // 5px threshold
+            }
+            
+            if (this.dragInfo.isPanning) {
+                // Camera panning
+                const delta = screenPos.subtract(this.dragInfo.startPos);
+                this.camera.position = this.dragInfo.cameraStartPos.add(delta);
+                this.refreshCanvas();
+            } else if (this.dragInfo.object) {
+                // Object dragging
+                const worldPos = this.screenToWorldPosition(screenPos);
+                const delta = worldPos.subtract(this.dragInfo.startPos);
+                
+                this.dragInfo.object.position = this.dragInfo.objectStartPos.add(delta);
+                
+                // Snap to grid if enabled
+                if (this.grid.snapToGrid) {
+                    this.dragInfo.object.position = this.grid.snapPosition(this.dragInfo.object.position);
+                }
+                
+                // Update inspector if available
+                if (this.inspector) {
+                    this.inspector.updateTransformValues();
+                }
+                
+                this.refreshCanvas();
+            }
+        } else if (e.touches.length === 2 && this.pinchData) {
+            // Handle pinch zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const rect = this.canvas.getBoundingClientRect();
+            const pos1 = new Vector2(
+                (touch1.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch1.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            const pos2 = new Vector2(
+                (touch2.clientX - rect.left) * (this.canvas.width / rect.width),
+                (touch2.clientY - rect.top) * (this.canvas.height / rect.height)
+            );
+            
+            const currentDistance = pos1.distance(pos2);
+            const zoomFactor = currentDistance / this.pinchData.initialDistance;
+            const newZoom = Math.max(0.1, Math.min(5, this.pinchData.initialZoom * zoomFactor));
+            
+            // Apply zoom centered on pinch point
+            const oldZoom = this.camera.zoom;
+            this.camera.zoom = newZoom;
+            
+            // Adjust camera position to keep pinch center fixed
+            const center = this.pinchData.center;
+            const dx = (center.x - this.camera.position.x);
+            const dy = (center.y - this.camera.position.y);
+            
+            this.camera.position.x = center.x - dx * (this.camera.zoom / oldZoom);
+            this.camera.position.y = center.y - dy * (this.camera.zoom / oldZoom);
+            
+            this.updateZoomLevelDisplay();
+            this.refreshCanvas();
+        }
     }
 
     /**
      * Handle touch end events for panning
      */
     handleTouchEnd(e) {
-        if (this.dragInfo.isPanning) {
+        // Prevent default behavior
+        e.preventDefault();
+        
+        if (this.dragInfo.dragging) {
+            // Check if this was a tap (short duration, minimal movement)
+            if (this.touchData && !this.touchData.moved) {
+                const duration = Date.now() - this.touchData.startTime;
+                if (duration < 300) {
+                    // This was a tap - handle selection
+                    const worldPos = this.touchData.startWorldPos;
+                    const clickedObj = this.findObjectAtPosition(worldPos);
+                    
+                    if (clickedObj && this.hierarchy) {
+                        this.hierarchy.selectGameObject(clickedObj);
+                    } else if (this.hierarchy && this.hierarchy.selectedObject) {
+                        // Deselect if tapping empty space
+                        this.hierarchy.selectedObject.setSelected(false);
+                        this.hierarchy.selectedObject = null;
+                        
+                        // Update hierarchy UI
+                        document.querySelectorAll('.hierarchy-item').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                    }
+                }
+            }
+            
+            // Reset drag state
             this.dragInfo.dragging = false;
             this.dragInfo.isPanning = false;
+            this.dragInfo.object = null;
+            this.dragInfo.dragMode = null;
         }
+        
+        // Reset pinch data
+        if (this.pinchData) {
+            this.pinchData = null;
+        }
+        
+        // Reset touch data
+        if (this.touchData) {
+            this.touchData = null;
+        }
+        
+        this.refreshCanvas();
     }
 
     setActiveScene(scene) {

@@ -373,25 +373,48 @@ class InputManager {
     _handleTouchStart(e) {
         if (!this.enabled) return;
         
+        // Prevent default to avoid scrolling and other touch behaviors
+        e.preventDefault();
+        
         for (let i = 0; i < e.changedTouches.length; i++) {
             const touch = e.changedTouches[i];
             const id = touch.identifier;
             
+            // Get canvas-relative coordinates if we have a canvas
+            let x = touch.clientX;
+            let y = touch.clientY;
+            
+            if (this.engine && this.engine.canvas) {
+                const rect = this.engine.canvas.getBoundingClientRect();
+                x = touch.clientX - rect.left;
+                y = touch.clientY - rect.top;
+                
+                // Scale coordinates if canvas is scaled
+                const scaleX = this.engine.canvas.width / rect.width;
+                const scaleY = this.engine.canvas.height / rect.height;
+                x *= scaleX;
+                y *= scaleY;
+            }
+            
             this.touches[id] = {
                 id,
-                position: new Vector2(touch.clientX, touch.clientY),
-                startPosition: new Vector2(touch.clientX, touch.clientY),
-                startTime: Date.now()
+                position: new Vector2(x, y),
+                startPosition: new Vector2(x, y),
+                startTime: Date.now(),
+                moved: false,
+                totalDistance: 0
             };
             
             this.touchesStarted[id] = this.touches[id];
             
-            // Update mouse position as well for convenience
-            this.mousePosition.x = touch.clientX;
-            this.mousePosition.y = touch.clientY;
-            this.mouseMoveThisFrame = true;
-            this.mouseButtons.left = true;
-            this.mouseButtonsDown.left = true;
+            // For single touch, simulate mouse events
+            if (Object.keys(this.touches).length === 1) {
+                this.mousePosition.x = x;
+                this.mousePosition.y = y;
+                this.mouseMoveThisFrame = true;
+                this.mouseButtons.left = true;
+                this.mouseButtonsDown.left = true;
+            }
         }
     }
     
@@ -402,18 +425,47 @@ class InputManager {
     _handleTouchMove(e) {
         if (!this.enabled) return;
         
+        // Prevent default to avoid scrolling
+        e.preventDefault();
+        
         for (let i = 0; i < e.changedTouches.length; i++) {
             const touch = e.changedTouches[i];
             const id = touch.identifier;
             
             if (this.touches[id]) {
-                this.touches[id].position.x = touch.clientX;
-                this.touches[id].position.y = touch.clientY;
+                // Get canvas-relative coordinates
+                let x = touch.clientX;
+                let y = touch.clientY;
                 
-                // Update mouse position as well for convenience
-                this.mousePosition.x = touch.clientX;
-                this.mousePosition.y = touch.clientY;
-                this.mouseMoveThisFrame = true;
+                if (this.engine && this.engine.canvas) {
+                    const rect = this.engine.canvas.getBoundingClientRect();
+                    x = touch.clientX - rect.left;
+                    y = touch.clientY - rect.top;
+                    
+                    // Scale coordinates if canvas is scaled
+                    const scaleX = this.engine.canvas.width / rect.width;
+                    const scaleY = this.engine.canvas.height / rect.height;
+                    x *= scaleX;
+                    y *= scaleY;
+                }
+                
+                // Calculate movement distance
+                const deltaX = x - this.touches[id].position.x;
+                const deltaY = y - this.touches[id].position.y;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                
+                // Update touch data
+                this.touches[id].position.x = x;
+                this.touches[id].position.y = y;
+                this.touches[id].moved = true;
+                this.touches[id].totalDistance += distance;
+                
+                // For single touch, simulate mouse events
+                if (Object.keys(this.touches).length === 1) {
+                    this.mousePosition.x = x;
+                    this.mousePosition.y = y;
+                    this.mouseMoveThisFrame = true;
+                }
             }
         }
     }
@@ -425,15 +477,39 @@ class InputManager {
     _handleTouchEnd(e) {
         if (!this.enabled) return;
         
+        // Prevent default to avoid ghost clicks
+        e.preventDefault();
+        
         for (let i = 0; i < e.changedTouches.length; i++) {
             const touch = e.changedTouches[i];
             const id = touch.identifier;
             
             if (this.touches[id]) {
+                // Calculate final position
+                let x = touch.clientX;
+                let y = touch.clientY;
+                
+                if (this.engine && this.engine.canvas) {
+                    const rect = this.engine.canvas.getBoundingClientRect();
+                    x = touch.clientX - rect.left;
+                    y = touch.clientY - rect.top;
+                    
+                    // Scale coordinates if canvas is scaled
+                    const scaleX = this.engine.canvas.width / rect.width;
+                    const scaleY = this.engine.canvas.height / rect.height;
+                    x *= scaleX;
+                    y *= scaleY;
+                }
+                
+                // Update final position
+                this.touches[id].position.x = x;
+                this.touches[id].position.y = y;
+                
+                // Store ended touch
                 this.touchesEnded[id] = Object.assign({}, this.touches[id]);
                 delete this.touches[id];
                 
-                // Update mouse buttons as well
+                // Update mouse buttons for single touch
                 if (Object.keys(this.touches).length === 0) {
                     this.mouseButtons.left = false;
                     this.mouseButtonsUp.left = true;
@@ -477,6 +553,83 @@ class InputManager {
             }
         }
         return false;
+    }
+
+    /**
+     * Check if a long press occurred this frame
+     * @returns {boolean} True if a long press occurred
+     */
+    isLongPressed() {
+        for (const id in this.touchesEnded) {
+            const touch = this.touchesEnded[id];
+            const duration = touch.startTime ? Date.now() - touch.startTime : 0;
+            
+            // Check if it's a long press (more than 500ms) with minimal movement
+            if (duration > 500) {
+                const distance = touch.position.distanceTo(touch.startPosition);
+                if (distance < 30) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get pinch zoom data for two-finger gestures
+     * @returns {Object|null} Pinch data or null if not pinching
+     */
+    getPinchData() {
+        const touchIds = Object.keys(this.touches);
+        if (touchIds.length !== 2) return null;
+
+        const touch1 = this.touches[touchIds[0]];
+        const touch2 = this.touches[touchIds[1]];
+
+        const currentDistance = touch1.position.distanceTo(touch2.position);
+        const startDistance = touch1.startPosition.distanceTo(touch2.startPosition);
+
+        const centerX = (touch1.position.x + touch2.position.x) / 2;
+        const centerY = (touch1.position.y + touch2.position.y) / 2;
+
+        return {
+            scale: currentDistance / startDistance,
+            center: new Vector2(centerX, centerY),
+            distance: currentDistance,
+            startDistance: startDistance
+        };
+    }
+
+    /**
+     * Check if currently pinching (two fingers)
+     * @returns {boolean} True if pinching
+     */
+    isPinching() {
+        return Object.keys(this.touches).length === 2;
+    }
+
+    /**
+     * Get swipe direction if a swipe occurred this frame
+     * @returns {string|null} Direction ('up', 'down', 'left', 'right') or null
+     */
+    getSwipeDirection() {
+        for (const id in this.touchesEnded) {
+            const touch = this.touchesEnded[id];
+            const duration = touch.startTime ? Date.now() - touch.startTime : 0;
+            
+            // Check if it's a quick swipe (less than 300ms) with significant movement
+            if (duration < 300 && touch.totalDistance > 50) {
+                const deltaX = touch.position.x - touch.startPosition.x;
+                const deltaY = touch.position.y - touch.startPosition.y;
+                
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    return deltaX > 0 ? 'right' : 'left';
+                } else {
+                    return deltaY > 0 ? 'down' : 'up';
+                }
+            }
+        }
+        return null;
     }
     
     /**

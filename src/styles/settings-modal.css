@@ -1,0 +1,330 @@
+/* Settings Modal Styles */
+.settings-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.settings-modal-content {
+    background: #2d2d2d;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    color: #ffffff;
+}
+
+.settings-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #404040;
+    background: #333333;
+    border-radius: 8px 8px 0 0;
+}
+
+.settings-modal-header h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.settings-close-button {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #cccccc;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.settings-close-button:hover {
+    background: #404040;
+    color: #ffffff;
+}
+
+.settings-modal-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}
+
+.settings-tabs {
+    background: #333333;
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #404040;
+}
+
+.settings-tab {
+    background: none;
+    border: none;
+    color: #cccccc;
+    padding: 16px 20px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #404040;
+}
+
+.settings-tab:hover {
+    background: #404040;
+    color: #ffffff;
+}
+
+.settings-tab.active {
+    background: #4CAF50;
+    color: #ffffff;
+}
+
+.settings-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+.settings-panel {
+    display: none;
+    padding: 24px;
+}
+
+.settings-panel.active {
+    display: block;
+}
+
+.settings-panel h3 {
+    margin: 0 0 20px 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+    border-bottom: 2px solid #4CAF50;
+    padding-bottom: 8px;
+}
+
+.settings-group {
+    margin-bottom: 20px;
+}
+
+.settings-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: #ffffff;
+    margin-bottom: 8px;
+}
+
+.settings-group input[type="checkbox"] {
+    margin-right: 8px;
+    transform: scale(1.2);
+}
+
+.settings-group input[type="number"],
+.settings-group input[type="range"],
+.settings-group select {
+    width: 100%;
+    max-width: 200px;
+    padding: 8px 12px;
+    background: #404040;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.settings-group input[type="range"] {
+    max-width: 150px;
+    margin-right: 10px;
+}
+
+.range-value {
+    display: inline-block;
+    min-width: 30px;
+    font-weight: 600;
+    color: #4CAF50;
+}
+
+.settings-group input[type="number"]:focus,
+.settings-group input[type="range"]:focus,
+.settings-group select:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.setting-description {
+    font-size: 12px;
+    color: #aaaaaa;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.settings-modal-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #404040;
+    background: #333333;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-radius: 0 0 8px 8px;
+}
+
+.settings-button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #555555;
+    color: #ffffff;
+}
+
+.settings-button:hover {
+    background: #666666;
+}
+
+.settings-button.primary {
+    background: #4CAF50;
+    color: #ffffff;
+}
+
+.settings-button.primary:hover {
+    background: #5CBF60;
+}
+
+.settings-notification {
+    animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .settings-modal-content {
+        width: 95%;
+        max-height: 95vh;
+    }
+    
+    .settings-modal-body {
+        flex-direction: column;
+    }
+    
+    .settings-tabs {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: none;
+        border-bottom: 1px solid #404040;
+    }
+    
+    .settings-tab {
+        white-space: nowrap;
+        min-width: 120px;
+        border-bottom: none;
+        border-right: 1px solid #404040;
+    }
+    
+    .settings-panel {
+        padding: 16px;
+    }
+    
+    .settings-group input[type="number"],
+    .settings-group input[type="range"],
+    .settings-group select {
+        max-width: 100%;
+    }
+}
+
+/* Dark theme checkbox styling */
+.settings-group input[type="checkbox"] {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #555555;
+    border-radius: 3px;
+    background: #404040;
+    position: relative;
+    cursor: pointer;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.settings-group input[type="checkbox"]:checked {
+    background: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.settings-group input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: -2px;
+    left: 2px;
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.settings-group input[type="checkbox"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.3);
+}
+
+/* Range slider styling */
+.settings-group input[type="range"] {
+    -webkit-appearance: none;
+    height: 6px;
+    background: #555555;
+    border-radius: 3px;
+    outline: none;
+}
+
+.settings-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: #4CAF50;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.settings-group input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: #4CAF50;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
