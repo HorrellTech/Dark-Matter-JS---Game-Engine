@@ -33,7 +33,7 @@ class ExportManager {
             
             // Generate the HTML5 package
             const htmlContent = this.generateHTML(exportData, exportSettings);
-            const jsContent = this.generateJavaScript(exportData, exportSettings);
+            const jsContent = await this.generateJavaScript(exportData, exportSettings);
             const cssContent = this.generateCSS(exportData, exportSettings);
             
             // Create downloadable package
@@ -143,8 +143,17 @@ class ExportManager {
 
         // Collect all exposed properties
         if (module.exposedProperties) {
-            for (const [key, prop] of module.exposedProperties) {
-                serialized.properties[key] = module[key];
+            // Handle both Map and Array formats for exposedProperties
+            if (module.exposedProperties instanceof Map) {
+                for (const [key, prop] of module.exposedProperties) {
+                    serialized.properties[key] = module[key];
+                }
+            } else if (Array.isArray(module.exposedProperties)) {
+                for (const prop of module.exposedProperties) {
+                    if (prop && prop.name) {
+                        serialized.properties[prop.name] = module[prop.name];
+                    }
+                }
             }
         }
 
@@ -169,16 +178,26 @@ class ExportManager {
      */
     getRequiredEngineFiles() {
         return [
+            // Core math and utilities
             'src/core/Math/Vector2.js',
             'src/core/Math/Vector3.js',
+            'src/core/Math/CollisionSystem.js',
+            'src/core/Math/Raycast.js',
+            
+            // Core engine components
             'src/core/Module.js',
             'src/core/ModuleRegistry.js',
             'src/core/GameObject.js',
             'src/core/InputManager.js',
             'src/core/Scene.js',
             'src/core/Engine.js',
-            'src/core/Math/CollisionSystem.js',
-            'src/core/Math/Raycast.js'
+            
+            // Asset management
+            'src/core/AssetManager.js',
+            'src/core/AssetReference.js',
+            
+            // Physics (if using Matter.js)
+            'src/core/matter-js/PhysicsManager.js'
         ];
     }
 
@@ -207,17 +226,42 @@ class ExportManager {
     getModuleFilePath(className) {
         // Map common module names to their file paths
         const moduleMap = {
+            // Visual Modules
             'SpriteRenderer': 'src/core/Modules/Visual/SpriteRenderer.js',
             'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
+            
+            // Controller Modules
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
             'KeyboardController': 'src/core/Modules/Controllers/KeyboardController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
+            
+            // Drawing Modules
             'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
             'DrawRectangle': 'src/core/Modules/Drawing/DrawRectangle.js',
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
+            
+            // Animation Modules
+            'Tween': 'src/core/Modules/Animation/Tween.js',
+            'Timer': 'src/core/Modules/Animation/Timer.js',
+            
+            // UI Modules
+            'Button': 'src/core/Modules/UI/Button.js',
+            'Text': 'src/core/Modules/UI/Text.js',
+            
+            // Effects Modules
+            'ParticleSystem': 'src/core/Modules/Effects/ParticleSystem.js',
+            
+            // Utility Modules
+            'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
+            'Spawner': 'src/core/Modules/Utility/Spawner.js',
+            
+            // Physics and Collision Modules
             'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',
             'Rigidbody': 'src/core/Modules/Rigidbody.js',
+            'RigidBody': 'src/core/Modules/Rigidbody.js',
             'Collider': 'src/core/Modules/Collider.js',
+            
+            // Other Modules
             'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
             'AudioPlayer': 'src/core/Modules/AudioPlayer.js',
             'BehaviorTrigger': 'src/core/Modules/BehaviorTrigger.js'
@@ -252,6 +296,10 @@ class ExportManager {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
     <meta name="description" content="${description}">
+    
+    <!-- External Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    
     <style id="game-styles">
         /* CSS will be injected here */
     </style>
@@ -273,21 +321,21 @@ class ExportManager {
     /**
      * Generate JavaScript content
      */
-    generateJavaScript(data, settings) {
+    async generateJavaScript(data, settings) {
         let js = '';
         
         // Add engine files
         js += '// Dark Matter JS Engine\n';
         for (const filePath of data.engineFiles) {
             js += `// ${filePath}\n`;
-            js += this.loadFileContent(filePath) + '\n\n';
+            js += await this.loadFileContent(filePath) + '\n\n';
         }
         
         // Add modules
         js += '// Game Modules\n';
         for (const module of data.modules) {
             js += `// ${module.filePath}\n`;
-            js += this.loadFileContent(module.filePath) + '\n\n';
+            js += await this.loadFileContent(module.filePath) + '\n\n';
         }
         
         // Add custom scripts
@@ -374,9 +422,31 @@ document.addEventListener('DOMContentLoaded', () => {
         window.input = new InputManager();
     }
     
+    // Initialize physics manager
+    if (typeof PhysicsManager !== 'undefined' && !window.physicsManager) {
+        window.physicsManager = new PhysicsManager();
+    }
+    
     // Initialize engine
     const canvas = document.getElementById('gameCanvas');
     const engine = new Engine(canvas);
+    
+    // Connect physics to engine if available
+    if (window.physicsManager) {
+        const originalEngineUpdate = engine.update.bind(engine);
+        engine.update = function(deltaTime) {
+            window.physicsManager.update(deltaTime);
+            originalEngineUpdate(deltaTime);
+        };
+        
+        const originalEngineDraw = engine.draw.bind(engine);
+        engine.draw = function() {
+            originalEngineDraw();
+            if (window.physicsManager && this.ctx) {
+                window.physicsManager.drawDebug(this.ctx);
+            }
+        };
+    }
     
     // Load scenes
     const scenes = ${JSON.stringify(data.scenes, null, 2)};
@@ -408,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add modules
         data.modules.forEach(moduleData => {
-            const ModuleClass = window.moduleRegistry.getModule(moduleData.type);
+            const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.type);
             if (ModuleClass) {
                 const module = new ModuleClass();
                 module.enabled = moduleData.enabled;
@@ -525,9 +595,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Ensure export modal CSS is loaded
+     */
+    ensureExportModalCSS() {
+        if (!document.querySelector('link[href*="export-modal.css"]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'src/styles/export-modal.css';
+            document.head.appendChild(link);
+        }
+    }
+
+    /**
      * Show export dialog
      */
     showExportDialog() {
+        // Ensure the CSS is loaded
+        this.ensureExportModalCSS();
+        
         const modal = document.createElement('div');
         modal.className = 'export-modal';
         modal.innerHTML = `
@@ -572,31 +657,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         
-        modal.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-            font-family: Arial, sans-serif;
-        `;
-        
-        const content = modal.querySelector('.export-modal-content');
-        content.style.cssText = `
-            background: #2d2d2d;
-            color: white;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 500px;
-            padding: 0;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        `;
-        
         document.body.appendChild(modal);
         
         // Event handlers
@@ -620,15 +680,64 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(modal);
             
             try {
+                // Show loading indicator
+                const loadingDiv = document.createElement('div');
+                loadingDiv.className = 'export-loading';
+                loadingDiv.innerHTML = `
+                    <div class="export-loading-content">
+                        <div class="export-loading-spinner"></div>
+                        <div>Exporting game... Please wait.</div>
+                    </div>
+                `;
+                document.body.appendChild(loadingDiv);
+                
                 // Get current project data
                 const project = {
                     name: settings.customTitle || 'game',
                     scenes: window.editor ? window.editor.scenes : []
                 };
                 
+                if (!project.scenes || project.scenes.length === 0) {
+                    throw new Error('No scenes found to export. Please create at least one scene with game objects.');
+                }
+                
                 await this.exportProject(project, settings);
+                
+                // Remove loading indicator
+                document.body.removeChild(loadingDiv);
+                
+                // Show success message
+                const successDiv = document.createElement('div');
+                successDiv.className = 'export-notification success';
+                successDiv.textContent = 'Game exported successfully!';
+                document.body.appendChild(successDiv);
+                
+                setTimeout(() => {
+                    if (successDiv.parentNode) {
+                        document.body.removeChild(successDiv);
+                    }
+                }, 3000);
+                
             } catch (error) {
-                alert('Export failed: ' + error.message);
+                // Remove loading indicator if it exists
+                const loadingDiv = document.querySelector('div[style*="position: fixed"][style*="z-index: 10001"]');
+                if (loadingDiv && loadingDiv.parentNode) {
+                    document.body.removeChild(loadingDiv);
+                }
+                
+                console.error('Export failed:', error);
+                
+                // Show error message
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'export-notification error';
+                errorDiv.innerHTML = `<strong>Export failed:</strong><br>${error.message}`;
+                document.body.appendChild(errorDiv);
+                
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        document.body.removeChild(errorDiv);
+                    }
+                }, 5000);
             }
         });
         

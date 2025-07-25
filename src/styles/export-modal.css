@@ -1,0 +1,271 @@
+/* Export Modal Styles */
+.export-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    font-family: Arial, sans-serif;
+}
+
+.export-modal-content {
+    background: #2d2d2d;
+    color: white;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    padding: 0;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.export-modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.export-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.export-close-button {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.export-close-button:hover {
+    background: #444;
+    color: #fff;
+}
+
+.export-modal-body {
+    padding: 20px 24px;
+}
+
+.export-group {
+    margin-bottom: 20px;
+}
+
+.export-group:last-child {
+    margin-bottom: 0;
+}
+
+.export-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.export-group input[type="text"],
+.export-group textarea,
+.export-group select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #1a1a1a;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+    box-sizing: border-box;
+}
+
+.export-group input[type="text"]:focus,
+.export-group textarea:focus,
+.export-group select:focus {
+    outline: none;
+    border-color: #4a9eff;
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.export-group textarea {
+    resize: vertical;
+    min-height: 80px;
+    max-height: 120px;
+}
+
+.export-group input[type="checkbox"] {
+    margin-right: 8px;
+    accent-color: #4a9eff;
+}
+
+.export-group label:has(input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-bottom: 0;
+}
+
+.export-modal-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid #444;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.export-modal-footer button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 80px;
+}
+
+.export-modal-footer button:not(.primary) {
+    background: #444;
+    color: #fff;
+}
+
+.export-modal-footer button:not(.primary):hover {
+    background: #555;
+}
+
+.export-modal-footer button.primary {
+    background: #4a9eff;
+    color: #fff;
+}
+
+.export-modal-footer button.primary:hover {
+    background: #3a8eef;
+}
+
+.export-modal-footer button:active {
+    transform: translateY(1px);
+}
+
+/* Loading and success/error states */
+.export-loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+.export-loading-content {
+    text-align: center;
+    padding: 40px;
+    background: #2d2d2d;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.export-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #444;
+    border-top: 4px solid #4a9eff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 16px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.export-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    z-index: 10001;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    max-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: notificationSlideIn 0.3s ease-out;
+}
+
+@keyframes notificationSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.export-notification.success {
+    background: #4CAF50;
+    color: white;
+}
+
+.export-notification.error {
+    background: #f44336;
+    color: white;
+}
+
+/* Responsive design */
+@media (max-width: 600px) {
+    .export-modal-content {
+        width: 95%;
+        margin: 20px;
+    }
+    
+    .export-modal-header,
+    .export-modal-body,
+    .export-modal-footer {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    
+    .export-modal-footer {
+        flex-direction: column;
+    }
+    
+    .export-modal-footer button {
+        width: 100%;
+    }
+}

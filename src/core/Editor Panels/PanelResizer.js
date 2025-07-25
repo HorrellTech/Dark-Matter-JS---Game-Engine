@@ -173,10 +173,11 @@ class PanelResizer {
     updateCenterPanelHeight() {
         const centerPanel = document.querySelector('.center-panel');
         const bottomPanel = document.querySelector('.bottom-panel');
+        const panelsContainer = document.querySelector('.panels-container');
         
-        if (centerPanel && bottomPanel) {
+        if (centerPanel && bottomPanel && panelsContainer) {
             const bottomHeight = bottomPanel.offsetHeight;
-            const containerHeight = document.querySelector('.panels-container').offsetHeight;
+            const containerHeight = panelsContainer.offsetHeight;
             const centerHeight = containerHeight - bottomHeight;
             
             centerPanel.style.height = `${centerHeight}px`;
