@@ -380,10 +380,11 @@ class InputManager {
             const touch = e.changedTouches[i];
             const id = touch.identifier;
             
-            // Get canvas-relative coordinates if we have a canvas
+            // Get canvas-relative coordinates
             let x = touch.clientX;
             let y = touch.clientY;
             
+            // Convert to canvas coordinates
             if (this.engine && this.engine.canvas) {
                 const rect = this.engine.canvas.getBoundingClientRect();
                 x = touch.clientX - rect.left;
@@ -394,6 +395,22 @@ class InputManager {
                 const scaleY = this.engine.canvas.height / rect.height;
                 x *= scaleX;
                 y *= scaleY;
+            } else {
+                // Fallback: try to find game canvas
+                const gameCanvas = document.getElementById('gameCanvas');
+                const editorCanvas = document.getElementById('editorCanvas');
+                const canvas = gameCanvas || editorCanvas;
+                
+                if (canvas) {
+                    const rect = canvas.getBoundingClientRect();
+                    x = touch.clientX - rect.left;
+                    y = touch.clientY - rect.top;
+                    
+                    const scaleX = canvas.width / rect.width;
+                    const scaleY = canvas.height / rect.height;
+                    x *= scaleX;
+                    y *= scaleY;
+                }
             }
             
             this.touches[id] = {
@@ -409,8 +426,8 @@ class InputManager {
             
             // For single touch, simulate mouse events
             if (Object.keys(this.touches).length === 1) {
-                this.mousePosition.x = x;
-                this.mousePosition.y = y;
+                this.mousePosition.x = touch.clientX;
+                this.mousePosition.y = touch.clientY;
                 this.mouseMoveThisFrame = true;
                 this.mouseButtons.left = true;
                 this.mouseButtonsDown.left = true;
@@ -437,6 +454,7 @@ class InputManager {
                 let x = touch.clientX;
                 let y = touch.clientY;
                 
+                // Convert to canvas coordinates
                 if (this.engine && this.engine.canvas) {
                     const rect = this.engine.canvas.getBoundingClientRect();
                     x = touch.clientX - rect.left;
@@ -447,6 +465,22 @@ class InputManager {
                     const scaleY = this.engine.canvas.height / rect.height;
                     x *= scaleX;
                     y *= scaleY;
+                } else {
+                    // Fallback: try to find game canvas
+                    const gameCanvas = document.getElementById('gameCanvas');
+                    const editorCanvas = document.getElementById('editorCanvas');
+                    const canvas = gameCanvas || editorCanvas;
+                    
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        x = touch.clientX - rect.left;
+                        y = touch.clientY - rect.top;
+                        
+                        const scaleX = canvas.width / rect.width;
+                        const scaleY = canvas.height / rect.height;
+                        x *= scaleX;
+                        y *= scaleY;
+                    }
                 }
                 
                 // Calculate movement distance
@@ -462,8 +496,8 @@ class InputManager {
                 
                 // For single touch, simulate mouse events
                 if (Object.keys(this.touches).length === 1) {
-                    this.mousePosition.x = x;
-                    this.mousePosition.y = y;
+                    this.mousePosition.x = touch.clientX;
+                    this.mousePosition.y = touch.clientY;
                     this.mouseMoveThisFrame = true;
                 }
             }
@@ -489,6 +523,7 @@ class InputManager {
                 let x = touch.clientX;
                 let y = touch.clientY;
                 
+                // Convert to canvas coordinates
                 if (this.engine && this.engine.canvas) {
                     const rect = this.engine.canvas.getBoundingClientRect();
                     x = touch.clientX - rect.left;
@@ -499,6 +534,22 @@ class InputManager {
                     const scaleY = this.engine.canvas.height / rect.height;
                     x *= scaleX;
                     y *= scaleY;
+                } else {
+                    // Fallback: try to find game canvas
+                    const gameCanvas = document.getElementById('gameCanvas');
+                    const editorCanvas = document.getElementById('editorCanvas');
+                    const canvas = gameCanvas || editorCanvas;
+                    
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        x = touch.clientX - rect.left;
+                        y = touch.clientY - rect.top;
+                        
+                        const scaleX = canvas.width / rect.width;
+                        const scaleY = canvas.height / rect.height;
+                        x *= scaleX;
+                        y *= scaleY;
+                    }
                 }
                 
                 // Update final position

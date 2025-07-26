@@ -806,6 +806,57 @@ stopSound() {
                         `
                     }
                 }
+            },
+            "Keywords Reference": {
+                icon: "fas fa-code",
+                description: "Complete reference for all available functions and modules",
+                topics: {
+                    "Core Functions": {
+                        content: this.generateKeywordsContent("Core")
+                    },
+                    "Input Functions": {
+                        content: this.generateKeywordsContent("Input")
+                    },
+                    "Physics Functions": {
+                        content: this.generateKeywordsContent("Physics")
+                    },
+                    "Math Functions": {
+                        content: this.generateKeywordsContent("Math")
+                    },
+                    "Animation Modules": {
+                        content: this.generateKeywordsContent("Animation")
+                    },
+                    "UI Modules": {
+                        content: this.generateKeywordsContent("UI")
+                    },
+                    "Effects Modules": {
+                        content: this.generateKeywordsContent("Effects")
+                    },
+                    "Audio Modules": {
+                        content: this.generateKeywordsContent("Audio")
+                    },
+                    "Logic Modules": {
+                        content: this.generateKeywordsContent("Logic")
+                    },
+                    "Attributes Modules": {
+                        content: this.generateKeywordsContent("Attributes")
+                    },
+                    "Controllers Modules": {
+                        content: this.generateKeywordsContent("Controllers")
+                    },
+                    "Drawing Modules": {
+                        content: this.generateKeywordsContent("Drawing")
+                    },
+                    "Colliders Modules": {
+                        content: this.generateKeywordsContent("Colliders")
+                    },
+                    "Utility Modules": {
+                        content: this.generateKeywordsContent("Utility")
+                    },
+                    "Visual Modules": {
+                        content: this.generateKeywordsContent("Visual")
+                    }
+                }
             }
         };
         
@@ -1070,6 +1121,90 @@ stopSound() {
         }
     }
     
+    /**
+     * Generate content for keywords documentation based on group
+     * @param {string} group - The group name to generate content for
+     * @returns {string} HTML content for the group
+     */
+    generateKeywordsContent(group) {
+        if (!window.DarkMatterDocs) {
+            return `<h2>${group} Functions</h2><p>Keywords documentation not available.</p>`;
+        }
+        
+        let content = `<h2>${group} Functions</h2>`;
+        
+        // Get all functions in this group
+        const functions = window.getFunctionsByGroup ? window.getFunctionsByGroup(group) : [];
+        
+        if (functions.length === 0) {
+            // If no functions found by group, try to find by category name
+            for (const [categoryName, categoryData] of Object.entries(window.DarkMatterDocs)) {
+                if (categoryData.group === group || categoryName === group) {
+                    for (const [funcName, funcData] of Object.entries(categoryData.functions)) {
+                        functions.push({
+                            category: categoryName,
+                            name: funcName,
+                            ...funcData
+                        });
+                    }
+                }
+            }
+        }
+        
+        if (functions.length === 0) {
+            return content + `<p>No functions found for group: ${group}</p>`;
+        }
+        
+        // Generate content for each function
+        functions.forEach(func => {
+            content += `
+                <div class="doc-section">
+                    <h3>${func.name}</h3>
+                    <p>${func.description}</p>
+                    
+                    ${func.example ? `
+                        <h4>Example:</h4>
+                        <pre><code>${func.example}</code></pre>
+                    ` : ''}
+                    
+                    ${func.properties && func.properties.length > 0 ? `
+                        <h4>Properties:</h4>
+                        <ul>
+                            ${func.properties.map(prop => `
+                                <li><strong>${prop.name}</strong> (${prop.type}): ${prop.description}</li>
+                            `).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    ${func.methods && func.methods.length > 0 ? `
+                        <h4>Methods:</h4>
+                        <ul>
+                            ${func.methods.map(method => `
+                                <li><strong>${method.name}</strong>: ${method.description}</li>
+                            `).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    ${func.params && func.params.length > 0 ? `
+                        <h4>Parameters:</h4>
+                        <ul>
+                            ${func.params.map(param => `
+                                <li><strong>${param.name}</strong> (${param.type}): ${param.description}</li>
+                            `).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    ${func.returns ? `
+                        <h4>Returns:</h4>
+                        <p><strong>${func.returns.type}</strong>: ${func.returns.description}</p>
+                    ` : ''}
+                </div>
+            `;
+        });
+        
+        return content;
+    }
+    
     show() {
         // Create container
         this.container = document.createElement('div');
@@ -1153,7 +1288,7 @@ stopSound() {
                         <i class="fas fa-chevron-down"></i>
                     </div>
                     <div class="doc-category-description">${category.description}</div>
-                    <div class="doc-topics" id="topics-${categoryName.replace(/\s+/g, '-').toLowerCase()}">
+                    <div class="doc-topics" id="topics-${categoryName.replace(/\s+/g, '-').replace(/&/g, 'and').toLowerCase()}">
             `;
             
             // Add topics for this category
@@ -1196,7 +1331,7 @@ stopSound() {
     
     toggleCategory(header) {
         const categoryName = header.dataset.category;
-        const topicsContainer = this.container.querySelector(`#topics-${categoryName.replace(/\s+/g, '-').toLowerCase()}`);
+        const topicsContainer = this.container.querySelector(`#topics-${categoryName.replace(/\s+/g, '-').replace(/&/g, 'and').toLowerCase()}`);
         
         // Toggle active state
         const isActive = header.classList.contains('active');

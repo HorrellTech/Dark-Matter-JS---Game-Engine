@@ -126,12 +126,12 @@ class Button extends Module {
         // Update button bounds based on current position
         this.updateBounds();
         
-        // Check mouse position
+        // Check mouse/touch position
         const mousePos = window.input.getMousePosition();
         const wasHovered = this.isHovered;
         this.isHovered = this.isPointInBounds(mousePos.x, mousePos.y);
         
-        // Check for mouse press/release
+        // Handle mouse input
         const wasPressed = this.isPressed;
         if (this.isHovered && window.input.mouseDown(0)) {
             this.isPressed = true;
@@ -142,6 +142,29 @@ class Button extends Module {
                 this.onClick();
             }
             this.isPressed = false;
+        }
+        
+        // Handle touch input
+        if (window.input.isTapped()) {
+            // Get all active touches and check if any are within button bounds
+            const touches = window.input.getTouches();
+            for (const touchId in touches) {
+                const touch = touches[touchId];
+                if (this.isPointInBounds(touch.position.x, touch.position.y)) {
+                    this.onClick();
+                    break;
+                }
+            }
+            
+            // Also check recently ended touches for tap detection
+            const endedTouches = window.input.touchesEnded;
+            for (const touchId in endedTouches) {
+                const touch = endedTouches[touchId];
+                if (this.isPointInBounds(touch.position.x, touch.position.y)) {
+                    this.onClick();
+                    break;
+                }
+            }
         }
     }
     

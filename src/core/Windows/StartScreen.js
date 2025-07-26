@@ -1,8 +1,26 @@
 class StartScreen {
-    constructor(version = '0.1.0') {
+    constructor(version = '0.2.0') {
         this.version = version;
         this.container = null;
         this.updates = [
+            {
+                version: 'v0.2.0',
+                date: 'July 26, 2025',
+                changes: [
+                    'Added comprehensive Keywords documentation with all modules',
+                    'Integrated AudioPlayer module for advanced audio playback',
+                    'Added BehaviorTrigger for visual scripting without code',
+                    'Implemented SimpleHealth system for damage and health',
+                    'Added CameraController with smooth following and shake effects',
+                    'New KeyboardController and SimpleMovementController modules',
+                    'Drawing modules: DrawCircle, DrawRectangle, DrawPolygon',
+                    'Enhanced SpriteRenderer with multiple scaling modes',
+                    'Added SpriteSheetRenderer for sprite sheet animations',
+                    'Matter.js physics integration with RigidBody and Collider',
+                    'BoundingBoxCollider for custom collision boundaries',
+                    'Updated documentation modal with Keywords reference section'
+                ]
+            },
             {
                 version: 'v0.1.0',
                 date: 'May 8, 2025',
