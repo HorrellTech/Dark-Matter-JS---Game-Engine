@@ -234,4 +234,47 @@ class AssetManager {
             reader.readAsText(file);
         });
     }
+
+    
+    /**
+     * Manually adds a pre-loaded asset (like a base64 data URL) to the cache.
+     * This is used for standalone HTML exports.
+     * @param {string} path - The asset's intended path (e.g., 'images/player.png').
+     * @param {string} content - The asset content (e.g., a data URL).
+     * @param {string} type - The MIME type of the asset (e.g., 'image/png').
+     * @returns {Promise<any>} A promise that resolves when the asset is processed and cached.
+     */
+    addAssetToCache(path, content, type) {
+        if (this.cache[path]) {
+            return Promise.resolve(this.cache[path]);
+        }
+
+        let promise;
+        if (type.startsWith('image/')) {
+            promise = this.loadImage(content); // loadImage works with data URLs
+        } else if (type.startsWith('audio/')) {
+            promise = this.loadAudio(content); // loadAudio works with data URLs
+        } else if (type.startsWith('application/json') || path.endsWith('.json')) {
+            // For JSON, the content is the object itself
+            const jsonObject = JSON.parse(content);
+            this.cache[path] = jsonObject;
+            return Promise.resolve(jsonObject);
+        } else {
+            // For other text files, just cache the content string
+            this.cache[path] = content;
+            return Promise.resolve(content);
+        }
+        
+        // Cache the promise itself to handle parallel requests
+        this.loadingPromises[path] = promise;
+        
+        promise.then(asset => {
+            this.cache[path] = asset;
+            delete this.loadingPromises[path];
+        }).catch(() => {
+            delete this.loadingPromises[path];
+        });
+        
+        return promise;
+    }
 }

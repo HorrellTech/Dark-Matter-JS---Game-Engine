@@ -57,69 +57,108 @@ class AssetReference {
         }
         
         this._isLoading = true;
-        
+
+        // --- PATCH: Support exported runtime asset loading ---
         this._loadPromise = new Promise(async (resolve, reject) => {
             try {
-                // Check for FileBrowser to read the file
+                // If running in exported game (no FileBrowser), load from assets folder or embedded data
                 if (!window.fileBrowser) {
-                    throw new Error("FileBrowser not available");
+                    // Try to load from assets folder (ZIP export) or embedded data (standalone HTML)
+                    const extension = this.getExtension();
+                    let assetUrl = null;
+
+                    // If path is already a data URL, use it directly
+                    if (this.path.startsWith('data:image/') || this.path.startsWith('data:audio/')) {
+                        assetUrl = this.path;
+                    } else if (window.__ASSET_MAP && window.__ASSET_MAP[this.path]) {
+                        // If a global asset map is present (for standalone HTML), use it
+                        assetUrl = window.__ASSET_MAP[this.path];
+                    } else {
+                        // Otherwise, assume assets are in 'assets/' folder (ZIP export)
+                        assetUrl = 'assets/' + this.getFilename();
+                    }
+
+                    if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension) || assetUrl.startsWith('data:image/')) {
+                        // Image asset
+                        const img = new Image();
+                        const imgPromise = new Promise((imgResolve, imgReject) => {
+                            img.onload = () => imgResolve(img);
+                            img.onerror = (err) => imgReject(new Error(`Error loading image: ${err.message || 'Unknown error'}`));
+                        });
+                        img.src = assetUrl;
+                        this._cachedData = await imgPromise;
+                        resolve(this._cachedData);
+
+                    } else if (['mp3', 'wav', 'ogg', 'aac'].includes(extension) || assetUrl.startsWith('data:audio/')) {
+                        // Audio asset
+                        const audio = new Audio();
+                        const audioPromise = new Promise((audioResolve, audioReject) => {
+                            audio.oncanplaythrough = () => audioResolve(audio);
+                            audio.onerror = (err) => audioReject(new Error(`Error loading audio: ${err.message || 'Unknown error'}`));
+                        });
+                        audio.src = assetUrl;
+                        this._cachedData = await audioPromise;
+                        resolve(this._cachedData);
+
+                    } else if (extension === 'js') {
+                        // Script asset (fetch as text)
+                        try {
+                            const response = await fetch(assetUrl);
+                            if (!response.ok) throw new Error(`Failed to fetch script: ${assetUrl}`);
+                            const scriptContent = await response.text();
+                            this._cachedData = scriptContent;
+                            resolve(this._cachedData);
+                        } catch (err) {
+                            reject(err);
+                        }
+
+                    } else {
+                        // Default: fetch as text or blob
+                        try {
+                            const response = await fetch(assetUrl);
+                            if (!response.ok) throw new Error(`Failed to fetch asset: ${assetUrl}`);
+                            const content = await response.text();
+                            this._cachedData = content;
+                            resolve(this._cachedData);
+                        } catch (err) {
+                            reject(err);
+                        }
+                    }
+                    return;
                 }
-                
-                // Read file content based on type
+                // --- END PATCH ---
+
+                // Editor mode: use FileBrowser
                 const content = await window.fileBrowser.readFile(this.path);
-                
                 if (!content) {
                     throw new Error(`File not found: ${this.path}`);
                 }
-                
-                // Process content based on file type
                 const extension = this.getExtension();
-                
                 if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension) || content.startsWith('data:image/')) {
-                    // Image asset
                     const img = new Image();
-                    
-                    // Create a promise that resolves when the image loads
                     const imgPromise = new Promise((imgResolve, imgReject) => {
                         img.onload = () => imgResolve(img);
                         img.onerror = (err) => imgReject(new Error(`Error loading image: ${err.message || 'Unknown error'}`));
                     });
-                    
-                    // Start loading the image
                     img.src = content;
-                    
-                    // Wait for the image to load
                     this._cachedData = await imgPromise;
                     resolve(this._cachedData);
-                    
                 } else if (['mp3', 'wav', 'ogg', 'aac'].includes(extension)) {
-                    // Audio asset
                     const audio = new Audio();
-                    
-                    // Create a promise that resolves when the audio is ready
                     const audioPromise = new Promise((audioResolve, audioReject) => {
                         audio.oncanplaythrough = () => audioResolve(audio);
                         audio.onerror = (err) => audioReject(new Error(`Error loading audio: ${err.message || 'Unknown error'}`));
                     });
-                    
-                    // Start loading the audio
                     audio.src = content;
-                    
-                    // Wait for the audio to be ready
                     this._cachedData = await audioPromise;
                     resolve(this._cachedData);
-                    
                 } else if (extension === 'js') {
-                    // Script asset (just return the content)
                     this._cachedData = content;
                     resolve(this._cachedData);
-                    
                 } else {
-                    // Default case - just return the raw content
                     this._cachedData = content;
                     resolve(this._cachedData);
                 }
-                
             } catch (error) {
                 console.error(`Error loading asset ${this.path}:`, error);
                 this._cachedData = null;
