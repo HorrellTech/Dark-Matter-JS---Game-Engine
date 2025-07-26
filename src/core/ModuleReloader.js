@@ -17,36 +17,50 @@ class ModuleReloader {
         try {
             // Cache the script content
             this.scriptCache.set(className, scriptContent);
-            
-            // Create a new function to evaluate the script in the global scope
-            const scriptFunction = new Function(`
-                try {
+
+            // Check for ES module syntax
+            if (/^\s*(import|export)\s/m.test(scriptContent)) {
+                console.error(`Module script for ${className} contains ES module syntax (import/export). Cannot reload dynamically.`);
+                return false;
+            }
+
+            // Debug log the script content
+            // console.log("Evaluating module script for", className, ":\n", scriptContent);
+
+            // Wrap in IIFE to avoid leaking variables
+            const wrappedScript = `
+            try {
+                (function() {
                     ${scriptContent}
-                    return ${className};
-                } catch (error) {
-                    console.error("Error evaluating module script:", error);
-                    return null;
-                }
-            `);
-            
+                })();
+                return ${className};
+            } catch (error) {
+                console.error("Error evaluating module script:", error);
+                return null;
+            }
+        `;
+
+            // Create a new function to evaluate the script in the global scope
+            const scriptFunction = new Function(wrappedScript);
+
             // Execute the script to get the class
             const ModuleClass = scriptFunction();
-            
+
             if (!ModuleClass) {
                 console.error(`Failed to reload module ${className}: Script did not return a class`);
                 return false;
             }
-            
+
             // Register the class globally
             window[className] = ModuleClass;
-            
+
             // Register with moduleRegistry if available
             if (this.moduleRegistry) {
                 this.moduleRegistry.register(ModuleClass);
             } else {
                 console.warn("ModuleRegistry not available, could not register updated module");
             }
-            
+
             console.log(`Successfully reloaded module: ${className}`);
             return true;
         } catch (error) {
@@ -54,7 +68,7 @@ class ModuleReloader {
             return false;
         }
     }
-    
+
     /**
      * Update all instances of a module type with new class implementation
      * @param {string} className - Module class name to update
@@ -63,13 +77,13 @@ class ModuleReloader {
      */
     updateModuleInstances(className, gameObjects) {
         let updatedCount = 0;
-        
+
         const ModuleClass = window[className];
         if (!ModuleClass) {
             console.error(`Cannot update instances of ${className}: Class not found`);
             return 0;
         }
-        
+
         // Helper function to traverse the game object hierarchy
         const traverseAndUpdate = (objects) => {
             objects.forEach(obj => {
@@ -83,35 +97,35 @@ class ModuleReloader {
                                 oldProps[key] = module[key];
                             }
                         });
-                        
+
                         // Create a new module instance
                         const newModule = new ModuleClass();
-                        
+
                         // Copy over important references and properties
                         newModule.gameObject = obj;
                         newModule.enabled = module.enabled;
                         newModule.id = module.id; // Keep the same ID
-                        
+
                         // Copy over all other properties from old module
                         Object.keys(oldProps).forEach(key => {
                             if (key !== 'gameObject' && key !== 'constructor') {
                                 newModule[key] = oldProps[key];
                             }
                         });
-                        
+
                         // Replace the module in the object's modules array
                         obj.modules[index] = newModule;
                         updatedCount++;
                     }
                 });
-                
+
                 // Recursively process children
                 if (obj.children && obj.children.length > 0) {
                     traverseAndUpdate(obj.children);
                 }
             });
         };
-        
+
         traverseAndUpdate(gameObjects);
         return updatedCount;
     }

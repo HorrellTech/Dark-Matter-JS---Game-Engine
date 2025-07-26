@@ -83,4 +83,55 @@ class Scene {
         engine.scene = this;
         engine.gameObjects = this.gameObjects;
     }
+
+    /**
+     * Find a GameObject by name in the scene
+     * @param {string} name - The name of the GameObject to find
+     * @returns {GameObject|null} The found GameObject or null if not found
+     */
+    findGameObjectByName(name) {
+        return this.findGameObjectByNameRecursive(this.gameObjects, name);
+    }
+
+    /**
+     * Recursively search for a GameObject by name
+     * @param {Array} objects - Array of GameObjects to search
+     * @param {string} name - The name to search for
+     * @returns {GameObject|null} The found GameObject or null if not found
+     */
+    findGameObjectByNameRecursive(objects, name) {
+        for (const obj of objects) {
+            if (obj.name === name) {
+                return obj;
+            }
+            
+            // Search in children if they exist
+            if (obj.children && obj.children.length > 0) {
+                const found = this.findGameObjectByNameRecursive(obj.children, name);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Alias for findGameObjectByName for consistency with documentation
+     * @param {string} name - The name of the GameObject to find
+     * @returns {GameObject|null} The found GameObject or null if not found
+     */
+    findGameObject(name) {
+        return this.findGameObjectByName(name);
+    }
 }
+
+// Expose global function for dynamic modules
+window.findGameObjectByName = function(name) {
+    // Assumes you have a global reference to the current scene
+    if (window.activeScene && typeof window.activeScene.findGameObjectByName === "function") {
+        return window.activeScene.findGameObjectByName(name);
+    }
+    console.warn("No active scene or findGameObjectByName not available.");
+    return null;
+};

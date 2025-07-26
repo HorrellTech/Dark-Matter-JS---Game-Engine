@@ -420,7 +420,24 @@ class Engine {
         this.preloaded = false;
         this.canvasResized = true;
     }
-    
+
+    findGameObjectByName(name) {
+        // Use a simple recursive search to find the first matching game object by name
+        const findInObjects = (objects) => {
+            for (const obj of objects) {
+                if (obj.name === name) {
+                    return obj;
+                }
+                if (obj.children && obj.children.length > 0) {
+                    const found = findInObjects(obj.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        return findInObjects(this.gameObjects);
+    }
+
     cloneGameObjects(objects) {
         return objects.map(obj => {
             // Use the GameObject's built-in clone method

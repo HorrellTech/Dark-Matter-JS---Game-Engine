@@ -106,19 +106,99 @@ document.addEventListener('DOMContentLoaded', () => {
     contextMenu.style.display = 'none';
     document.body.appendChild(contextMenu);
 
-    // Initialize file browser with the container ID
-    const fileBrowser = new FileBrowser('fileBrowserContainer');
-    window.fileBrowser = fileBrowser;
+    // Initialize file browser with proper error handling and retry logic
+    let fileBrowser;
+    
+    function initializeFileBrowser() {
+        console.log('Attempting to initialize FileBrowser...', typeof FileBrowser);
+        
+        if (typeof FileBrowser === 'undefined') {
+            console.warn('FileBrowser class not found, will retry...');
+            return false;
+        }
+        
+        // Check if container exists and has dimensions
+        const container = document.getElementById('fileBrowserContainer');
+        if (!container) {
+            console.warn('FileBrowser container not found, will retry...');
+            return false;
+        }
+        
+        // Ensure container has proper dimensions
+        const containerRect = container.getBoundingClientRect();
+        if (containerRect.width === 0 || containerRect.height === 0) {
+            console.warn(`FileBrowser container has invalid dimensions: ${containerRect.width} ${containerRect.height}, will retry...`);
+            return false;
+        }
+        
+        try {
+            fileBrowser = new FileBrowser('fileBrowserContainer');
+            window.fileBrowser = fileBrowser;
+            console.log('FileBrowser initialized successfully');
+            
+            // Connect editor and fileBrowser
+            if (editor) {
+                editor.fileBrowser = fileBrowser;
+                fileBrowser.editor = editor;
+                
+                // Scan for existing module scripts after a short delay to ensure DB is ready
+                setTimeout(() => {
+                    if (fileBrowser.scanForModuleScripts) {
+                        fileBrowser.scanForModuleScripts();
+                    }
+                }, 1000);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('Error initializing FileBrowser:', error);
+            return false;
+        }
+    }
+    
+    // Wait a bit for the DOM to be fully rendered and styled
+    setTimeout(() => {
+        // Try to initialize immediately
+        if (!initializeFileBrowser()) {
+            // If failed, retry with increasing delays
+            let retryCount = 0;
+            const maxRetries = 10; // Increased max retries
+            
+            const retryInit = () => {
+                retryCount++;
+                console.log(`Retrying FileBrowser initialization (attempt ${retryCount}/${maxRetries})...`);
+                
+                if (initializeFileBrowser()) {
+                    console.log('FileBrowser initialization successful on retry');
+                    return;
+                }
+                
+                if (retryCount < maxRetries) {
+                    setTimeout(retryInit, 200 + (retryCount * 100)); // Progressive delay
+                } else {
+                    console.error('Failed to initialize FileBrowser after maximum retries');
+                    // Show user-friendly error
+                    const container = document.getElementById('fileBrowserContainer');
+                    if (container) {
+                        container.innerHTML = `
+                            <div style="padding: 20px; text-align: center; color: #ff6b6b;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <p>Failed to initialize File Browser</p>
+                                <button onclick="location.reload()" style="padding: 8px 16px; background: #333; border: 1px solid #555; color: white; border-radius: 4px; cursor: pointer;">
+                                    Reload Page
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            };
+            
+            setTimeout(retryInit, 200);
+        }
+    }, 100); // Initial delay to ensure DOM is fully rendered
 
     // Make editor globally accessible
     window.editor = editor;
-
-    // Connect editor and fileBrowser
-    editor.fileBrowser = fileBrowser;
-    fileBrowser.editor = editor;
-    
-    // Scan for existing module scripts
-    fileBrowser.scanForModuleScripts();
     
     // Ensure editor.sceneManager is available
     if (!editor.sceneManager && window.SceneManager) {
@@ -141,40 +221,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let projectManager;
 
-    // Initialize ProjectManager
-    if (window.ProjectManager && editor && editor.sceneManager && window.fileBrowser) {
-        projectManager = new ProjectManager(editor, editor.sceneManager, window.fileBrowser);
-    }
+    // Function to initialize ProjectManager and connect toolbar buttons
+    const initializeProjectManager = () => {
+        if (window.ProjectManager && editor && editor.sceneManager && window.fileBrowser && !projectManager) {
+            projectManager = new ProjectManager(editor, editor.sceneManager, window.fileBrowser);
+            console.log('ProjectManager initialized successfully');
+            
+            // Connect toolbar buttons after ProjectManager is initialized
+            connectProjectManagerButtons();
+            return true;
+        }
+        return false;
+    };
 
-    // Toolbar button connections for Project Management
-    const newProjectButton = document.querySelector('.toolbar-button[title="New Project"]');
-    const loadProjectButton = document.querySelector('.toolbar-button[title="Load Project"]');
-    const saveProjectButton = document.querySelector('.toolbar-button[title="Save Project"]');
+    // Function to connect toolbar buttons to ProjectManager
+    const connectProjectManagerButtons = () => {
+        const newProjectButton = document.querySelector('.toolbar-button[title="New Project"]');
+        const loadProjectButton = document.querySelector('.toolbar-button[title="Load Project"]');
+        const saveProjectButton = document.querySelector('.toolbar-button[title="Save Project"]');
 
-    if (projectManager) {
-        if (newProjectButton) {
-            newProjectButton.addEventListener('click', () => projectManager.newProject());
+        if (projectManager) {
+            if (newProjectButton) {
+                newProjectButton.addEventListener('click', () => projectManager.newProject());
+            } else {
+                console.warn("New Project button not found.");
+            }
+            if (loadProjectButton) {
+                loadProjectButton.addEventListener('click', () => projectManager.loadProject());
+            } else {
+                console.warn("Load Project button not found.");
+            }
+            if (saveProjectButton) {
+                saveProjectButton.addEventListener('click', () => projectManager.saveProject());
+            } else {
+                console.warn("Save Project button not found.");
+            }
+            console.log('ProjectManager toolbar buttons connected successfully');
         } else {
-            console.warn("New Project button not found.");
+            console.error("ProjectManager not available for button connections.");
         }
-        if (loadProjectButton) {
-            loadProjectButton.addEventListener('click', () => projectManager.loadProject());
-        } else {
-            console.warn("Load Project button not found.");
-        }
-        if (saveProjectButton) {
-            saveProjectButton.addEventListener('click', () => projectManager.saveProject());
-        } else {
-            console.warn("Save Project button not found.");
-        }
-    } else {
-        console.error("ProjectManager not initialized, toolbar buttons won't work.");
+    };
+
+    // Try to initialize ProjectManager immediately
+    if (!initializeProjectManager()) {
+        // If not successful, set up periodic checking
+        const checkInterval = setInterval(() => {
+            if (initializeProjectManager()) {
+                clearInterval(checkInterval);
+            }
+        }, 100);
+        
+        // Stop checking after 10 seconds and show error
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            if (!projectManager) {
+                console.error("ProjectManager failed to initialize after timeout - toolbar buttons won't work.");
+            }
+        }, 10000);
     }
 
     // Wait a bit to ensure indexedDB is ready
     setTimeout(() => {
         if (window.fileBrowser) {
             window.fileBrowser.scanForModuleScripts();
+        } else {
+            console.log('FileBrowser not available for module script scanning');
         }
     }, 500);
 

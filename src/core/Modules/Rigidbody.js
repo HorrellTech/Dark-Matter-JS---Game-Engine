@@ -552,4 +552,4 @@ class RigidBody extends Module {
 }
 
 // Register the module
-//window.RigidBody = RigidBody;
+window.RigidBody = RigidBody;

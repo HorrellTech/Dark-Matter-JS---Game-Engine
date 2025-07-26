@@ -1440,6 +1440,20 @@ populateModuleDropdown() {
         return parts.length > 0 ? `…/${filename}` : filename;
     }
 
+    /**
+     * Refresh the available modules list and update the module dropdown UI
+     */
+    async refreshModuleList() {
+        // Clear and rescan available modules
+        this.availableModules = [];
+        this.detectAvailableModules();
+
+        // If dropdown is open, repopulate it
+        if (this.moduleDropdown && this.moduleDropdown.style.display === 'block') {
+            this.populateModuleDropdown();
+        }
+    }
+
     refreshModuleUI(module) {
         if (!module || !this.inspectedObject) return;
         

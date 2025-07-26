@@ -74,6 +74,9 @@ class ExportManager {
             data.scenes = window.editor.scenes.map(scene => this.serializeScene(scene));
         }
 
+        // Collect custom modules (after scenes are serialized)
+        data.modules = this.collectModules(data);
+
         // Collect assets if enabled
         if (settings.includeAssets) {
             data.assets = await this.collectAssets();
@@ -81,9 +84,6 @@ class ExportManager {
 
         // Collect required engine files
         data.engineFiles = this.getRequiredEngineFiles();
-
-        // Collect custom modules
-        data.modules = this.collectModules();
 
         // Collect custom scripts
         data.customScripts = await this.collectCustomScripts();
@@ -137,7 +137,35 @@ class ExportManager {
     serializeModule(module) {
         const serialized = {
             type: module.constructor.name,
+            id: module.id,
             enabled: module.enabled !== false,
+            data: {}
+        };
+
+        // Use the module's own toJSON method if available
+        if (typeof module.toJSON === 'function') {
+            try {
+                serialized.data = module.toJSON();
+            } catch (error) {
+                console.warn(`Error serializing module ${module.constructor.name}:`, error);
+                // Fallback to basic serialization
+                serialized.data = this.fallbackSerializeModule(module);
+            }
+        } else {
+            // Fallback serialization for modules without toJSON
+            serialized.data = this.fallbackSerializeModule(module);
+        }
+
+        return serialized;
+    }
+
+    /**
+     * Fallback serialization for modules without toJSON method
+     */
+    fallbackSerializeModule(module) {
+        const data = {
+            name: module.name,
+            enabled: module.enabled,
             properties: {}
         };
 
@@ -146,18 +174,18 @@ class ExportManager {
             // Handle both Map and Array formats for exposedProperties
             if (module.exposedProperties instanceof Map) {
                 for (const [key, prop] of module.exposedProperties) {
-                    serialized.properties[key] = module[key];
+                    data.properties[key] = module[key];
                 }
             } else if (Array.isArray(module.exposedProperties)) {
                 for (const prop of module.exposedProperties) {
                     if (prop && prop.name) {
-                        serialized.properties[prop.name] = module[prop.name];
+                        data.properties[prop.name] = module[prop.name];
                     }
                 }
             }
         }
 
-        return serialized;
+        return data;
     }
 
     /**
@@ -204,11 +232,28 @@ class ExportManager {
     /**
      * Collect all modules used in the project
      */
-    collectModules() {
+    collectModules(data) {
         const modules = [];
+        const usedModuleTypes = new Set();
         
-        // Get all registered modules
-        if (window.moduleRegistry) {
+        // Scan all scenes and game objects to find actually used modules
+        if (data && data.scenes) {
+            data.scenes.forEach(scene => {
+                this.scanGameObjectsForModules(scene.gameObjects, usedModuleTypes);
+            });
+        }
+        
+        // Convert used module types to module info
+        for (const moduleType of usedModuleTypes) {
+            modules.push({
+                className: moduleType,
+                filePath: this.getModuleFilePath(moduleType)
+            });
+        }
+        
+        // Also include modules from registry as fallback
+        if (window.moduleRegistry && modules.length === 0) {
+            console.warn('No modules found in scene data, falling back to registry');
             for (const [className, moduleClass] of window.moduleRegistry.modules) {
                 modules.push({
                     className: className,
@@ -217,7 +262,31 @@ class ExportManager {
             }
         }
         
+        console.log('Collected modules for export:', modules.map(m => m.className));
         return modules;
+    }
+    
+    /**
+     * Recursively scan game objects for module types
+     */
+    scanGameObjectsForModules(gameObjects, usedModuleTypes) {
+        if (!gameObjects) return;
+        
+        gameObjects.forEach(obj => {
+            // Scan modules in this object
+            if (obj.modules) {
+                obj.modules.forEach(module => {
+                    if (module.type) {
+                        usedModuleTypes.add(module.type);
+                    }
+                });
+            }
+            
+            // Recursively scan children
+            if (obj.children) {
+                this.scanGameObjectsForModules(obj.children, usedModuleTypes);
+            }
+        });
     }
 
     /**
@@ -335,7 +404,13 @@ class ExportManager {
         js += '// Game Modules\n';
         for (const module of data.modules) {
             js += `// ${module.filePath}\n`;
-            js += await this.loadFileContent(module.filePath) + '\n\n';
+            const moduleContent = await this.loadFileContent(module.filePath);
+            js += moduleContent + '\n\n';
+            
+            // Verify the module class is defined after loading
+            if (!moduleContent.includes(`class ${module.className}`)) {
+                console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
+            }
         }
         
         // Add custom scripts
@@ -355,47 +430,117 @@ class ExportManager {
      */
     generateCSS(data, settings) {
         return `
-body {
+/* Prevent scrollbars from reacting to key presses */
+html, body {
     margin: 0;
     padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
     background: #000;
+    font-family: Arial, sans-serif;
+    /* Prevent scrolling with arrow keys */
+    overscroll-behavior: none;
+}
+
+/* Prevent default key behaviors that cause scrolling */
+body {
+    /* Disable default key behaviors */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* Main container fills entire viewport */
+#game-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
-    font-family: Arial, sans-serif;
-}
-
-#game-container {
-    position: relative;
-    border: 1px solid #333;
-}
-
-#gameCanvas {
-    display: block;
     background: #000;
 }
 
+/* Canvas styling for proper fit scaling */
+#gameCanvas {
+    display: block;
+    background: #000;
+    max-width: 100vw;
+    max-height: 100vh;
+    width: auto;
+    height: auto;
+    /* Maintain aspect ratio while fitting to screen */
+    object-fit: contain;
+    /* Center the canvas */
+    margin: auto;
+    /* Smooth scaling */
+    image-rendering: auto;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    image-rendering: -webkit-optimize-contrast;
+}
+
+/* Loading screen covers entire viewport */
 #loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Arial, sans-serif;
     z-index: 1000;
 }
 
-/* Touch-friendly controls for mobile */
+/* Prevent context menu on right click */
+#gameCanvas {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    outline: none;
+}
+
+/* Mobile optimizations */
 @media (max-width: 768px) {
-    body {
-        align-items: flex-start;
-        padding: 10px;
-    }
-    
-    #game-container {
-        width: 100%;
-        max-width: 100vw;
-    }
-    
     #gameCanvas {
-        width: 100%;
-        height: auto;
+        /* Ensure canvas scales properly on mobile */
+        width: 100vw;
+        height: 100vh;
+        object-fit: contain;
     }
+    
+    /* Prevent mobile browser UI from interfering */
+    body {
+        position: fixed;
+        overflow: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* Prevent scrolling with keyboard */
+body:focus {
+    outline: none;
+}
+
+/* Hide scrollbars completely */
+::-webkit-scrollbar {
+    display: none;
+}
+
+html {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 `;
     }
@@ -409,6 +554,28 @@ body {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Initializing exported game...');
     
+    // Prevent scrolling with keyboard
+    document.addEventListener('keydown', (e) => {
+        // Prevent arrow keys, space, page up/down from scrolling
+        if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+    
+    // Prevent context menu
+    document.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+    });
+    
+    // Prevent drag and drop
+    document.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+    
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+    });
+    
     // Hide loading screen
     const loadingScreen = document.getElementById('loading-screen');
     
@@ -416,6 +583,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!window.moduleRegistry) {
         window.moduleRegistry = new ModuleRegistry();
     }
+    
+    // Register all available modules with the registry
+    console.log('Registering modules...');
+    console.log('Available module classes:', [${data.modules.map(module => `'${module.className}'`).join(', ')}]);
+    ${data.modules.map(module => `
+    if (typeof ${module.className} !== 'undefined') {
+        window.moduleRegistry.register(${module.className});
+        console.log('Registered module: ${module.className}');
+    } else {
+        console.error('Module class not found: ${module.className}');
+        console.log('Available global objects:', Object.keys(window).filter(key => key.includes('${module.className.substring(0, 4)}')));
+    }`).join('')}
+    
+    console.log('Total registered modules:', window.moduleRegistry.modules.size);
+    console.log('Registered module names:', Array.from(window.moduleRegistry.modules.keys()));
     
     // Initialize input manager
     if (!window.input) {
@@ -430,6 +612,45 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize engine
     const canvas = document.getElementById('gameCanvas');
     const engine = new Engine(canvas);
+    
+    // Setup canvas scaling
+    function resizeCanvas() {
+        const container = document.getElementById('game-container');
+        const canvas = document.getElementById('gameCanvas');
+        
+        if (!canvas || !container) return;
+        
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+        
+        // Get the original canvas dimensions
+        const originalWidth = ${settings.viewport.width};
+        const originalHeight = ${settings.viewport.height};
+        
+        // Calculate scale to fit while maintaining aspect ratio
+        const scaleX = containerWidth / originalWidth;
+        const scaleY = containerHeight / originalHeight;
+        const scale = Math.min(scaleX, scaleY);
+        
+        // Apply the scale
+        const scaledWidth = originalWidth * scale;
+        const scaledHeight = originalHeight * scale;
+        
+        canvas.style.width = scaledWidth + 'px';
+        canvas.style.height = scaledHeight + 'px';
+        
+        // Center the canvas
+        canvas.style.position = 'absolute';
+        canvas.style.left = '50%';
+        canvas.style.top = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+    }
+    
+    // Initial resize
+    resizeCanvas();
+    
+    // Resize on window resize
+    window.addEventListener('resize', resizeCanvas);
     
     // Connect physics to engine if available
     if (window.physicsManager) {
@@ -467,6 +688,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to create game object from serialized data
     function createGameObjectFromData(data) {
+        console.log('Creating game object:', data.name, 'with', data.modules.length, 'modules');
+        
         const obj = new GameObject(data.name);
         obj.id = data.id;
         obj.position = new Vector2(data.position.x, data.position.y);
@@ -478,19 +701,31 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Add modules
         data.modules.forEach(moduleData => {
+            console.log('Adding module:', moduleData.type, 'to', data.name);
+            
             const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.type);
             if (ModuleClass) {
                 const module = new ModuleClass();
                 module.enabled = moduleData.enabled;
+                module.id = moduleData.id;
                 
-                // Set properties
-                Object.keys(moduleData.properties).forEach(key => {
-                    if (module.hasOwnProperty(key)) {
-                        module[key] = moduleData.properties[key];
-                    }
-                });
+                // Restore module data using fromJSON if available
+                if (moduleData.data && typeof module.fromJSON === 'function') {
+                    module.fromJSON(moduleData.data);
+                } else {
+                    // Fallback: Set properties directly
+                    Object.keys(moduleData.properties || {}).forEach(key => {
+                        if (key in module) {
+                            module[key] = moduleData.properties[key];
+                        }
+                    });
+                }
                 
                 obj.addModule(module);
+                console.log('Successfully added module:', moduleData.type);
+            } else {
+                console.error('Module class not found:', moduleData.type);
+                console.log('Available modules:', Array.from(window.moduleRegistry.modules.keys()));
             }
         });
         

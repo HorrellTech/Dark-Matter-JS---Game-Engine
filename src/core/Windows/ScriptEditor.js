@@ -385,6 +385,11 @@ class ScriptEditor {
         
         // Set path in UI
         this.modal.querySelector('.se-modal-path').textContent = path;
+
+        if (this.editor) {
+            this.editor.toTextArea();
+            this.editor = null;
+        }
         
         // Reset undo history when opening a new file
         if (this.editor) {
@@ -783,7 +788,7 @@ class ScriptEditor {
     }
 
     close() {
-        // If there are unsaved changes and they might be module changes, 
+        // If there are unsaved changes and they might be module changes,
         // still attempt to reload from the last saved version
         if (this.hasUnsavedChanges() && this.currentPath) {
             // Try to reload from the last saved file
@@ -792,12 +797,21 @@ class ScriptEditor {
                     this.reloadModuleIfNeeded(this.currentPath, content);
                 })
                 .catch(err => console.error("Couldn't reload module on close:", err));
+        } else if (this.currentPath) {
+            // Even if no unsaved changes, ensure module is registered when closing
+            window.fileBrowser?.readFile(this.currentPath)
+                .then(content => {
+                    if (content && content.includes('extends Module')) {
+                        this.reloadModuleIfNeeded(this.currentPath, content);
+                    }
+                })
+                .catch(err => console.error("Couldn't check module on close:", err));
         }
         
         // Proceed with normal close
         this.modal.style.display = 'none';
         this.isOpen = false;
-        this.currentPath = null; 
+        this.currentPath = null;
     }
 
     // AI STUFF
