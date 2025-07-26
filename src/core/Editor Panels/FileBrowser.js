@@ -635,6 +635,11 @@ class FileBrowser {
     }
 
     async promptNewScript() {
+        if (!this.db) {
+            this.showNotification('File system not initialized yet. Please wait...', 'warning');
+            return;
+        }
+
         const name = await this.promptDialog('New Script', 'Enter script name:');
         if (!name) return; // User cancelled
 

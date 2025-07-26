@@ -125,13 +125,3 @@ class Scene {
         return this.findGameObjectByName(name);
     }
 }
-
-// Expose global function for dynamic modules
-window.findGameObjectByName = function(name) {
-    // Assumes you have a global reference to the current scene
-    if (window.activeScene && typeof window.activeScene.findGameObjectByName === "function") {
-        return window.activeScene.findGameObjectByName(name);
-    }
-    console.warn("No active scene or findGameObjectByName not available.");
-    return null;
-};

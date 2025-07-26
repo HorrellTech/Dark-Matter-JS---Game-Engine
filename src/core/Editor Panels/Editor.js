@@ -745,6 +745,8 @@ class Editor {
     setActiveScene(scene) {
         this.activeScene = scene;
         this.scene = scene; // Keep these in sync
+
+        window.activeScene = scene;
         
         // Update references in hierarchy and inspector
         if (this.hierarchy) {

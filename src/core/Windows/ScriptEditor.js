@@ -681,6 +681,8 @@ class ScriptEditor {
     }
 
     reloadModuleIfNeeded(filePath, content) {
+        if (!filePath) return;
+
         // Check if this is a module script file
         if (!filePath.toLowerCase().endsWith('.js')) return;
         
@@ -708,12 +710,12 @@ class ScriptEditor {
                         className, 
                         window.editor.activeScene.gameObjects
                     );
-                    
+
                     if (instancesUpdated > 0) {
                         this.showStatusMessage(`Updated ${instancesUpdated} instances of ${className}`);
                         
-                        // Refresh the inspector if visible
-                        if (window.editor.inspector) {
+                        // Refresh the inspector if visible and method exists
+                        if (window.editor.inspector && typeof window.editor.inspector.refreshInspector === 'function') {
                             window.editor.inspector.refreshInspector();
                         }
                         

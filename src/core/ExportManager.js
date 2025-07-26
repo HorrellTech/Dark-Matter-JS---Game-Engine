@@ -343,12 +343,40 @@ class ExportManager {
      * Collect custom scripts
      */
     async collectCustomScripts() {
-        const scripts = [];
-        
-        // This would collect any custom scripts created by the user
-        // For now, return empty array
-        
+        let scripts = [];
+        // Editor custom scripts
+        if (window.editor && Array.isArray(window.editor.customScripts)) {
+            scripts = window.editor.customScripts.map(script => ({
+                name: script.name,
+                content: script.content
+            }));
+        }
+        // Add FileBrowser scripts
+        const fbScripts = await this.collectFileBrowserScripts();
+        // Avoid duplicates by name
+        const existingNames = new Set(scripts.map(s => s.name));
+        fbScripts.forEach(script => {
+            if (!existingNames.has(script.name)) {
+                scripts.push({ name: script.name, content: script.content });
+            }
+        });
         return scripts;
+    }
+
+    /**
+     * Collect custom scripts from FileBrowser
+     */
+    async collectFileBrowserScripts() {
+        if (!window.fileBrowser || typeof window.fileBrowser.getAllFiles !== 'function') return [];
+        const files = await window.fileBrowser.getAllFiles();
+        // Only .js files, not modules (unless you want modules too)
+        return files
+            .filter(file => file.name.endsWith('.js'))
+            .map(file => ({
+                name: file.name,
+                path: file.path,
+                content: file.content
+            }));
     }
 
     /**
