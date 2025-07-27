@@ -25,6 +25,8 @@ class Inspector {
                     (this.container.offsetHeight - this.container.querySelector('.inspector-header').offsetHeight) + 'px';
             }
         });
+
+        this.showNoObjectMessage();
     }
 
     /**
@@ -573,6 +575,12 @@ populateModuleDropdown() {
     inspectObject(gameObject) {
         // If inspector is locked, don't change the inspected object
         if (this.lockedObject && gameObject) return;
+
+        // If no GameObject is provided, clear the inspector
+        if (!gameObject) {
+            this.showNoObjectMessage();
+            return;
+        }
         
         // Store the previous object reference
         const previousObject = this.inspectedObject;

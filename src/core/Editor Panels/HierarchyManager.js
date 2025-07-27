@@ -1008,7 +1008,9 @@ class HierarchyManager {
         
         // Select new
         this.selectedObject = gameObject;
-        gameObject.setSelected(true);
+        if (gameObject) {
+            gameObject.setSelected(true);
+        }
         
         // Update UI
         document.querySelectorAll('.hierarchy-item').forEach(item => {
@@ -1022,7 +1024,11 @@ class HierarchyManager {
         
         // Update inspector
         if (this.editor.inspector) {
-            this.editor.inspector.inspectObject(gameObject);
+            if (gameObject) {
+                this.editor.inspector.inspectObject(gameObject);
+            } else {
+                this.editor.inspector.showNoObjectMessage();
+            }
         }
         
         this.editor.refreshCanvas();

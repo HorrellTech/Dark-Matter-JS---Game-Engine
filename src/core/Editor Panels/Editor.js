@@ -547,15 +547,33 @@ class Editor {
     handleTouchStart(e) {
         // Prevent default behavior to avoid scrolling the page
         //e.preventDefault();
+    
+        const rect = this.canvas.getBoundingClientRect();
 
         if (e.touches.length === 1) {
             const touch = e.touches[0];
-            const rect = this.canvas.getBoundingClientRect();
             const screenPos = new Vector2(
                 (touch.clientX - rect.left) * (this.canvas.width / rect.width),
                 (touch.clientY - rect.top) * (this.canvas.height / rect.height)
             );
             const worldPos = this.screenToWorldPosition(screenPos);
+
+            // --- Viewport Move Handle Touch ---
+            if (this.isOnViewportMoveHandle(worldPos)) {
+                this.viewportInteraction.dragging = true;
+                this.viewportInteraction.startPos = worldPos.clone();
+                this.viewportInteraction.initialViewport = {
+                    x: this.activeScene.settings.viewportX || 0,
+                    y: this.activeScene.settings.viewportY || 0
+                };
+                return;
+            }
+
+            // --- Viewport Settings Handle Touch ---
+            if (this.isOnViewportSettingsHandle(worldPos)) {
+                this.showViewportSettings();
+                return;
+            }
 
             this.touchData = {
                 startPos: screenPos.clone(),
@@ -632,11 +650,26 @@ class Editor {
                 (touch.clientX - rect.left) * (this.canvas.width / rect.width),
                 (touch.clientY - rect.top) * (this.canvas.height / rect.height)
             );
+            const worldPos = this.screenToWorldPosition(screenPos);
 
             if (this.touchData) {
                 const distance = screenPos.distance(this.touchData.startPos);
                 this.touchData.totalDistance += distance;
                 this.touchData.moved = distance > 5;
+            }
+
+            // --- Viewport Dragging ---
+            if (this.viewportInteraction.dragging) {
+                const delta = worldPos.subtract(this.viewportInteraction.startPos);
+                this.activeScene.settings.viewportX = this.viewportInteraction.initialViewport.x + delta.x;
+                this.activeScene.settings.viewportY = this.viewportInteraction.initialViewport.y + delta.y;
+                if (this.grid.snapToGrid) {
+                    this.activeScene.settings.viewportX = this.grid.snapValue(this.activeScene.settings.viewportX);
+                    this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
+                }
+                this.activeScene.dirty = true;
+                this.refreshCanvas();
+                return;
             }
 
             if (this.dragInfo.isPanning) {
@@ -705,6 +738,16 @@ class Editor {
         //e.preventDefault();
 
         if (this.dragInfo.dragging) {
+            // --- End viewport dragging ---
+            if (this.viewportInteraction.dragging) {
+                this.viewportInteraction.dragging = false;
+                this.viewportInteraction.startPos = null;
+                this.viewportInteraction.initialViewport = null;
+                if (this.activeScene) this.activeScene.dirty = true;
+                this.refreshCanvas();
+                return;
+            }
+
             // Check if this was a tap (short duration, minimal movement)
             if (this.touchData && !this.touchData.moved) {
                 const duration = Date.now() - this.touchData.startTime;
@@ -753,6 +796,22 @@ class Editor {
         this.scene = scene; // Keep these in sync
 
         window.activeScene = scene;
+
+        // Deselect any selected game objects
+        if (this.hierarchy && this.hierarchy.selectedObject) {
+            this.hierarchy.selectedObject.setSelected(false);
+            this.hierarchy.selectedObject = null;
+
+            // Update hierarchy UI
+            document.querySelectorAll('.hierarchy-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Show "no object selected" in inspector
+            if (this.inspector) {
+                this.inspector.showNoObjectMessage();
+            }
+        }
 
         // Update references in hierarchy and inspector
         if (this.hierarchy) {
@@ -1271,6 +1330,11 @@ class Editor {
                     document.querySelectorAll('.hierarchy-item').forEach(item => {
                         item.classList.remove('selected');
                     });
+
+                    // Show "no object selected" in inspector
+                    if (this.inspector) {
+                        this.inspector.showNoObjectMessage();
+                    }
 
                     this.refreshCanvas();
                 }
