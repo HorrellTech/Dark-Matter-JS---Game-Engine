@@ -1052,7 +1052,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Match any interactive UI component
         let target = e.target.closest(
             '[class*="button"], [class*="tab"], [class*="item"], [class*="control"], [class*="action"], [class*="icon"], [class*="link"], ' +
-            'button, [role="button"], [role="tab"], [role="menuitem"], [data-action]'
+            'button, [role="button"], [role="tab"], [role="menuitem"], [data-action],' +
+            ' [data-toggle], [data-target], [data-action], [class*="clickable"], [class*="checkbox"], [class*="radio"]'
         );
         if (!target) return;
         e.preventDefault();
