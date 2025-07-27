@@ -144,6 +144,34 @@ class StartScreen {
         const openProjectButton = this.container.querySelector('#openProject');
         const docsButton = this.container.querySelector('#showDocs');
         const tutorialsButton = this.container.querySelector('#showTutorials');
+
+        // Touch support for buttons (ensures tap works on mobile)
+        [closeButton, newProjectButton, openProjectButton, docsButton, tutorialsButton].forEach(btn => {
+            if (btn) {
+                btn.addEventListener('touchstart', e => {
+                    e.preventDefault();
+                    btn.click();
+                }, { passive: false });
+            }
+        });
+
+        // Swipe down to close modal (optional, UX improvement)
+        let touchStartY = null;
+        this.container.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                touchStartY = e.touches[0].clientY;
+            }
+        }, { passive: true });
+
+        this.container.addEventListener('touchend', e => {
+            if (touchStartY !== null && e.changedTouches.length === 1) {
+                const touchEndY = e.changedTouches[0].clientY;
+                if (touchEndY - touchStartY > 80) { // Swipe down threshold
+                    this.close();
+                }
+                touchStartY = null;
+            }
+        }, { passive: true });
         
         // Close button
         closeButton.addEventListener('click', () => {
