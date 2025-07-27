@@ -148,10 +148,12 @@ class StartScreen {
         // Touch support for buttons (ensures tap works on mobile)
         [closeButton, newProjectButton, openProjectButton, docsButton, tutorialsButton].forEach(btn => {
             if (btn) {
-                btn.addEventListener('touchstart', e => {
-                    e.preventDefault();
-                    btn.click();
-                }, { passive: false });
+                btn.addEventListener('touchend', e => {
+                    // Only trigger if it's a tap (not a drag)
+                    if (e.changedTouches.length === 1) {
+                        btn.click();
+                    }
+                }, { passive: true });
             }
         });
 
