@@ -1036,9 +1036,13 @@ class MyModule extends Module {
     draw(ctx) {
         // Render to canvas
     }
+
+    drawGizmos(ctx) {
+        // Draw debug gizmos (optional)
+    }
 }
 
-window.MyModule = MyModule;
+window.MyModule = MyModule; // Register globally
 \`\`\`
 
 **Common Property Types:**

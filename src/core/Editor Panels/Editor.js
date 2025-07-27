@@ -394,6 +394,15 @@ class Editor {
         if (this.activeScene && this.activeScene.gameObjects) {
             this.activeScene.gameObjects.forEach(obj => {
                 obj.drawInEditor(this.ctx);
+
+                // Draw gizmos for each module if available
+                if (obj.modules && Array.isArray(obj.modules)) {
+                    obj.modules.forEach(module => {
+                        if (typeof module.drawGizmos === "function") {
+                            module.drawGizmos(this.ctx);
+                        }
+                    });
+                }
             });
         }
 

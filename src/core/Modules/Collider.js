@@ -252,6 +252,45 @@ class Collider extends Module {
             Matter.Body.setAngle(this.body, angle);
         }
     }
+
+    /**
+     * Draws a green dotted outline of the collider for debugging
+     * @param {CanvasRenderingContext2D} ctx
+     */
+    drawGizmos(ctx) {
+        if (!ctx || !this.gameObject) return;
+
+        ctx.save();
+        ctx.strokeStyle = "green";
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 2;
+
+        const pos = this.gameObject.getWorldPosition();
+        const angle = this.gameObject.angle * (Math.PI / 180);
+        const offsetX = this.offset.x;
+        const offsetY = this.offset.y;
+
+        ctx.translate(pos.x + offsetX, pos.y + offsetY);
+        ctx.rotate(angle);
+
+        if (this.shape === "circle") {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+            ctx.stroke();
+        } else if (this.shape === "rectangle") {
+            ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+        } else if (this.shape === "polygon" && this.vertices.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+            for (let i = 1; i < this.vertices.length; i++) {
+                ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
     
     /**
      * Handle collision start events
