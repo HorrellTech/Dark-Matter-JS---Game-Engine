@@ -52,7 +52,7 @@ The engine follows a component-based architecture similar to popular engines lik
 
 ### Online Editor
 The easiest way to get started is by using our online editor:
-*(Coming soon)*
+[Dark Matter Development Environment](https://horrelltech.github.io/Dark-Matter-JS---Game-Engine)
 
 ### Local Installation
 
