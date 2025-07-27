@@ -9,27 +9,27 @@ class SpriteRenderer extends Module {
     static namespace = "Visual";
     static description = "Displays a sprite/image";
     static iconClass = "fas fa-image";
-    
+
     constructor() {
         super("SpriteRenderer");
-    
+
         // Import AssetReference if it's not already available
         if (!window.AssetReference) {
             console.warn("AssetReference not found, SpriteRenderer may not work correctly");
         }
-        
+
         // Sprite image reference - use a safe way to create an AssetReference
         try {
-            this.imageAsset = new (window.AssetReference || function(p) { return { path: p }; })(null, 'image');
+            this.imageAsset = new (window.AssetReference || function (p) { return { path: p }; })(null, 'image');
         } catch (error) {
             console.error("Error creating AssetReference:", error);
             this.imageAsset = { path: null, load: () => Promise.resolve(null) };
         }
-        
+
         // Sprite size
         this.width = 64;
         this.height = 64;
-        
+
         // Sprite properties
         this.color = "#ffffff";
         this.flipX = false;
@@ -37,29 +37,29 @@ class SpriteRenderer extends Module {
         this.pivot = new Vector2(0.5, 0.5); // Center pivot by default
         this.sliceMode = false; // 9-slice rendering mode
         this.sliceBorder = { left: 10, right: 10, top: 10, bottom: 10 };
-        
+
         // New scaling property
         this.scaleMode = "stretch"; // Options: stretch, fit, fill, tile
-        
+
         // Animation properties
         this.frameX = 0;
         this.frameY = 0;
         this.frameWidth = 64;
         this.frameHeight = 64;
         this.frames = 1;
-        
+
         // Internal state
         this._image = null;
         this._isLoaded = false;
         this._imageWidth = 0;
         this._imageHeight = 0;
-        
-       // Make sure this is called after all properties are set up
+
+        // Make sure this is called after all properties are set up
         this.registerProperties();
-        
+
         // Attempt to refresh Inspector if already available
         setTimeout(() => this.refreshInspector(), 100);
-        
+
         // Add custom styles to the document
         this.addCustomStyles();
     }
@@ -70,7 +70,7 @@ class SpriteRenderer extends Module {
     registerProperties() {
         // Clear any previously registered properties
         this.clearProperties();
-        
+
         // Re-register all properties
         this.exposeProperty("imageAsset", "asset", this.imageAsset, {
             description: "Sprite image to display",
@@ -79,7 +79,7 @@ class SpriteRenderer extends Module {
             onDropCallback: this.handleImageDrop.bind(this),
             showImageDropdown: true
         });
-        
+
         this.exposeProperty("width", "number", this.width, {
             description: "Width of the sprite in pixels",
             min: 1,
@@ -90,7 +90,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("height", "number", this.height, {
             description: "Height of the sprite in pixels",
             min: 1,
@@ -101,7 +101,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         // Make sure the scaleMode property is correctly registered with onChange handler
         this.exposeProperty("scaleMode", "enum", this.scaleMode, {
             description: "How the image should be scaled to fit the dimensions",
@@ -115,33 +115,33 @@ class SpriteRenderer extends Module {
             onChange: (value) => {
                 // Store previous mode to check for changes
                 const previousMode = this.scaleMode;
-                
+
                 // Update the scale mode
                 this.scaleMode = value;
-                
+
                 // Handle 9-slice mode toggle
                 if (value === "9-slice") {
                     this.sliceMode = true;
-                    
+
                     // Only refresh border controls if we're switching TO 9-slice mode
                     if (previousMode !== "9-slice") {
                         this.refreshBorderControls();
                     }
                 } else {
                     this.sliceMode = false;
-                    
+
                     // If we're switching FROM 9-slice mode, refresh to remove border controls
                     if (previousMode === "9-slice") {
                         this.refreshBorderControls();
                     }
                 }
-                
+
                 // Refresh the canvas
                 window.editor?.refreshCanvas();
             },
             cssClass: "scale-mode-dropdown" // Add custom CSS class for styling
         });
-        
+
         // Register remaining properties
         this.exposeProperty("color", "color", this.color, {
             description: "Tint color for the sprite",
@@ -150,7 +150,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("flipX", "boolean", this.flipX, {
             description: "Flip the sprite horizontally",
             onChange: (value) => {
@@ -158,7 +158,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("flipY", "boolean", this.flipY, {
             description: "Flip the sprite vertically",
             onChange: (value) => {
@@ -166,7 +166,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("pivot", "vector2", this.pivot, {
             description: "Pivot point for rotation (0,0 = top left, 1,1 = bottom right)",
             onChange: (value) => {
@@ -174,7 +174,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         // Only show slice border options when 9-slice mode is active
         if (this.scaleMode === "9-slice" || this.sliceMode) {
             this.addSliceBorderProperties();
@@ -196,7 +196,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("sliceBorder.right", "number", this.sliceBorder.right, {
             description: "Right border size for 9-slice",
             min: 0,
@@ -208,7 +208,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("sliceBorder.top", "number", this.sliceBorder.top, {
             description: "Top border size for 9-slice",
             min: 0,
@@ -220,7 +220,7 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             }
         });
-        
+
         this.exposeProperty("sliceBorder.bottom", "number", this.sliceBorder.bottom, {
             description: "Bottom border size for 9-slice",
             min: 0,
@@ -251,11 +251,11 @@ class SpriteRenderer extends Module {
     refreshBorderControls() {
         // Re-register all properties to include/exclude slice border properties
         this.registerProperties();
-        
+
         // Force a refresh of the inspector UI
         this.refreshInspector();
     }
-    
+
     /**
      * Called when the module is first activated
      */
@@ -263,7 +263,7 @@ class SpriteRenderer extends Module {
         // Load the sprite image if we have one
         await this.loadImage();
     }
-    
+
     /**
      * Load the sprite image from the asset reference
      */
@@ -273,7 +273,7 @@ class SpriteRenderer extends Module {
             this._isLoaded = false;
             return null;
         }
-        
+
         try {
             // Use a safe approach to load the image
             let image = null;
@@ -283,25 +283,25 @@ class SpriteRenderer extends Module {
                 // Fallback for when AssetReference isn't working correctly
                 image = await this.fallbackLoadImage(this.imageAsset.path);
             }
-            
+
             if (image instanceof HTMLImageElement) {
                 this._image = image;
                 this._imageWidth = image.naturalWidth;
                 this._imageHeight = image.naturalHeight;
                 this._isLoaded = true;
-                
+
                 // If width/height not set, use image dimensions
                 if (this.width === 0 || this.height === 0) {
                     this.width = this._imageWidth;
                     this.height = this._imageHeight;
                 }
-                
+
                 // Refresh canvas after image is loaded to ensure proper rendering
                 window.editor?.refreshCanvas();
-                
+
                 return image;
             }
-            
+
             return null;
         } catch (error) {
             console.error("Error loading sprite image:", error);
@@ -320,15 +320,15 @@ class SpriteRenderer extends Module {
             if (window.editor.inspector.clearModuleCache) {
                 window.editor.inspector.clearModuleCache(this);
             }
-            
+
             // Re-generate the module UI
             window.editor.inspector.refreshModuleUI(this);
-            
+
             // Refresh the canvas to show visual changes
             window.editor.refreshCanvas();
         }
     }
-    
+
     /**
      * Fallback method to load an image when AssetReference isn't working
      * @param {string} path - Path to the image
@@ -337,35 +337,51 @@ class SpriteRenderer extends Module {
     fallbackLoadImage(path) {
         return new Promise((resolve, reject) => {
             const img = new Image();
+            // Always normalize path for cache lookup
+            const normalizedPath = window.assetManager?.normalizePath ? window.assetManager.normalizePath(path) : path.replace(/^\/+/, '');
+            if (window.assetManager && window.assetManager.cache[normalizedPath]) {
+                const cached = window.assetManager.cache[normalizedPath];
+                if (cached instanceof HTMLImageElement) {
+                    img.src = cached.src;
+                } else if (typeof cached === 'string' && cached.startsWith('data:')) {
+                    img.src = cached;
+                } else {
+                    return reject(new Error(`Asset cache for ${path} is not a valid image`));
+                }
+            } else {
+                if (window.exportManager && window.exportManager.exportSettings?.standalone) {
+                    return reject(new Error(`Image not found in asset cache for standalone export: ${path}`));
+                }
+                img.src = path;
+            }
             img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error(`Failed to load image: ${path}`));
-            img.src = path;
+            img.onerror = () => reject(new Error(`Error loading image: Unknown error`));
         });
     }
-    
+
     /**
      * Set the sprite image by path
      * @param {string} path - File path to the image
      */
     async setSprite(path) {
         if (this.imageAsset && this.imageAsset.path === path) return;
-        
+
         // Create new asset reference in a safe way
         try {
             if (window.AssetReference) {
                 this.imageAsset = new window.AssetReference(path, 'image');
             } else {
                 // Simple fallback if AssetReference isn't available
-                this.imageAsset = { 
-                    path: path, 
+                this.imageAsset = {
+                    path: path,
                     type: 'image',
                     load: () => this.fallbackLoadImage(path)
                 };
             }
-            
+
             // Load the image
             await this.loadImage();
-            
+
             // Update UI if inspector is showing this component
             if (window.editor && window.editor.inspector) {
                 window.editor.inspector.refreshModuleUI(this);
@@ -374,46 +390,46 @@ class SpriteRenderer extends Module {
             console.error("Error setting sprite:", error);
         }
     }
-    
-   /**
-     * Draw the sprite
-     * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
-     */
+
+    /**
+      * Draw the sprite
+      * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
+      */
     draw(ctx) {
         // Don't draw if we have no image or width/height is zero
         if (!this._image || !this._isLoaded || this.width === 0 || this.height === 0) {
             this.drawPlaceholder(ctx);
             return;
         }
-        
+
         // Calculate draw position based on pivot
         const pivotX = this.width * this.pivot.x;
         const pivotY = this.height * this.pivot.y;
-        
+
         // Save current context state
         ctx.save();
-        
+
         // Apply flipping
         if (this.flipX || this.flipY) {
             ctx.scale(this.flipX ? -1 : 1, this.flipY ? -1 : 1);
         }
-        
+
         // Handle drawing based on frame/slice/scale mode
         //if (this.frameWidth < this._imageWidth || this.frameHeight < this._imageHeight) {
-            // Draw a specific frame from a spritesheet
+        // Draw a specific frame from a spritesheet
         //    this.drawFrame(ctx, -pivotX, -pivotY);
         //} else {
-            // Draw based on scale mode - Always use drawWithScaleMode
-            this.drawWithScaleMode(ctx, -pivotX, -pivotY);
+        // Draw based on scale mode - Always use drawWithScaleMode
+        this.drawWithScaleMode(ctx, -pivotX, -pivotY);
         //}
-        
+
         // Apply color tint if not white (after drawing the image)
         if (this.color !== "#ffffff") {
             ctx.globalCompositeOperation = 'multiply';
             ctx.fillStyle = this.color;
             ctx.fillRect(-pivotX, -pivotY, this.width, this.height);
         }
-        
+
         // Restore context state
         ctx.restore();
     }
@@ -439,10 +455,10 @@ class SpriteRenderer extends Module {
      */
     registerCustomInspectorHandlers() {
         if (!window.editor || !window.editor.inspector) return;
-        
+
         // Register a custom UI creator for this module type
         window.editor.inspector.registerCustomUIHandler(
-            'SpriteRenderer', 
+            'SpriteRenderer',
             'imageAsset',
             (element, module) => {
                 // Set up drag and drop for the image preview
@@ -467,23 +483,23 @@ class SpriteRenderer extends Module {
      */
     setupDragAndDrop(imagePreview) {
         if (!imagePreview) return;
-        
+
         // Enable drag & drop
         imagePreview.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
             imagePreview.classList.add('drag-over');
         });
-        
+
         imagePreview.addEventListener('dragleave', () => {
             imagePreview.classList.remove('drag-over');
         });
-        
+
         imagePreview.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             imagePreview.classList.remove('drag-over');
-            
+
             const success = await this.handleImageDrop(e.dataTransfer);
             if (success) {
                 // Find the parent Inspector instance to refresh UI
@@ -505,29 +521,29 @@ class SpriteRenderer extends Module {
             // Check if we have files directly dropped
             if (dataTransfer.files && dataTransfer.files.length > 0) {
                 const file = dataTransfer.files[0];
-                
+
                 // Validate it's an image
                 if (!file.type.startsWith('image/')) {
                     console.warn('Dropped file is not an image:', file.type);
                     return false;
                 }
-                
+
                 // Get the FileBrowser instance
                 const fileBrowser = window.editor?.fileBrowser;
                 if (!fileBrowser) {
                     console.warn('FileBrowser not available for image upload');
                     return false;
                 }
-                
+
                 // Upload to FileBrowser
                 await fileBrowser.handleFileUpload(file);
-                
+
                 // Set the image asset to this path
                 const path = `${fileBrowser.currentPath}/${file.name}`;
                 await this.setSprite(path);
                 return true;
             }
-            
+
             // Check if we have JSON data (from internal drag & drop from file browser)
             const jsonData = dataTransfer.getData('application/json');
             if (jsonData) {
@@ -545,14 +561,14 @@ class SpriteRenderer extends Module {
                     console.error('Error parsing drag JSON data:', e);
                 }
             }
-            
+
             // Check if we have plain text (from copy link etc)
             const textData = dataTransfer.getData('text/plain');
             if (textData && this.isImagePath(textData)) {
                 await this.setSprite(textData);
                 return true;
             }
-            
+
             return false;
         } catch (error) {
             console.error('Error handling image drop:', error);
@@ -580,28 +596,28 @@ class SpriteRenderer extends Module {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
-        
+
         // Listen for file selection
         input.onchange = async (e) => {
             if (e.target.files && e.target.files[0]) {
                 const file = e.target.files[0];
-                
+
                 // Get the FileBrowser instance
                 const fileBrowser = window.editor?.fileBrowser;
                 if (!fileBrowser) {
                     console.warn('FileBrowser not available for image upload');
                     return;
                 }
-                
+
                 // Upload to FileBrowser
                 await fileBrowser.handleFileUpload(file);
-                
+
                 // Set the sprite to this path
                 const path = `${fileBrowser.currentPath}/${file.name}`;
                 await this.setSprite(path);
             }
         };
-        
+
         // Trigger file selection
         input.click();
     }
@@ -613,27 +629,27 @@ class SpriteRenderer extends Module {
         // Show a prompt for URL input
         const url = await this.promptUrlInput();
         if (!url) return;
-        
+
         try {
             // Create a temporary image to validate the URL
             const tempImg = new Image();
-            
+
             // Create a promise to wait for image loading
             const loaded = new Promise((resolve, reject) => {
                 tempImg.onload = () => resolve(true);
                 tempImg.onerror = () => reject(new Error(`Failed to load image from URL: ${url}`));
-                
+
                 // Set a timeout in case the image never loads
                 setTimeout(() => reject(new Error('Image loading timed out')), 10000);
             });
-            
+
             // Start loading the image
             tempImg.crossOrigin = "anonymous";
             tempImg.src = url;
-            
+
             // Wait for the image to load
             await loaded;
-            
+
             // Get the FileBrowser instance
             const fileBrowser = window.editor?.fileBrowser;
             if (!fileBrowser) {
@@ -642,16 +658,16 @@ class SpriteRenderer extends Module {
                 await this.setSprite(url);
                 return;
             }
-            
+
             // Convert the image to a data URL (fetch the image first to ensure CORS doesn't block it)
             const imgData = await this.fetchImageAsDataURL(url);
-            
+
             // Generate a filename from the URL
             const filename = this.generateFilenameFromUrl(url);
-            
+
             // Save to FileBrowser
             await fileBrowser.createFile(`${fileBrowser.currentPath}/${filename}`, imgData);
-            
+
             // Set the sprite to this path
             const path = `${fileBrowser.currentPath}/${filename}`;
             await this.setSprite(path);
@@ -671,7 +687,7 @@ class SpriteRenderer extends Module {
             // Try to fetch the image
             const response = await fetch(url, { mode: 'cors' });
             const blob = await response.blob();
-            
+
             // Convert to data URL
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -695,7 +711,7 @@ class SpriteRenderer extends Module {
             const urlObj = new URL(url);
             const pathname = urlObj.pathname;
             const filename = pathname.split('/').pop();
-            
+
             // If we have a valid filename with extension, use it
             if (filename && filename.includes('.')) {
                 return filename;
@@ -703,7 +719,7 @@ class SpriteRenderer extends Module {
         } catch (e) {
             // URL parsing failed
         }
-        
+
         // Generate a random filename
         const randomId = Math.random().toString(36).substring(2, 10);
         return `image_${randomId}.png`;
@@ -728,7 +744,7 @@ class SpriteRenderer extends Module {
                     </div>
                 </div>
             `;
-            
+
             // Add styles for the dialog
             const style = document.createElement('style');
             style.innerHTML = `
@@ -787,44 +803,44 @@ class SpriteRenderer extends Module {
             `;
             document.head.appendChild(style);
             document.body.appendChild(dialog);
-            
+
             // Get elements
             const input = dialog.querySelector('.url-input-field');
             const cancelBtn = dialog.querySelector('.cancel-btn');
             const okBtn = dialog.querySelector('.ok-btn');
-            
+
             // Functions to handle dialog interaction
             const close = () => {
                 document.body.removeChild(dialog);
                 document.head.removeChild(style);
             };
-            
+
             const cancel = () => {
                 close();
                 resolve(null);
             };
-            
+
             const confirm = () => {
                 const url = input.value.trim();
                 close();
                 resolve(url ? url : null);
             };
-            
+
             // Set up event listeners
             cancelBtn.addEventListener('click', cancel);
             okBtn.addEventListener('click', confirm);
-            
+
             // Handle Enter key
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') confirm();
                 if (e.key === 'Escape') cancel();
             });
-            
+
             // Focus the input field
             setTimeout(() => input.focus(), 50);
         });
     }
-    
+
     /**
      * Draw a placeholder when no image is loaded
      */
@@ -832,31 +848,31 @@ class SpriteRenderer extends Module {
         // Calculate position based on pivot
         const pivotX = this.width * this.pivot.x;
         const pivotY = this.height * this.pivot.y;
-        
+
         ctx.save();
-        
+
         // Draw a placeholder rectangle with an "image" icon
         ctx.strokeStyle = "#aaaaaa";
         ctx.fillStyle = "#333333";
         ctx.lineWidth = 2;
-        
+
         // Draw background
         ctx.fillRect(-pivotX, -pivotY, this.width || 64, this.height || 64);
         ctx.strokeRect(-pivotX, -pivotY, this.width || 64, this.height || 64);
-        
+
         // Draw image icon
         ctx.fillStyle = "#aaaaaa";
         const iconSize = Math.min(this.width || 64, this.height || 64) * 0.5;
         const centerX = -pivotX + (this.width || 64) / 2 - iconSize / 2;
         const centerY = -pivotY + (this.height || 64) / 2 - iconSize / 2;
-        
+
         // Draw simplified image icon
         ctx.fillRect(centerX, centerY, iconSize, iconSize);
         ctx.fillStyle = "#333333";
         ctx.beginPath();
         ctx.arc(centerX + iconSize * 0.7, centerY + iconSize * 0.3, iconSize * 0.15, 0, Math.PI * 2);
         ctx.fill();
-        
+
         ctx.restore();
     }
 
@@ -866,7 +882,7 @@ class SpriteRenderer extends Module {
     drawWithScaleMode(ctx, x, y) {
         // Add some debugging
         //console.log(`Drawing with scale mode: ${this.scaleMode}`);
-        
+
         switch (this.scaleMode) {
             case "fit":
                 this.drawFit(ctx, x, y);
@@ -887,7 +903,7 @@ class SpriteRenderer extends Module {
                 break;
         }
     }
-    
+
     /**
      * Draw the image preserving aspect ratio and fitting inside dimensions
      */
@@ -895,9 +911,9 @@ class SpriteRenderer extends Module {
         // Calculate aspect ratios
         const imageRatio = this._imageWidth / this._imageHeight;
         const targetRatio = this.width / this.height;
-        
+
         let drawWidth, drawHeight, offsetX, offsetY;
-        
+
         if (imageRatio > targetRatio) {
             // Image is wider than the target area relative to height
             drawWidth = this.width;
@@ -911,10 +927,10 @@ class SpriteRenderer extends Module {
             offsetX = (this.width - drawWidth) / 2;
             offsetY = 0;
         }
-        
+
         // Draw the image centered
-        ctx.drawImage(this._image, 0, 0, this._imageWidth, this._imageHeight, 
-                    x + offsetX, y + offsetY, drawWidth, drawHeight);
+        ctx.drawImage(this._image, 0, 0, this._imageWidth, this._imageHeight,
+            x + offsetX, y + offsetY, drawWidth, drawHeight);
     }
 
     /**
@@ -924,9 +940,9 @@ class SpriteRenderer extends Module {
         // Calculate aspect ratios
         const imageRatio = this._imageWidth / this._imageHeight;
         const targetRatio = this.width / this.height;
-        
+
         let sourceX, sourceY, sourceWidth, sourceHeight;
-        
+
         if (imageRatio > targetRatio) {
             // Image is wider than the target area relative to height
             sourceHeight = this._imageHeight;
@@ -940,7 +956,7 @@ class SpriteRenderer extends Module {
             sourceX = 0;
             sourceY = (this._imageHeight - sourceHeight) / 2;
         }
-        
+
         // Draw the image cropped to fill the entire target area
         ctx.drawImage(
             this._image,
@@ -960,23 +976,23 @@ class SpriteRenderer extends Module {
             ctx.drawImage(this._image, x, y, this.width, this.height);
             return;
         }
-        
+
         // Save context to isolate the pattern drawing
         ctx.save();
-        
+
         // Clip to the target rectangle
         ctx.beginPath();
         ctx.rect(x, y, this.width, this.height);
         ctx.clip();
-        
+
         // Fill with the pattern
         ctx.fillStyle = pattern;
         ctx.fillRect(x, y, this.width, this.height);
-        
+
         // Restore context
         ctx.restore();
     }
-    
+
     /**
      * Draw a nine-slice image
      */
@@ -986,30 +1002,30 @@ class SpriteRenderer extends Module {
         const w = this.width;
         const h = this.height;
         const border = this.sliceBorder;
-        
+
         // Ensure border values are valid and don't exceed image dimensions
         const validLeft = Math.min(border.left, this._imageWidth / 3);
         const validRight = Math.min(border.right, this._imageWidth / 3);
         const validTop = Math.min(border.top, this._imageHeight / 3);
         const validBottom = Math.min(border.bottom, this._imageHeight / 3);
-        
+
         // Ensure borders don't overlap
         const maxHorizontalBorder = Math.floor(this._imageWidth / 2);
         const maxVerticalBorder = Math.floor(this._imageHeight / 2);
-        
+
         const safeLeft = Math.min(validLeft, maxHorizontalBorder);
         const safeRight = Math.min(validRight, maxHorizontalBorder);
         const safeTop = Math.min(validTop, maxVerticalBorder);
         const safeBottom = Math.min(validBottom, maxVerticalBorder);
-        
+
         // Source coordinates (slices from the original image)
         const srcX = [0, safeLeft, this._imageWidth - safeRight, this._imageWidth];
         const srcY = [0, safeTop, this._imageHeight - safeBottom, this._imageHeight];
-        
+
         // Destination coordinates (where to draw on the canvas)
         const dstX = [x, x + safeLeft, x + w - safeRight, x + w];
         const dstY = [y, y + safeTop, y + h - safeBottom, y + h];
-        
+
         // Draw all 9 slices
         for (let row = 0; row < 3; row++) {
             for (let col = 0; col < 3; col++) {
@@ -1017,12 +1033,12 @@ class SpriteRenderer extends Module {
                 const sy = srcY[row];
                 const sw = srcX[col + 1] - sx;
                 const sh = srcY[row + 1] - sy;
-                
+
                 const dx = dstX[col];
                 const dy = dstY[row];
                 const dw = dstX[col + 1] - dx;
                 const dh = dstY[row + 1] - dy;
-                
+
                 // Only draw if width and height are positive
                 if (sw > 0 && sh > 0 && dw > 0 && dh > 0) {
                     ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
@@ -1039,7 +1055,7 @@ class SpriteRenderer extends Module {
         if (document.getElementById('sprite-renderer-styles')) {
             return;
         }
-        
+
         // Create style element
         const style = document.createElement('style');
         style.id = 'sprite-renderer-styles';
@@ -1075,13 +1091,13 @@ class SpriteRenderer extends Module {
         `;
         document.head.appendChild(style);
     }
-    
+
     /**
      * Override to handle serialization
      */
     toJSON() {
         const json = super.toJSON() || {};
-        
+
         // Serialize sprite properties
         json.imageAsset = this.imageAsset ? (typeof this.imageAsset.toJSON === 'function' ? this.imageAsset.toJSON() : { path: this.imageAsset.path }) : null;
         json.width = this.width;
@@ -1091,29 +1107,29 @@ class SpriteRenderer extends Module {
         json.flipY = this.flipY;
         json.pivot = { x: this.pivot.x, y: this.pivot.y };
         json.scaleMode = this.scaleMode;
-        
+
         // Animation properties
         json.frameX = this.frameX;
         json.frameY = this.frameY;
         json.frameWidth = this.frameWidth;
         json.frameHeight = this.frameHeight;
         json.frames = this.frames;
-        
+
         // 9-slice properties
         json.sliceMode = this.sliceMode;
         json.sliceBorder = { ...this.sliceBorder };
-        
+
         return json;
     }
-    
+
     /**
      * Override to handle deserialization
      */
     fromJSON(json) {
         super.fromJSON(json);
-        
+
         if (!json) return;
-        
+
         // Restore sprite properties
         if (json.imageAsset) {
             // Handle AssetReference safely
@@ -1122,8 +1138,8 @@ class SpriteRenderer extends Module {
                     this.imageAsset = window.AssetReference.fromJSON(json.imageAsset);
                 } else {
                     // Simple fallback
-                    this.imageAsset = { 
-                        path: json.imageAsset.path, 
+                    this.imageAsset = {
+                        path: json.imageAsset.path,
                         type: 'image',
                         load: () => this.fallbackLoadImage(json.imageAsset.path)
                     };
@@ -1133,25 +1149,25 @@ class SpriteRenderer extends Module {
                 console.error("Error restoring image asset:", error);
             }
         }
-        
+
         if (json.width !== undefined) this.width = json.width;
         if (json.height !== undefined) this.height = json.height;
         if (json.color !== undefined) this.color = json.color;
         if (json.flipX !== undefined) this.flipX = json.flipX;
         if (json.flipY !== undefined) this.flipY = json.flipY;
         if (json.scaleMode !== undefined) this.scaleMode = json.scaleMode;
-        
+
         if (json.pivot) {
             this.pivot = new Vector2(json.pivot.x, json.pivot.y);
         }
-        
+
         // Animation properties
         if (json.frameX !== undefined) this.frameX = json.frameX;
         if (json.frameY !== undefined) this.frameY = json.frameY;
         if (json.frameWidth !== undefined) this.frameWidth = json.frameWidth;
         if (json.frameHeight !== undefined) this.frameHeight = json.frameHeight;
         if (json.frames !== undefined) this.frames = json.frames;
-        
+
         // 9-slice properties
         if (json.sliceMode !== undefined) this.sliceMode = json.sliceMode;
         if (json.sliceBorder) this.sliceBorder = { ...json.sliceBorder };

@@ -1,6 +1,8 @@
 class AssetManager {
     constructor(fileBrowser) {
         this.fileBrowser = fileBrowser;
+        this.cache = {};
+        this.loadingPromises = {};
         this.modal = null;
         this.initModal();
     }
@@ -235,6 +237,10 @@ class AssetManager {
         });
     }
 
+    normalizePath(path) {
+        // Remove leading slashes and redundant slashes
+        return path.replace(/^\/+/, '').replace(/\\/g, '/');
+    }
 
     /**
      * Manually adds a pre-loaded asset (like a base64 data URL) to the cache.
@@ -245,6 +251,7 @@ class AssetManager {
      * @returns {Promise<any>} A promise that resolves when the asset is processed and cached.
      */
     addAssetToCache(path, content, type) {
+        path = this.normalizePath(path);
         try {
             if (this.cache[path]) {
                 return Promise.resolve(this.cache[path]);
@@ -252,21 +259,25 @@ class AssetManager {
 
             let promise;
             if (type.startsWith('image/')) {
-                promise = this.loadImage(content); // loadImage works with data URLs
+                // If content is not a data URL, construct one
+                if (typeof content === 'string' && !content.startsWith('data:')) {
+                    content = `data:${type};base64,${content}`;
+                }
+                promise = this.loadImage(content);
             } else if (type.startsWith('audio/')) {
-                promise = this.loadAudio(content); // loadAudio works with data URLs
+                if (typeof content === 'string' && !content.startsWith('data:')) {
+                    content = `data:${type};base64,${content}`;
+                }
+                promise = this.loadAudio(content);
             } else if (type.startsWith('application/json') || path.endsWith('.json')) {
-                // For JSON, the content is the object itself
                 const jsonObject = JSON.parse(content);
                 this.cache[path] = jsonObject;
                 return Promise.resolve(jsonObject);
             } else {
-                // For other text files, just cache the content string
                 this.cache[path] = content;
                 return Promise.resolve(content);
             }
 
-            // Cache the promise itself to handle parallel requests
             this.loadingPromises[path] = promise;
 
             promise.then(asset => {

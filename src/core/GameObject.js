@@ -685,13 +685,35 @@ class GameObject {
      * Get the world position of this GameObject
      * @returns {Vector2} The world position
      */
-    getWorldPosition() {
+    getWorldPositionOriginal() {
         let worldPos = this.position.clone();
         if (this.parent) {
             const parentWorldPos = this.parent.getWorldPosition();
             worldPos = worldPos.rotate(this.parent.angle * Math.PI / 180);
             worldPos = worldPos.add(parentWorldPos);
         }
+        return worldPos;
+    }
+
+    getWorldPosition() {
+        let worldPos = this.position.clone();
+        let currentParent = this.parent;
+        let totalAngle = 0;
+
+        // Accumulate rotation from all ancestors
+        while (currentParent) {
+            totalAngle += currentParent.angle;
+            currentParent = currentParent.parent;
+        }
+
+        // Rotate local position by total ancestor angle
+        worldPos = worldPos.rotate(totalAngle * Math.PI / 180);
+
+        // Add world position of topmost parent (if any)
+        if (this.parent) {
+            worldPos = worldPos.add(this.parent.getWorldPosition());
+        }
+
         return worldPos;
     }
 

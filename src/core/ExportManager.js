@@ -188,6 +188,10 @@ class ExportManager {
         return data;
     }
 
+    normalizePath(path) {
+        return path.replace(/^\/+/, '').replace(/\\/g, '/');
+    }
+
     /**
      * Collect all assets used in the project
      */
@@ -224,11 +228,12 @@ class ExportManager {
                         continue;
                     }
 
-                    assets[path] = {
+                    const normalizedPath = this.normalizePath(path);
+                    assets[normalizedPath] = {
                         content: content,
                         type: file.type,
                         binary: true,
-                        originalFile: file // Keep reference to original file for ZIP processing
+                        originalFile: file
                     };
                 } else {
                     // For text-based assets (JSON, TXT, etc.), ensure content is a string.
