@@ -129,7 +129,7 @@ class AssetManager {
     async exportSelected() {
         const selected = this.modal.querySelectorAll('.asset-item input[type="checkbox"]:checked');
         const files = [];
-    
+
         for (const checkbox of selected) {
             const path = checkbox.dataset.path;
             const file = await this.fileBrowser.getFile(path);
@@ -142,21 +142,21 @@ class AssetManager {
                 });
             }
         }
-    
+
         if (files.length === 0) {
             alert('No files selected for export');
             return;
         }
-    
+
         // Prompt for package name
         const packageName = await this.fileBrowser.promptDialog(
             'Export Assets',
             'Enter name for asset package:',
             'assets'
         );
-    
+
         if (!packageName) return;
-    
+
         // Create asset package
         const assetPackage = {
             name: packageName,
@@ -164,7 +164,7 @@ class AssetManager {
             timestamp: Date.now(),
             files: files
         };
-    
+
         // Create and download file
         const blob = new Blob([JSON.stringify(assetPackage)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -175,7 +175,7 @@ class AssetManager {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-    
+
         this.hideModal();
     }
 
@@ -213,7 +213,7 @@ class AssetManager {
 
             this.fileBrowser.refreshFiles();
             this.fileBrowser.showNotification(
-                `Assets imported successfully to /${packageName}`, 
+                `Assets imported successfully to /${packageName}`,
                 'info'
             );
 
@@ -235,7 +235,7 @@ class AssetManager {
         });
     }
 
-    
+
     /**
      * Manually adds a pre-loaded asset (like a base64 data URL) to the cache.
      * This is used for standalone HTML exports.
@@ -245,36 +245,41 @@ class AssetManager {
      * @returns {Promise<any>} A promise that resolves when the asset is processed and cached.
      */
     addAssetToCache(path, content, type) {
-        if (this.cache[path]) {
-            return Promise.resolve(this.cache[path]);
-        }
+        try {
+            if (this.cache[path]) {
+                return Promise.resolve(this.cache[path]);
+            }
 
-        let promise;
-        if (type.startsWith('image/')) {
-            promise = this.loadImage(content); // loadImage works with data URLs
-        } else if (type.startsWith('audio/')) {
-            promise = this.loadAudio(content); // loadAudio works with data URLs
-        } else if (type.startsWith('application/json') || path.endsWith('.json')) {
-            // For JSON, the content is the object itself
-            const jsonObject = JSON.parse(content);
-            this.cache[path] = jsonObject;
-            return Promise.resolve(jsonObject);
-        } else {
-            // For other text files, just cache the content string
-            this.cache[path] = content;
-            return Promise.resolve(content);
+            let promise;
+            if (type.startsWith('image/')) {
+                promise = this.loadImage(content); // loadImage works with data URLs
+            } else if (type.startsWith('audio/')) {
+                promise = this.loadAudio(content); // loadAudio works with data URLs
+            } else if (type.startsWith('application/json') || path.endsWith('.json')) {
+                // For JSON, the content is the object itself
+                const jsonObject = JSON.parse(content);
+                this.cache[path] = jsonObject;
+                return Promise.resolve(jsonObject);
+            } else {
+                // For other text files, just cache the content string
+                this.cache[path] = content;
+                return Promise.resolve(content);
+            }
+
+            // Cache the promise itself to handle parallel requests
+            this.loadingPromises[path] = promise;
+
+            promise.then(asset => {
+                this.cache[path] = asset;
+                delete this.loadingPromises[path];
+            }).catch(() => {
+                delete this.loadingPromises[path];
+            });
+
+            return promise;
+        } catch (error) {
+            console.error(`Error adding asset to cache for path ${path}:`, error);
+            return Promise.reject(error);
         }
-        
-        // Cache the promise itself to handle parallel requests
-        this.loadingPromises[path] = promise;
-        
-        promise.then(asset => {
-            this.cache[path] = asset;
-            delete this.loadingPromises[path];
-        }).catch(() => {
-            delete this.loadingPromises[path];
-        });
-        
-        return promise;
     }
 }

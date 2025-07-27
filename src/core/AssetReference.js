@@ -58,7 +58,7 @@ class AssetReference {
         
         this._isLoading = true;
 
-        // --- PATCH: Support exported runtime asset loading ---
+        // --- Support exported runtime asset loading ---
         this._loadPromise = new Promise(async (resolve, reject) => {
             try {
                 // If running in exported game (no FileBrowser), load from assets folder or embedded data
@@ -126,7 +126,6 @@ class AssetReference {
                     }
                     return;
                 }
-                // --- END PATCH ---
 
                 // Editor mode: use FileBrowser
                 const content = await window.fileBrowser.readFile(this.path);

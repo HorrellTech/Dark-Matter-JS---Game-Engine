@@ -206,24 +206,37 @@ class ExportManager {
                 const path = file.path || file.name;
 
                 // For binary files (images, audio, fonts), convert to base64 data URL for embedding.
-                // This works for both standalone (embedded in JS) and ZIP (extracted from data URL).
                 if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
-                    if (content instanceof Blob || content instanceof ArrayBuffer) {
-                        content = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(content instanceof ArrayBuffer ? new Blob([content]) : content);
-                        });
+                    if (content instanceof Blob) {
+                        // Convert Blob to base64 data URL
+                        content = await this.blobToDataURL(content);
+                    } else if (content instanceof ArrayBuffer) {
+                        // Convert ArrayBuffer to base64 data URL
+                        content = this.arrayBufferToDataURL(content, file.type);
+                    } else if (content instanceof File) {
+                        // Convert File to base64 data URL
+                        content = await this.fileToDataURL(content);
+                    } else if (typeof content === 'string' && content.startsWith('data:')) {
+                        // Already a data URL, use as-is
+                        content = content;
+                    } else {
+                        console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
+                        continue;
                     }
+
                     assets[path] = {
                         content: content,
                         type: file.type,
-                        binary: true
+                        binary: true,
+                        originalFile: file // Keep reference to original file for ZIP processing
                     };
                 } else {
                     // For text-based assets (JSON, TXT, etc.), ensure content is a string.
                     if (content instanceof Blob) {
+                        content = await content.text();
+                    } else if (content instanceof ArrayBuffer) {
+                        content = new TextDecoder().decode(content);
+                    } else if (content instanceof File) {
                         content = await content.text();
                     }
                     assets[path] = {
@@ -235,6 +248,43 @@ class ExportManager {
             }
         }
         return assets;
+    }
+
+    /**
+     * Convert Blob to data URL
+     */
+    async blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    /**
+     * Convert File to data URL
+     */
+    async fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    /**
+     * Convert ArrayBuffer to data URL
+     */
+    arrayBufferToDataURL(buffer, mimeType) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        return `data:${mimeType};base64,${base64}`;
     }
 
     /**
@@ -623,8 +673,12 @@ html {
     /**
  * Generate game initialization code
  */
-generateGameInitialization(data, settings) {
-    return `
+    generateGameInitialization(data, settings) {
+        const assetsJsonString = settings.standalone && settings.includeAssets ?
+            JSON.stringify(data.assets).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'") :
+            'null';
+
+        return `
 // Game Initialization
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Initializing exported game...');
@@ -690,24 +744,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // For standalone mode, pre-populate the asset cache from the embedded data
     if (${settings.standalone && settings.includeAssets}) {
-        const preloadedAssets = ${JSON.stringify(data.assets)};
+        const preloadedAssets = ${settings.standalone && settings.includeAssets ? JSON.stringify(data.assets) : 'null'};
 
-        console.log('Pre-caching embedded assets...');
-        const assetPromises = [];
-        
-        for (const path in preloadedAssets) {
-            const assetInfo = preloadedAssets[path];
-            // Use the new AssetManager method to load from data URL
-            const promise = window.assetManager.addAssetToCache(path, assetInfo.content, assetInfo.type);
-            assetPromises.push(promise);
-        }
-        
-        // Wait for all assets to be processed by the cache before starting the game
-        try {
-            await Promise.all(assetPromises);
-            console.log('All embedded assets cached successfully.');
-        } catch (error) {
-            console.error('Error caching assets:', error);
+        if (preloadedAssets) {
+            console.log('Pre-caching embedded assets...');
+            const assetPromises = [];
+            
+            for (const path in preloadedAssets) {
+                const assetInfo = preloadedAssets[path];
+                // Use the new AssetManager method to load from data URL
+                const promise = window.assetManager.addAssetToCache(path, assetInfo.content, assetInfo.type);
+                assetPromises.push(promise);
+            }
+            
+            // Wait for all assets to be processed by the cache before starting the game
+            try {
+                await Promise.all(assetPromises);
+                console.log('All embedded assets cached successfully.');
+            } catch (error) {
+                console.error('Error caching assets:', error);
+            }
         }
     }
     
@@ -816,9 +872,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     module.fromJSON(moduleData.data);
                 } else {
                     // Fallback: Set properties directly
-                    Object.keys(moduleData.properties || {}).forEach(key => {
+                    Object.keys(moduleData.data.properties || {}).forEach(key => {
                         if (key in module) {
-                            module[key] = moduleData.properties[key];
+                            module[key] = moduleData.data.properties[key];
                         }
                     });
                 }
@@ -858,7 +914,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 `;
-}
+    }
 
     /**
      * Create standalone HTML file
@@ -891,12 +947,48 @@ document.addEventListener('DOMContentLoaded', async () => {
             const assetsFolder = zip.folder('assets');
             for (const [path, asset] of Object.entries(data.assets)) {
                 if (asset.binary) {
-                    // Content is a data URL string like 'data:image/png;base64,iVBORw...'
-                    // We need to extract the base64 part for JSZip.
-                    const base64Data = asset.content.split(',')[1];
-                    assetsFolder.file(path, base64Data, { base64: true });
+                    // For binary assets, use the original file if available
+                    if (asset.originalFile && asset.originalFile.content) {
+                        let fileContent = asset.originalFile.content;
+
+                        if (fileContent instanceof Blob) {
+                            // Add Blob directly to ZIP
+                            assetsFolder.file(path, fileContent);
+                        } else if (fileContent instanceof File) {
+                            // Add File directly to ZIP
+                            assetsFolder.file(path, fileContent);
+                        } else if (fileContent instanceof ArrayBuffer) {
+                            // Add ArrayBuffer directly to ZIP
+                            assetsFolder.file(path, fileContent);
+                        } else if (typeof fileContent === 'string' && fileContent.startsWith('data:')) {
+                            // Extract base64 data from data URL and convert to binary
+                            const commaIndex = fileContent.indexOf(',');
+                            if (commaIndex !== -1) {
+                                const base64Data = fileContent.substring(commaIndex + 1);
+                                assetsFolder.file(path, base64Data, { base64: true });
+                            } else {
+                                console.warn(`Invalid data URL format for asset ${path}`);
+                            }
+                        } else {
+                            console.warn(`Unsupported content type for binary asset ${path}:`, typeof fileContent);
+                        }
+                    } else {
+                        // Fallback: extract from data URL and convert to binary
+                        if (typeof asset.content === 'string' && asset.content.startsWith('data:')) {
+                            const commaIndex = asset.content.indexOf(',');
+                            if (commaIndex !== -1) {
+                                const base64Data = asset.content.substring(commaIndex + 1);
+                                // Convert base64 to binary data for ZIP
+                                assetsFolder.file(path, base64Data, { base64: true });
+                            } else {
+                                console.warn(`Invalid data URL format for asset ${path}`);
+                            }
+                        } else {
+                            console.warn(`Binary asset ${path} is not in expected format`);
+                        }
+                    }
                 } else {
-                    // Text content is already a string
+                    // For text-based assets, save as text
                     assetsFolder.file(path, asset.content);
                 }
             }

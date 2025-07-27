@@ -84,6 +84,7 @@ class FileBrowser {
         this.toolbar.innerHTML = `
             <button class="fb-button" id="fbNewFolder" title="New Folder"><i class="fas fa-folder-plus"></i></button>
             <button class="fb-button" id="fbNewScript" title="New Script"><i class="fas fa-file-code"></i></button>
+            <button class="fb-button" id="fbNewTextFile" title="New Text File"><i class="fas fa-file-alt"></i></button>
             <button class="fb-button" id="fbUploadFile" title="Upload File"><i class="fas fa-file-upload"></i></button>
             <button class="fb-button" id="fbDeleteItem" title="Delete"><i class="fas fa-trash"></i></button>
             <div class="fb-separator"></div>
@@ -148,6 +149,7 @@ class FileBrowser {
         // Toolbar button events
         document.getElementById('fbNewFolder').addEventListener('click', () => this.promptNewFolder());
         document.getElementById('fbNewScript').addEventListener('click', () => this.promptNewScript());
+        document.getElementById('fbNewTextFile').addEventListener('click', () => this.promptNewTextFile());
         document.getElementById('fbUploadFile').addEventListener('click', () => this.uploadFile());
         document.getElementById('fbDeleteItem').addEventListener('click', () => this.deleteSelected());
 
@@ -673,6 +675,42 @@ class FileBrowser {
         } catch (error) {
             console.error('Failed to create script:', error);
             this.showNotification(`Failed to create script: ${error.message}`, 'error');
+        }
+    }
+
+    async promptNewTextFile() {
+        if (!this.db) {
+            this.showNotification('File system not initialized yet. Please wait...', 'warning');
+            return;
+        }
+
+        const name = await this.promptDialog('New Text File', 'Enter text file name:');
+        if (!name) return; // User cancelled
+
+        try {
+            // Normalize path
+            const normalizedPath = this.normalizePath(this.currentPath);
+
+            // Ensure filename has .txt extension
+            const fileName = name.endsWith('.txt') ? name : `${name}.txt`;
+
+            // Create the filepath
+            const filePath = normalizedPath === '/'
+                ? `/${fileName}`
+                : `${normalizedPath}/${fileName}`;
+
+            // Explicitly create a file
+            const success = await this.createFile(filePath, '');
+
+            if (success) {
+                this.showNotification(`Created text file: ${fileName}`, 'info');
+
+                // Automatically load and register the new module
+                //await this.loadAndRegisterModule(filePath, '');
+            }
+        } catch (error) {
+            console.error('Failed to create text file:', error);
+            this.showNotification(`Failed to create text file: ${error.message}`, 'error');
         }
     }
 
@@ -1702,12 +1740,12 @@ window.${pascalCaseName} = ${pascalCaseName};
         } else {
             const extension = item.name.split('.').pop().toLowerCase();
             if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'webp'].includes(extension)) {
-                icon = 'fa-file-image';
                 if (item.content && typeof item.content === 'string' && item.content.startsWith('data:image')) {
                     previewHTML = `<div class="fb-preview-img"><img src="${item.content}" alt="${item.name}" loading="lazy"></div>`;
                     element.classList.add('has-preview');
                 } else {
                     // console.warn(`Item ${item.name} looks like an image but content is not a data URL:`, item.content);
+                    icon = 'fa-file-image';
                 }
             } else if (extension === 'js') {
                 icon = 'fa-file-code';
