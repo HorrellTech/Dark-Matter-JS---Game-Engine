@@ -978,6 +978,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
             button.style.minHeight = '32px';
             button.style.minWidth = '32px';
+
+            button.addEventListener('touchend', (e) => {
+                e.preventDefault(); // Prevent double-activation
+                button.click();     // Manually trigger click
+            });
         });
     }
 
