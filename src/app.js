@@ -25,7 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Connected ModuleReloader to ModuleRegistry");
     }
 
-    const startScreen = new StartScreen('0.2.0');
+    const startScreen = new StartScreen('0.2.1');
+
+    initializeMobileSupport();
 
     // Setup mobile touch handling
     setupMobileTouchHandling();
@@ -385,8 +387,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         resizer.addEventListener('mousedown', startResize);*/
     }
-
-    initializeMobileSupport();
 
     // Initialize resizers
     /*document.querySelectorAll('.resizer-v').forEach(resizer => {
