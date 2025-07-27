@@ -78,8 +78,8 @@ class StartScreen {
         content.innerHTML = `
             <div class="start-screen-header">
                 <img src="logo.png" alt="Dark Matter JS" class="start-screen-logo" onerror="this.src='assets/logo-placeholder.png'; this.onerror='';">
-                <h1 class="start-screen-title">Dark Matter JS</h1>
-                <div class="start-screen-version">Version ${this.version}</div>
+                <!--h1 class="start-screen-title">Dark Matter JS</h1>
+                <div class="start-screen-version">Version ${this.version}</div-->
             </div>
             
             <div class="start-screen-body">
