@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Connected ModuleReloader to ModuleRegistry");
     }
 
-    const startScreen = new StartScreen('0.1.0');
+    const startScreen = new StartScreen('0.2.0');
 
     // Setup mobile touch handling
     setupMobileTouchHandling();
@@ -873,12 +873,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     touchStartTime = Date.now();
                     
                     // Simulate mousedown for object selection
-                    const mouseEvent = new MouseEvent('mousedown', {
+                    const pointerEvent = new PointerEvent('pointerdown', {
                         clientX: touch.clientX,
                         clientY: touch.clientY,
-                        bubbles: true
+                        bubbles: true,
+                        pointerType: 'touch'
                     });
-                    editorCanvas.dispatchEvent(mouseEvent);
+                    editorCanvas.dispatchEvent(pointerEvent);
                 }
                 
                 // Handle pinch zoom with two fingers
@@ -916,12 +917,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         
                         // Simulate mousemove for panning
-                        const mouseEvent = new MouseEvent('mousemove', {
+                        const pointerEvent = new PointerEvent('pointerdown', {
                             clientX: touch.clientX,
                             clientY: touch.clientY,
-                            bubbles: true
+                            bubbles: true,
+                            pointerType: 'touch'
                         });
-                        editorCanvas.dispatchEvent(mouseEvent);
+                        editorCanvas.dispatchEvent(pointerEvent);
                     }
                 }
                 
@@ -955,12 +957,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (touchDuration < 300 && touchStartPos) {
                         // Simulate click for selection
-                        const mouseEvent = new MouseEvent('mouseup', {
-                            clientX: touchStartPos.x,
-                            clientY: touchStartPos.y,
-                            bubbles: true
-                        });
-                        editorCanvas.dispatchEvent(mouseEvent);
+                        const pointerEvent = new PointerEvent('pointerdown', {
+                        clientX: touch.clientX,
+                        clientY: touch.clientY,
+                        bubbles: true,
+                        pointerType: 'touch'
+                    });
+                    editorCanvas.dispatchEvent(pointerEvent);
                     }
                     
                     // Reset touch data
