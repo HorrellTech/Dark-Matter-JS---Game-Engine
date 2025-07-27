@@ -25,26 +25,23 @@ class Collider extends Module {
         // Expose properties to the inspector
         this.exposeProperty("shape", "enum", "rectangle", {
             options: ["rectangle", "circle", "polygon"],
-            onChange: () => this.rebuildCollider()
+            onChange: (val) => { this.shape = val; this.rebuildCollider(); }
         });
         
         this.exposeProperty("width", "number", 100, {
             min: 1,
-            onChange: () => this.rebuildCollider()
+            onChange: (val) => { this.width = val; this.rebuildCollider(); }
         });
-        
         this.exposeProperty("height", "number", 100, {
             min: 1,
-            onChange: () => this.rebuildCollider()
+            onChange: (val) => { this.height = val; this.rebuildCollider(); }
         });
-        
         this.exposeProperty("radius", "number", 50, {
             min: 1,
-            onChange: () => this.rebuildCollider()
+            onChange: (val) => { this.radius = val; this.rebuildCollider(); }
         });
-        
         this.exposeProperty("offset", "vector2", new Vector2(0, 0), {
-            onChange: () => this.rebuildCollider()
+            onChange: (val) => { this.offset = val; this.rebuildCollider(); }
         });
         
         this.boundOnCollisionStart = this.onCollisionStart.bind(this);
@@ -233,6 +230,10 @@ class Collider extends Module {
     rebuildCollider() {
         if (this.gameObject && window.physicsManager) {
             this.createCollider();
+            // If running in the editor, refresh the canvas to update gizmos
+            if (window.editor && typeof window.editor.refreshCanvas === "function") {
+                window.editor.refreshCanvas();
+            }
         }
     }
     

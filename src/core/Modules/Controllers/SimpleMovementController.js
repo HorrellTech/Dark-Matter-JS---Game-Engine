@@ -35,34 +35,59 @@ class SimpleMovementController extends Module {
             min: 0,
             max: 1000,
             step: 10,
-            description: "Movement speed in pixels per second"
+            description: "Movement speed in pixels per second",
+            style: {
+                label: "Movement Speed",
+                slider: true
+            },
+            onChange: (val) => { this.speed = val; }
         });
         
         this.exposeProperty("usePhysics", "boolean", false, {
-            description: "Use physics-based movement (requires RigidBody)"
+            description: "Use physics-based movement (requires RigidBody)",
+            style: {
+                label: "Use Physics Movement"
+            },
+            onChange: (val) => { this.usePhysics = val; }
         });
         
         this.exposeProperty("allowDiagonal", "boolean", true, {
-            description: "Enable diagonal movement"
+            description: "Enable diagonal movement",
+            style: {
+                label: "Allow Diagonal Movement"
+            },
+            onChange: (val) => { this.allowDiagonal = val; }
         });
         
         this.exposeProperty("acceleration", "number", 0.2, {
             min: 0.01,
             max: 1,
             step: 0.01,
-            description: "Acceleration factor (1 = instant)"
+            description: "Acceleration factor (1 = instant)",
+            style: {
+                label: "Acceleration"
+            },
+            onChange: (val) => { this.acceleration = val; }
         });
         
         this.exposeProperty("deceleration", "number", 0.1, {
             min: 0.01,
             max: 1,
             step: 0.01,
-            description: "Deceleration factor when no input (1 = instant stop)"
+            description: "Deceleration factor when no input (1 = instant stop)",
+            style: {
+                label: "Deceleration"
+            },
+            onChange: (val) => { this.deceleration = val; }
         });
         
         this.exposeProperty("controlScheme", "enum", "both", {
             options: ["arrows", "wasd", "both"],
-            description: "Input control scheme to use"
+            description: "Input control scheme to use",
+            style: {
+                label: "Control Scheme"
+            },
+            onChange: (val) => { this.controlScheme = val; }
         });
     }
     

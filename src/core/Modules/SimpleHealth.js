@@ -66,29 +66,45 @@ class SimpleHealth extends Module {
         this.exposeProperty("invulnerabilityTime", "number", 1.0, {
             min: 0,
             max: 10,
-            step: 0.1
+            step: 0.1,
+            description: "Time in seconds to be invulnerable after taking damage",
+            onChange: (value) => { this.invulnerabilityTime = value; }
         });
         
-        this.exposeProperty("showHealthBar", "boolean", true);
+        this.exposeProperty("showHealthBar", "boolean", true, {
+            description: "Whether to show the health bar in game",
+            style: {
+                label: "Show Health Bar"
+            },
+            onChange: (value) => { this.showHealthBar = value; }
+        });
         
-        this.exposeProperty("healthBarColor", "color", "#ff0000");
+        this.exposeProperty("healthBarColor", "color", "#ff0000", {
+            description: "Color of the health bar",
+            onChange: (value) => { this.healthBarColor = value; }
+        });
         
         this.exposeProperty("healthBarWidth", "number", 50, {
             min: 10,
             max: 200,
-            step: 5
+            step: 5,
+            onChange: (value) => { this.healthBarWidth = value; }
         });
         
         this.exposeProperty("healthBarHeight", "number", 5, {
             min: 1,
             max: 20,
-            step: 1
+            step: 1,
+            description: "Height of the health bar",
+            onChange: (value) => { this.healthBarHeight = value; }
         });
         
         this.exposeProperty("healthBarOffsetY", "number", -20, {
             min: -100,
             max: 100,
-            step: 1
+            step: 1,
+            description: "Y-axis offset of the health bar",
+            onChange: (value) => { this.healthBarOffsetY = value; }
         });
     }
     

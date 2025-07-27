@@ -41,39 +41,48 @@ class CameraController extends Module {
         
         // Expose properties
         this.exposeProperty("followOwner", "boolean", true, {
-            description: "Whether camera follows this GameObject"
+            description: "Whether camera follows this GameObject",
+            onChange: (val) => { this.followOwner = val; }
         });
         
         this.exposeProperty("followSpeed", "number", 5.0, {
             description: "How quickly the camera follows its target",
             min: 0.1,
             max: 20,
-            step: 0.1
+            step: 0.1,
+            onChange: (val) => { this.followSpeed = val; }
         });
         
         this.exposeProperty("zoom", "number", 1.0, {
             description: "Camera zoom level (1.0 = 100%)",
             min: 0.1,
             max: 10,
-            step: 0.1
+            step: 0.1,
+            onChange: (val) => { this.zoom = val; }
         });
         
         this.exposeProperty("positionDamping", "number", 0.85, {
             description: "Smoothness of camera movement (0-1)",
             min: 0,
             max: 0.99,
-            step: 0.01
+            step: 0.01,
+            onChange: (val) => { this.positionDamping = val; }
         });
         
         this.exposeProperty("zoomDamping", "number", 0.85, {
             description: "Smoothness of camera zoom (0-1)",
             min: 0,
             max: 0.99,
-            step: 0.01
+            step: 0.01,
+            onChange: (val) => { this.zoomDamping = val; }
         });
         
         this.exposeProperty("offset", "vector2", this.offset, {
-            description: "Camera offset from this GameObject"
+            description: "Camera offset from this GameObject",
+            onChange: (val) => {
+                this.offset = new Vector2(val.x, val.y);
+                this.updateSceneViewport(); // Update immediately
+            }
         });
     }
     

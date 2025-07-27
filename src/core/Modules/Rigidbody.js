@@ -8,10 +8,10 @@ class RigidBody extends Module {
 
     constructor() {
         super("RigidBody");
-        
+
         // Physics body reference
         this.body = null;
-        
+
         // Body properties
         this.bodyType = "dynamic";  // "dynamic", "static", "kinematic"
         this.density = 1;           // Density (mass = density * area)
@@ -25,77 +25,68 @@ class RigidBody extends Module {
             mask: 0xFFFFFFFF,       // What categories this body collides with
             group: 0                // Collision groups
         };
-        
+
         // Shape options
         this.shape = "rectangle";   // "rectangle", "circle", "polygon"
         this.width = 100;           // Used for rectangle
         this.height = 100;          // Used for rectangle
         this.radius = 50;           // Used for circle
         this.vertices = [];         // Used for polygon
-        
+
         // Constraint options
         this.fixedRotation = false; // Prevent rotation
-        
+
         // Collision tracking
         this.inCollision = new Set();  // Set of bodies currently in contact
         this.bodyNeedsUpdate = false;  // Flag to update static bodies when moved
-        
+
         // Expose properties to the inspector
-        this.exposeProperty("bodyType", "enum", "dynamic", {
+        this.exposeProperty("bodyType", "enum", this.bodyType, {
             options: ["dynamic", "static", "kinematic"],
-            onChange: () => {
-                if (!this._skipRebuild) this.rebuildBody();
-            }
+            onChange: (val) => { this.bodyType = val; if (!this._skipRebuild) this.rebuildBody(); }
         });
-        
-        this.exposeProperty("shape", "enum", "rectangle", {
+
+        this.exposeProperty("shape", "enum", this.shape, {
             options: ["rectangle", "circle", "polygon"],
-            onChange: () => {
-                if (!this._skipRebuild) this.rebuildBody();
-            }
+            onChange: (val) => { this.shape = val; if (!this._skipRebuild) this.rebuildBody(); }
         });
-        
-        this.exposeProperty("width", "number", 100, {
+
+        this.exposeProperty("width", "number", this.width, {
             min: 1,
-            onChange: () => this.rebuildBody()
+            onChange: (val) => { this.width = val; this.rebuildBody(); }
         });
-        
-        this.exposeProperty("height", "number", 100, {
+
+        this.exposeProperty("height", "number", this.height, {
             min: 1,
-            onChange: () => this.rebuildBody()
+            onChange: (val) => { this.height = val; this.rebuildBody(); }
         });
-        
-        this.exposeProperty("radius", "number", 50, {
+
+        this.exposeProperty("radius", "number", this.radius, {
             min: 1,
-            onChange: () => this.rebuildBody()
+            onChange: (val) => { this.radius = val; this.rebuildBody(); }
         });
-        
-        this.exposeProperty("density", "number", 1, {
+
+        this.exposeProperty("density", "number", this.density, {
             min: 0.001,
             max: 100,
-            onChange: (value) => {
-                if (this.body) Matter.Body.setDensity(this.body, value);
-            }
+            onChange: (val) => { this.density = val; if (this.body) Matter.Body.setDensity(this.body, val); }
         });
-        
-        this.exposeProperty("friction", "number", 0.1, {
+
+        this.exposeProperty("friction", "number", this.friction, {
             min: 0,
             max: 1,
-            onChange: (value) => {
-                if (this.body) this.body.friction = value;
-            }
+            onChange: (val) => { this.friction = val; if (this.body) this.body.friction = val; }
         });
-        
-        this.exposeProperty("restitution", "number", 0.1, {
+
+        this.exposeProperty("restitution", "number", this.restitution, {
             min: 0,
             max: 1,
-            onChange: (value) => {
-                if (this.body) this.body.restitution = value;
-            }
+            onChange: (val) => { this.restitution = val; if (this.body) this.body.restitution = val; }
         });
-        
+
         this.exposeProperty("fixedRotation", "boolean", false, {
             onChange: (value) => {
+                this.fixedRotation = value;
                 if (this.body) {
                     // Fix: Use correct method to set inertia for fixed rotation
                     if (value) {
@@ -114,7 +105,7 @@ class RigidBody extends Module {
                             const mass = this.body.mass;
                             let inertia = 0;
                             const vertices = this.body.vertices;
-                            
+
                             // Simple approximation for non-circular shapes
                             // Based on Matter.js internal calculations
                             const centre = this.body.position;
@@ -125,27 +116,25 @@ class RigidBody extends Module {
                                 const distSq = dx * dx + dy * dy;
                                 inertia += distSq;
                             }
-                            
+
                             this.body.inertia = mass * (inertia / vertices.length);
                         }
-                        
+
                         // Make sure to update inverseInertia as well
                         this.body.inverseInertia = 1 / this.body.inertia;
                     }
                 }
             }
         });
-        
-        this.exposeProperty("isSensor", "boolean", false, {
-            onChange: (value) => {
-                if (this.body) this.body.isSensor = value;
-            }
+
+        this.exposeProperty("isSensor", "boolean", this.isSensor, {
+            onChange: (val) => { this.isSensor = val; if (this.body) this.body.isSensor = val; }
         });
-        
+
         this.boundOnCollisionStart = this.onCollisionStart.bind(this);
         this.boundOnCollisionEnd = this.onCollisionEnd.bind(this);
     }
-    
+
     /**
      * Create the physics body when the component starts
      */
@@ -154,41 +143,41 @@ class RigidBody extends Module {
             console.error("Physics manager not found. Make sure it's initialized before using RigidBody.");
             return;
         }
-        
+
         this.createBody();
-        
+
         // Set up collision handlers
         Matter.Events.on(window.physicsManager.engine, 'collisionStart', this.boundOnCollisionStart);
         Matter.Events.on(window.physicsManager.engine, 'collisionEnd', this.boundOnCollisionEnd);
     }
-    
+
     /**
      * Create the physics body based on current settings
      */
     createBody() {
         if (!this.gameObject) return;
-        
+
         // Clean up existing body if any
         this.removeBody();
-        
+
         // Make sure physicsManager is ready
         if (!window.physicsManager) {
             console.error("PhysicsManager not found or not initialized");
             return null;
         }
-        
+
         // Ensure the maps are initialized in physicsManager
         if (!window.physicsManager.bodies || !window.physicsManager.gameObjectBodies) {
             console.error("PhysicsManager maps not properly initialized");
             window.physicsManager.bodies = window.physicsManager.bodies || new Map();
             window.physicsManager.gameObjectBodies = window.physicsManager.gameObjectBodies || new Map();
         }
-        
+
         // Create the shape based on selected type
         let body;
         const pos = this.gameObject.getWorldPosition();
         const angle = this.gameObject.angle * (Math.PI / 180);
-        
+
         const options = {
             friction: this.friction,
             restitution: this.restitution,
@@ -199,20 +188,20 @@ class RigidBody extends Module {
             label: this.gameObject.name || "Body",
             collisionFilter: this.collisionFilter
         };
-        
+
         console.log(`Creating ${this.bodyType} body for ${options.label} (isStatic: ${options.isStatic})`);
-        
+
         try {
             // Create the actual body based on the shape type
             switch (this.shape) {
                 case "rectangle":
                     body = Matter.Bodies.rectangle(pos.x, pos.y, this.width, this.height, options);
                     break;
-                    
+
                 case "circle":
                     body = Matter.Bodies.circle(pos.x, pos.y, this.radius, options);
                     break;
-                    
+
                 case "polygon":
                     // If we have vertices defined, use them
                     if (this.vertices && this.vertices.length > 0) {
@@ -224,7 +213,7 @@ class RigidBody extends Module {
                         body = Matter.Bodies.polygon(pos.x, pos.y, sides, radius, options);
                     }
                     break;
-                    
+
                 default:
                     console.error(`Unsupported shape type: ${this.shape}`);
                     // Create a default rectangle as fallback
@@ -234,9 +223,9 @@ class RigidBody extends Module {
             console.error("Error creating physics body:", error);
             return null;
         }
-        
+
         // Now that we have a valid body, continue with the rest of the method
-        
+
         // Ensure static bodies are really static
         if (this.bodyType === "static") {
             body.isStatic = true;
@@ -247,7 +236,7 @@ class RigidBody extends Module {
             body.velocity.x = 0;
             body.velocity.y = 0;
             body.angularVelocity = 0;
-            
+
             Matter.Body.setStatic(body, true);
         }
         else if (this.bodyType === "kinematic") {
@@ -260,19 +249,19 @@ class RigidBody extends Module {
         else {
             body.isStatic = false;
         }
-        
+
         // Apply fixed rotation constraint
         if (this.fixedRotation) {
             body.inertia = Infinity;
             body.inverseInertia = 0;
         }
-        
+
         // Register with physics manager - ensure this properly adds to the world
         try {
             // Register with physics manager
             if (window.physicsManager && body) {
                 window.physicsManager.registerBody(body, this.gameObject);
-                
+
                 const isInWorld = window.physicsManager.engine.world.bodies.includes(body);
                 if (!isInWorld) {
                     console.warn(`Body for ${options.label} was not properly added to the physics world`);
@@ -282,13 +271,13 @@ class RigidBody extends Module {
         } catch (error) {
             console.error("Error registering physics body:", error);
         }
-        
+
         // Store reference to this module in the body
         if (body) {
             this.body = body;
             this.body.module = this;
         }
-        
+
         return body;
     }
 
@@ -302,7 +291,7 @@ class RigidBody extends Module {
             this.pendingBodyCreation = false;
         }
     }
-    
+
     /**
      * Remove the body from the physics world
      */
@@ -312,7 +301,7 @@ class RigidBody extends Module {
             this.body = null;
         }
     }
-    
+
     /**
      * Rebuild the body when properties change
      */
@@ -321,7 +310,7 @@ class RigidBody extends Module {
             this.createBody();
         }
     }
-    
+
     /**
      * Apply a force to the center of the body
      * @param {Vector2} force - The force to apply
@@ -331,7 +320,7 @@ class RigidBody extends Module {
             Matter.Body.applyForce(this.body, this.body.position, { x: force.x, y: force.y });
         }
     }
-    
+
     /**
      * Apply an impulse to the center of the body
      * @param {Vector2} impulse - The impulse to apply
@@ -345,7 +334,7 @@ class RigidBody extends Module {
             });
         }
     }
-    
+
     /**
      * Apply a torque (rotational force) to the body
      * @param {number} torque - The torque to apply
@@ -355,7 +344,7 @@ class RigidBody extends Module {
             Matter.Body.setAngularVelocity(this.body, this.body.angularVelocity + torque);
         }
     }
-    
+
     /**
      * Set the linear velocity of the body
      * @param {Vector2} velocity - The velocity to set
@@ -365,7 +354,7 @@ class RigidBody extends Module {
             Matter.Body.setVelocity(this.body, { x: velocity.x, y: velocity.y });
         }
     }
-    
+
     /**
      * Get the current linear velocity of the body
      * @returns {Vector2} The current velocity
@@ -376,7 +365,7 @@ class RigidBody extends Module {
         }
         return new Vector2(0, 0);
     }
-    
+
     /**
      * Set the angular velocity of the body
      * @param {number} angularVelocity - The angular velocity in degrees/second
@@ -388,7 +377,7 @@ class RigidBody extends Module {
             Matter.Body.setAngularVelocity(this.body, radians);
         }
     }
-    
+
     /**
      * Get the current angular velocity of the body
      * @returns {number} The angular velocity in degrees/second
@@ -400,20 +389,20 @@ class RigidBody extends Module {
         }
         return 0;
     }
-    
+
     /**
      * Handle collision start events
      */
     onCollisionStart(event) {
         const pairs = event.pairs;
-        
+
         for (let i = 0; i < pairs.length; i++) {
             const pair = pairs[i];
-            
+
             if (pair.bodyA === this.body) {
                 // Add the colliding body to our contacts
                 this.inCollision.add(pair.bodyB);
-                
+
                 // Find the other game object
                 const otherObject = window.physicsManager.bodies.get(pair.bodyB);
                 if (otherObject) {
@@ -422,11 +411,11 @@ class RigidBody extends Module {
                         this.gameObject.onCollisionEnter(otherObject);
                     }
                 }
-            } 
+            }
             else if (pair.bodyB === this.body) {
                 // Add the colliding body to our contacts
                 this.inCollision.add(pair.bodyA);
-                
+
                 // Find the other game object
                 const otherObject = window.physicsManager.bodies.get(pair.bodyA);
                 if (otherObject) {
@@ -438,20 +427,20 @@ class RigidBody extends Module {
             }
         }
     }
-    
+
     /**
      * Handle collision end events
      */
     onCollisionEnd(event) {
         const pairs = event.pairs;
-        
+
         for (let i = 0; i < pairs.length; i++) {
             const pair = pairs[i];
-            
+
             if (pair.bodyA === this.body) {
                 // Remove the body from our contacts
                 this.inCollision.delete(pair.bodyB);
-                
+
                 // Find the other game object
                 const otherObject = window.physicsManager.bodies.get(pair.bodyB);
                 if (otherObject) {
@@ -460,11 +449,11 @@ class RigidBody extends Module {
                         this.gameObject.onCollisionExit(otherObject);
                     }
                 }
-            } 
+            }
             else if (pair.bodyB === this.body) {
                 // Remove the body from our contacts
                 this.inCollision.delete(pair.bodyA);
-                
+
                 // Find the other game object
                 const otherObject = window.physicsManager.bodies.get(pair.bodyA);
                 if (otherObject) {
@@ -476,7 +465,7 @@ class RigidBody extends Module {
             }
         }
     }
-    
+
     /**
      * Called before rendering to update static bodies if needed
      */
@@ -486,12 +475,12 @@ class RigidBody extends Module {
             const pos = this.gameObject.getWorldPosition();
             const currentPos = this.body.position;
             const angle = this.gameObject.angle * (Math.PI / 180);
-            
+
             // Check if position or rotation changed
-            if (Math.abs(pos.x - currentPos.x) > 0.01 || 
+            if (Math.abs(pos.x - currentPos.x) > 0.01 ||
                 Math.abs(pos.y - currentPos.y) > 0.01 ||
                 Math.abs(angle - this.body.angle) > 0.01) {
-                    
+
                 Matter.Body.setPosition(this.body, { x: pos.x, y: pos.y });
                 Matter.Body.setAngle(this.body, angle);
             }
@@ -506,14 +495,14 @@ class RigidBody extends Module {
         // But completely prevent any property changes from triggering rebuilds
         const oldSkipRebuild = this._skipRebuild;
         this._skipRebuild = true;
-        
+
         try {
             // Set properties without triggering rebuilds
             super.fromJSON(data);
-            
+
             // Ensure body is null during clone 
             this.body = null;
-            
+
             // Flag that body needs to be created later when safely possible
             this.pendingBodyCreation = true;
         } catch (error) {
@@ -522,7 +511,7 @@ class RigidBody extends Module {
             // Restore previous skip status
             this._skipRebuild = oldSkipRebuild;
         }
-        
+
         return this;
     }
 
@@ -535,7 +524,7 @@ class RigidBody extends Module {
             this.pendingBodyCreation = false;
         }
     }
-    
+
     /**
      * Called when the module is destroyed
      */
@@ -545,7 +534,7 @@ class RigidBody extends Module {
             Matter.Events.off(window.physicsManager.engine, 'collisionStart', this.boundOnCollisionStart);
             Matter.Events.off(window.physicsManager.engine, 'collisionEnd', this.boundOnCollisionEnd);
         }
-        
+
         // Remove body from physics world
         this.removeBody();
     }

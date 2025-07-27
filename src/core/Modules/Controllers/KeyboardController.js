@@ -54,7 +54,8 @@ class KeyboardController extends Module {
                 header: "Movement Settings",
                 label: "Movement Speed",
                 slider: true
-            }
+            },
+            onChange: (val) => { this.speed = val; }
         });
         
         this.exposeProperty("moveMode", "enum", this.moveMode, {
@@ -62,14 +63,16 @@ class KeyboardController extends Module {
             options: ["direct", "rotate-and-move"],
             style: {
                 label: "Movement Style"
-            }
+            },
+            onChange: (val) => { this.moveMode = val; }
         });
         
         this.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
             description: "Allow movement in diagonal directions",
             style: {
                 label: "Allow Diagonals"
-            }
+            },
+            onChange: (val) => { this.allowDiagonalMovement = val; }
         });
         
         // Acceleration settings
@@ -77,7 +80,8 @@ class KeyboardController extends Module {
             description: "Enable smooth acceleration/deceleration",
             style: {
                 label: "Use Acceleration"
-            }
+            },
+            onChange: (val) => { this.useAcceleration = val; }
         });
         
         this.exposeProperty("acceleration", "number", this.acceleration, {
@@ -88,7 +92,8 @@ class KeyboardController extends Module {
             style: {
                 label: "Acceleration Rate",
                 slider: true
-            }
+            },
+            onChange: (val) => { this.acceleration = val; }
         });
         
         this.exposeProperty("deceleration", "number", this.deceleration, {
@@ -99,7 +104,8 @@ class KeyboardController extends Module {
             style: {
                 label: "Deceleration Rate",
                 slider: true
-            }
+            },
+            onChange: (val) => { this.deceleration = val; }
         });
         
         this.exposeProperty("rotationSpeed", "number", this.rotationSpeed, {
@@ -110,7 +116,8 @@ class KeyboardController extends Module {
             style: {
                 label: "Rotation Speed",
                 slider: true
-            }
+            },
+            onChange: (val) => { this.rotationSpeed = val; }
         });
         
         // Control bindings with styling
@@ -119,49 +126,56 @@ class KeyboardController extends Module {
             style: {
                 header: "Control Bindings",
                 label: "Up Key"
-            }
+            },
+            onChange: (val) => { this.upKey = val; }
         });
         
         this.exposeProperty("downKey", "string", this.downKey, {
             description: "Key for downward movement",
             style: {
                 label: "Down Key"
-            }
+            },
+            onChange: (val) => { this.downKey = val; }
         });
         
         this.exposeProperty("leftKey", "string", this.leftKey, {
             description: "Key for leftward movement",
             style: {
                 label: "Left Key"
-            }
+            },
+            onChange: (val) => { this.leftKey = val; }
         });
         
         this.exposeProperty("rightKey", "string", this.rightKey, {
             description: "Key for rightward movement",
             style: {
                 label: "Right Key"
-            }
+            },
+            onChange: (val) => { this.rightKey = val; }
         });
         
         this.exposeProperty("actionKey", "string", this.actionKey, {
             description: "Key for primary action",
             style: {
                 label: "Action Key"
-            }
+            },
+            onChange: (val) => { this.actionKey = val; }
         });
         
         this.exposeProperty("rotateLeftKey", "string", this.rotateLeftKey, {
             description: "Key for rotating counter-clockwise",
             style: {
                 label: "Rotate Left"
-            }
+            },
+            onChange: (val) => { this.rotateLeftKey = val; }
         });
         
         this.exposeProperty("rotateRightKey", "string", this.rotateRightKey, {
             description: "Key for rotating clockwise",
             style: {
                 label: "Rotate Right"
-            }
+            },
+            onChange: (val) => { this.rotateRightKey = val; }   
         });
     }
 
@@ -378,12 +392,12 @@ class KeyboardController extends Module {
             
             // Handle strafing
             if (window.input.keyDown(this.leftKey)) {
-                inputX -= Math.cos(angle);
-                inputY -= Math.sin(angle);
-            }
-            if (window.input.keyDown(this.rightKey)) {
                 inputX += Math.cos(angle);
                 inputY += Math.sin(angle);
+            }
+            if (window.input.keyDown(this.rightKey)) {
+                inputX -= Math.cos(angle);
+                inputY -= Math.sin(angle);
             }
         }
         

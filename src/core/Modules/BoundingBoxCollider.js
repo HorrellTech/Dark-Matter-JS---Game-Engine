@@ -28,26 +28,40 @@ class BoundingBoxCollider extends Module {
             min: 1,
             max: 1000,
             step: 1,
-            description: "Width of the collider"
+            description: "Width of the collider",
+            style: {
+                label: "Collider Width"
+            },
+            onChange: (val) => { this.width = val; }
         });
         
         this.exposeProperty("height", "number", 50, {
             min: 1,
             max: 1000,
             step: 1,
-            description: "Height of the collider"
+            description: "Height of the collider",
+            onChange: (val) => { this.height = val; }
         });
         
         this.exposeProperty("offset", "vector2", new Vector2(0, 0), {
-            description: "Offset from the GameObject center"
+            description: "Offset from the GameObject center",
+            onChange: (val) => { this.offset = val; }
         });
         
         this.exposeProperty("showCollider", "boolean", true, {
-            description: "Whether to show the collider in the editor"
+            description: "Whether to show the collider in the editor",
+            style: {
+                label: "Show Collider"
+            },
+            onChange: (val) => { this.showCollider = val; }
         });
         
         this.exposeProperty("isTrigger", "boolean", false, {
-            description: "Trigger colliders don't cause physics responses"
+            description: "Trigger colliders don't cause physics responses",
+            style: {
+                label: "Is Trigger"
+            },
+            onChange: (val) => { this.isTrigger = val; }
         });
     }
     
@@ -157,6 +171,36 @@ class BoundingBoxCollider extends Module {
             ctx.fill();
         }
         
+        ctx.restore();
+    }
+
+    drawGizmos(ctx) {
+        if (!this.enabled || !this.showCollider) return;
+        // Draw the collider outline in the editor
+        const w = this.width;
+        const h = this.height;
+        const ox = this.offset.x;
+        const oy = this.offset.y;
+        ctx.save();
+        ctx.translate(ox, oy);
+        ctx.beginPath();
+        ctx.rect(-w / 2, -h / 2, w, h);
+        // Use different styles for triggers vs solid colliders
+        if (this.isTrigger) {
+            ctx.setLineDash([5, 5]);
+            ctx.strokeStyle = '#00ffff80';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+        else {
+            ctx.strokeStyle = '#00ff0080';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // Add slight fill for solid colliders
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+            ctx.fill();
+        }
         ctx.restore();
     }
     
