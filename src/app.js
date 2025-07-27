@@ -1047,6 +1047,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Global touch-to-click handler for interactive elements
+    document.addEventListener('touchend', function(e) {
+        // Match any interactive UI component
+        let target = e.target.closest(
+            '[class*="button"], [class*="tab"], [class*="item"], [class*="control"], [class*="action"], [class*="icon"], [class*="link"], ' +
+            'button, [role="button"], [role="tab"], [role="menuitem"], [data-action]'
+        );
+        if (!target) return;
+        e.preventDefault();
+        target.click();
+    }, { passive: false });
+
     setTimeout(() => {
         if (window.editor) {
             window.editor.refreshCanvas();
