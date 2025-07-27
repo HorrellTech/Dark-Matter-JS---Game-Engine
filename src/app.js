@@ -854,7 +854,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setupMobileTouchHandling() {
         // Add touch events for canvas interaction
-        const editorCanvas = document.getElementById('editorCanvas');
+        /*const editorCanvas = document.getElementById('editorCanvas');
         
         if (editorCanvas && window.editor) {
             let touchStartPos = null;
@@ -972,7 +972,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.editor._pinchZoomData = null;
                 }
             });
-        }
+        }*/
         
         // Make toolbar and buttons more touch-friendly
         document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
