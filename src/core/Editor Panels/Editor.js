@@ -537,10 +537,9 @@ class Editor {
      */
     handleTouchStart(e) {
         // Prevent default behavior to avoid scrolling the page
-        e.preventDefault();
+        //e.preventDefault();
 
         if (e.touches.length === 1) {
-            // Single touch - handle like mouse click
             const touch = e.touches[0];
             const rect = this.canvas.getBoundingClientRect();
             const screenPos = new Vector2(
@@ -549,7 +548,6 @@ class Editor {
             );
             const worldPos = this.screenToWorldPosition(screenPos);
 
-            // Store touch data
             this.touchData = {
                 startPos: screenPos.clone(),
                 startWorldPos: worldPos.clone(),
@@ -558,8 +556,11 @@ class Editor {
                 totalDistance: 0
             };
 
-            // Check for object interaction first
             const clickedObj = this.findObjectAtPosition(worldPos);
+
+            // Clear both flags first
+            this.dragInfo.object = null;
+            this.dragInfo.isPanning = false;
 
             if (clickedObj) {
                 // Start dragging the object
@@ -569,7 +570,6 @@ class Editor {
                 this.dragInfo.objectStartPos = clickedObj.position.clone();
                 this.dragInfo.dragMode = 'free';
 
-                // Select the object
                 if (this.hierarchy) {
                     this.hierarchy.selectGameObject(clickedObj);
                 }
@@ -624,11 +624,10 @@ class Editor {
                 (touch.clientY - rect.top) * (this.canvas.height / rect.height)
             );
 
-            // Update touch tracking
             if (this.touchData) {
                 const distance = screenPos.distance(this.touchData.startPos);
                 this.touchData.totalDistance += distance;
-                this.touchData.moved = distance > 5; // 5px threshold
+                this.touchData.moved = distance > 5;
             }
 
             if (this.dragInfo.isPanning) {
@@ -643,12 +642,10 @@ class Editor {
 
                 this.dragInfo.object.position = this.dragInfo.objectStartPos.add(delta);
 
-                // Snap to grid if enabled
                 if (this.grid.snapToGrid) {
                     this.dragInfo.object.position = this.grid.snapPosition(this.dragInfo.object.position);
                 }
 
-                // Update inspector if available
                 if (this.inspector) {
                     this.inspector.updateTransformValues();
                 }
@@ -696,7 +693,7 @@ class Editor {
      */
     handleTouchEnd(e) {
         // Prevent default behavior
-        e.preventDefault();
+        //e.preventDefault();
 
         if (this.dragInfo.dragging) {
             // Check if this was a tap (short duration, minimal movement)
