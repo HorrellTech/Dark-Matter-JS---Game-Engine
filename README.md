@@ -1,7 +1,7 @@
 # Dark Matter JS Game Engine
 
 <p align="center">
-  <img src="assets/logo.png" alt="Dark Matter JS Logo" width="300"/>
+  <img src="logo.png" alt="Dark Matter JS Logo" width="300"/>
   <br>
   <em>A powerful, component-based 2D game engine for the web.</em>
 </p>
