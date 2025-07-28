@@ -7,7 +7,7 @@ class SceneManager {
 
     initializeToolbar() {
         const toolbar = document.querySelector('.editor-toolbar') || this.createToolbar();
-        
+
         const sceneControls = document.createElement('div');
         sceneControls.className = 'toolbar-group scene-controls';
         sceneControls.innerHTML = `
@@ -35,10 +35,10 @@ class SceneManager {
 
     setupToolbarListeners(controls) {
         const [newBtn, loadBtn, saveBtn, exportBtn, importBtn] = controls.querySelectorAll('.toolbar-button');
-    
+
         // Create new scene
         newBtn.addEventListener('click', () => this.createNewScene());
-        
+
         // Load scene (prioritize file browser if available)
         loadBtn.addEventListener('click', () => {
             if (this.editor.fileBrowser) {
@@ -47,7 +47,7 @@ class SceneManager {
                 this.showLoadSceneDialog(); // Fallback to local storage
             }
         });
-        
+
         // Save scene (prioritize file browser if available)
         saveBtn.addEventListener('click', () => {
             if (this.editor.fileBrowser) {
@@ -56,32 +56,32 @@ class SceneManager {
                 this.saveToLocalStorage();
             }
         });
-        
+
         // Export to file
         exportBtn.addEventListener('click', () => this.exportToFileSystem());
-        
+
         // Import from file
         importBtn.addEventListener('click', () => this.importFromFileSystem());
     }
 
     async saveCurrentScene(forceSaveAs = false) {
         if (!this.editor.activeScene) return false;
-        
+
         const scene = this.editor.activeScene;
-        
+
         try {
             // Check if we have a file browser available
             if (!this.editor.fileBrowser) {
                 console.warn('FileBrowser not available, falling back to local storage');
                 return this.saveToLocalStorage();
             }
-            
+
             // Ensure scenes folder exists (with correct capitalization)
             const scenesPath = await this.ensureScenesFolderExists();
             if (!scenesPath) {
                 throw new Error('Could not create Scenes folder');
             }
-            
+
             // Determine if we need to show save dialog
             if (!scene.path || forceSaveAs) {
                 // Make sure the filename ends with .scene
@@ -89,38 +89,38 @@ class SceneManager {
                 if (!fileName.endsWith('.scene')) {
                     fileName += '.scene';
                 }
-                
+
                 // Show save dialog with scenes folder as default path
                 const filePath = await this.editor.fileBrowser.showSaveDialog({
                     title: 'Save Scene',
                     defaultPath: `${scenesPath}/${fileName}`,
                     filters: [{ name: 'Scene Files', extensions: ['scene'] }]
                 });
-                
+
                 if (!filePath) return false; // User cancelled
                 scene.path = filePath;
             }
-            
+
             // Save the scene to file
             const sceneData = JSON.stringify(scene.toJSON(), null, 2);
             const success = await this.editor.fileBrowser.writeFile(scene.path, sceneData);
-            
+
             if (success) {
                 scene.dirty = false;
                 scene.isBuffered = false;
-                
+
                 // Update scene name from file name
                 const fileName = scene.path.split('/').pop().split('\\').pop();
                 scene.name = fileName.replace('.scene', '');
-                
+
                 this.updateSceneList();
                 document.title = `Dark Matter JS - ${scene.name}`;
-                
+
                 // Show success notification
                 if (this.editor.fileBrowser.showNotification) {
                     this.editor.fileBrowser.showNotification('Scene saved successfully');
                 }
-                
+
                 return true;
             } else {
                 throw new Error('Failed to write scene file');
@@ -134,10 +134,10 @@ class SceneManager {
 
     async saveToLocalStorage() {
         if (!this.editor.activeScene) return;
-        
+
         const scene = this.editor.activeScene;
         const name = scene.name;
-        
+
         if (scene.isBuffered) {
             const newName = await this.promptSceneName(name);
             if (!newName) return;
@@ -148,24 +148,24 @@ class SceneManager {
         scene.dirty = false;
         scene.isBuffered = false;
         scene.isLocal = true;
-        
+
         this.updateSceneList();
         document.title = `Dark Matter JS - ${scene.name}`;
     }
 
     async openSceneDialog() {
         if (!await this.checkUnsavedChanges()) return;
-        
+
         try {
             if (!this.editor.fileBrowser) {
                 throw new Error('File browser not available');
             }
-            
+
             const filePath = await this.editor.fileBrowser.showOpenDialog({
                 title: 'Open Scene',
                 filters: [{ name: 'Scene Files', extensions: ['scene'] }]
             });
-            
+
             if (filePath) {
                 await this.loadScene(filePath);
             }
@@ -251,7 +251,7 @@ class SceneManager {
             if (!scene) {
                 throw new Error(`Scene "${name}" not found in local storage`);
             }
-            
+
             // Remove any buffered scenes when loading a saved one
             this.editor.scenes = this.editor.scenes.filter(s => !s.isBuffered);
             this.editor.scenes.push(scene);
@@ -272,42 +272,42 @@ class SceneManager {
             if (!filePath) {
                 throw new Error('No file path provided');
             }
-            
+
             if (!this.editor.fileBrowser) {
                 throw new Error('FileBrowser not available');
             }
-    
+
             // Read the file content
             const content = await this.editor.fileBrowser.readFile(filePath);
             if (!content) {
                 throw new Error(`Could not read file: ${filePath}`);
             }
-            
+
             // Parse the scene data
             const sceneData = JSON.parse(content);
-            
+
             // Create a new scene from the data
             const scene = Scene.fromJSON(sceneData);
             scene.path = filePath;
             scene.dirty = false;
             scene.isBuffered = false;
-            
+
             // Get name from file path
             const fileName = filePath.split('/').pop().split('\\').pop();
             scene.name = fileName.replace('.scene', '');
-    
+
             // Remove any buffered scenes when loading a saved one
             this.editor.scenes = this.editor.scenes.filter(s => !s.isBuffered);
             this.editor.scenes.push(scene);
             this.editor.setActiveScene(scene);
             this.updateSceneList();
-            
+
             // Update UI
             document.title = `Dark Matter JS - ${scene.name}`;
             if (this.editor.fileBrowser.showNotification) {
                 this.editor.fileBrowser.showNotification(`Loaded scene: ${scene.name}`);
             }
-            
+
             return scene;
         } catch (error) {
             console.error('Error loading scene:', error);
@@ -322,42 +322,42 @@ class SceneManager {
             alert('File browser not available');
             return;
         }
-    
+
         const scene = this.editor.activeScene;
-        
+
         try {
             // Ensure scenes folder exists
             const scenesPath = await this.ensureScenesFolderExists();
             if (!scenesPath) {
                 throw new Error('Could not ensure scenes folder exists');
             }
-        
+
             // Get default file name
             const defaultFileName = scene.name.endsWith('.scene') ? scene.name : `${scene.name}.scene`;
-            
+
             // Show save dialog
             const filePath = await this.editor.fileBrowser.showSaveDialog({
                 title: 'Export Scene',
                 defaultPath: `/${this.scenesFolder}/${defaultFileName}`,
                 filters: [{ name: 'Scene Files', extensions: ['scene'] }]
             });
-        
+
             if (!filePath) return;
-        
+
             const sceneData = JSON.stringify(scene.toJSON(), null, 2);
             const success = await this.editor.fileBrowser.writeFile(filePath, sceneData);
-            
+
             if (success) {
                 scene.path = filePath;
                 scene.dirty = false;
                 scene.isBuffered = false;
-                
+
                 if (this.editor.fileBrowser.showNotification) {
                     this.editor.fileBrowser.showNotification('Scene exported successfully');
                 } else {
                     alert('Scene exported successfully');
                 }
-                
+
                 // Refresh the file browser to show the new file
                 await this.editor.fileBrowser.refreshFiles();
             } else {
@@ -385,7 +385,7 @@ class SceneManager {
             const sceneData = JSON.parse(content);
             const scene = Scene.fromJSON(sceneData);
             scene.isLocal = false;
-            
+
             this.editor.scenes = this.editor.scenes.filter(s => !s.isBuffered);
             this.editor.scenes.push(scene);
             this.editor.setActiveScene(scene);
@@ -537,27 +537,27 @@ class SceneManager {
             console.error("File browser not available in editor");
             return null;
         }
-        
+
         try {
             // Define the scenes folder path with capital S
             const scenesPath = '/Scenes';
-            
+
             // Check if scenes folder exists
             const exists = await this.editor.fileBrowser.exists(scenesPath);
-            
+
             if (!exists) {
                 // Create scenes folder
                 const result = await this.editor.fileBrowser.createDirectory(scenesPath);
-                
+
                 if (!result) {
                     console.error("Failed to create Scenes folder");
                     return null;
                 }
-                
+
                 // Refresh file browser to show new folder
                 await this.editor.fileBrowser.refreshFiles();
             }
-            
+
             return scenesPath;
         } catch (error) {
             console.error('Error ensuring Scenes folder exists:', error);
@@ -566,7 +566,7 @@ class SceneManager {
     }
 
     refreshSceneList(dropdown) {
-        dropdown.innerHTML = this.editor.scenes.map(scene => 
+        dropdown.innerHTML = this.editor.scenes.map(scene =>
             `<option value="${scene.name}" ${scene === this.editor.activeScene ? 'selected' : ''}>
                 ${scene.name}
             </option>`
@@ -576,21 +576,21 @@ class SceneManager {
     async createNewScene() {
         // Check if there are unsaved changes in the current scene
         if (!(await this.checkUnsavedChanges())) return;
-        
+
         // Create a new scene
         const scene = new Scene(this.getNextBufferName());
         scene.dirty = true;
         scene.isBuffered = true;
-        
+
         // Clear hierarchy by setting the new scene as active
         this.editor.scenes = this.editor.scenes.filter(s => !s.isBuffered);
         this.editor.scenes.push(scene);
         this.editor.setActiveScene(scene);
-        
+
         // Update UI
         this.updateSceneList();
         document.title = `Dark Matter JS - ${scene.name}`;
-        
+
         return scene;
     }
 
@@ -598,12 +598,12 @@ class SceneManager {
         // Create a unique untitled scene name
         const baseSceneName = "Untitled Scene";
         let counter = 1;
-        
+
         // Find the next available number
         while (this.editor.scenes.some(s => s.name === `${baseSceneName} ${counter}`)) {
             counter++;
         }
-        
+
         return `${baseSceneName} ${counter}`;
     }
 
@@ -652,7 +652,12 @@ class SceneManager {
             settings.gridEnabled = dialog.querySelector('#gridEnabled').checked;
             settings.gridSize = parseInt(dialog.querySelector('#gridSize').value);
             settings.snapToGrid = dialog.querySelector('#snapToGrid').checked;
-            
+
+            // Sync grid size with EditorGrid
+            if (this.editor.grid) {
+                this.editor.grid.gridSize = settings.gridSize;
+            }
+
             this.editor.refreshCanvas();
             dialog.remove();
         });

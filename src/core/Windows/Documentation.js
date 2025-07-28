@@ -3,7 +3,7 @@ class Documentation {
         this.container = null;
         this.currentSection = null;
         this.currentTopic = null;
-        
+
         // Define the documentation structure - easy to extend
         this.docs = {
             "Getting Started": {
@@ -807,6 +807,15 @@ stopSound() {
                     }
                 }
             },
+            "AI Prompting": {
+                icon: "fas fa-robot",
+                description: "Using AI to enhance gameplay",
+                topics: {
+                    "Prompty for ANY AI chatbot": {
+                        content: this.generateAIPromptContent()
+                    }
+                }
+            },
             "Keywords Reference": {
                 icon: "fas fa-code",
                 description: "Complete reference for all available functions and modules",
@@ -859,11 +868,11 @@ stopSound() {
                 }
             }
         };
-        
+
         // Add CSS styles for documentation
         this.addStyles();
     }
-    
+
     addStyles() {
         // Create style element if it doesn't exist
         if (!document.getElementById('doc-modal-styles')) {
@@ -1120,7 +1129,100 @@ stopSound() {
             document.head.appendChild(styleElement);
         }
     }
-    
+
+    generateAIPromptContent() {
+        try {
+            return `
+            <h2>Using AI to Enhance Gameplay</h2>
+            <p>Dark Matter JS supports AI-generated content to enhance gameplay experiences.</p>
+
+            <div class="doc-section">
+                <h3>AI Prompting</h3>
+                <p>Use AI to generate content, behaviors, and more. You can use this prompt with any AI chatbot that supports text input.</p>
+                
+                <h4>PROMPT:</h4>
+                <pre><code>You are an AI assistant specialized in the Dark Matter JS game engine module system.
+
+**Module System Basics:**
+- Modules extend GameObject functionality
+- GameObjects have: position (Vector2), scale (Vector2), angle (degrees), size (Vector2)
+- All modules extend the Module base class
+- Use this.gameObject to access the GameObject
+- Access other modules: this.gameObject.getModule("ModuleName")
+
+**Module Template:**
+\`\`\`javascript
+class MyModule extends Module {
+    static namespace = "Category";
+    static description = "Brief description";
+    static allowMultiple = false; // or true
+
+    constructor() {
+        super("MyModule");
+
+        this.speed = 100; // Default speed
+        
+        // Expose properties for inspector
+        this.exposeProperty("speed", "number", 100, {
+            description: "Movement speed",
+            min: 0, max: 500,
+            step: 1,
+            onChange: (val) => {
+                this.speed = val; // Update speed when changed
+            }
+        });
+    }
+
+    start() {
+        // Initialize when game starts
+    }
+
+    loop(deltaTime) {
+        // Update logic every frame
+        // deltaTime is in seconds
+        this.gameObject.position.x += this.speed * deltaTime;
+    }
+
+    draw(ctx) {
+        // Render to canvas
+    }
+
+    drawGizmos(ctx) {
+        // Draw debug gizmos (optional)
+    }
+}
+
+window.MyModule = MyModule; // Register globally
+\`\`\`
+
+**Common Property Types:**
+- "number", "string", "boolean", "color"
+- "enum" (needs options: ["A", "B", "C"])
+- "vector2" (for Vector2 objects)
+
+**Available Input:**
+- window.input.keyDown("w") - check if key held
+- window.input.keyPressed("space") - check if key just pressed
+- window.input.mouseDown("left") - mouse button states
+
+**Transform Access:**
+- this.gameObject.position (Vector2)
+- this.gameObject.angle (degrees)
+- this.gameObject.scale (Vector2)
+- this.gameObject.getWorldPosition()
+
+Provide working, complete modules. Keep code concise but functional.
+REQUEST: {USER_PROMPT_HERE}</code></pre>
+                
+                <p>Make sure to handle AI responses properly and validate the data before using it in your game.</p>
+            </div>
+        `;
+        } catch (e) {
+            console.error("Error generating AI prompt content:", e);
+            return "<h2>AI Prompting</h2><p>Error loading content.</p>";
+        }
+    }
+
     /**
      * Generate content for keywords documentation based on group
      * @param {string} group - The group name to generate content for
@@ -1130,12 +1232,12 @@ stopSound() {
         if (!window.DarkMatterDocs) {
             return `<h2>${group} Functions</h2><p>Keywords documentation not available.</p>`;
         }
-        
+
         let content = `<h2>${group} Functions</h2>`;
-        
+
         // Get all functions in this group
         const functions = window.getFunctionsByGroup ? window.getFunctionsByGroup(group) : [];
-        
+
         if (functions.length === 0) {
             // If no functions found by group, try to find by category name
             for (const [categoryName, categoryData] of Object.entries(window.DarkMatterDocs)) {
@@ -1150,11 +1252,11 @@ stopSound() {
                 }
             }
         }
-        
+
         if (functions.length === 0) {
             return content + `<p>No functions found for group: ${group}</p>`;
         }
-        
+
         // Generate content for each function
         functions.forEach(func => {
             content += `
@@ -1201,16 +1303,16 @@ stopSound() {
                 </div>
             `;
         });
-        
+
         return content;
     }
-    
+
     show() {
         // Create container
         this.container = document.createElement('div');
         this.container.className = 'documentation-modal';
         this.container.style.animation = 'fadeIn 0.3s forwards';
-        
+
         // Create content structure
         const content = `
             <div class="documentation-content">
@@ -1259,23 +1361,23 @@ stopSound() {
                 </div>
             </div>
         `;
-        
+
         this.container.innerHTML = content;
         document.body.appendChild(this.container);
-        
+
         // Add event listeners
         this.setupEventListeners();
-        
+
         // Show the first category by default
         const firstCategory = this.container.querySelector('.doc-category-header');
         if (firstCategory) {
             this.toggleCategory(firstCategory);
         }
     }
-    
+
     generateSidebar() {
         let sidebar = '';
-        
+
         // Generate categories and topics
         for (const [categoryName, category] of Object.entries(this.docs)) {
             sidebar += `
@@ -1290,7 +1392,7 @@ stopSound() {
                     <div class="doc-category-description">${category.description}</div>
                     <div class="doc-topics" id="topics-${categoryName.replace(/\s+/g, '-').replace(/&/g, 'and').toLowerCase()}">
             `;
-            
+
             // Add topics for this category
             for (const [topicName, topic] of Object.entries(category.topics)) {
                 sidebar += `
@@ -1299,59 +1401,59 @@ stopSound() {
                     </div>
                 `;
             }
-            
+
             sidebar += `
                     </div>
                 </div>
             `;
         }
-        
+
         return sidebar;
     }
-    
+
     setupEventListeners() {
         // Close button
         const closeButton = this.container.querySelector('#docCloseBtn');
         if (closeButton) {
             closeButton.addEventListener('click', () => this.close());
         }
-        
+
         // Category headers
         const categoryHeaders = this.container.querySelectorAll('.doc-category-header');
         categoryHeaders.forEach(header => {
             header.addEventListener('click', () => this.toggleCategory(header));
         });
-        
+
         // Topics
         const topics = this.container.querySelectorAll('.doc-topic');
         topics.forEach(topic => {
             topic.addEventListener('click', () => this.showTopic(topic));
         });
     }
-    
+
     toggleCategory(header) {
         const categoryName = header.dataset.category;
         const topicsContainer = this.container.querySelector(`#topics-${categoryName.replace(/\s+/g, '-').replace(/&/g, 'and').toLowerCase()}`);
-        
+
         // Toggle active state
         const isActive = header.classList.contains('active');
-        
+
         // Reset all categories
         this.container.querySelectorAll('.doc-category-header').forEach(h => {
             h.classList.remove('active');
             h.querySelector('.fas').className = 'fas fa-chevron-down';
         });
-        
+
         this.container.querySelectorAll('.doc-topics').forEach(t => {
             t.classList.remove('expanded');
         });
-        
+
         // Expand this category if it wasn't active
         if (!isActive) {
             header.classList.add('active');
             header.querySelector('.fas').className = 'fas fa-chevron-up';
             topicsContainer.classList.add('expanded');
-            
+
             // Show the first topic by default
             const firstTopic = topicsContainer.querySelector('.doc-topic');
             if (firstTopic) {
@@ -1359,33 +1461,33 @@ stopSound() {
             }
         }
     }
-    
+
     showTopic(topicElement) {
         // Get the topic content
         const categoryName = topicElement.dataset.category;
         const topicName = topicElement.dataset.topic;
-        
+
         // Reset active topics
         this.container.querySelectorAll('.doc-topic').forEach(t => {
             t.classList.remove('active');
         });
-        
+
         // Set this topic as active
         topicElement.classList.add('active');
-        
+
         // Update content area
         const contentContainer = this.container.querySelector('.doc-content');
         const topicContent = this.docs[categoryName].topics[topicName].content;
-        
+
         contentContainer.innerHTML = topicContent;
-        
+
         // Syntax highlighting could be added here if needed
     }
-    
+
     close() {
         // Add closing animation
         this.container.style.animation = 'fadeOut 0.3s forwards';
-        
+
         // Remove from DOM after animation completes
         setTimeout(() => {
             if (this.container && this.container.parentElement) {

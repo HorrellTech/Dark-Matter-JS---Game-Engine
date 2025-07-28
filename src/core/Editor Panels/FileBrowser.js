@@ -7,6 +7,8 @@ class FileBrowser {
         this.dbName = 'FileSystemDB';
         this.dbVersion = 1;
         this.fileTypes = {}; // Initialize fileTypes object first
+        this.isInitializing = false; // Track initialization state
+
         // Add clipboard state
         this.clipboard = {
             items: [],
@@ -2455,33 +2457,51 @@ window.${pascalCaseName} = ${pascalCaseName};
             return false;
         }
 
+        this.isInitializing = true; // Block UI actions
+
         try {
-            // Close existing connection
             if (this.db) {
                 this.db.close();
+                this.db = null;
             }
 
-            // Delete the database
+            let blocked = false;
             await new Promise((resolve, reject) => {
                 const request = indexedDB.deleteDatabase(this.dbName);
-                request.onsuccess = () => {
-                    console.log('Database successfully deleted');
-                    resolve();
-                };
-                request.onerror = () => {
-                    console.error('Could not delete database');
-                    reject(new Error('Failed to delete database'));
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(new Error('Failed to delete database'));
+                request.onblocked = () => {
+                    blocked = true;
+                    this.showNotification('Database deletion blocked. Please close other tabs/windows using this project and try again.', 'error');
+                    console.warn('Database deletion blocked by open connections');
                 };
             });
 
-            // Reinitialize the database
+            if (blocked) {
+                // Optionally, retry after a delay
+                setTimeout(() => this.resetDatabase(), 1000);
+                return false;
+            }
+
+            await new Promise(res => setTimeout(res, 100));
             await this.initializeDB();
+
+            if (this.directoryTree) {
+                this.treePanel.removeChild(this.directoryTree.container);
+            }
+            this.directoryTree = new DirectoryTree(this);
+            this.treePanel.appendChild(this.directoryTree.container);
+            await this.directoryTree.initialize();
+
+            await this.navigateTo('/');
+
             this.showNotification('File system has been reset', 'info');
             return true;
         } catch (error) {
-            console.error('Error resetting database:', error);
             this.showNotification('Error resetting file system', 'error');
             return false;
+        } finally {
+            this.isInitializing = false; // Allow UI actions again
         }
     }
 

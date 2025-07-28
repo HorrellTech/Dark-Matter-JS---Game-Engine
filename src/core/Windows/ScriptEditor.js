@@ -1016,11 +1016,17 @@ class MyModule extends Module {
 
     constructor() {
         super("MyModule");
+
+        this.speed = 100; // Default speed
         
         // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
             description: "Movement speed",
-            min: 0, max: 500
+            min: 0, max: 500,
+            step: 1,
+            onChange: (val) => {
+                this.speed = val; // Update speed when property changes
+            }
         });
     }
 
@@ -1031,6 +1037,7 @@ class MyModule extends Module {
     loop(deltaTime) {
         // Update logic every frame
         // deltaTime is in seconds
+        this.gameObject.position.x += this.speed * deltaTime;
     }
 
     draw(ctx) {

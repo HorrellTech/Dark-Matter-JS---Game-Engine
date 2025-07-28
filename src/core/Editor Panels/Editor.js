@@ -140,6 +140,34 @@ class Editor {
                 // Refresh to update cursor visualization
                 this.refreshCanvas();
             }
+
+            // Duplicate selected object with Ctrl+D
+            if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
+                if (this.hierarchy && this.hierarchy.selectedObject) {
+                    this.hierarchy.duplicateSelectedGameObject();
+                    this.refreshCanvas();
+                }
+                e.preventDefault();
+            }
+
+            // Delete selected object with Delete key
+            if (e.key === 'Delete') {
+                if (this.hierarchy && this.hierarchy.selectedObject) {
+                    this.hierarchy.removeSelectedGameObject();
+                    this.refreshCanvas();
+                }
+                e.preventDefault();
+            }
+
+            // Create new object at center with Ctrl+I
+            if (e.ctrlKey && (e.key === 'i' || e.key === 'I')) {
+                if (this.hierarchy) {
+                    const centerViewPos = this.getWorldCenterOfView();
+                    this.hierarchy.addGameObject("New GameObject", centerViewPos);
+                    this.refreshCanvas();
+                }
+                e.preventDefault();
+            }
         });
 
         document.addEventListener('keyup', (e) => {
@@ -547,7 +575,7 @@ class Editor {
     handleTouchStart(e) {
         // Prevent default behavior to avoid scrolling the page
         //e.preventDefault();
-    
+
         const rect = this.canvas.getBoundingClientRect();
 
         if (e.touches.length === 1) {
@@ -1432,10 +1460,20 @@ class Editor {
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
 
-            // Convert world position to local position relative to parent
             let localPos = worldPos;
             if (this.dragInfo.object.parent) {
-                localPos = this.dragInfo.object.parent.worldToLocalPosition(worldPos);
+                // Convert world position to parent's local space
+                const parent = this.dragInfo.object.parent;
+                // Translate to parent origin
+                let rel = worldPos.subtract(parent.getWorldPosition());
+                // Rotate by negative parent angle
+                const angleRad = -parent.angle * Math.PI / 180;
+                const cos = Math.cos(angleRad);
+                const sin = Math.sin(angleRad);
+                localPos = new Vector2(
+                    rel.x * cos - rel.y * sin,
+                    rel.x * sin + rel.y * cos
+                );
             }
 
             // Calculate delta in local space
@@ -1443,11 +1481,21 @@ class Editor {
 
             // If dragging started from a specific offset, preserve it
             if (this.dragInfo.objectStartPos) {
-                const startWorldPos = this.dragInfo.object.parent
-                    ? this.dragInfo.object.parent.worldToLocalPosition(this.dragInfo.startPos)
+                let startWorldPos = this.dragInfo.object.parent
+                    ? (() => {
+                        // Same conversion for start position
+                        const parent = this.dragInfo.object.parent;
+                        let rel = this.dragInfo.startPos.subtract(parent.getWorldPosition());
+                        const angleRad = -parent.angle * Math.PI / 180;
+                        const cos = Math.cos(angleRad);
+                        const sin = Math.sin(angleRad);
+                        return new Vector2(
+                            rel.x * cos - rel.y * sin,
+                            rel.x * sin + rel.y * cos
+                        );
+                    })()
                     : this.dragInfo.startPos;
                 const offset = this.dragInfo.objectStartPos.subtract(startWorldPos);
-
                 newPosition = newPosition.add(offset);
             }
 
@@ -1458,13 +1506,30 @@ class Editor {
                 newPosition.x = this.dragInfo.object.position.x;
             }
 
-            // Apply movement to object
-            this.dragInfo.object.position = newPosition;
-
-            // Snap to grid if enabled
+            // Snap to grid if enabled (snap in world space, then convert to local)
             if (this.grid.snapToGrid) {
-                this.dragInfo.object.position = this.grid.snapPosition(this.dragInfo.object.position);
+                // Convert local position to world position
+                let parentWorld = this.dragInfo.object.parent ? this.dragInfo.object.parent.getWorldPosition() : new Vector2(0, 0);
+                let angleRad = this.dragInfo.object.parent ? this.dragInfo.object.parent.angle * Math.PI / 180 : 0;
+                let cos = Math.cos(angleRad);
+                let sin = Math.sin(angleRad);
+                let worldPos = new Vector2(
+                    parentWorld.x + newPosition.x * cos - newPosition.y * sin,
+                    parentWorld.y + newPosition.x * sin + newPosition.y * cos
+                );
+                // Snap world position
+                let snappedWorld = this.grid.snapPosition(worldPos);
+                // Convert snapped world position back to local
+                let rel = snappedWorld.subtract(parentWorld);
+                let localAngleRad = -angleRad;
+                let localCos = Math.cos(localAngleRad);
+                let localSin = Math.sin(localAngleRad);
+                newPosition = new Vector2(
+                    rel.x * localCos - rel.y * localSin,
+                    rel.x * localSin + rel.y * localCos
+                );
             }
+            this.dragInfo.object.position = newPosition;
 
             this.refreshCanvas();
         }

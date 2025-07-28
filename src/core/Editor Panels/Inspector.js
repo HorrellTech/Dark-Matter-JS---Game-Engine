@@ -7,10 +7,10 @@ class Inspector {
         this.scrollContainer = null;
         this.modulesList = null;
         this.availableModules = [];
-        
+
         // Initialize UI
         this.initializeUI();
-        
+
         // Find available modules
         this.detectAvailableModules();
 
@@ -21,7 +21,7 @@ class Inspector {
         window.addEventListener('panelsResized', () => {
             // Adjust scroll container height if needed
             if (this.scrollContainer) {
-                this.scrollContainer.style.maxHeight = 
+                this.scrollContainer.style.maxHeight =
                     (this.container.offsetHeight - this.container.querySelector('.inspector-header').offsetHeight) + 'px';
             }
         });
@@ -86,7 +86,7 @@ class Inspector {
         window.addEventListener('panelsResized', () => {
             // Adjust content height if needed
             if (this.content) {
-                this.content.style.maxHeight = 
+                this.content.style.maxHeight =
                     (this.container.offsetHeight - this.toolbar.offsetHeight) + 'px';
             }
         });
@@ -99,11 +99,11 @@ class Inspector {
         // Name input change
         this.nameInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
-            
+
             const newName = this.nameInput.value.trim();
             if (newName && newName !== this.inspectedObject.name) {
                 this.inspectedObject.rename(newName);
-                
+
                 // Update hierarchy if available
                 if (this.editor.hierarchy) {
                     this.editor.hierarchy.refreshHierarchy();
@@ -117,9 +117,9 @@ class Inspector {
         // Active toggle
         this.activeToggle.addEventListener('change', () => {
             if (!this.inspectedObject) return;
-            
+
             this.inspectedObject.active = this.activeToggle.checked;
-            
+
             // Update hierarchy and canvas
             if (this.editor.hierarchy) {
                 this.editor.hierarchy.refreshHierarchy();
@@ -130,7 +130,7 @@ class Inspector {
         // Lock button
         this.lockButton.addEventListener('click', () => {
             if (!this.inspectedObject) return;
-            
+
             if (this.lockedObject === this.inspectedObject) {
                 // Unlock
                 this.lockedObject = null;
@@ -147,7 +147,7 @@ class Inspector {
         // Unparent button
         this.unparentButton.addEventListener('click', () => {
             if (!this.inspectedObject || !this.inspectedObject.parent) return;
-            
+
             if (this.editor.hierarchy) {
                 this.editor.hierarchy.moveToRoot(this.inspectedObject);
                 this.updateParentInfo();
@@ -161,7 +161,7 @@ class Inspector {
 
         // Close module dropdown when clicking outside
         document.addEventListener('click', (e) => {
-            if (!this.addModuleButton.contains(e.target) && 
+            if (!this.addModuleButton.contains(e.target) &&
                 !this.moduleDropdown.contains(e.target)) {
                 this.moduleDropdown.style.display = 'none';
             }
@@ -172,15 +172,15 @@ class Inspector {
         const addComponentBtn = document.createElement('button');
         addComponentBtn.className = 'add-component-btn';
         addComponentBtn.innerHTML = '<i class="fas fa-plus"></i> Add Component';
-        
+
         // Create dropdown for available modules
         const dropdown = document.createElement('div');
         dropdown.className = 'component-dropdown';
-        
+
         // Get modules from the ModulesManager or ModuleRegistry
         if (window.modulesManager) {
             const availableModules = window.modulesManager.getAvailableModules();
-            
+
             availableModules.forEach(moduleName => {
                 const option = document.createElement('div');
                 option.className = 'component-option';
@@ -192,7 +192,7 @@ class Inspector {
             });
         } else if (window.moduleRegistry) {
             const availableModules = window.moduleRegistry.getAllModules();
-            
+
             availableModules.forEach(ModuleClass => {
                 const option = document.createElement('div');
                 option.className = 'component-option';
@@ -218,27 +218,27 @@ class Inspector {
                 dropdown.appendChild(option);
             });
         }
-        
+
         addComponentBtn.appendChild(dropdown);
-        
+
         // Show/hide dropdown on click
         addComponentBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             dropdown.classList.toggle('visible');
         });
-        
+
         // Hide dropdown when clicking elsewhere
         document.addEventListener('click', () => {
             dropdown.classList.remove('visible');
         });
-        
+
         return addComponentBtn;
     }
-    
+
     // Add this method to handle adding a module by class
     addModuleToInspectedObject(ModuleClass) {
         if (!this.inspectedObject || !ModuleClass) return;
-        
+
         try {
             const module = new ModuleClass();
             this.inspectedObject.addModule(module);
@@ -255,39 +255,39 @@ class Inspector {
     setupModuleDropTarget() {
         // Make the modules list and add module button droppable
         const dropTargets = [this.modulesList, this.addModuleButton];
-        
+
         dropTargets.forEach(target => {
             target.addEventListener('dragover', (e) => {
                 if (!this.inspectedObject) return;
                 if (!e.dataTransfer.types.includes('application/module-script')) return;
-                
+
                 e.preventDefault();
                 e.stopPropagation();
                 target.classList.add('module-drop-target');
                 e.dataTransfer.dropEffect = 'copy';
             });
-            
+
             target.addEventListener('dragleave', (e) => {
                 target.classList.remove('module-drop-target');
             });
-            
+
             target.addEventListener('drop', async (e) => {
                 if (!this.inspectedObject) return;
-                
+
                 e.preventDefault();
                 e.stopPropagation();
                 target.classList.remove('module-drop-target');
-                
+
                 const scriptPath = e.dataTransfer.getData('application/module-script');
                 if (!scriptPath) return;
-                
+
                 try {
                     const fileBrowser = this.editor.fileBrowser || window.fileBrowser;
                     if (!fileBrowser) throw new Error('FileBrowser not found');
-                    
+
                     const ModuleClass = await fileBrowser.loadModuleScript(scriptPath);
                     if (!ModuleClass) throw new Error('Failed to load module class');
-                    
+
                     // Add module to game object
                     const module = this.addModuleToGameObject(ModuleClass);
                     if (module) {
@@ -343,21 +343,21 @@ class Inspector {
                 this.moduleDropdown.style.maxHeight = `${Math.min(dropdownMaxHeight, availableSpace)}px`;
             }
             // --- End of new positioning logic ---
-            
+
             this.moduleDropdown.style.overflowY = 'auto';
-            
+
             try {
                 this.availableModules = []; // Clear before scanning
-                
+
                 const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
                 if (fileBrowser && typeof fileBrowser.scanForModuleScripts === 'function') {
                     console.log("Scanning for module scripts...");
                     await fileBrowser.scanForModuleScripts(); // Populates via registerModuleClass
                 }
-                
+
                 // Detect additional modules from global scope (e.g., built-ins)
                 this.detectAvailableModules(); // Appends to what scanForModuleScripts found
-                
+
                 console.log(`Total available modules after all scans: ${this.availableModules.length}`);
                 this.populateModuleDropdown(); // Ensure this calls the hierarchical version
             } catch (error) {
@@ -372,168 +372,168 @@ class Inspector {
     /**
  * Populate the dropdown with available modules, grouped by namespace
  */
-populateModuleDropdown() {
-    this.moduleDropdown.innerHTML = ''; 
+    populateModuleDropdown() {
+        this.moduleDropdown.innerHTML = '';
 
-    if (!this.availableModules.length) {
-        const msg = document.createElement('div');
-        msg.className = 'dropdown-message';
-        msg.textContent = 'No modules available';
-        this.moduleDropdown.appendChild(msg);
-        return;
-    }
-
-    // Build namespace tree
-    const nsTree = {}, general = [];
-    this.availableModules.forEach(({ namespace, moduleClass }) => {
-        if (!namespace || namespace.toLowerCase()==='general') {
-            general.push(moduleClass);
-        } else {
-            const parts = namespace.split('/');
-            let cur = nsTree;
-            parts.forEach(p => { cur[p] = cur[p]||{ _children:{},_modules:[] }; cur = cur[p]._children; });
-            cur._modules = cur._modules||[];
-            cur._modules.push(moduleClass);
+        if (!this.availableModules.length) {
+            const msg = document.createElement('div');
+            msg.className = 'dropdown-message';
+            msg.textContent = 'No modules available';
+            this.moduleDropdown.appendChild(msg);
+            return;
         }
-    });
 
-    // Recursive render
-    const render = (node, parentEl, level=0) => {
-        // folders
-        Object.keys(node._children||{}).sort().forEach(folder => {
-            const frame = document.createElement('div');
-            frame.className = 'module-dropdown-folder';
+        // Build namespace tree
+        const nsTree = {}, general = [];
+        this.availableModules.forEach(({ namespace, moduleClass }) => {
+            if (!namespace || namespace.toLowerCase() === 'general') {
+                general.push(moduleClass);
+            } else {
+                const parts = namespace.split('/');
+                let cur = nsTree;
+                parts.forEach(p => { cur[p] = cur[p] || { _children: {}, _modules: [] }; cur = cur[p]._children; });
+                cur._modules = cur._modules || [];
+                cur._modules.push(moduleClass);
+            }
+        });
+
+        // Recursive render
+        const render = (node, parentEl, level = 0) => {
+            // folders
+            Object.keys(node._children || {}).sort().forEach(folder => {
+                const frame = document.createElement('div');
+                frame.className = 'module-dropdown-folder';
+                const hdr = document.createElement('div');
+                hdr.className = 'module-dropdown-folder-header';
+                hdr.style.paddingLeft = `${10 + level * 15}px`;
+                const icon = document.createElement('i');
+                const collapsed = this.getFolderCollapseState(folder);
+                icon.className = `fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
+                hdr.append(icon, document.createTextNode(folder));
+                frame.appendChild(hdr);
+
+                const content = document.createElement('div');
+                content.className = 'module-dropdown-folder-content';
+                if (collapsed) content.style.display = 'none';
+                frame.appendChild(content);
+                parentEl.appendChild(frame);
+
+                hdr.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const show = content.style.display === 'none';
+                    content.style.display = show ? 'block' : 'none';
+                    icon.className = `fas ${show ? 'fa-chevron-down' : 'fa-chevron-right'}`;
+                    this.saveFolderCollapseState(folder, !show);
+                });
+                render(node._children[folder], content, level + 1);
+            });
+
+            // modules
+            (node._modules || []).sort((a, b) => a.name.localeCompare(b.name))
+                .forEach(ModuleClass => {
+                    const desc = ModuleClass.description || '';
+                    const item = document.createElement('div');
+                    item.className = 'module-dropdown-item';
+                    item.style.paddingLeft = `${20 + level * 15}px`;
+                    item.title = desc || ModuleClass.name;
+
+                    const name = document.createElement('span');
+                    name.className = 'module-dropdown-item-name';
+                    name.textContent = ModuleClass.name;
+                    item.appendChild(name);
+
+                    if (desc) {
+                        const d = document.createElement('span');
+                        d.className = 'module-dropdown-item-description';
+                        d.textContent = desc.length > 60 ? desc.slice(0, 57) + '...' : desc;
+                        item.appendChild(d);
+                    }
+
+                    item.addEventListener('click', () => {
+                        if (this.addModuleToGameObject(ModuleClass)) {
+                            this.moduleDropdown.style.display = 'none';
+                        }
+                    });
+                    parentEl.appendChild(item);
+                });
+        };
+
+        render({ _children: nsTree, _modules: [] }, this.moduleDropdown);
+
+        // "General" at the end
+        if (general.length) {
+            if (Object.keys(nsTree).length) {
+                const hr = document.createElement('hr');
+                hr.className = 'module-dropdown-separator';
+                this.moduleDropdown.appendChild(hr);
+            }
             const hdr = document.createElement('div');
-            hdr.className = 'module-dropdown-folder-header';
-            hdr.style.paddingLeft = `${10 + level*15}px`;
-            const icon = document.createElement('i');
-            const collapsed = this.getFolderCollapseState(folder);
-            icon.className = `fas ${collapsed?'fa-chevron-right':'fa-chevron-down'}`;
-            hdr.append(icon, document.createTextNode(folder));
-            frame.appendChild(hdr);
+            hdr.className = 'module-dropdown-namespace';
+            hdr.textContent = 'General';
+            this.moduleDropdown.appendChild(hdr);
 
-            const content = document.createElement('div');
-            content.className = 'module-dropdown-folder-content';
-            if (collapsed) content.style.display = 'none';
-            frame.appendChild(content);
-            parentEl.appendChild(frame);
+            general.sort((a, b) => a.name.localeCompare(b.name)).forEach(ModuleClass => {
+                const desc = ModuleClass.description || '';
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                item.style.paddingLeft = '20px';
+                item.title = desc || ModuleClass.name;
 
-            hdr.addEventListener('click', e => {
-                e.stopPropagation();
-                const show = content.style.display==='none';
-                content.style.display = show?'block':'none';
-                icon.className = `fas ${show?'fa-chevron-down':'fa-chevron-right'}`;
-                this.saveFolderCollapseState(folder, !show);
-            });
-            render(node._children[folder], content, level+1);
-        });
+                const name = document.createElement('span');
+                name.className = 'module-dropdown-item-name';
+                name.textContent = ModuleClass.name;
+                item.appendChild(name);
 
-        // modules
-        (node._modules||[]).sort((a,b)=>a.name.localeCompare(b.name))
-        .forEach(ModuleClass => {
-            const desc = ModuleClass.description||'';
-            const item = document.createElement('div');
-            item.className = 'module-dropdown-item';
-            item.style.paddingLeft = `${20 + level*15}px`;
-            item.title = desc||ModuleClass.name;
-
-            const name = document.createElement('span');
-            name.className = 'module-dropdown-item-name';
-            name.textContent = ModuleClass.name;
-            item.appendChild(name);
-
-            if (desc) {
-                const d = document.createElement('span');
-                d.className = 'module-dropdown-item-description';
-                d.textContent = desc.length>60?desc.slice(0,57)+'...':desc;
-                item.appendChild(d);
-            }
-
-            item.addEventListener('click', () => {
-                if (this.addModuleToGameObject(ModuleClass)) {
-                    this.moduleDropdown.style.display = 'none';
+                if (desc) {
+                    const d = document.createElement('span');
+                    d.className = 'module-dropdown-item-description';
+                    d.textContent = desc.length > 60 ? desc.slice(0, 57) + '...' : desc;
+                    item.appendChild(d);
                 }
+
+                item.addEventListener('click', () => {
+                    if (this.addModuleToGameObject(ModuleClass)) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                this.moduleDropdown.appendChild(item);
             });
-            parentEl.appendChild(item);
-        });
-    };
-
-    render({ _children: nsTree, _modules: [] }, this.moduleDropdown);
-
-    // "General" at the end
-    if (general.length) {
-        if (Object.keys(nsTree).length) {
-            const hr = document.createElement('hr');
-            hr.className = 'module-dropdown-separator';
-            this.moduleDropdown.appendChild(hr);
         }
-        const hdr = document.createElement('div');
-        hdr.className = 'module-dropdown-namespace';
-        hdr.textContent = 'General';
-        this.moduleDropdown.appendChild(hdr);
-
-        general.sort((a,b)=>a.name.localeCompare(b.name)).forEach(ModuleClass => {
-            const desc = ModuleClass.description||'';
-            const item = document.createElement('div');
-            item.className = 'module-dropdown-item';
-            item.style.paddingLeft = '20px';
-            item.title = desc||ModuleClass.name;
-
-            const name = document.createElement('span');
-            name.className = 'module-dropdown-item-name';
-            name.textContent = ModuleClass.name;
-            item.appendChild(name);
-
-            if (desc) {
-                const d = document.createElement('span');
-                d.className = 'module-dropdown-item-description';
-                d.textContent = desc.length>60?desc.slice(0,57)+'...':desc;
-                item.appendChild(d);
-            }
-
-            item.addEventListener('click', () => {
-                if (this.addModuleToGameObject(ModuleClass)) {
-                    this.moduleDropdown.style.display = 'none';
-                }
-            });
-            this.moduleDropdown.appendChild(item);
-        });
     }
-}
 
     /**
      * Add a module to the selected GameObject
      */
     addModuleToGameObject(moduleClass) {
         if (!this.inspectedObject || !moduleClass) return;
-        
+
         try {
             // Create new instance
             const module = new moduleClass();
-            
+
             // Set the module type name if not set
             if (!module.type) {
                 module.type = moduleClass.name;
             }
-            
+
             // IMPORTANT: Explicitly set the gameObject reference in the module
             // to ensure all internal properties are updated
             module.gameObject = this.inspectedObject;
-            
+
             // Add to GameObject
             const addedModule = this.inspectedObject.addModule(module);
-            
+
             // Ensure reference is correct
             console.log("Added module gameObject reference:", addedModule.gameObject === this.inspectedObject);
-            
+
             // Refresh inspector UI
             this.showObjectInspector();
-            
+
             // Refresh canvas
             if (this.editor) {
                 this.editor.refreshCanvas();
             }
-            
+
             return module;
         } catch (error) {
             console.error(`Error adding module ${moduleClass.name}:`, error);
@@ -581,20 +581,20 @@ populateModuleDropdown() {
             this.showNoObjectMessage();
             return;
         }
-        
+
         // Store the previous object reference
         const previousObject = this.inspectedObject;
-        
+
         // Update the inspected object
         this.inspectedObject = gameObject;
-        
+
         // Show appropriate UI based on whether an object is selected
         if (!gameObject) {
             this.showNoObjectMessage();
         } else {
             this.showObjectInspector();
         }
-        
+
         // If the object changed, refresh the canvas to show selection state
         if (previousObject !== gameObject && this.editor) {
             this.editor.refreshCanvas();
@@ -607,20 +607,20 @@ populateModuleDropdown() {
     showNoObjectMessage() {
         // First make sure the inspectedObject is null
         this.inspectedObject = null;
-      
+
         // Hide the "Add Module" button container
         const addModuleContainer = this.container.querySelector('.add-module-container');
         if (addModuleContainer) {
-          addModuleContainer.style.display = 'none';
+            addModuleContainer.style.display = 'none';
         }
-        
+
         // Hide object header and show "no object" message
         this.noObjectMessage.style.display = 'block';
         this.objectHeader.style.display = 'none';
-        
+
         // Clear the entire modules list
         this.modulesList.innerHTML = '';
-        
+
         // Add a more descriptive message with instructions
         this.modulesList.innerHTML = `
           <div class="no-selection-message">
@@ -629,7 +629,7 @@ populateModuleDropdown() {
             <p class="hint">Tip: Right-click in the scene to create a new GameObject.</p>
           </div>
         `;
-      }
+    }
 
     /**
      * Show inspector for the selected object
@@ -637,17 +637,17 @@ populateModuleDropdown() {
     showObjectInspector() {
         this.noObjectMessage.style.display = 'none';
         this.objectHeader.style.display = 'block';
-        
+
         // Show the "Add Module" button container when an object is selected
         const addModuleContainer = this.container.querySelector('.add-module-container');
         if (addModuleContainer) {
             addModuleContainer.style.display = 'block';
         }
-        
+
         // Update header information
         this.nameInput.value = this.inspectedObject.name;
         this.activeToggle.checked = this.inspectedObject.active;
-        
+
         // Update lock button state
         if (this.lockedObject === this.inspectedObject) {
             this.lockButton.innerHTML = '<i class="fas fa-lock"></i>';
@@ -656,16 +656,16 @@ populateModuleDropdown() {
             this.lockButton.innerHTML = '<i class="fas fa-unlock"></i>';
             this.lockButton.title = 'Lock Inspector';
         }
-        
+
         // Update parent info
         this.updateParentInfo();
-        
+
         // Clear and rebuild modules list
         this.modulesList.innerHTML = '';
-        
+
         // Always add transform module first
         this.addTransformModule();
-        
+
         // Add all other modules
         if (this.inspectedObject.modules) {
             this.inspectedObject.modules.forEach(module => {
@@ -679,7 +679,7 @@ populateModuleDropdown() {
      */
     updateParentInfo() {
         if (!this.inspectedObject) return;
-        
+
         const parent = this.inspectedObject.parent;
         if (parent) {
             this.parentName.textContent = parent.name;
@@ -695,13 +695,13 @@ populateModuleDropdown() {
      */
     addTransformModule() {
         if (!this.inspectedObject) return;
-    
+
         const transformModule = document.createElement('div');
         transformModule.className = 'module-container transform-module';
-        
+
         // Check if transform module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState('transform');
-        
+
         transformModule.innerHTML = `
             <div class="module-header">
                 <div class="module-title">
@@ -745,24 +745,24 @@ populateModuleDropdown() {
                 </div>
             </div>
         `;
-        
+
         this.modulesList.appendChild(transformModule);
-        
+
         // Add collapse button event listener
         const collapseButton = transformModule.querySelector('.module-collapse');
         collapseButton.addEventListener('click', () => {
             const moduleContent = transformModule.querySelector('.module-content');
             const isCollapsed = moduleContent.style.display === 'none';
-            
+
             // Toggle collapse state
             moduleContent.style.display = isCollapsed ? '' : 'none';
             collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
             collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
-            
+
             // Save collapse state
             this.saveModuleCollapseState('transform', !isCollapsed);
         });
-        
+
         // Add existing event listeners...
         const posXInput = transformModule.querySelector('.position-x');
         const posYInput = transformModule.querySelector('.position-y');
@@ -771,14 +771,14 @@ populateModuleDropdown() {
         const rotationInput = transformModule.querySelector('.rotation');
         const depthInput = transformModule.querySelector('.depth');
         const colorInput = transformModule.querySelector('.editor-color');
-        
+
         // Add color change listener
         colorInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
-            
+
             // Update the object's color
             this.inspectedObject.editorColor = colorInput.value;
-            
+
             // Update the hierarchy icon color
             const hierarchyIcon = document.querySelector(
                 `.hierarchy-item[data-id="${this.inspectedObject.id}"] .hierarchy-icon i`
@@ -786,41 +786,41 @@ populateModuleDropdown() {
             if (hierarchyIcon) {
                 hierarchyIcon.style.color = colorInput.value;
             }
-            
+
             this.editor.refreshCanvas();
         });
-    
+
         // Add other existing listeners...
         scaleXInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.scale.x = parseFloat(scaleXInput.value);
             this.editor.refreshCanvas();
         });
-        
+
         scaleYInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.scale.y = parseFloat(scaleYInput.value);
             this.editor.refreshCanvas();
         });
-        
+
         posXInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.position.x = parseFloat(posXInput.value);
             this.editor.refreshCanvas();
         });
-        
+
         posYInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.position.y = parseFloat(posYInput.value);
             this.editor.refreshCanvas();
         });
-        
+
         rotationInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.angle = parseFloat(rotationInput.value);
             this.editor.refreshCanvas();
         });
-        
+
         depthInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.depth = parseFloat(depthInput.value);
@@ -830,13 +830,13 @@ populateModuleDropdown() {
 
     updateTransformValues() {
         if (!this.inspectedObject) return;
-        
+
         const transformModule = this.modulesList.querySelector('.transform-module');
         if (!transformModule) return;
-        
+
         const pos = this.inspectedObject.position;
         const scale = this.inspectedObject.scale;
-        
+
         transformModule.querySelector('.position-x').value = pos.x;
         transformModule.querySelector('.position-y').value = pos.y;
         transformModule.querySelector('.scale-x').value = scale.x;
@@ -844,7 +844,7 @@ populateModuleDropdown() {
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;
         transformModule.querySelector('.depth').value = this.inspectedObject.depth;
         transformModule.querySelector('.editor-color').value = this.inspectedObject.editorColor || '#ffffff';
-        
+
         // Update hierarchy icon color
         const hierarchyIcon = document.querySelector(
             `.hierarchy-item[data-id="${this.inspectedObject.id}"] .hierarchy-icon i`
@@ -859,26 +859,26 @@ populateModuleDropdown() {
      */
     addModuleUI(module) {
         if (!module) return;
-    
+
         const moduleContainer = document.createElement('div');
         moduleContainer.className = 'module-container';
         moduleContainer.dataset.moduleId = module.id;
         moduleContainer.draggable = true; // Make modules draggable
-        
+
         // Get module display name and description
         const moduleDisplayName = module.type || module.constructor.name || 'Unknown Module';
         const moduleDescription = module.constructor.description || '';
         const combinedTooltip = moduleDescription ? `${moduleDisplayName}: ${moduleDescription}` : moduleDisplayName;
-        
+
         // Check if this is a placeholder
         const isPlaceholder = module.isPlaceholder === true || module.constructor.isPlaceholder === true;
-        
+
         // Check if this module should be collapsed (from saved state)
         const isCollapsed = this.getModuleCollapseState(module.id);
-        
+
         // Handle custom icon if specified in the module
         let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; // Default icon
-        
+
         // Check for iconClass in module constructor or instance
         const iconClass = module.constructor.iconClass || module.iconClass;
         if (iconClass) {
@@ -890,13 +890,13 @@ populateModuleDropdown() {
                 iconHtml = `<i class="${iconClass}"></i>`;
             }
         }
-        
+
         // Check for custom iconUrl in module constructor or instance
         const iconUrl = module.constructor.iconUrl || module.iconUrl;
         if (iconUrl) {
             iconHtml = `<img src="${iconUrl}" class="module-icon" alt="${moduleDisplayName} icon">`;
         }
-    
+
         // Special warning for placeholder modules
         let placeholderHtml = '';
         if (isPlaceholder) {
@@ -923,13 +923,13 @@ populateModuleDropdown() {
                 </div>
             </div>
             `;
-            
+
             // Mark module container for styling
             moduleContainer.classList.add('placeholder-module');
         }
-        
+
         // Rest of your existing code...
-        
+
         moduleContainer.innerHTML = `
             <div class="module-header">
                 <div class="module-title">
@@ -957,39 +957,39 @@ populateModuleDropdown() {
                 ${this.generateModulePropertiesUI(module)}
             </div>
         `;
-        
+
         // Set up event listeners (existing code)
         const toggleButton = moduleContainer.querySelector('.module-toggle');
         const removeButton = moduleContainer.querySelector('.module-remove');
         const collapseButton = moduleContainer.querySelector('.module-collapse');
-        
+
         if (toggleButton) {
             toggleButton.addEventListener('click', () => {
                 module.enabled = !module.enabled;
-                
+
                 // Update UI to reflect the new state
                 toggleButton.innerHTML = `<i class="fas ${module.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>`;
                 toggleButton.title = `${module.enabled ? 'Disable' : 'Enable'} Module`;
-                
+
                 // Update the module content opacity
                 const moduleContent = moduleContainer.querySelector('.module-content');
                 if (moduleContent) {
                     moduleContent.style.opacity = module.enabled ? '1' : '0.5';
                 }
-                
+
                 this.editor.refreshCanvas();
             });
         }
-        
+
         if (removeButton) {
             removeButton.addEventListener('click', () => {
                 if (confirm(`Remove ${module.type} module?`)) {
                     // First remove from DOM
                     moduleContainer.remove();
-                    
+
                     // Then remove from GameObject
                     this.inspectedObject.removeModule(module);
-                    
+
                     // Refresh canvas
                     this.editor.refreshCanvas();
                 }
@@ -1006,30 +1006,30 @@ populateModuleDropdown() {
                 this.saveModuleCollapseState(module.id, !isCollapsed);
             });
         }
-        
+
         // Add placeholder-specific event listeners
         if (isPlaceholder) {
             const actionsButton = moduleContainer.querySelector('.placeholder-actions-btn');
             const actionsMenu = moduleContainer.querySelector('.placeholder-actions-menu');
-            
+
             if (actionsButton) {
                 actionsButton.addEventListener('click', (e) => {
                     e.stopPropagation();
                     actionsMenu.classList.toggle('visible');
                 });
             }
-            
+
             // Hide menu when clicking elsewhere
             document.addEventListener('click', () => {
                 if (actionsMenu) actionsMenu.classList.remove('visible');
             });
-            
+
             // Handle action menu clicks
             const actionButtons = moduleContainer.querySelectorAll('.placeholder-action');
             actionButtons.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    
+
                     const action = btn.dataset.action;
                     switch (action) {
                         case 'reimport':
@@ -1049,7 +1049,7 @@ populateModuleDropdown() {
                             }
                             break;
                     }
-                    
+
                     // Hide menu after action
                     actionsMenu.classList.remove('visible');
                 });
@@ -1058,13 +1058,13 @@ populateModuleDropdown() {
 
         // Setup module property listeners AFTER adding the module container to DOM
         this.modulesList.appendChild(moduleContainer);
-        
+
         // Add this line to setup drag events for reordering:
         this.setupModuleDragEvents(moduleContainer);
-        
+
         // Add this line to set up property listeners:
         this.setupModulePropertyListeners(moduleContainer, module);
-        
+
         // Remainder of your existing function
         return moduleContainer;
     }
@@ -1078,7 +1078,7 @@ populateModuleDropdown() {
         if (!moduleElement.dataset.moduleId && moduleElement.getAttribute('data-module-id')) {
             moduleElement.dataset.moduleId = moduleElement.getAttribute('data-module-id');
         }
-        
+
         // Drag handle for better UX
         const dragHandle = moduleElement.querySelector('.module-drag-handle');
         const moduleHeader = moduleElement.querySelector('.module-header');
@@ -1088,14 +1088,14 @@ populateModuleDropdown() {
             dragHandle.addEventListener('mousedown', (e) => {
                 // Set draggable attribute just before drag starts
                 moduleElement.setAttribute('draggable', 'true');
-                
+
                 // Add grabbing cursor to indicate dragging is possible
                 dragHandle.style.cursor = 'grabbing';
-                
+
                 // Prevent event propagation to avoid other handlers
                 e.stopPropagation();
             });
-            
+
             // Reset draggable attribute after mouseup anywhere
             document.addEventListener('mouseup', () => {
                 moduleElement.setAttribute('draggable', 'false');
@@ -1112,94 +1112,94 @@ populateModuleDropdown() {
                 }
             });
         }
-    
+
         // Drag start event
         moduleElement.addEventListener('dragstart', (e) => {
             console.log('Module drag started:', moduleElement.dataset.moduleId);
-            
+
             // Store the module ID as drag data
             e.dataTransfer.setData('text/plain', moduleElement.dataset.moduleId);
             e.dataTransfer.effectAllowed = 'move';
-            
+
             // Add a class to the module being dragged
             moduleElement.classList.add('module-dragging');
-            
+
             // Delay adding dragging styles for better visual effect
             setTimeout(() => {
                 moduleElement.style.opacity = '0.4';
             }, 0);
         });
-        
+
         // Drag end event
         moduleElement.addEventListener('dragend', () => {
             console.log('Module drag ended');
             // Remove the dragging class and reset opacity
             moduleElement.classList.remove('module-dragging');
             moduleElement.style.opacity = '1';
-            
+
             // Reset draggable state
             setTimeout(() => {
                 moduleElement.setAttribute('draggable', 'false');
             }, 100);
         });
-        
+
         // Drag over event (needed for drop to work)
         moduleElement.addEventListener('dragover', (e) => {
             e.preventDefault();
-            
+
             // Check if we're dragging a module
             const draggingElement = document.querySelector('.module-dragging');
             if (!draggingElement || draggingElement === moduleElement) return;
-            
+
             // Determine drop position (before or after this module)
             const rect = moduleElement.getBoundingClientRect();
             const middleY = rect.y + rect.height / 2;
             const isAbove = e.clientY < middleY;
-            
+
             // Remove previous indicators
             moduleElement.classList.remove('drop-above', 'drop-below');
-            
+
             // Add indicator where the module would be dropped
             moduleElement.classList.add(isAbove ? 'drop-above' : 'drop-below');
-            
+
             e.dataTransfer.dropEffect = 'move';
         });
-        
+
         // Drag leave event
         moduleElement.addEventListener('dragleave', () => {
             // Remove drop indicators
             moduleElement.classList.remove('drop-above', 'drop-below');
         });
-        
+
         // Drop event
         moduleElement.addEventListener('drop', (e) => {
             e.preventDefault();
             console.log('Module drop detected');
-            
+
             // Remove drop indicators
             moduleElement.classList.remove('drop-above', 'drop-below');
-            
+
             // Get the dragged module ID
             const draggedModuleId = e.dataTransfer.getData('text/plain');
             console.log('Dropped module ID:', draggedModuleId);
-            
+
             if (!draggedModuleId) return;
-            
+
             const draggedElement = document.querySelector(`.module-container[data-module-id="${draggedModuleId}"]`);
             if (!draggedElement || draggedElement === moduleElement) return;
-            
+
             // Determine if dropping above or below
             const rect = moduleElement.getBoundingClientRect();
             const middleY = rect.y + rect.height / 2;
             const isAbove = e.clientY < middleY;
-            
+
             // Reorder in the DOM
             if (isAbove) {
                 moduleElement.parentNode.insertBefore(draggedElement, moduleElement);
             } else {
                 moduleElement.parentNode.insertBefore(draggedElement, moduleElement.nextSibling);
             }
-            
+
             // Update the module order in the GameObject
             this.updateModuleOrder();
         });
@@ -1210,16 +1210,16 @@ populateModuleDropdown() {
      */
     updateModuleOrder() {
         if (!this.inspectedObject) return;
-        
+
         // Get all module elements in their current DOM order
         const moduleElements = Array.from(this.modulesList.querySelectorAll('.module-container:not(.transform-module)'));
-        
+
         // Extract module IDs in order
         const moduleIds = moduleElements.map(el => el.dataset.moduleId).filter(id => id);
-        
+
         // Reorder the modules in the GameObject
         this.inspectedObject.reorderModules(moduleIds);
-        
+
         // Refresh canvas
         this.editor.refreshCanvas();
     }
@@ -1237,10 +1237,10 @@ populateModuleDropdown() {
             if (savedStates) {
                 collapseStates = JSON.parse(savedStates);
             }
-            
+
             // Update state for this module
             collapseStates[moduleId] = isCollapsed;
-            
+
             // Save back to localStorage
             localStorage.setItem('moduleCollapseStates', JSON.stringify(collapseStates));
         } catch (e) {
@@ -1278,10 +1278,62 @@ populateModuleDropdown() {
         if (module.isPlaceholder || module.constructor.isPlaceholder) {
             return this.generatePlaceholderPropertiesUI(module);
         }
-        
+
+        // If module has a style() method, use it for custom inspector UI
+        if (typeof module.style === 'function') {
+            // Create a style helper object
+            const styleHelper = {
+                html: '',
+                exposeProperty: (name, type, value, options = {}) => {
+                    // Use Inspector's generatePropertyUI for consistency
+                    styleHelper.html += this.generatePropertyUI({
+                        name, type, value, options
+                    }, module);
+                },
+                startGroup: (label, collapsible, styleOptions) => {
+                    styleHelper.html += `<div class="property-group" style="${styleOptions ? Object.entries(styleOptions).map(([k, v]) => `${k}:${v}`).join(';') : ''}"><div class="group-label">${label}</div>`;
+                },
+                endGroup: () => {
+                    styleHelper.html += `</div>`;
+                },
+                addDivider: () => {
+                    styleHelper.html += `<hr class="property-divider">`;
+                },
+                addHelpText: (text) => {
+                    styleHelper.html += `<div class="property-help">${text}</div>`;
+                },
+                addButton: (label, onClick, options = {}) => {
+                    // Buttons need to be wired up after insertion
+                    const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
+                    styleHelper.html += `<button id="${btnId}" class="property-btn">${label}</button>`;
+                    // Store for later event hookup
+                    if (!styleHelper._buttons) styleHelper._buttons = [];
+                    styleHelper._buttons.push({ btnId, onClick });
+                },
+                addSpace: (px) => {
+                    styleHelper.html += `<div style="height:${px}px"></div>`;
+                }
+            };
+
+            // Call the module's style method
+            module.style(styleHelper);
+
+            // After HTML is built, return it and wire up buttons
+            setTimeout(() => {
+                if (styleHelper._buttons) {
+                    styleHelper._buttons.forEach(({ btnId, onClick }) => {
+                        const btn = document.getElementById(btnId);
+                        if (btn && typeof onClick === 'function') btn.onclick = onClick;
+                    });
+                }
+            }, 0);
+
+            return styleHelper.html;
+        }
+
         // For generic modules, first try to use exposedProperties
         let exposedProps = module.getExposedProperties ? module.getExposedProperties() : [];
-        
+
         // If no exposed properties and module has a properties object, use that directly
         if ((!exposedProps || exposedProps.length === 0) && module.properties && Object.keys(module.properties).length > 0) {
             exposedProps = Object.entries(module.properties).map(([key, value]) => {
@@ -1292,16 +1344,16 @@ populateModuleDropdown() {
                 };
             });
         }
-        
+
         if (!exposedProps || exposedProps.length === 0) {
             return '<div class="property-message">No editable properties</div>';
         }
-        
+
         // Generate UI for each property
         const html = exposedProps.map(prop => {
             return this.generatePropertyUI(prop, module);
         }).join('');
-        
+
         return html;
     }
 
@@ -1312,9 +1364,9 @@ populateModuleDropdown() {
         // Create image preview display
         const hasImage = module.imageAsset && (typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path);
         const imageSrc = module._image ? module._image.src : '';
-        const imagePath = typeof module.imageAsset === 'string' ? module.imageAsset : 
-                        (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
-        
+        const imagePath = typeof module.imageAsset === 'string' ? module.imageAsset :
+            (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
+
         return `
             <div class="property-row">
                 <label>Image</label>
@@ -1322,10 +1374,10 @@ populateModuleDropdown() {
                     <div class="image-preview ${hasImage ? '' : 'empty'}" 
                         title="${hasImage ? `Path: ${imagePath}` : 'Drag an image here or click to select'}"
                         data-property="imageAsset">
-                        ${hasImage ? 
-                            `<img src="${imageSrc}" alt="Sprite">
-                            <div class="image-path">${this.formatImagePath(imagePath)}</div>` 
-                            : '<i class="fas fa-image"></i><div>No Image</div>'}
+                        ${hasImage ?
+                `<img src="${imageSrc}" alt="Sprite">
+                            <div class="image-path">${this.formatImagePath(imagePath)}</div>`
+                : '<i class="fas fa-image"></i><div>No Image</div>'}
                     </div>
                     <div class="image-actions">
                         <button class="select-image-button" title="Select an image">
@@ -1437,13 +1489,13 @@ populateModuleDropdown() {
     formatImagePath(path) {
         // Handle null, undefined, or non-string values
         if (!path || typeof path !== 'string') return 'No image';
-        
+
         if (path.length <= 20) return path;
-        
+
         // Extract filename
         const parts = path.split('/');
         const filename = parts.pop();
-        
+
         // Show only first folder and filename if path is long
         return parts.length > 0 ? `…/${filename}` : filename;
     }
@@ -1464,20 +1516,20 @@ populateModuleDropdown() {
 
     refreshModuleUI(module) {
         if (!module || !this.inspectedObject) return;
-        
+
         // Find the module container
         const moduleContainer = this.modulesList.querySelector(`.module-container[data-module-id="${module.id}"]`);
         if (!moduleContainer) return;
-        
+
         // Remove the old content
         const oldContent = moduleContainer.querySelector('.module-content');
         if (oldContent) {
             // Save the current display state
             const wasCollapsed = oldContent.style.display === 'none';
-            
+
             // Remove the content
             oldContent.remove();
-            
+
             // Create new content
             const newContent = document.createElement('div');
             newContent.className = 'module-content';
@@ -1485,14 +1537,14 @@ populateModuleDropdown() {
             if (wasCollapsed) {
                 newContent.style.display = 'none';
             }
-            
+
             // Generate module properties UI
             newContent.innerHTML = this.generateModulePropertiesUI(module);
-            
+
             // Add after the header
             const header = moduleContainer.querySelector('.module-header');
             header.after(newContent);
-            
+
             // Setup new event listeners
             this.setupModulePropertyListeners(moduleContainer, module);
         }
@@ -1545,7 +1597,7 @@ populateModuleDropdown() {
                 </div>
             </div>
         `;
-        
+
         // Add styles for the dialog
         const style = document.createElement('style');
         style.innerHTML = `
@@ -1721,29 +1773,29 @@ populateModuleDropdown() {
         `;
         document.head.appendChild(style);
         document.body.appendChild(dialog);
-        
+
         // Set up tab switching
         const tabs = dialog.querySelectorAll('.image-tab');
         const tabContents = dialog.querySelectorAll('.image-tab-content');
-        
+
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
                 tabs.forEach(t => t.classList.remove('active'));
                 tabContents.forEach(c => c.classList.remove('active'));
-                
+
                 tab.classList.add('active');
                 const tabName = tab.dataset.tab;
                 dialog.querySelector(`.image-tab-content[data-tab="${tabName}"]`).classList.add('active');
             });
         });
-        
+
         // Load project images
         this.loadProjectImages(dialog.querySelector('.project-images-grid'), module);
-        
+
         // Set up URL tab functionality
         const urlInput = dialog.querySelector('.url-input');
         const loadUrlButton = dialog.querySelector('.load-url-button');
-        
+
         loadUrlButton.addEventListener('click', async () => {
             const url = urlInput.value.trim();
             if (url) {
@@ -1758,54 +1810,54 @@ populateModuleDropdown() {
                 }
             }
         });
-        
+
         // Set up upload tab functionality
         const uploadDropzone = dialog.querySelector('.upload-dropzone');
         const uploadButton = dialog.querySelector('.upload-button');
-        
+
         uploadDropzone.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadDropzone.classList.add('drag-over');
         });
-        
+
         uploadDropzone.addEventListener('dragleave', () => {
             uploadDropzone.classList.remove('drag-over');
         });
-        
+
         uploadDropzone.addEventListener('drop', async (e) => {
             e.preventDefault();
             uploadDropzone.classList.remove('drag-over');
-            
+
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 const file = e.dataTransfer.files[0];
                 await this.handleImageUpload(file, module);
                 this.closeDialog(dialog, style);
             }
         });
-        
+
         uploadButton.addEventListener('click', () => {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/*';
-            
+
             input.onchange = async (e) => {
                 if (e.target.files && e.target.files[0]) {
                     await this.handleImageUpload(e.target.files[0], module);
                     this.closeDialog(dialog, style);
                 }
             };
-            
+
             input.click();
         });
-        
+
         // Set up close button and cancel button
         const closeButton = dialog.querySelector('.image-selector-close');
         const cancelButton = dialog.querySelector('.cancel-button');
-        
+
         const closeHandler = () => {
             this.closeDialog(dialog, style);
         };
-        
+
         closeButton.addEventListener('click', closeHandler);
         cancelButton.addEventListener('click', closeHandler);
     }
@@ -1826,7 +1878,7 @@ populateModuleDropdown() {
             alert('The selected file is not an image.');
             return;
         }
-        
+
         try {
             // Get the FileBrowser instance
             const fileBrowser = this.editor?.fileBrowser;
@@ -1834,14 +1886,14 @@ populateModuleDropdown() {
                 console.warn('FileBrowser not available for image upload');
                 return;
             }
-            
+
             // Upload to FileBrowser
             await fileBrowser.handleFileUpload(file);
-            
+
             // Set the sprite to this path
             const path = `${fileBrowser.currentPath}/${file.name}`;
             await module.setSprite(path);
-            
+
             // Refresh UI
             this.refreshModuleUI(module);
             this.editor.refreshCanvas();
@@ -1856,66 +1908,66 @@ populateModuleDropdown() {
      */
     async loadProjectImages(container, module) {
         container.innerHTML = '<div class="loading-message">Loading images...</div>';
-        
+
         try {
             const fileBrowser = this.editor?.fileBrowser;
             if (!fileBrowser) {
                 container.innerHTML = '<div class="loading-message">File Browser not available</div>';
                 return;
             }
-            
+
             // Get all files
             const allFiles = await fileBrowser.getAllFiles();
-            
+
             // Filter for image files
             const imageFiles = allFiles.filter(file => {
                 return file.type === 'file' && module.isImagePath(file.path);
             });
-            
+
             if (imageFiles.length === 0) {
                 container.innerHTML = '<div class="loading-message">No images found in project</div>';
                 return;
             }
-            
+
             // Clear container
             container.innerHTML = '';
-            
+
             // Add image items
             imageFiles.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'project-image-item';
                 item.dataset.path = file.path;
-                
+
                 // Check if this is the currently selected image
                 if (module.imageAsset && module.imageAsset.path === file.path) {
                     item.classList.add('selected');
                 }
-                
+
                 const filename = file.name || file.path.split('/').pop();
-                
+
                 item.innerHTML = `
                     <div class="project-image-thumbnail">
                         <img src="${file.path}" alt="${filename}">
                     </div>
                     <div class="project-image-name" title="${file.path}">${filename}</div>
                 `;
-                
+
                 item.addEventListener('click', async () => {
                     // Remove selected class from all items
                     container.querySelectorAll('.project-image-item').forEach(i => {
                         i.classList.remove('selected');
                     });
-                    
+
                     // Add selected class to this item
                     item.classList.add('selected');
-                    
+
                     // Set the sprite to this path
                     await module.setSprite(file.path);
-                    
+
                     // Refresh UI
                     this.refreshModuleUI(module);
                     this.editor.refreshCanvas();
-                    
+
                     // Close dialog after a short delay to provide visual feedback
                     setTimeout(() => {
                         const dialog = container.closest('.image-selector-dialog');
@@ -1925,7 +1977,7 @@ populateModuleDropdown() {
                         }
                     }, 300);
                 });
-                
+
                 container.appendChild(item);
             });
         } catch (error) {
@@ -1953,7 +2005,7 @@ populateModuleDropdown() {
             const namespace = moduleClass.namespace || 'General'; // Default to General
             this.availableModules.push({ moduleClass: moduleClass, namespace: namespace });
             console.log(`Registered module: ${moduleClass.name}` + (namespace ? ` (Namespace: ${namespace})` : ''));
-            
+
             // If dropdown is open, refresh it
             if (this.moduleDropdown.style.display === 'block') {
                 this.populateModuleDropdown();
@@ -1971,19 +2023,19 @@ populateModuleDropdown() {
         if (module instanceof SpriteRenderer) {
             return this.generateSpriteRendererUI(module);
         }
-        
+
         // For generic modules, use exposed properties
         const exposedProps = module.getExposedProperties ? module.getExposedProperties() : [];
-        
+
         if (!exposedProps || exposedProps.length === 0) {
             return '<div class="property-message">No editable properties</div>';
         }
-        
+
         // Generate UI for each property
         const html = exposedProps.map(prop => {
             return this.generatePropertyUI(prop, module);
         }).join('');
-        
+
         return html;
     }
 
@@ -2010,12 +2062,12 @@ populateModuleDropdown() {
         this.addDragAndDropStyles();
 
         const inputId = `prop-${module.id}-${prop.name}`;
-        
+
         // Get description for tooltip from options if available
         const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-        
+
         // Check if the property is a Vector2 or Vector3
-        if (value instanceof Vector2 || value instanceof Vector3 || 
+        if (value instanceof Vector2 || value instanceof Vector3 ||
             (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
             // Generate collapsible vector fields
             return this.generateVectorUI(prop, module, value);
@@ -2025,7 +2077,7 @@ populateModuleDropdown() {
         if (prop.type === 'image' || prop.type === 'asset' && prop.options?.assetType === 'image') {
             const inputId = `prop-${module.id}-${prop.name}`;
             const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-            
+
             // Get current value
             let value;
             if (typeof module.getProperty === 'function') {
@@ -2037,10 +2089,10 @@ populateModuleDropdown() {
             } else {
                 value = prop.value;
             }
-            
+
             // Get path from value (handle both string paths and AssetReference objects)
             const path = value?.path || value || '';
-            
+
             return `
                 <div class="property-row">
                     <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
@@ -2059,7 +2111,7 @@ populateModuleDropdown() {
                 </div>
             `;
         }
-        
+
         switch (prop.type) {
             case 'number':
                 return `
@@ -2129,28 +2181,28 @@ populateModuleDropdown() {
      * Render a collapsible list editor for a polygon (Vector2[]) property
      */
     generatePolygonUI(prop, module) {
-        const id     = `prop-${module.id}-${prop.name}`;
-        const verts  = module[prop.name] || [];
-        const min    = prop.options?.minItems || 3;
+        const id = `prop-${module.id}-${prop.name}`;
+        const verts = module[prop.name] || [];
+        const min = prop.options?.minItems || 3;
         const collapsed = this.getVectorCollapseState(id) ?? true;
 
         // List header + controls
         let html = `
         <div class="property-row polygon-property">
         <label>${this.formatPropertyName(prop.name)}</label>
-        <button class="vector-collapse" data-target="${id}" data-vector-id="${id}" title="${collapsed?'Expand':'Collapse'}">
-            <i class="fas ${collapsed?'fa-chevron-down':'fa-chevron-up'}"></i>
+        <button class="vector-collapse" data-target="${id}" data-vector-id="${id}" title="${collapsed ? 'Expand' : 'Collapse'}">
+            <i class="fas ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
         </button>
         </div>
-        <div class="vector-components" id="${id}" style="${collapsed?'display:none':''}">`;
+        <div class="vector-components" id="${id}" style="${collapsed ? 'display:none' : ''}">`;
 
         verts.forEach((v, i) => {
-        html += `
+            html += `
         <div class="vector-component">
-            <label>${i+1}</label>
+            <label>${i + 1}</label>
             <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:x" value="${v.x}" step="1">
             <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:y" value="${v.y}" step="1">
-            <button class="remove-vertex" data-index="${i}" data-prop-name="${prop.name}" ${verts.length<=min?'disabled':''}>×</button>
+            <button class="remove-vertex" data-index="${i}" data-prop-name="${prop.name}" ${verts.length <= min ? 'disabled' : ''}>×</button>
         </div>`;
         });
 
@@ -2206,7 +2258,7 @@ populateModuleDropdown() {
         const renderNode = (node, parentElement, level, pathPrefix = '') => {
             // Sort folder names alphabetically
             const folderNames = Object.keys(node._children || {}).sort();
-            
+
             folderNames.forEach(folderName => {
                 const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
                 const folderElement = document.createElement('div');
@@ -2215,14 +2267,14 @@ populateModuleDropdown() {
 
                 const header = document.createElement('div');
                 header.className = 'module-dropdown-folder-header';
-                
+
                 const icon = document.createElement('i');
                 const isCollapsed = this.getFolderCollapseState(currentPath);
                 icon.className = `fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
-                
+
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = folderName;
-                
+
                 header.appendChild(icon);
                 header.appendChild(nameSpan);
                 folderElement.appendChild(header);
@@ -2261,7 +2313,7 @@ populateModuleDropdown() {
                 parentElement.appendChild(item);
             });
         };
-        
+
         // Create a root node for rendering
         const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
         renderNode(rootNodeForRendering, this.moduleDropdown, 0);
@@ -2329,10 +2381,10 @@ populateModuleDropdown() {
         const collapsibleId = `vector-${module.id}-${propName}`;
         const isCollapsed = this.getVectorCollapseState(collapsibleId);
         const isVector3 = vector.z !== undefined;
-        
+
         // Get tooltip from options if available
         const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
-    
+
         return `
         <div class="property-row vector-property">
             <div class="vector-header">
@@ -2403,10 +2455,10 @@ populateModuleDropdown() {
             if (savedStates) {
                 collapseStates = JSON.parse(savedStates);
             }
-            
+
             // Update state for this vector
             collapseStates[vectorId] = isCollapsed;
-            
+
             // Save back to localStorage
             localStorage.setItem('vectorCollapseStates', JSON.stringify(collapseStates));
         } catch (e) {
@@ -2433,7 +2485,7 @@ populateModuleDropdown() {
         }
         return true; // Default to collapsed
     }
-    
+
     /**
      * Setup event listeners for module properties
      * @param {HTMLElement} container - Module container element
@@ -2441,14 +2493,14 @@ populateModuleDropdown() {
      */
     setupModulePropertyListeners(container, module) {
         console.log("Setting up module property listeners for:", module.type, module);
-        
+
         // Define the update function outside the event handlers for consistent use
         const updateGameObject = () => {
             // Mark the scene as dirty for auto-save
             if (this.editor && this.editor.activeScene) {
                 this.editor.activeScene.dirty = true;
             }
-            
+
             // Force a proper sync by directly calling the engine's sync method
             if (window.engine && window.engine.running) {
                 if (window.gameEditorSync) {
@@ -2457,78 +2509,78 @@ populateModuleDropdown() {
                     window.engine.syncFromEditor();
                 }
             }
-            
+
             // Refresh the editor canvas to show changes
             if (this.editor) {
                 this.editor.refreshCanvas();
             }
         };
-    
+
         // First, set up image drag and drop for any property that expects an image
         container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"]').forEach(element => {
             this.setupImageDropTarget(element, module);
         });
-        
+
         // SpriteRenderer special handlers
         if (module instanceof SpriteRenderer) {
             this.setupSpriteRendererListeners(container, module);
         }
-    
+
         // Collapse toggle for ANY vector block
         container.querySelectorAll('.vector-collapse').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                
+
                 const targetId = btn.dataset.target;
                 const tgt = document.getElementById(targetId);
-                
+
                 if (!tgt) {
                     console.error(`Target element not found: ${targetId}`);
                     return;
                 }
-                
+
                 const collapsed = tgt.style.display === 'none';
                 console.log(`Toggling vector collapse for ${targetId}: was ${collapsed ? 'collapsed' : 'expanded'}`);
-                
+
                 // Toggle display
                 tgt.style.display = collapsed ? 'block' : 'none';
-                
+
                 // Update icon
                 const icon = btn.querySelector('i');
                 if (icon) {
                     icon.className = `fas ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}`;
                 }
                 btn.title = collapsed ? 'Collapse' : 'Expand';
-                
+
                 // Save state
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
             });
         });
-    
+
         // Add Point button for polygon properties
         container.querySelectorAll('.add-vertex').forEach(button => {
             button.addEventListener('click', () => {
                 const propName = button.dataset.propName;
                 if (!propName || !module[propName]) return;
-                
+
                 // Get the polygon
                 const polygon = module[propName];
-                
+
                 // Calculate a new vertex position
                 const len = polygon.length;
                 let newVertex;
-                
+
                 if (len >= 2) {
                     const last = polygon[len - 1];
                     const secondLast = polygon[len - 2];
-                    
+
                     const dx = last.x - secondLast.x;
                     const dy = last.y - secondLast.y;
-                    
+
                     const length = Math.sqrt(dx * dx + dy * dy);
                     const scale = 30; // Distance from last vertex
-                    
+
                     if (length > 0) {
                         newVertex = new Vector2(
                             last.x + (dx / length) * scale,
@@ -2542,94 +2594,94 @@ populateModuleDropdown() {
                 } else {
                     newVertex = new Vector2(0, 0);
                 }
-                
+
                 // Add the new vertex
                 if (typeof module.addVertex === 'function') {
                     module.addVertex(newVertex);
                 } else {
                     polygon.push(newVertex);
-                    
+
                     // If there's no addVertex method, we need to update the property manually
                     if (typeof module.setProperty === 'function') {
                         module.setProperty(propName, polygon);
                     }
                 }
-                
+
                 // Refresh UI and update
                 this.refreshModuleUI(module);
                 updateGameObject();
             });
         });
-    
+
         // Remove vertex button for polygon properties
         container.querySelectorAll('.remove-vertex').forEach(button => {
             button.addEventListener('click', () => {
                 const index = parseInt(button.dataset.index);
                 const propName = button.dataset.propName;
-                
+
                 if (isNaN(index) || !propName || !module[propName]) return;
-                
+
                 const polygon = module[propName];
-                
+
                 if (polygon.length <= 3) {
                     console.warn('Cannot remove vertex: polygon must have at least 3 vertices');
                     return;
                 }
-                
+
                 // Remove the vertex
                 if (typeof module.removeVertex === 'function') {
                     module.removeVertex(index);
                 } else {
                     polygon.splice(index, 1);
-                    
+
                     // If there's no removeVertex method, update property manually
                     if (typeof module.setProperty === 'function') {
                         module.setProperty(propName, polygon);
                     }
                 }
-                
+
                 // Refresh UI and update
                 this.refreshModuleUI(module);
                 updateGameObject();
             });
         });
-    
+
         // Unified handler for vector components (Vector2/3 & polygon)
         container.querySelectorAll('.component-input').forEach(input => {
             input.addEventListener('change', () => {
                 const propName = input.dataset.propName;
                 const component = input.dataset.component;
                 const raw = parseFloat(input.value) || 0;
-                
+
                 let current = typeof module.getProperty === 'function'
-                            ? module.getProperty(propName)
-                            : module[propName];
-        
+                    ? module.getProperty(propName)
+                    : module[propName];
+
                 // Ensure we have a valid object to modify
                 if (!current) {
                     console.warn(`Property ${propName} is undefined on module`, module);
                     return;
                 }
-                
+
                 console.log(`Updating vector component: ${propName}.${component} = ${raw}`);
-                
+
                 if (Array.isArray(current)) {
                     const [i, key] = component.split(':');
                     current[+i][key] = raw;
                 } else {
                     current[component] = raw;
                 }
-        
+
                 // Try different ways to update the property
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, current);
                 } else {
                     module[propName] = current;
                 }
-        
+
                 // Force immediate update
                 updateGameObject();
-                
+
                 // Also update any preview displays in the UI
                 const previewEl = container.querySelector(`[data-target="${input.closest('.vector-components').id}"] .vector-preview`);
                 if (previewEl && current) {
@@ -2642,15 +2694,15 @@ populateModuleDropdown() {
                 }
             });
         });
-    
+
         // Handle checkboxes
         container.querySelectorAll('.property-input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => {
                 const propName = checkbox.dataset.propName;
                 const value = checkbox.checked;
-                
+
                 console.log(`Checkbox changed: ${propName} = ${value}`);
-                
+
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
@@ -2658,20 +2710,20 @@ populateModuleDropdown() {
                 } else if (module.properties) {
                     module.properties[propName] = value;
                 }
-                
+
                 // IMPORTANT: Update game object for immediate effect
                 updateGameObject();
             });
         });
-        
+
         // Handle color inputs
         container.querySelectorAll('.property-input[type="color"]').forEach(colorInput => {
             colorInput.addEventListener('input', () => {
                 const propName = colorInput.dataset.propName;
                 const value = colorInput.value;
-                
+
                 console.log(`Color changed: ${propName} = ${value}`);
-                
+
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
@@ -2679,32 +2731,32 @@ populateModuleDropdown() {
                 } else if (module.properties) {
                     module.properties[propName] = value;
                 }
-                
+
                 // Update game object for live preview
                 updateGameObject();
             });
-            
+
             // Also handle change event for final value
             colorInput.addEventListener('change', () => {
                 updateGameObject();
             });
         });
-    
+
         // Generic number/text/select inputs
         container.querySelectorAll('.property-input:not([type="checkbox"]):not([type="color"])').forEach(input => {
             input.addEventListener('change', () => {
                 const propName = input.dataset.propName;
                 let value;
-                
+
                 if (input.type === 'number') {
                     value = parseFloat(input.value);
                     if (isNaN(value)) value = 0;
                 } else {
                     value = input.value;
                 }
-                
+
                 console.log(`Property changed: ${propName} = ${value}`);
-                
+
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propName, value);
                 } else if (propName in module) {
@@ -2712,7 +2764,7 @@ populateModuleDropdown() {
                 } else if (module.properties) {
                     module.properties[propName] = value;
                 }
-                
+
                 // IMPORTANT: Update game object for immediate effect
                 updateGameObject();
             });
@@ -2728,23 +2780,23 @@ populateModuleDropdown() {
         // Check for files (from OS)
         if (dataTransfer.items && dataTransfer.items.length > 0) {
             for (let i = 0; i < dataTransfer.items.length; i++) {
-                if (dataTransfer.items[i].kind === 'file' && 
+                if (dataTransfer.items[i].kind === 'file' &&
                     dataTransfer.items[i].type.startsWith('image/')) {
                     return true;
                 }
             }
         }
-        
+
         // Check for JSON data (from internal file browser)
         if (dataTransfer.types.includes('application/json')) {
             return true;
         }
-        
+
         // Check for plain text URLs that might be images
         if (dataTransfer.types.includes('text/plain')) {
             return true;
         }
-        
+
         return false;
     }
 
@@ -2757,27 +2809,27 @@ populateModuleDropdown() {
         // Check for files directly dropped
         if (dataTransfer.files && dataTransfer.files.length > 0) {
             const file = dataTransfer.files[0];
-            
+
             // Validate it's an image
             if (!file.type.startsWith('image/')) {
                 console.warn('Dropped file is not an image:', file.type);
                 return null;
             }
-            
+
             // Get the FileBrowser instance
             const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
             if (!fileBrowser) {
                 console.warn('FileBrowser not available for image upload');
                 return null;
             }
-            
+
             // Upload to FileBrowser
             await fileBrowser.handleFileUpload(file);
-            
+
             // Return the path to the uploaded file
             return `${fileBrowser.currentPath}/${file.name}`;
         }
-        
+
         // Check for JSON data (from internal drag & drop from file browser)
         const jsonData = dataTransfer.getData('application/json');
         if (jsonData) {
@@ -2794,13 +2846,13 @@ populateModuleDropdown() {
                 console.error('Error parsing drag JSON data:', e);
             }
         }
-        
+
         // Check for plain text (from copy link etc)
         const textData = dataTransfer.getData('text/plain');
         if (textData && this.isImagePath(textData)) {
             return textData;
         }
-        
+
         return null;
     }
 
@@ -2822,7 +2874,7 @@ populateModuleDropdown() {
     addDragAndDropStyles() {
         // Check if styles already exist
         if (document.getElementById('inspector-drag-drop-styles')) return;
-        
+
         const styleElement = document.createElement('style');
         styleElement.id = 'inspector-drag-drop-styles';
         styleElement.textContent = `
@@ -2990,7 +3042,7 @@ populateModuleDropdown() {
                 background: #555;
             }
         `;
-        
+
         document.head.appendChild(styleElement);
     }
 
@@ -3002,15 +3054,15 @@ populateModuleDropdown() {
     setupImageDropTarget(element, module) {
         const propertyName = element.dataset.propName || element.dataset.property;
         if (!propertyName) return;
-        
+
         // Make the element visually show it's a drop target
         element.classList.add('image-drop-target');
-        
+
         // Handle dragover to show visual feedback
         element.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             // Check if it's likely an image being dragged
             const isValidDrag = this.isImageDragEvent(e.dataTransfer);
             if (isValidDrag) {
@@ -3018,22 +3070,22 @@ populateModuleDropdown() {
                 e.dataTransfer.dropEffect = 'copy';
             }
         });
-        
+
         // Remove highlight when drag leaves
         element.addEventListener('dragleave', () => {
             element.classList.remove('drag-over');
         });
-        
+
         // Handle the actual drop
         element.addEventListener('drop', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             element.classList.remove('drag-over');
-            
+
             try {
                 const imagePath = await this.getImagePathFromDropEvent(e.dataTransfer);
                 if (!imagePath) return false;
-                
+
                 // Update the module property
                 if (typeof module.setProperty === 'function') {
                     module.setProperty(propertyName, imagePath);
@@ -3042,18 +3094,18 @@ populateModuleDropdown() {
                 } else {
                     module[propertyName] = imagePath;
                 }
-                
+
                 // Refresh UI and canvas
                 this.refreshModuleUI(module);
                 this.editor?.refreshCanvas();
-                
+
                 return true;
             } catch (error) {
                 console.error('Error handling image drop:', error);
                 return false;
             }
         });
-        
+
         // Make it clickable to open file browser if module supports it
         if (typeof module.loadImageFromFile === 'function') {
             element.addEventListener('click', () => {
@@ -3070,12 +3122,12 @@ populateModuleDropdown() {
         const imagePreview = container.querySelector('.image-preview');
         const selectImageButton = container.querySelector('.select-image-button');
         const clearImageButton = container.querySelector('.clear-image-button');
-        
+
         // Set up the image preview drag and drop if the module has setupDragAndDrop method
         if (imagePreview && typeof module.setupDragAndDrop === 'function') {
             module.setupDragAndDrop(imagePreview);
         }
-        
+
         // Set up select button
         if (selectImageButton) {
             selectImageButton.addEventListener('click', () => {
@@ -3086,7 +3138,7 @@ populateModuleDropdown() {
                 }
             });
         }
-        
+
         // Set up clear button
         if (clearImageButton) {
             clearImageButton.addEventListener('click', () => {
@@ -3097,15 +3149,15 @@ populateModuleDropdown() {
                 }
             });
         }
-        
+
         // Standard property handlers for width and height inputs
         container.querySelectorAll('.property-input').forEach(input => {
             if (!input) return;
-            
+
             input.addEventListener('change', () => {
                 const propName = input.dataset.propName;
                 if (!propName) return;
-                
+
                 let value;
                 if (input.type === 'number') {
                     value = parseFloat(input.value);
@@ -3113,7 +3165,7 @@ populateModuleDropdown() {
                 } else {
                     value = input.value;
                 }
-                
+
                 module[propName] = value;
                 this.editor.refreshCanvas();
             });
@@ -3129,37 +3181,37 @@ populateModuleDropdown() {
             alert("File browser not available. Please create or import the module file manually.");
             return;
         }
-        
+
         try {
             // Open file browsing dialog
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = '.js';
-            
+
             fileInput.onchange = async (e) => {
                 if (e.target.files.length === 0) return;
-                
+
                 const file = e.target.files[0];
                 const reader = new FileReader();
-                
+
                 reader.onload = async (event) => {
                     const content = event.target.result;
-                    
+
                     // Check if the file contains a class with the correct name
                     const moduleName = module.type;
                     if (!content.includes(`class ${moduleName}`)) {
                         alert(`This file does not contain a class named ${moduleName}. Please select the correct file.`);
                         return;
                     }
-                    
+
                     try {
                         // Create the file in the project
                         const path = `/modules/${moduleName}.js`;
                         await window.fileBrowser.createFile(path, content);
-                        
+
                         // Try to load the module
                         const ModuleClass = await window.fileBrowser.loadModuleScript(path);
-                        
+
                         if (ModuleClass) {
                             // Replace the placeholder with the real module
                             this.replacePlaceholderModule(module, ModuleClass);
@@ -3172,10 +3224,10 @@ populateModuleDropdown() {
                         alert(`Error during reimport: ${error.message}`);
                     }
                 };
-                
+
                 reader.readAsText(file);
             };
-            
+
             fileInput.click();
         } catch (error) {
             console.error("Failed to open file dialog:", error);
@@ -3191,9 +3243,9 @@ populateModuleDropdown() {
             alert("No data available for this module.");
             return;
         }
-        
+
         const data = module._originalData || module.toJSON();
-        
+
         // Create a dialog to display the data
         const dialog = document.createElement('div');
         dialog.className = 'module-data-dialog';
@@ -3208,7 +3260,7 @@ populateModuleDropdown() {
                 </div>
             </div>
         `;
-        
+
         // Add styles
         const style = document.createElement('style');
         style.textContent = `
@@ -3261,10 +3313,10 @@ populateModuleDropdown() {
                 white-space: pre-wrap;
             }
         `;
-        
+
         document.head.appendChild(style);
         document.body.appendChild(dialog);
-        
+
         // Add close button event
         dialog.querySelector('.close-button').addEventListener('click', () => {
             document.body.removeChild(dialog);
@@ -3276,18 +3328,18 @@ populateModuleDropdown() {
      */
     replacePlaceholderModule(placeholderModule, RealModuleClass) {
         if (!this.inspectedObject) return;
-        
+
         try {
             // Get original data from placeholder
             const originalData = placeholderModule._originalData || placeholderModule.toJSON();
-            
+
             // Create new instance of real module
             const newModule = new RealModuleClass();
-            
+
             // Copy properties from original data
             if (originalData) {
                 for (const key in originalData) {
-                    if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
+                    if (key !== 'gameObject' && key !== 'type' && key !== 'name' &&
                         key !== 'isPlaceholder' && key !== '_originalData') {
                         try {
                             newModule[key] = originalData[key];
@@ -3297,16 +3349,16 @@ populateModuleDropdown() {
                     }
                 }
             }
-            
+
             // Remove the placeholder
             this.inspectedObject.removeModule(placeholderModule);
-            
+
             // Add the real module
             this.inspectedObject.addModule(newModule);
-            
+
             // Refresh the inspector
             this.showObjectInspector();
-            
+
             // Refresh canvas
             if (this.editor) {
                 this.editor.refreshCanvas();
@@ -3324,13 +3376,13 @@ populateModuleDropdown() {
         try {
             const moduleName = module.type;
             const namespace = module.constructor.namespace || 'General';
-            
+
             // Create a template for the module
             const template = this.generateModuleTemplate(moduleName, namespace, module);
-            
+
             // Create the file in the project
             const path = `/modules/${moduleName}.js`;
-            
+
             if (window.fileBrowser) {
                 // Check if file already exists
                 try {
@@ -3342,10 +3394,10 @@ populateModuleDropdown() {
                 } catch (e) {
                     // File doesn't exist, which is fine
                 }
-                
+
                 // Create the file
                 await window.fileBrowser.createFile(path, template);
-                
+
                 // Open in script editor if available
                 if (window.scriptEditor) {
                     window.scriptEditor.loadFile(path, template);
@@ -3353,7 +3405,7 @@ populateModuleDropdown() {
                 } else {
                     alert(`Module template created at ${path}. Please edit it to implement the functionality.`);
                 }
-                
+
                 // Try to load the module
                 try {
                     const ModuleClass = await window.fileBrowser.loadModuleScript(path);
@@ -3393,19 +3445,19 @@ populateModuleDropdown() {
             
             // Add properties based on the placeholder data
     `;
-        
+
         // Add properties based on the original data
         const originalData = placeholder._originalData || {};
-        
+
         // Add property initialization
         for (const key in originalData) {
-            if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
-                key !== 'isPlaceholder' && key !== '_originalData' && 
+            if (key !== 'gameObject' && key !== 'type' && key !== 'name' &&
+                key !== 'isPlaceholder' && key !== '_originalData' &&
                 key !== 'id' && key !== 'enabled') {
-                
+
                 const value = originalData[key];
                 let valueStr = '';
-                
+
                 if (value === null) {
                     valueStr = 'null';
                 } else if (value === undefined) {
@@ -3423,11 +3475,11 @@ populateModuleDropdown() {
                 } else {
                     valueStr = String(value);
                 }
-                
+
                 template += `        this.${key} = ${valueStr};\n`;
             }
         }
-        
+
         // Add more template code
         template += `
             // TODO: Add property exposure for the inspector
@@ -3463,7 +3515,7 @@ populateModuleDropdown() {
     // Register the module globally
     window.${moduleName} = ${moduleName};
     `;
-        
+
         return template;
     }
 
@@ -3472,19 +3524,19 @@ populateModuleDropdown() {
      */
     generatePlaceholderPropertiesUI(module) {
         if (!module._originalData) return '<div class="no-properties">No properties available for this placeholder module.</div>';
-        
+
         const originalData = module._originalData;
         let html = '';
-        
+
         // Extract and display properties
         for (const key in originalData) {
-            if (key !== 'gameObject' && key !== 'type' && key !== 'name' && 
-                key !== 'isPlaceholder' && key !== '_originalData' && 
+            if (key !== 'gameObject' && key !== 'type' && key !== 'name' &&
+                key !== 'isPlaceholder' && key !== '_originalData' &&
                 key !== 'id' && key !== 'enabled') {
-                
+
                 const value = originalData[key];
                 let displayValue = '';
-                
+
                 if (value === null) {
                     displayValue = 'null';
                 } else if (value === undefined) {
@@ -3502,7 +3554,7 @@ populateModuleDropdown() {
                 } else {
                     displayValue = String(value);
                 }
-                
+
                 html += `
                 <div class="property-row placeholder-property">
                     <label>${this.formatPropertyName(key)}</label>
@@ -3511,7 +3563,7 @@ populateModuleDropdown() {
                 `;
             }
         }
-        
+
         return html || '<div class="no-properties">No properties available for this placeholder module.</div>';
     }
 
@@ -3520,10 +3572,10 @@ populateModuleDropdown() {
      */
     updateTransformValues() {
         if (!this.inspectedObject) return;
-        
+
         const transformModule = this.modulesList.querySelector('.transform-module');
         if (!transformModule) return;
-        
+
         transformModule.querySelector('.position-x').value = this.inspectedObject.position.x;
         transformModule.querySelector('.position-y').value = this.inspectedObject.position.y;
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;

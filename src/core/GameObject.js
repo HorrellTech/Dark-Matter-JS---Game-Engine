@@ -62,6 +62,7 @@ class GameObject {
 
     beginLoop() {
         if (!this.active) return;
+
         this.modules.forEach(module => {
             if (module.enabled && module.beginLoop) module.beginLoop();
         });
@@ -339,6 +340,41 @@ class GameObject {
             if (module.onDestroy) module.onDestroy();
         });
         this.children.forEach(child => child.onDestroy());
+    }
+
+    /**
+     * Check collision with any nearby GameObjects of a given name within a set range
+     * @param {string} name - The name of GameObjects to check against
+     * @param {number} range - The range (in pixels) to search for nearby objects
+     * @param {Array<GameObject>} [gameObjects] - Optional array of all game objects to search (defaults to window.gameObjects)
+     * @returns {GameObject|null} The first colliding GameObject found, or null if none
+     */
+    collidesWithNearby(name, range, gameObjects) {
+        // Use global gameObjects array if not provided
+        const allObjects = gameObjects || window.gameObjects || [];
+        const myPos = this.getWorldPosition();
+
+        for (const obj of allObjects) {
+            if (
+                obj !== this &&
+                obj.name === name &&
+                obj.active &&
+                obj.visible &&
+                obj.collisionEnabled
+            ) {
+                // Quick distance check
+                const objPos = obj.getWorldPosition();
+                const dx = objPos.x - myPos.x;
+                const dy = objPos.y - myPos.y;
+                if ((dx * dx + dy * dy) <= range * range) {
+                    // Check collision
+                    if (this.collidesWith(obj)) {
+                        return obj;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**

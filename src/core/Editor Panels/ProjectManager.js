@@ -13,6 +13,7 @@ class ProjectManager {
         if (this.editor.activeScene && this.editor.activeScene.dirty) {
             const choice = await this.sceneManager.showUnsavedChangesDialog(); // 'save', 'dont-save', 'cancel'
             if (choice === 'cancel') {
+                this.isSavingOrLoading = false; 
                 return false; // User cancelled
             }
             if (choice === 'save') {
@@ -39,6 +40,11 @@ class ProjectManager {
             }
 
             console.log("Creating new project...");
+
+            if (this.fileBrowser.db) {
+                this.fileBrowser.db.close();
+                this.fileBrowser.db = null;
+            }
 
             // 1. Reset File Browser
             await this.fileBrowser.resetDatabase(); // This clears and re-initializes with root
@@ -93,6 +99,7 @@ class ProjectManager {
         } catch (error) {
             console.error("Error creating new project:", error);
             this.editor.fileBrowser.showNotification(`Error creating new project: ${error.message}`, "error");
+            this.isSavingOrLoading = false; 
         } finally {
             this.isSavingOrLoading = false;
         }
@@ -228,8 +235,16 @@ class ProjectManager {
     async loadProject() {
         // First ensure core classes are available
         if (!await this.ensureCoreDependencies()) {
+            this.isSavingOrLoading = false; 
             return;  // Stop if dependencies are missing
         }
+
+        if (this.isSavingOrLoading) {
+            console.warn("Project operation already in progress.");
+            this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
+            return;
+        }
+        this.isSavingOrLoading = true;
 
         // Set a safety timeout to reset the loading state after 30 seconds
         // This prevents the UI from being permanently locked if something goes wrong
@@ -241,16 +256,11 @@ class ProjectManager {
             }
         }, 30000); // 30 seconds timeout
 
-        if (this.isSavingOrLoading) {
-            console.warn("Project operation already in progress.");
-            this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
-            return;
-        }
-
         if (!await this._confirmUnsavedChanges()) {
+            this.isSavingOrLoading = false;
+            clearTimeout(safetyTimeout);
             return;
         }
-        this.isSavingOrLoading = true;
         this.editor.fileBrowser.showNotification("Loading project...", "info");
 
         const input = document.createElement('input');
@@ -267,6 +277,11 @@ class ProjectManager {
             try {
                 const zip = await JSZip.loadAsync(file);
                 console.log("Project archive loaded.");
+
+                if (this.fileBrowser.db) {
+                    this.fileBrowser.db.close();
+                    this.fileBrowser.db = null;
+                }
 
                 // 1. Clear current project state
                 await this.fileBrowser.resetDatabase();
@@ -410,11 +425,14 @@ class ProjectManager {
                 this.editor.refreshCanvas();
                 this.editor.fileBrowser.showNotification("Project loaded successfully!", "success");
                 console.log("Project loaded successfully.");
+                
+                this.isSavingOrLoading = false;
 
             } catch (error) {
                 console.error("Error loading project:", error);
                 this.editor.fileBrowser.showNotification(`Error loading project: ${error.message}`, "error");
                 // Attempt to revert to a clean state if loading fails badly
+                this.isSavingOrLoading = false;
                 await this.newProject(); // Or a more specific error recovery
             } finally {
                 clearTimeout(safetyTimeout);
@@ -432,6 +450,15 @@ class ProjectManager {
         
         if (missingClasses.length === 0) {
             return true; // All classes are already available globally
+        }
+
+        // Try to load missing classes from their files
+        for (const className of missingClasses) {
+            try {
+                await window.fileBrowser.loadScriptIfNeeded(className);
+            } catch (err) {
+                console.error(`Failed to load ${className}:`, err);
+            }
         }
         
         console.warn(`Missing core classes in global scope: ${missingClasses.join(', ')}`);

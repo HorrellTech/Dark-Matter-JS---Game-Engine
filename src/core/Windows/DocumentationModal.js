@@ -51,7 +51,10 @@ class DocumentationModal {
 
     setupEventListeners() {
         // Close button
-        this.modal.querySelector('.doc-modal-close').addEventListener('click', () => this.close());
+        const closeBtn = this.modal.querySelector('.doc-modal-close');
+        closeBtn.addEventListener('click', () => this.close());
+        closeBtn.addEventListener('touchstart', () => this.close());
+
 
         // Search input
         const searchInput = this.modal.querySelector('.search-box input');
