@@ -6,6 +6,10 @@ class ProjectManager {
         this.currentProjectName = "UntitledProject";
         this.isSavingOrLoading = false; // To prevent concurrent operations
 
+        this.lastSaveTime = Date.now();
+        this._startSaveReminderTimer();
+        this.showSaveReminder = true;
+
         console.log("ProjectManager initialized");
     }
 
@@ -13,7 +17,7 @@ class ProjectManager {
         if (this.editor.activeScene && this.editor.activeScene.dirty) {
             const choice = await this.sceneManager.showUnsavedChangesDialog(); // 'save', 'dont-save', 'cancel'
             if (choice === 'cancel') {
-                this.isSavingOrLoading = false; 
+                this.isSavingOrLoading = false;
                 return false; // User cancelled
             }
             if (choice === 'save') {
@@ -22,6 +26,80 @@ class ProjectManager {
             }
         }
         return true; // Proceed
+    }
+
+    _startSaveReminderTimer() {
+        setInterval(() => {
+            if (this.isSavingOrLoading) return;
+            const now = Date.now();
+            const interval = 5; // 5 minutes
+            if (now - this.lastSaveTime > interval * 60 * 1000) {
+                this._showSaveReminderToast();
+            }
+        }, 60 * 1000); // Check every minute
+    }
+
+    _showSaveReminderToast() {
+        if (document.getElementById('save-reminder-toast')) return; // Only one at a time
+
+        if(!this.showSaveReminder) return; // User has disabled reminders
+
+        // Play a "boop" sound
+        try {
+            playSoftBloop(); // Play the bloop sound
+        } catch (e) {
+            // Ignore sound errors
+        }
+
+        const toast = document.createElement('div');
+        toast.id = 'save-reminder-toast';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '32px';
+        toast.style.right = '-400px'; // Start off-screen
+        toast.style.background = 'linear-gradient(90deg, #232526 0%, #414345 100%)';
+        toast.style.color = '#fff';
+        toast.style.padding = '18px 36px';
+        toast.style.borderRadius = '12px';
+        toast.style.boxShadow = '0 4px 16px rgba(0,0,0,0.35)';
+        toast.style.zIndex = '9999';
+        toast.style.fontSize = '17px';
+        toast.style.display = 'flex';
+        toast.style.alignItems = 'center';
+        toast.style.gap = '24px';
+        toast.style.transition = 'right 0.5s cubic-bezier(.68,-0.55,.27,1.55), opacity 0.3s';
+        toast.style.opacity = '1';
+
+        toast.innerHTML = `
+            <span style="display:flex;align-items:center;gap:8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+                    <circle cx="12" cy="12" r="12" fill="#ffb400"/>
+                    <text x="12" y="16" text-anchor="middle" font-size="14" fill="#222" font-family="Arial" font-weight="bold">!</text>
+                </svg>
+                <span>It's been a while since your last save. <b>Don't forget to save your project!</b></span>
+            </span>
+            <button style="background:#444;color:#fff;border:none;padding:6px 18px;border-radius:6px;cursor:pointer;font-size:15px;">Close</button>
+        `;
+
+        const closeBtn = toast.querySelector('button');
+        closeBtn.onclick = () => {
+            toast.style.opacity = '0';
+            toast.style.right = '-400px';
+            setTimeout(() => toast.remove(), 500);
+        };
+
+        document.body.appendChild(toast);
+
+        // Slide in
+        setTimeout(() => {
+            toast.style.right = '32px';
+        }, 10);
+
+        // Auto-dismiss after 8 seconds (slide out)
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.right = '-400px';
+            setTimeout(() => toast.remove(), 500);
+        }, 4000);
     }
 
     async newProject() {
@@ -99,7 +177,7 @@ class ProjectManager {
         } catch (error) {
             console.error("Error creating new project:", error);
             this.editor.fileBrowser.showNotification(`Error creating new project: ${error.message}`, "error");
-            this.isSavingOrLoading = false; 
+            this.isSavingOrLoading = false;
         } finally {
             this.isSavingOrLoading = false;
         }
@@ -132,13 +210,13 @@ class ProjectManager {
             scenes: [],
             assets: [],
         };
-    
+
         // Gather scenes
         for (const scene of this.editor.scenes) {
             projectData.scenes.push(scene.toJSON());
         }
         console.log(`Gathered ${projectData.scenes.length} scenes.`);
-    
+
         // Gather assets from FileBrowser - Make sure to handle the promise
         try {
             const allFiles = await this.fileBrowser.getAllFiles();
@@ -156,7 +234,7 @@ class ProjectManager {
             console.error("Error gathering asset data:", error);
             projectData.assets = []; // Default to empty if there's an error
         }
-        
+
         return projectData;
     }
 
@@ -206,7 +284,7 @@ class ProjectManager {
                     // but explicit creation can be done if needed, or ensure paths are correct)
                     const folderPath = asset.path.startsWith('/') ? asset.path.substring(1) : asset.path;
                     if (folderPath) { // Avoid trying to create empty root folder ""
-                         assetsFolder.folder(folderPath);
+                        assetsFolder.folder(folderPath);
                     }
                 }
             }
@@ -235,7 +313,7 @@ class ProjectManager {
     async loadProject() {
         // First ensure core classes are available
         if (!await this.ensureCoreDependencies()) {
-            this.isSavingOrLoading = false; 
+            this.isSavingOrLoading = false;
             return;  // Stop if dependencies are missing
         }
 
@@ -335,12 +413,12 @@ class ProjectManager {
                     try {
                         const scene = Scene.fromJSON(sceneJSON);
                         scene.dirty = false;
-                        
+
                         // If GameObject was loaded after scene, try to complete loading
                         if (scene.gameObjectsJSON && scene.completeLoading) {
                             scene.completeLoading();
                         }
-                        
+
                         loadedScenes.push(scene);
                     } catch (error) {
                         console.error("Error loading scene:", error);
@@ -360,9 +438,9 @@ class ProjectManager {
                             this.editor.camera.position.set(settings.camera.x, settings.camera.y);
                         } else {
                             // Fallback: directly assign x and y properties
-                            this.editor.camera.position = { 
-                                x: settings.camera.x, 
-                                y: settings.camera.y 
+                            this.editor.camera.position = {
+                                x: settings.camera.x,
+                                y: settings.camera.y
                             };
                         }
                         this.editor.camera.zoom = settings.camera.zoom;
@@ -410,13 +488,13 @@ class ProjectManager {
                             this.editor.hierarchy.selectGameObject(selectedObj);
                         }
                     }
-                    
+
                     // Restore active tabs
                     if (settings.activeBottomTab) {
                         document.querySelector(`.tab-buttons .tab-button[data-tab="${settings.activeBottomTab}"]`)?.click();
                     }
                     if (settings.activeCanvasTab) {
-                         document.querySelector(`.canvas-tabs .canvas-tab[data-canvas="${settings.activeCanvasTab}"]`)?.click();
+                        document.querySelector(`.canvas-tabs .canvas-tab[data-canvas="${settings.activeCanvasTab}"]`)?.click();
                     }
                 }
                 console.log("Editor settings restored.");
@@ -425,7 +503,7 @@ class ProjectManager {
                 this.editor.refreshCanvas();
                 this.editor.fileBrowser.showNotification("Project loaded successfully!", "success");
                 console.log("Project loaded successfully.");
-                
+
                 this.isSavingOrLoading = false;
 
             } catch (error) {
@@ -447,7 +525,7 @@ class ProjectManager {
         // Check for essential classes
         const requiredClasses = ['GameObject', 'Scene', 'Vector2', 'Module'];
         const missingClasses = requiredClasses.filter(name => !window[name]);
-        
+
         if (missingClasses.length === 0) {
             return true; // All classes are already available globally
         }
@@ -460,17 +538,17 @@ class ProjectManager {
                 console.error(`Failed to load ${className}:`, err);
             }
         }
-        
+
         console.warn(`Missing core classes in global scope: ${missingClasses.join(', ')}`);
         this.editor.fileBrowser.showNotification(
             `Making core classes globally available: ${missingClasses.join(', ')}...`,
             "info"
         );
-        
+
         try {
             // Try to find classes that might be loaded but not on window object
             let success = true;
-            
+
             // Common ways classes might be available
             for (const className of missingClasses) {
                 // Try different approaches to find the class
@@ -483,7 +561,7 @@ class ProjectManager {
                     try {
                         console.log(`Attempting to load ${className} from file...`);
                         await this.loadClassFile(className);
-                        
+
                         // Check if it's now available
                         if (!window[className]) {
                             console.error(`${className} still not available globally after loading`);
@@ -495,19 +573,19 @@ class ProjectManager {
                     }
                 }
             }
-            
+
             // Check if we resolved all dependencies
             const stillMissing = requiredClasses.filter(name => !window[name]);
             if (stillMissing.length > 0) {
                 throw new Error(`Failed to make required classes globally available: ${stillMissing.join(', ')}`);
             }
-            
+
             this.editor.fileBrowser.showNotification(
                 "Core dependencies are now globally available",
                 "success"
             );
             return true;
-            
+
         } catch (error) {
             console.error("Error ensuring core dependencies:", error);
             this.editor.fileBrowser.showNotification(
@@ -522,16 +600,16 @@ class ProjectManager {
     async loadClassFile(className) {
         const classFilePaths = {
             'GameObject': './src/core/GameObject.js',
-            'Scene': './src/core/Scene.js', 
+            'Scene': './src/core/Scene.js',
             'Vector2': './src/core/Math/Vector2.js',
             'Module': './src/core/Module.js'
         };
-        
+
         const path = classFilePaths[className];
         if (!path) {
             throw new Error(`Path mapping not found for ${className}`);
         }
-        
+
         // Try to get class from existing instances/prototypes if possible
         if (className === 'GameObject' && this.editor.activeScene) {
             // Try to get GameObject constructor from an existing instance
@@ -551,7 +629,7 @@ class ProjectManager {
                 return;
             }
         }
-        
+
         // If we couldn't get the class from existing instances, try a more direct approach
         // Just define minimal versions of the classes that should work with serialization
         if (className === 'GameObject') {
@@ -569,21 +647,21 @@ class ProjectManager {
                         this.layer = "Default";
                         this.tags = [];
                     }
-                    
+
                     generateUUID() {
-                        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
                             const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
                             return v.toString(16);
                         });
                     }
-                    
+
                     static fromJSON(json) {
                         const gameObject = new GameObject(json.name, json.transform);
                         gameObject.id = json.id;
                         gameObject.active = json.active;
                         gameObject.layer = json.layer || "Default";
                         gameObject.tags = json.tags || [];
-                        
+
                         if (json.children && json.children.length > 0) {
                             gameObject.children = json.children.map(childJson => {
                                 const child = GameObject.fromJSON(childJson);
@@ -591,7 +669,7 @@ class ProjectManager {
                                 return child;
                             });
                         }
-                        
+
                         return gameObject;
                     }
                 };
@@ -608,12 +686,12 @@ class ProjectManager {
                         this.settings = {};
                         this.dirty = false;
                     }
-                    
+
                     static fromJSON(json) {
                         const scene = new Scene(json.name);
                         scene.settings = json.settings || {};
                         scene.activeCamera = json.activeCamera;
-                        
+
                         if (json.gameObjects && Array.isArray(json.gameObjects)) {
                             if (window.GameObject) {
                                 scene.gameObjects = json.gameObjects.map(objJson => GameObject.fromJSON(objJson));
@@ -622,10 +700,10 @@ class ProjectManager {
                                 console.warn("GameObject class not available. Game objects will be loaded when GameObject class is available.");
                             }
                         }
-                        
+
                         return scene;
                     }
-                    
+
                     completeLoading() {
                         if (this.gameObjectsJSON && window.GameObject) {
                             this.gameObjects = this.gameObjectsJSON.map(objJson => GameObject.fromJSON(objJson));
@@ -644,7 +722,7 @@ class ProjectManager {
                         this.x = x;
                         this.y = y;
                     }
-                    
+
                     set(x, y) {
                         this.x = x;
                         this.y = y;
@@ -677,6 +755,82 @@ class ProjectManager {
         URL.revokeObjectURL(url);
         console.log(`Download triggered for ${fileName}`);
     }
+}
+
+
+
+
+// Create a soft bloop sound with reverb
+function playSoftBloop() {
+    // Create audio context
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Create oscillator for the main tone
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    // Create convolver for reverb effect
+    const convolver = audioContext.createConvolver();
+    const reverbGain = audioContext.createGain();
+
+    // Generate impulse response for reverb
+    function createReverbImpulse(duration, decay) {
+        const length = audioContext.sampleRate * duration;
+        const impulse = audioContext.createBuffer(2, length, audioContext.sampleRate);
+
+        for (let channel = 0; channel < 2; channel++) {
+            const channelData = impulse.getChannelData(channel);
+            for (let i = 0; i < length; i++) {
+                const n = length - i;
+                channelData[i] = (Math.random() * 2 - 1) * Math.pow(n / length, decay);
+            }
+        }
+        return impulse;
+    }
+
+    // Set up reverb
+    convolver.buffer = createReverbImpulse(2, 2);
+    reverbGain.gain.setValueAtTime(0.3, audioContext.currentTime); // Moderate reverb mix
+
+    // Configure the bloop sound
+    oscillator.type = 'sine'; // Soft sine wave
+    oscillator.frequency.setValueAtTime(400, audioContext.currentTime); // Starting frequency
+    oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1); // Drop to lower frequency
+
+    // Soft volume envelope
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.02); // Quick attack, not too loud
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4); // Gentle decay
+
+    // Connect the audio graph
+    // Dry signal path
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Wet (reverb) signal path
+    gainNode.connect(convolver);
+    convolver.connect(reverbGain);
+    reverbGain.connect(audioContext.destination);
+
+    // Play the sound
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+
+    // Clean up
+    oscillator.onended = () => {
+        oscillator.disconnect();
+        gainNode.disconnect();
+        convolver.disconnect();
+        reverbGain.disconnect();
+    };
+}
+
+// You can also create a version that returns a promise for chaining
+function playSoftBloopAsync() {
+    return new Promise((resolve) => {
+        playSoftBloop();
+        setTimeout(resolve, 500); // Resolve after sound completes
+    });
 }
 
 window.ProjectManager = ProjectManager;

@@ -9,35 +9,36 @@ class SettingsModal {
         const saved = localStorage.getItem('darkMatterSettings');
         return saved ? JSON.parse(saved) : {
             // Editor settings
-            autoSave: true,
+            //autoSave: true,
+            //showSaveReminder: true,
             autoSaveInterval: 30, // seconds
             showGrid: true,
             gridSize: 32,
             snapToGrid: false,
-            
+
             // Rendering settings
             antiAliasing: true,
             pixelPerfect: false,
             smoothing: true,
-            
+
             // Touch settings
             touchSensitivity: 1.0,
             pinchZoomEnabled: true,
             touchPanEnabled: true,
-            
+
             // Performance settings
             maxFPS: 60,
             enableVSync: true,
-            
+
             // Export settings
             exportFormat: 'html5',
             includeAssets: true,
             minifyCode: false,
-            
+
             // Theme settings
             theme: 'dark',
             fontSize: 14,
-            
+
             // Debug settings
             showFPS: false,
             showDebugInfo: false,
@@ -57,18 +58,18 @@ class SettingsModal {
                 window.editor.grid.showGrid = this.settings.showGrid;
                 window.editor.grid.gridSize = this.settings.gridSize;
                 window.editor.grid.snapToGrid = this.settings.snapToGrid;
-                
+
                 // Update UI controls
                 const showGridCheckbox = document.getElementById('showGrid');
                 if (showGridCheckbox) showGridCheckbox.checked = this.settings.showGrid;
-                
+
                 const gridSizeInput = document.getElementById('gridSize');
                 if (gridSizeInput) gridSizeInput.value = this.settings.gridSize;
-                
+
                 const snapToGridCheckbox = document.getElementById('snapToGrid');
                 if (snapToGridCheckbox) snapToGridCheckbox.checked = this.settings.snapToGrid;
             }
-            
+
             window.editor.refreshCanvas();
         }
 
@@ -81,6 +82,11 @@ class SettingsModal {
         // Apply auto-save settings
         if (window.autoSaveManager && this.settings.autoSave) {
             window.autoSaveManager.setInterval(this.settings.autoSaveInterval * 1000);
+        }
+
+        // Apply showSaveReminder to ProjectManager if available
+        if (window.ProjectManager) {
+            window.ProjectManager.showSaveReminder = this.settings.showSaveReminder;
         }
 
         // Apply touch settings
@@ -120,17 +126,24 @@ class SettingsModal {
                         <!-- Editor Settings -->
                         <div class="settings-panel active" id="editor-panel">
                             <h3>Editor Settings</h3>
-                            <div class="settings-group">
+                            <!--div class="settings-group">
                                 <label>
                                     <input type="checkbox" id="setting-auto-save" ${this.settings.autoSave ? 'checked' : ''}>
                                     Enable Auto-Save
                                 </label>
                                 <div class="setting-description">Automatically save your project at regular intervals</div>
-                            </div>
+                            </div-->
                             <div class="settings-group">
+                                <label>
+                                    <input type="checkbox" id="setting-show-save-reminder" ${this.settings.showSaveReminder ? 'checked' : ''}>
+                                    Show Save Reminder Toast
+                                </label>
+                                <div class="setting-description">Show periodic reminders to save your project</div>
+                            </div>
+                            <!--div class="settings-group">
                                 <label>Auto-Save Interval (seconds):</label>
                                 <input type="number" id="setting-auto-save-interval" value="${this.settings.autoSaveInterval}" min="10" max="300">
-                            </div>
+                            </div-->
                             <div class="settings-group">
                                 <label>
                                     <input type="checkbox" id="setting-show-grid" ${this.settings.showGrid ? 'checked' : ''}>
@@ -321,6 +334,37 @@ class SettingsModal {
                 this.close();
             }
         });
+
+        // Touch support for modal close (tap outside)
+        this.modal.addEventListener('touchstart', (e) => {
+            if (e.target === this.modal) {
+                this.close();
+            }
+        });
+
+        // Touch support for tabs
+        this.modal.querySelectorAll('.settings-tab').forEach(tab => {
+            tab.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                this.switchTab(tab.dataset.tab);
+            });
+        });
+
+        // Touch support for buttons
+        ['settings-cancel', 'settings-apply', 'settings-reset'].forEach(id => {
+            const btn = this.modal.querySelector(`#${id}`);
+            if (btn) {
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    btn.click();
+                });
+            }
+        });
+
+        // Prevent background scroll/zoom when modal is open
+        this.modal.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
     }
 
     switchTab(tabName) {
@@ -337,34 +381,35 @@ class SettingsModal {
 
     applyChanges() {
         // Collect all settings from the form
-        this.settings.autoSave = this.modal.querySelector('#setting-auto-save').checked;
-        this.settings.autoSaveInterval = parseInt(this.modal.querySelector('#setting-auto-save-interval').value);
+        //this.settings.autoSave = this.modal.querySelector('#setting-auto-save').checked;
+        //this.settings.autoSaveInterval = parseInt(this.modal.querySelector('#setting-auto-save-interval').value);
         this.settings.showGrid = this.modal.querySelector('#setting-show-grid').checked;
         this.settings.gridSize = parseInt(this.modal.querySelector('#setting-grid-size').value);
         this.settings.snapToGrid = this.modal.querySelector('#setting-snap-to-grid').checked;
-        
+        this.settings.showSaveReminder = this.modal.querySelector('#setting-show-save-reminder').checked;
+
         this.settings.antiAliasing = this.modal.querySelector('#setting-anti-aliasing').checked;
         this.settings.pixelPerfect = this.modal.querySelector('#setting-pixel-perfect').checked;
         this.settings.smoothing = this.modal.querySelector('#setting-smoothing').checked;
-        
+
         this.settings.touchSensitivity = parseFloat(this.modal.querySelector('#setting-touch-sensitivity').value);
         this.settings.pinchZoomEnabled = this.modal.querySelector('#setting-pinch-zoom').checked;
         this.settings.touchPanEnabled = this.modal.querySelector('#setting-touch-pan').checked;
-        
+
         this.settings.maxFPS = parseInt(this.modal.querySelector('#setting-max-fps').value);
         this.settings.enableVSync = this.modal.querySelector('#setting-vsync').checked;
-        
+
         this.settings.exportFormat = this.modal.querySelector('#setting-export-format').value;
         this.settings.includeAssets = this.modal.querySelector('#setting-include-assets').checked;
         this.settings.minifyCode = this.modal.querySelector('#setting-minify-code').checked;
-        
+
         this.settings.showFPS = this.modal.querySelector('#setting-show-fps').checked;
         this.settings.showDebugInfo = this.modal.querySelector('#setting-show-debug-info').checked;
         this.settings.enableConsoleLogging = this.modal.querySelector('#setting-console-logging').checked;
 
         this.saveSettings();
         this.close();
-        
+
         // Show confirmation
         this.showNotification('Settings applied successfully!');
     }
@@ -395,9 +440,9 @@ class SettingsModal {
             font-size: 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         `;
-        
+
         document.body.appendChild(notification);
-        
+
         setTimeout(() => {
             notification.style.opacity = '0';
             notification.style.transition = 'opacity 0.3s';
@@ -410,39 +455,42 @@ class SettingsModal {
     }
 
     open() {
+        // Reload settings from localStorage before showing modal
+        this.settings = this.loadSettings();
         this.modal.style.display = 'flex';
-        // Apply current settings to form
         this.populateForm();
     }
 
     close() {
         this.modal.style.display = 'none';
+        this.modal.classList.remove('open');
     }
 
     populateForm() {
         // Populate form with current settings
-        this.modal.querySelector('#setting-auto-save').checked = this.settings.autoSave;
-        this.modal.querySelector('#setting-auto-save-interval').value = this.settings.autoSaveInterval;
+        //this.modal.querySelector('#setting-auto-save').checked = this.settings.autoSave;
+        //this.modal.querySelector('#setting-auto-save-interval').value = this.settings.autoSaveInterval;
         this.modal.querySelector('#setting-show-grid').checked = this.settings.showGrid;
         this.modal.querySelector('#setting-grid-size').value = this.settings.gridSize;
         this.modal.querySelector('#setting-snap-to-grid').checked = this.settings.snapToGrid;
-        
+        this.modal.querySelector('#setting-show-save-reminder').checked = this.settings.showSaveReminder;
+
         this.modal.querySelector('#setting-anti-aliasing').checked = this.settings.antiAliasing;
         this.modal.querySelector('#setting-pixel-perfect').checked = this.settings.pixelPerfect;
         this.modal.querySelector('#setting-smoothing').checked = this.settings.smoothing;
-        
+
         this.modal.querySelector('#setting-touch-sensitivity').value = this.settings.touchSensitivity;
         this.modal.querySelector('.range-value').textContent = this.settings.touchSensitivity;
         this.modal.querySelector('#setting-pinch-zoom').checked = this.settings.pinchZoomEnabled;
         this.modal.querySelector('#setting-touch-pan').checked = this.settings.touchPanEnabled;
-        
+
         this.modal.querySelector('#setting-max-fps').value = this.settings.maxFPS;
         this.modal.querySelector('#setting-vsync').checked = this.settings.enableVSync;
-        
+
         this.modal.querySelector('#setting-export-format').value = this.settings.exportFormat;
         this.modal.querySelector('#setting-include-assets').checked = this.settings.includeAssets;
         this.modal.querySelector('#setting-minify-code').checked = this.settings.minifyCode;
-        
+
         this.modal.querySelector('#setting-show-fps').checked = this.settings.showFPS;
         this.modal.querySelector('#setting-show-debug-info').checked = this.settings.showDebugInfo;
         this.modal.querySelector('#setting-console-logging').checked = this.settings.enableConsoleLogging;

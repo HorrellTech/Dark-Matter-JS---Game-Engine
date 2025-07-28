@@ -2,6 +2,9 @@ class Editor {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
+        this.fps = 0;
+        this.lastFrameTime = performance.now();
+        this.frameCount = 0;
         this.scene = {
             gameObjects: []
         };
@@ -202,6 +205,15 @@ class Editor {
     }
 
     animationLoop() {
+        // FPS calculation
+        const now = performance.now();
+        this.frameCount++;
+        if (now - this.lastFrameTime >= 1000) {
+            this.fps = this.frameCount;
+            this.frameCount = 0;
+            this.lastFrameTime = now;
+            this.updateFPSDisplay();
+        }
         // Check if any animations are in progress
         const moveAnimating = Math.abs(this.viewportAnimation.moveHandleScale -
             this.viewportAnimation.targetMoveScale) > 0.01;
@@ -216,6 +228,13 @@ class Editor {
 
         // Continue the animation loop
         requestAnimationFrame(() => this.animationLoop());
+    }
+
+    updateFPSDisplay() {
+        const fpsElement = document.getElementById('fpsDisplay');
+        if (fpsElement) {
+            fpsElement.textContent = `FPS: ${this.fps}`;
+        }
     }
 
     /**
