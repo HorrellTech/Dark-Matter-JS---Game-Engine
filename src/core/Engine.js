@@ -73,12 +73,32 @@ class Engine {
         this.resizeCanvas();
     }
 
+    getGameObjectByName(name) {
+        // Use a simple recursive search to find the first matching game object by name
+        const findInObjects = (objects) => {
+            for (const obj of objects) {
+                if (obj.name === name) {
+                    return obj;
+                }
+                if (obj.children && obj.children.length > 0) {
+                    const found = findInObjects(obj.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };  
+        return findInObjects(this.gameObjects);
+    }
+
     async preload() {
         console.log("Preloading game objects...");
         const preloadPromises = [];
         
         // Traverse all game objects and collect preload promises
         this.traverseGameObjects(this.gameObjects, obj => {
+            if (obj.preload) {
+                preloadPromises.push(obj.preload());
+            }
             if (obj.modules) {
                 obj.modules.forEach(module => {
                     if (module.preload) {
@@ -86,6 +106,7 @@ class Engine {
                     }
                 });
             }
+            obj.engine = this; // Set engine reference for each object
         });
         
         // Wait for all resources to load

@@ -155,11 +155,23 @@ class Editor {
 
             // Delete selected object with Delete key
             if (e.key === 'Delete') {
-                if (this.hierarchy && this.hierarchy.selectedObject) {
-                    this.hierarchy.removeSelectedGameObject();
-                    this.refreshCanvas();
+                // Only delete if not focused on an input, textarea, or contenteditable
+                const active = document.activeElement;
+                const isTextInput = (
+                    active &&
+                    (
+                        active.tagName === 'INPUT' ||
+                        active.tagName === 'TEXTAREA' ||
+                        active.isContentEditable
+                    )
+                );
+                if (!isTextInput) {
+                    if (this.hierarchy && this.hierarchy.selectedObject) {
+                        this.hierarchy.removeSelectedGameObject();
+                        this.refreshCanvas();
+                    }
+                    e.preventDefault();
                 }
-                e.preventDefault();
             }
 
             // Create new object at center with Ctrl+I

@@ -25,6 +25,10 @@ class Vector2 {
         return mag === 0 ? new Vector2() : new Vector2(this.x / mag, this.y / mag);
     }
 
+    distanceTo(other) {
+        return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
+    }
+
     // Static constructors
     static zero() { return new Vector2(0, 0); }
     static one() { return new Vector2(1, 1); }

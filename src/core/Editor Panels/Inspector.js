@@ -1285,45 +1285,104 @@ class Inspector {
             const styleHelper = {
                 html: '',
                 exposeProperty: (name, type, value, options = {}) => {
-                    // Use Inspector's generatePropertyUI for consistency
-                    styleHelper.html += this.generatePropertyUI({
-                        name, type, value, options
-                    }, module);
+                    styleHelper.html += this.generatePropertyUI({ name, type, value, options }, module);
+                    return styleHelper;
                 },
                 startGroup: (label, collapsible, styleOptions) => {
                     styleHelper.html += `<div class="property-group" style="${styleOptions ? Object.entries(styleOptions).map(([k, v]) => `${k}:${v}`).join(';') : ''}"><div class="group-label">${label}</div>`;
+                    return styleHelper;
                 },
                 endGroup: () => {
                     styleHelper.html += `</div>`;
+                    return styleHelper;
                 },
                 addDivider: () => {
                     styleHelper.html += `<hr class="property-divider">`;
+                    return styleHelper;
                 },
-                addHelpText: (text) => {
-                    styleHelper.html += `<div class="property-help">${text}</div>`;
+                addHeader: (header, id) => {
+                    let text = typeof header === 'string' ? header : header.text;
+                    let color = header?.color || '';
+                    styleHelper.html += `<div class="property-header" style="${color ? `color:${color};` : ''}">${text}</div>`;
+                    return styleHelper;
                 },
                 addButton: (label, onClick, options = {}) => {
-                    // Buttons need to be wired up after insertion
                     const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
                     styleHelper.html += `<button id="${btnId}" class="property-btn">${label}</button>`;
-                    // Store for later event hookup
                     if (!styleHelper._buttons) styleHelper._buttons = [];
                     styleHelper._buttons.push({ btnId, onClick });
+                    return styleHelper;
                 },
-                addSpace: (px) => {
-                    styleHelper.html += `<div style="height:${px}px"></div>`;
+                addHelpText: (text, options = {}) => {
+                    let color = options?.color || '';
+                    styleHelper.html += `<div class="property-help" style="${color ? `color:${color};` : ''}">${text}</div>`;
+                    return styleHelper;
+                },
+                addSpace: (px = '10px') => {
+                    styleHelper.html += `<div style="height:${typeof px === 'number' ? px + 'px' : px};"></div>`;
+                    return styleHelper;
+                },
+                addColorBlock: (color = '#3498db', options = {}) => {
+                    styleHelper.html += `<div class="property-color-block" style="background:${color};height:20px;border-radius:4px;margin:4px 0;"></div>`;
+                    return styleHelper;
+                },
+                addDropdown: (name, value, optionsArr, onChange, extra = {}) => {
+                    const inputId = `dropdown-${Math.random().toString(36).substr(2, 8)}`;
+                    styleHelper.html += `
+                            <div class="property-row">
+                                <label for="${inputId}">${extra.label || this.formatPropertyName?.(name) || name}</label>
+                                <select id="${inputId}" class="property-input" data-prop-name="${name}">
+                                    ${optionsArr.map(opt => `<option value="${opt}" ${opt === value ? 'selected' : ''}>${this.formatPropertyName?.(opt) || opt}</option>`).join('')}
+                                </select>
+                            </div>
+                    `;
+                    if (!styleHelper._dropdowns) styleHelper._dropdowns = [];
+                    styleHelper._dropdowns.push({ inputId, onChange });
+                    return styleHelper;
+                },
+                addSlider: (name, value, min = 0, max = 100, step = 1, onChange, extra = {}) => {
+                    const inputId = `slider-${Math.random().toString(36).substr(2, 8)}`;
+                    styleHelper.html += `
+                        <div class="property-row">
+                            <label for="${inputId}">${extra.label || this.formatPropertyName?.(name) || name}</label>
+                            <input type="range" id="${inputId}" class="property-slider" data-prop-name="${name}"
+                                min="${min}" max="${max}" step="${step}" value="${value}">
+                            <span class="slider-value">${value}</span>
+                        </div>
+                `;
+                    if (!styleHelper._sliders) styleHelper._sliders = [];
+                    styleHelper._sliders.push({ inputId, onChange });
+                    return styleHelper;
                 }
             };
 
             // Call the module's style method
             module.style(styleHelper);
 
-            // After HTML is built, return it and wire up buttons
             setTimeout(() => {
                 if (styleHelper._buttons) {
                     styleHelper._buttons.forEach(({ btnId, onClick }) => {
                         const btn = document.getElementById(btnId);
                         if (btn && typeof onClick === 'function') btn.onclick = onClick;
+                    });
+                }
+                if (styleHelper._dropdowns) {
+                    styleHelper._dropdowns.forEach(({ inputId, onChange }) => {
+                        const el = document.getElementById(inputId);
+                        if (el && typeof onChange === 'function') {
+                            el.onchange = () => onChange(el.value);
+                        }
+                    });
+                }
+                if (styleHelper._sliders) {
+                    styleHelper._sliders.forEach(({ inputId, onChange }) => {
+                        const el = document.getElementById(inputId);
+                        if (el && typeof onChange === 'function') {
+                            el.oninput = () => {
+                                el.nextElementSibling.textContent = el.value;
+                                onChange(parseFloat(el.value));
+                            };
+                        }
                     });
                 }
             }, 0);
@@ -2014,38 +2073,42 @@ class Inspector {
     }
 
     /**
-     * Generate UI for a module based on its exposed properties
-     * @param {Module} module - The module to generate UI for
-     * @returns {string} HTML for the module properties
-     */
-    generateModulePropertiesUI(module) {
-        // Handle specific module types first
-        if (module instanceof SpriteRenderer) {
-            return this.generateSpriteRendererUI(module);
-        }
-
-        // For generic modules, use exposed properties
-        const exposedProps = module.getExposedProperties ? module.getExposedProperties() : [];
-
-        if (!exposedProps || exposedProps.length === 0) {
-            return '<div class="property-message">No editable properties</div>';
-        }
-
-        // Generate UI for each property
-        const html = exposedProps.map(prop => {
-            return this.generatePropertyUI(prop, module);
-        }).join('');
-
-        return html;
-    }
-
-    /**
      * Generate UI for a specific property
      * @param {Object} prop - Property descriptor
      * @param {Module} module - The module the property belongs to
      * @returns {string} HTML for the property UI
      */
     generatePropertyUI(prop, module) {
+        if (prop.type === '_header') {
+            // Render header with optional color
+            const color = prop.options?.color || prop.options?.textColor || '';
+            return `<div class="property-header" style="${color ? `color:${color};` : ''}">${prop.text}</div>`;
+        }
+        if (prop.type === '_divider') {
+            return `<hr class="property-divider">`;
+        }
+        if (prop.type === '_helpText') {
+            return `<div class="property-help" style="${prop.options?.color ? `color:${prop.options.color};` : ''}">${prop.text}</div>`;
+        }
+        if (prop.type === '_groupStart') {
+            const style = prop.group.options?.color ? `border-left:4px solid ${prop.group.options.color};padding-left:8px;` : '';
+            return `<div class="property-group" style="${style}"><div class="group-label">${prop.group.name}</div>`;
+        }
+        if (prop.type === '_groupEnd') {
+            return `</div>`;
+        }
+        if (prop.type === '_space') {
+            return `<div style="height:${prop.height};"></div>`;
+        }
+        if (prop.type === '_colorBlock') {
+            const color = prop.options?.color || '#3498db';
+            return `<div class="property-color-block" style="background:${color};height:20px;border-radius:4px;margin:4px 0;"></div>`;
+        }
+        if (prop.type === '_button') {
+            // Button will be wired up after insertion
+            return `<button id="${prop.name}" class="property-btn">${prop.label}</button>`;
+        }
+
         // Get the property value, trying different access methods
         let value;
         if (typeof module.getProperty === 'function') {
@@ -2112,20 +2175,56 @@ class Inspector {
             `;
         }
 
+        // Add slider if requested
+        let sliderHtml = '';
+        if (prop.options?.slider) {
+            sliderHtml = `
+            <input type="range" id="${inputId}-slider" class="property-slider"
+                data-prop-name="${prop.name}"
+                min="${prop.options.min ?? 0}" max="${prop.options.max ?? 100}"
+                step="${prop.options.step ?? 0.01}" value="${value}">
+            `;
+        }
+
+        // Add dropdown for enum or custom options
+        let dropdownHtml = '';
+        if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
+            const options = prop.options?.options || [];
+            dropdownHtml = `
+            <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" title="${tooltip}">
+                ${options.map(option => `
+                    <option value="${option}" ${value === option ? 'selected' : ''}>
+                        ${this.formatPropertyName(option)}
+                    </option>
+                `).join('')}
+            </select>
+            `;
+        }
+
+        let helpHtml = '';
+        if (prop.options?.helpText) {
+            helpHtml = `<div class="property-help">${prop.options.helpText}</div>`;
+        }
+
+        let labelHtml = `<label for="${inputId}" title="${tooltip}"${prop.options?.textColor ? ` style="color:${prop.options.textColor};"` : ''}>${prop.options?.label || this.formatPropertyName(prop.name)}</label>`;
+
         switch (prop.type) {
             case 'number':
                 return `
-                    <div class="property-row">
-                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                        <input type="number" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" 
-                            value="${value}" 
-                            title="${tooltip}"
-                            ${prop.options?.min !== undefined ? `min="${prop.options.min}"` : ''}
-                            ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
-                            ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}>
-                    </div>
-                `;
+                <div class="property-row">
+                    ${labelHtml}
+                    <input type="number" id="${inputId}" class="property-input"
+                        data-prop-name="${prop.name}"
+                        value="${value}"
+                        title="${tooltip}"
+                        ${prop.options?.min !== undefined ? `min="${prop.options.min}"` : ''}
+                        ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
+                        ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}
+                    >
+                    ${sliderHtml}
+                    ${helpHtml}
+                </div>
+            `;
             case 'boolean':
                 return `
                     <div class="property-row">
@@ -3040,6 +3139,83 @@ class Inspector {
             
             .add-vertex:hover {
                 background: #555;
+            }
+
+            /* --- Improved Property Group Styling --- */
+            .property-group {
+                background: #23272b;
+                border-radius: 8px;
+                padding: 12px 16px 12px 16px;
+                margin-bottom: 16px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }
+            .property-group .group-label {
+                font-weight: bold;
+                color: #fff;
+                margin-bottom: 8px;
+                font-size: 1.05em;
+            }
+
+            /* --- Slider Styling --- */
+            .property-input, .property-slider, .property-row select {
+                background: #23272b;
+                color: #e0e6f0;
+                border: 1px solid #3a3f4b;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 1em;
+            }
+            .property-input:focus, .property-row select:focus {
+                border-color: #0078D7;
+                outline: none;
+            }
+
+            .slider-value {
+                min-width: 48px;
+                max-width: 60px;
+                text-align: right;
+                font-family: 'Consolas', 'Menlo', 'monospace';
+                color: #b3c0d6;
+                background: #23272b;
+                border-radius: 4px;
+                margin-left: 8px;
+                padding: 2px 6px;
+                font-size: 1em;
+                transition: background 0.2s;
+                box-sizing: border-box;
+            }
+
+            .property-slider {
+                flex: 1 1 auto;
+                margin: 0 12px 0 0;
+                min-width: 120px;
+                max-width: 220px;
+                box-sizing: border-box;
+            }
+
+            /* Help text styling */
+            .property-help {
+                font-style: italic;
+                font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+                color: #b3c0d6;
+                font-size: 0.97em;
+                margin: 6px 0 2px 0;
+                letter-spacing: 0.01em;
+            }
+
+            /* --- Dropdown Styling --- */
+            .property-input[type="select"], .property-input select {
+                flex: 1 1 auto;
+                min-width: 120px;
+                max-width: 220px;
+                margin-left: 0;
+                margin-right: 0;
+                padding: 6px 10px;
+                box-sizing: border-box;
+            }
+            .property-input select:focus {
+                border-color: #0078D7;
+                outline: none;
             }
         `;
 

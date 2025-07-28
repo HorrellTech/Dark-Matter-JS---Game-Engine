@@ -166,11 +166,11 @@ class PlayerController extends Module {
     
     loop(deltaTime) {
         // Handle movement based on input
-        if (window.input.isKeyDown("ArrowRight")) {
+        if (window.input.keyDown("ArrowRight")) {
             this.gameObject.position.x += this.speed * deltaTime;
         }
         
-        if (window.input.isKeyDown("ArrowLeft")) {
+        if (window.input.keyDown("ArrowLeft")) {
             this.gameObject.position.x -= this.speed * deltaTime;
         }
     }
