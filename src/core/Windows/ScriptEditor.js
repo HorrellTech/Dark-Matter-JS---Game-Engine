@@ -1006,6 +1006,7 @@ Ask me to create, fix, or improve modules for your game!
 - All modules extend the Module base class
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
+- Access viewport/camera through 'window.engine.viewport.*'
 
 **Module Template:**
 \`\`\`javascript
@@ -1022,8 +1023,6 @@ class MyModule extends Module {
         // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
             description: "Movement speed",
-            min: 0, max: 500,
-            step: 1,
             onChange: (val) => {
                 this.speed = val; // Update speed when property changes
             }

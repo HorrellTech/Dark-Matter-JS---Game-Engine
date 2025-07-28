@@ -117,7 +117,9 @@ Modules are components that add behavior and functionality to game objects:
 - **Built-in Modules**
   - SpriteRenderer: Renders images and animations
   - Transform: Handles positioning and hierarchy
-  - More coming soon...
+  - Drawing: Different modules for drawing shapes and one for infinitely generated, parallax backgrounds
+  - Tween: For tweening an objects values (for example sine in and out position.x)
+  - KeyboardController: Basic keyboard controller to control a game object with the keyboard
 
 - **Custom Modules**
   - Create your own modules by extending the Module class

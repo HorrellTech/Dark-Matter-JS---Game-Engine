@@ -34,15 +34,30 @@ class CameraController extends Module {
         this.shakeIntensity = 0;
         this.shakeDuration = 0;
         this.shakeTimer = 0;
-        this.shakeDecay = 0.9;
+        this.shakeDecay = 1;
 
         // Auto-follow settings
         this.followOwner = true;
+        this.followOwnerAngle = false; // Angle to follow the owner at
+        this.followAngleOffset = 0; // Angle offset when following owner
 
         // Expose properties
         this.exposeProperty("followOwner", "boolean", true, {
             description: "Whether camera follows this GameObject",
             onChange: (val) => { this.followOwner = val; }
+        });
+
+        this.exposeProperty("followOwnerAngle", "boolean", false, {
+            description: "Whether camera follows the owner's angle",
+            onChange: (val) => { this.followOwnerAngle = val; }
+        });
+
+        this.exposeProperty("followAngleOffset", "number", 0, {
+            description: "Angle offset when following owner",
+            min: -Math.PI,
+            max: Math.PI,
+            step: 0.01,
+            onChange: (val) => { this.followAngleOffset = val; }
         });
 
         this.exposeProperty("followSpeed", "number", 5.0, {
@@ -85,26 +100,10 @@ class CameraController extends Module {
             onChange: (val) => { this.shakeIntensity = val; }
         });
 
-        this.exposeProperty("shakeDuration", "number", 0, {
-            description: "Duration of camera shake effect in seconds",
-            min: 0,
-            max: 10,
-            step: 0.1,
-            onChange: (val) => { this.shakeDuration = val; }
-        });
-
         this.exposeProperty("shakeTimer", "number", 0, {
             description: "Internal timer for shake effect",
             readOnly: true,
             onChange: (val) => { this.shakeTimer = val; }
-        });
-
-        this.exposeProperty("shakeDecay", "number", 0.9, {
-            description: "Decay factor for shake intensity",
-            min: 0,
-            max: 1,
-            step: 0.01,
-            onChange: (val) => { this.shakeDecay = val; }
         });
 
         this.exposeProperty("offset", "vector2", this.offset, {
@@ -240,35 +239,44 @@ class CameraController extends Module {
             return;
         }
 
-        // Get the container size from the engine, falling back to canvas dimensions
         const viewportWidth = engine.canvas ? engine.canvas.width : 800;
         const viewportHeight = engine.canvas ? engine.canvas.height : 600;
 
-        // Calculate real center position based on position and zoom
-        const centerX = this.position.x;
-        const centerY = this.position.y;
+        let centerX = this.position.x;
+        let centerY = this.position.y;
 
         // Apply shake effect if active
         let shakeOffsetX = 0;
         let shakeOffsetY = 0;
+
+        let halfWidth = viewportWidth / 2 / this.zoom;
+        let halfHeight = viewportHeight / 2 / this.zoom;
+
+        let angle = 0;
+        if (this.followOwnerAngle) {
+            const owner = this.gameObject;
+            if (owner) {
+                angle = owner.getWorldRotation() + this.followAngleOffset;
+                engine.viewport.angle = angle;
+            } else {
+                engine.viewport.angle = 0;
+            }
+        } else {
+            engine.viewport.angle = 0;
+        }
 
         if (this.shakeTimer > 0) {
             shakeOffsetX = (Math.random() * 2 - 1) * this.shakeIntensity;
             shakeOffsetY = (Math.random() * 2 - 1) * this.shakeIntensity;
         }
 
-        // Calculate viewport position (top-left corner)
-        const viewportX = centerX - (viewportWidth / 2 / this.zoom) + shakeOffsetX;
-        const viewportY = centerY - (viewportHeight / 2 / this.zoom) + shakeOffsetY;
-
-        // Update the engine's viewport object
-        engine.viewport.x = viewportX;
-        engine.viewport.y = viewportY;
+        // Center viewport on camera position (no rotation offset)
+        engine.viewport.x = (centerX - halfWidth + shakeOffsetX);
+        engine.viewport.y = (centerY - halfHeight + shakeOffsetY);
         engine.viewport.width = viewportWidth;
         engine.viewport.height = viewportHeight;
         engine.viewport.zoom = this.zoom;
 
-        // Request engine to resize canvas if available
         if (engine.resizeCanvas) {
             engine.resizeCanvas();
         }

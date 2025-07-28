@@ -399,6 +399,7 @@ class ExportManager {
             'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
             'DrawRectangle': 'src/core/Modules/Drawing/DrawRectangle.js',
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
+            'DrawPlatformerHills': 'src/core/Modules/Drawing/DrawPlatformerHills.js',
 
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',
@@ -418,7 +419,6 @@ class ExportManager {
             // Physics and Collision Modules
             'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',
             'Rigidbody': 'src/core/Modules/Rigidbody.js',
-            'RigidBody': 'src/core/Modules/Rigidbody.js',
             'Collider': 'src/core/Modules/Collider.js',
 
             // Other Modules

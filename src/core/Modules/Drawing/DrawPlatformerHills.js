@@ -379,6 +379,38 @@ class DrawPlatformerHills extends Module {
     onPropertyChanged(propertyName) {
         this.clearCache();
     }
+
+    toJSON() {
+        const json = super.toJSON();
+        json.backgroundColor = this.backgroundColor;
+        json.hillColor = this.hillColor;
+        json.hillLayers = this.hillLayers;
+        json.pointCount = this.pointCount;
+        json.hillStyle = this.hillStyle;
+        json.minHeight = this.minHeight;
+        json.maxHeight = this.maxHeight;
+        json.seed = this.seed;
+        json.imageHeight = this.imageHeight;
+        json.parallaxStrength = this.parallaxStrength;
+        json.segmentWidth = this.segmentWidth;
+        return json;
+    }
+
+    fromJSON(json) {
+        super.fromJSON(json);
+        if (json.backgroundColor !== undefined) this.backgroundColor = json.backgroundColor;
+        if (json.hillColor !== undefined) this.hillColor = json.hillColor;
+        if (json.hillLayers !== undefined) this.hillLayers = json.hillLayers;
+        if (json.pointCount !== undefined) this.pointCount = json.pointCount;
+        if (json.hillStyle !== undefined) this.hillStyle = json.hillStyle;
+        if (json.minHeight !== undefined) this.minHeight = json.minHeight;
+        if (json.maxHeight !== undefined) this.maxHeight = json.maxHeight;
+        if (json.seed !== undefined) this.seed = json.seed;
+        if (json.imageHeight !== undefined) this.imageHeight = json.imageHeight;
+        if (json.parallaxStrength !== undefined) this.parallaxStrength = json.parallaxStrength;
+        if (json.segmentWidth !== undefined) this.segmentWidth = json.segmentWidth;
+        this.clearCache();
+    }
 }
 
 window.DrawPlatformerHills = DrawPlatformerHills;

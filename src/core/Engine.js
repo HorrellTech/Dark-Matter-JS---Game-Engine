@@ -18,6 +18,15 @@ class Engine {
             angle: 0 // Camera angle in degrees
         };
 
+        this.viewportOriginalPosition = {
+            width: 800,
+            height: 600,
+            x: 0,
+            y: 0,
+            zoom: 1,
+            angle: 0 // Camera angle in degrees
+        };
+
         this.renderConfig = {
             scaleMode: 'fit', // 'fit', 'stretch', 'pixel-perfect', 'nearest-neighbor'
             fullscreen: false,
@@ -139,7 +148,16 @@ class Engine {
         }
     
         console.log("Starting game...");
-    
+
+        this.viewportOriginalPosition = {
+            width: this.viewport.width,
+            height: this.viewport.height,
+            x: this.viewport.x,
+            y: this.viewport.y,
+            zoom: this.viewport.zoom,
+            angle: this.viewport.angle
+        };
+
         // Perform any pre-start setup
         this.refreshModules();
     
@@ -200,6 +218,15 @@ class Engine {
         this.running = false;
         this.wasRunning = false;
         cancelAnimationFrame(this.animationFrameId);
+
+        this.viewport = {
+            width: this.viewportOriginalPosition.width,
+            height: this.viewportOriginalPosition.height,
+            x: this.viewportOriginalPosition.x,
+            y: this.viewportOriginalPosition.y,
+            zoom: this.viewportOriginalPosition.zoom,
+            angle: this.viewportOriginalPosition.angle
+        };
         
         // Call onDestroy on all game objects
         this.traverseGameObjects(this.gameObjects, obj => {

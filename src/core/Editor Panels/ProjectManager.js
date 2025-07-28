@@ -46,7 +46,7 @@ class ProjectManager {
 
         // Play a "boop" sound
         try {
-            playSoftBloop(); // Play the bloop sound
+            //playSoftBloop(); // Play the bloop sound
         } catch (e) {
             // Ignore sound errors
         }
