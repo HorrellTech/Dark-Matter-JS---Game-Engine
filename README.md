@@ -37,9 +37,12 @@ The engine follows a component-based architecture similar to popular engines lik
 - **Console**: Debug your game with an integrated console
 - **Play Mode**: Test your game instantly within the editor
 - **Grid & Snapping**: Precise object placement with customizable grid
+- **Zen Mode**: Toggle fullscreen/window mode for distraction-free editing
+- **AI Assistant in Script Editor**: Get code help, generate modules, and ask questions directly in the script editor
+
 
 ### Development Features
-- **Script Editor**: Write and edit game scripts with syntax highlighting
+- **Script Editor**: Write and edit game scripts with syntax highlighting and AI-powered assistance
 - **Module System**: Create and manage reusable components
 - **Scene Serialization**: Save and load your game scenes
 - **Export System**: Package your games for distribution
@@ -78,6 +81,29 @@ npx http-server
 4. Access the editor at `http://localhost:8000` or the port specified by your server.
 
 ## Documentation
+
+## Zen Mode
+
+Zen Mode provides a distraction-free editing experience by toggling the editor into fullscreen. Click the "Zen Mode" button (moon/sun icon) in the toolbar to enter or exit fullscreen mode. The icon updates to indicate the current state.
+
+## Script Editor & AI Assistant
+
+The Script Editor features syntax highlighting, code formatting, and undo/redo support. It also includes an integrated **AI Assistant** panel, which allows you to:
+
+- **Ask questions about your code or the module system**
+- **Generate new modules or scripts**
+- **Request code fixes or improvements**
+- **Insert generated code directly into your script**
+
+Supported AI providers include ChatGPT (OpenAI), Gemini (Google), and Claude (Anthropic). You can configure your API keys and default provider in the AI settings dialog within the Script Editor.
+
+**How to use the AI Assistant:**
+1. Open a script file in the Script Editor.
+2. Click the robot icon to open the AI panel.
+3. Type your question or request (e.g., "Create a movement module for my player").
+4. Choose context buttons to include current code or selection.
+5. Send your message and review the AI's response.
+6. Insert generated code directly into your script with one click.
 
 ### Game Objects
 Game objects are the fundamental building blocks in Dark Matter JS. Each game object can have:
@@ -177,10 +203,12 @@ Dark Matter JS consists of several key components:
 - [x] Component-based game object system
 - [x] Scene management and serialization
 - [x] Input handling system
-- [ ] Asset management system
+- [x] Zen Mode (fullscreen editing)
+- [x] AI Assistant in Script Editor
+- [x] Asset management system
+- [x] Particle effects
+- [x] HTML5 export
 - [ ] Physics engine integration
 - [ ] Audio system
 - [ ] Animation system
-- [ ] Particle effects
-- [ ] HTML5 export
 - [ ] WebGL functionality for better performance

@@ -666,6 +666,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Zen Mode button handler
+    const zenModeButton = document.getElementById('zenModeButton');
+    if (zenModeButton) {
+        zenModeButton.addEventListener('click', () => {
+            // Toggle fullscreen for the document
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    zenModeButton.innerHTML = '<i class="fas fa-sun"></i>';
+                });
+            } else {
+                document.exitFullscreen().then(() => {
+                    zenModeButton.innerHTML = '<i class="fas fa-moon"></i>';
+                });
+            }
+        });
+
+        // Update icon when fullscreen changes
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                zenModeButton.innerHTML = '<i class="fas fa-sun"></i>';
+            } else {
+                zenModeButton.innerHTML = '<i class="fas fa-moon"></i>';
+            }
+        });
+    } else {
+        console.warn("Zen Mode button not found.");
+    }
+
     // PLAY
     // Initialize the engine
     const gameCanvas = document.getElementById('gameCanvas');
