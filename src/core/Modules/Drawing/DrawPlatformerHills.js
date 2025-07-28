@@ -290,10 +290,10 @@ class DrawPlatformerHills extends Module {
 
     // Calculate viewport bounds using scene viewport
     getViewportBounds() {
-        const viewportX = this.gameObject?.scene?.settings?.viewportX || 0;
-        const viewportY = this.gameObject?.scene?.settings?.viewportY || 0;
-        const viewportWidth = this.gameObject?.scene?.settings?.width || 800;
-        const viewportHeight = this.gameObject?.scene?.settings?.height || 600;
+        const viewportX = window.engine.viewport.x || 0;
+        const viewportY = window.engine.viewport.y || 0;
+        const viewportWidth = window.engine.viewport.width || 800;
+        const viewportHeight = window.engine.viewport.height || 600;
 
         return {
             left: viewportX,
@@ -310,14 +310,14 @@ class DrawPlatformerHills extends Module {
 
     draw(ctx) {
         const viewportBounds = this.getViewportBounds();
-        const viewportX = this.gameObject?.scene?.settings?.viewportX || 0;
-        const viewportY = this.gameObject?.scene?.settings?.viewportY || 0;
+        const viewportX = window.engine.viewport.x || 0;
+        const viewportY = window.engine.viewport.y || 0;
 
         // Draw background
         ctx.fillStyle = this.backgroundColor;
-        ctx.fillRect(viewportBounds.left, viewportBounds.top, 
-                    viewportBounds.right - viewportBounds.left, 
-                    viewportBounds.bottom - viewportBounds.top);
+        ctx.fillRect(viewportBounds.left - 64, viewportBounds.top - 64, 
+                    viewportBounds.right - viewportBounds.left + 256, 
+                    viewportBounds.bottom - viewportBounds.top + 64);
 
         // Generate hill layers from back to front
         for (let layer = this.hillLayers - 1; layer >= 0; layer--) {
