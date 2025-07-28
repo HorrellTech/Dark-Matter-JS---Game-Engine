@@ -1058,7 +1058,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', () => {
             // If switching to editor while game is running, stop the game
             if (tab.dataset.canvas === 'editor' && engine.running) {
-                engine.stop();
+               // engine.stop();
             }
             
             // If switching to game, make sure canvas is sized correctly

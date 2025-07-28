@@ -18,6 +18,9 @@ class GameObject {
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
 
+        this.xd = 0; // X Position for drawing (for viewport offsets)
+        this.yd = 0; // Y Position for drawing (for viewport offsets)
+
         this.collisionEnabled = true;  // Flag to enable/disable collision
         this.collisionLayer = 0;       // Collision layer for filtering
         this.collisionMask = 0xFFFF;   // Collision mask for filtering
@@ -98,8 +101,20 @@ class GameObject {
         const worldPos = this.getWorldPosition();
         const worldAngle = this.getWorldRotation();
         const worldScale = this.getWorldScale();
-        
-        ctx.translate(worldPos.x, worldPos.y);
+
+        // Calculate xd and yd relative to viewport/camera
+        /*let camera = this.engine?.viewport || window.viewport;
+        if (camera) {
+            // Adjust for camera position and zoom
+            this.xd = (worldPos.x - camera.position.x) * (camera.zoom || 1);
+            this.yd = (worldPos.y - camera.position.y) * (camera.zoom || 1);
+        } else {
+            // Fallback: use world position directly
+            this.xd = worldPos.x;
+            this.yd = worldPos.y;
+        }*/
+
+        ctx.translate(this.position.x, this.position.y);
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
         

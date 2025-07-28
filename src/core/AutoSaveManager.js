@@ -110,7 +110,7 @@ class AutoSaveManager {
      */
     startAutoSave() {
         if (!this.intervalId) {
-            this.intervalId = setInterval(this.autoSave, this.autoSaveInterval);
+            //this.intervalId = setInterval(this.autoSave, this.autoSaveInterval);
             console.log(`Auto-save started (every ${this.autoSaveInterval/1000} seconds)`);
         }
     }
@@ -132,7 +132,7 @@ class AutoSaveManager {
     autoSave() {
         // Check if any scene is dirty
         if (this.editor.scenes.some(scene => scene.dirty)) {
-            this.saveState();
+            //this.saveState();
         }
     }
 

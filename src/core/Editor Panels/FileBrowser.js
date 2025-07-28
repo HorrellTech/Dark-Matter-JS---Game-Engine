@@ -85,8 +85,11 @@ class FileBrowser {
         this.toolbar.style.flexShrink = '0'; // Prevent toolbar from shrinking
         this.toolbar.innerHTML = `
             <button class="fb-button" id="fbNewFolder" title="New Folder"><i class="fas fa-folder-plus"></i></button>
+            <div class="fb-separator"></div>
             <button class="fb-button" id="fbNewScript" title="New Script"><i class="fas fa-file-code"></i></button>
             <button class="fb-button" id="fbNewTextFile" title="New Text File"><i class="fas fa-file-alt"></i></button>
+            <button class="fb-button" id="fbNewScene" title="New Scene"><i class="fas fa-file"></i></button>
+            <div class="fb-separator"></div>
             <button class="fb-button" id="fbUploadFile" title="Upload File"><i class="fas fa-file-upload"></i></button>
             <button class="fb-button" id="fbDeleteItem" title="Delete"><i class="fas fa-trash"></i></button>
             <div class="fb-separator"></div>
@@ -152,6 +155,7 @@ class FileBrowser {
         document.getElementById('fbNewFolder').addEventListener('click', () => this.promptNewFolder());
         document.getElementById('fbNewScript').addEventListener('click', () => this.promptNewScript());
         document.getElementById('fbNewTextFile').addEventListener('click', () => this.promptNewTextFile());
+        document.getElementById('fbNewScene').addEventListener('click', () => this.promptNewSceneFile());
         document.getElementById('fbUploadFile').addEventListener('click', () => this.uploadFile());
         document.getElementById('fbDeleteItem').addEventListener('click', () => this.deleteSelected());
 
@@ -384,6 +388,53 @@ class FileBrowser {
                 document.body.style.cursor = '';
             }
         });
+    }
+
+    async promptNewSceneFile() {
+        if (!this.db) {
+            this.showNotification('File system not initialized yet. Please wait...', 'warning');
+            return;
+        }
+
+        const name = await this.promptDialog('New Scene', 'Enter scene name:');
+        if (!name) return; // User cancelled
+
+        // Ensure filename ends with .scene
+        const fileName = name.endsWith('.scene') ? name : `${name}.scene`;
+
+        // Create default scene JSON
+        const defaultScene = {
+            name: name.replace('.scene', ''),
+            settings: {
+                viewportWidth: 1280,
+                viewportHeight: 720,
+                viewportX: 0,
+                viewportY: 0,
+                backgroundColor: "#1e1e1e",
+                gridEnabled: true,
+                gridSize: 32,
+                snapToGrid: false,
+                gravity: { x: 0, y: 1 },
+                physicsEnabled: true,
+                physicsDebugDraw: false
+            },
+            gameObjects: []
+        };
+
+        // Create the filepath
+        const normalizedPath = this.normalizePath(this.currentPath);
+        const filePath = normalizedPath === '/'
+            ? `/${fileName}`
+            : `${normalizedPath}/${fileName}`;
+
+        // Save the file
+        const success = await this.createFile(filePath, JSON.stringify(defaultScene, null, 2));
+        if (success) {
+            this.showNotification(`Created scene file: ${fileName}`, 'info');
+            await this.loadContent(this.currentPath);
+        } else {
+            this.showNotification(`Failed to create scene file: ${fileName}`, 'error');
+        }
     }
 
     /**

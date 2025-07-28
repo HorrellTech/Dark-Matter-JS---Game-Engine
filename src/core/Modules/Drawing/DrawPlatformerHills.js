@@ -13,7 +13,7 @@ class DrawPlatformerHills extends Module {
         this.hillStyle = "rounded"; // Curve style: "rounded" or "pointy"
         this.minHeight = 0.3; // Minimum hill height (0-1)
         this.maxHeight = 0.7; // Maximum hill height (0-1)
-        this.seed = 42; // Random seed for generation
+        this.seed = Math.random() * 1000; // Random seed for generation
         this.imageHeight = 600; // Height of generated image
         this.parallaxStrength = 0.5; // Parallax effect strength (0-1)
         this.segmentWidth = 800; // Width of each hill segment for generation
@@ -124,6 +124,30 @@ class DrawPlatformerHills extends Module {
         this.lastViewportBounds = null;
     }
 
+    style(styleHelper) {
+        styleHelper
+            .addHeader("Platformer Hills Settings", "hills-header")
+            .startGroup("Image", false, { color: "#0078D7" })
+            .exposeProperty("imageHeight", "number", this.imageHeight, { label: "Image Height" })
+            .endGroup()
+            .startGroup("Colors", false)
+            .exposeProperty("backgroundColor", "color", this.backgroundColor, { label: "Background Color" })
+            .exposeProperty("hillColor", "color", this.hillColor, { label: "Hill Color" })
+            .endGroup()
+            .startGroup("Hill Generation", false)
+            .exposeProperty("hillLayers", "number", this.hillLayers, { label: "Hill Layers" })
+            .exposeProperty("pointCount", "number", this.pointCount, { label: "Points Per Hill" })
+            .exposeProperty("hillStyle", "enum", this.hillStyle, { label: "Hill Style", options: ["rounded", "pointy"] })
+            .exposeProperty("minHeight", "number", this.minHeight, { label: "Min Hill Height" })
+            .exposeProperty("maxHeight", "number", this.maxHeight, { label: "Max Hill Height" })
+            .exposeProperty("segmentWidth", "number", this.segmentWidth, { label: "Segment Width" })
+            .exposeProperty("seed", "number", this.seed, { label: "Random Seed" })
+            .endGroup()
+            .startGroup("Parallax", false)
+            .exposeProperty("parallaxStrength", "number", this.parallaxStrength, { label: "Parallax Strength" })
+            .endGroup();
+    }
+
     // Simple seeded random number generator
     seededRandom(seed) {
         let x = Math.sin(seed) * 10000;
@@ -157,18 +181,36 @@ class DrawPlatformerHills extends Module {
         this.hillCache.clear();
     }
 
-    // Generate control points for a hill segment
-    generateHillPoints(segmentIndex, layer) {
-        const points = [];
+    // Generate height at a specific global x position for seamless tiling
+    getHeightAtPosition(globalX, layer) {
         const heightVariance = (this.maxHeight - this.minHeight) * this.imageHeight;
         const baseHeight = this.minHeight * this.imageHeight;
+        
+        // Use a continuous noise-like function based on global position
+        const frequency = 0.005; // Controls hill frequency
+        const seedValue = this.seed + layer * 1000;
+        const noiseInput = globalX * frequency + seedValue;
+        
+        // Create smooth transitions using sine waves with different frequencies
+        const noise1 = Math.sin(noiseInput) * 0.5;
+        const noise2 = Math.sin(noiseInput * 2.3 + seedValue) * 0.3;
+        const noise3 = Math.sin(noiseInput * 0.7 + seedValue * 2) * 0.2;
+        const combinedNoise = (noise1 + noise2 + noise3) * 0.5 + 0.5; // Normalize to 0-1
+        
+        return this.imageHeight - (baseHeight + combinedNoise * heightVariance);
+    }
+
+    // Generate control points for a hill segment with seamless connections
+    generateHillPoints(segmentIndex, layer) {
+        const points = [];
+        const segmentStartX = segmentIndex * this.segmentWidth;
 
         // Generate points across the segment width
         for (let i = 0; i <= this.pointCount; i++) {
-            const x = (i / this.pointCount) * this.segmentWidth;
-            const seedValue = this.seed + segmentIndex * 10000 + i * 100 + layer * 1000;
-            const y = this.imageHeight - (baseHeight + this.randomRange(0, heightVariance, seedValue));
-            points.push({ x, y });
+            const localX = (i / this.pointCount) * this.segmentWidth;
+            const globalX = segmentStartX + localX;
+            const y = this.getHeightAtPosition(globalX, layer);
+            points.push({ x: localX, y: y });
         }
 
         return points;
@@ -186,48 +228,72 @@ class DrawPlatformerHills extends Module {
         return this.hillCache.get(cacheKey);
     }
 
-    // Draw spline curve through points
-    drawSpline(ctx, points, style, offsetX, offsetY) {
-        if (points.length < 2) return;
+    // Draw spline curve through points with seamless segment connections
+    drawConnectedSegments(ctx, segments, style, offsetX, offsetY, viewportBounds) {
+        if (segments.length === 0) return;
 
         ctx.beginPath();
-        ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+        
+        let allPoints = [];
+        
+        // Combine all segment points into one continuous path
+        for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+            const segment = segments[segIdx];
+            const segmentOffsetX = segment.segmentIndex * this.segmentWidth;
+            
+            for (let i = 0; i < segment.points.length; i++) {
+                // Skip the first point of subsequent segments to avoid duplicates
+                if (segIdx > 0 && i === 0) continue;
+                
+                const point = segment.points[i];
+                allPoints.push({
+                    x: point.x + segmentOffsetX + offsetX,
+                    y: point.y + offsetY
+                });
+            }
+        }
+
+        if (allPoints.length < 2) return;
+
+        // Start the path
+        ctx.moveTo(allPoints[0].x, allPoints[0].y);
 
         if (style === "rounded") {
-            // Use midpoints for smooth quadratic curves
-            for (let i = 1; i < points.length - 1; i++) {
-                const prev = points[i - 1];
-                const curr = points[i];
-                const next = points[i + 1];
+            // Use quadratic curves for smooth hills
+            for (let i = 1; i < allPoints.length - 1; i++) {
+                const curr = allPoints[i];
+                const next = allPoints[i + 1];
                 const mx = (curr.x + next.x) / 2;
                 const my = (curr.y + next.y) / 2;
-                ctx.quadraticCurveTo(curr.x + offsetX, curr.y + offsetY, mx + offsetX, my + offsetY);
+                ctx.quadraticCurveTo(curr.x, curr.y, mx, my);
             }
-            // Last segment: curve to the last point
-            const last = points[points.length - 1];
-            ctx.quadraticCurveTo(last.x + offsetX, last.y + offsetY, last.x + offsetX, last.y + offsetY);
+            // Last segment
+            const last = allPoints[allPoints.length - 1];
+            ctx.quadraticCurveTo(last.x, last.y, last.x, last.y);
         } else {
             // Pointy/angular hills
-            for (let i = 1; i < points.length; i++) {
-                ctx.lineTo(points[i].x + offsetX, points[i].y + offsetY);
+            for (let i = 1; i < allPoints.length; i++) {
+                ctx.lineTo(allPoints[i].x, allPoints[i].y);
             }
         }
 
         // Close the shape to bottom of viewport
-        const lastPoint = points[points.length - 1];
-        const viewportBottom = (ctx.viewportY || 0) + ctx.canvas.height;
-        ctx.lineTo(lastPoint.x + offsetX, viewportBottom);
-        ctx.lineTo(offsetX, viewportBottom);
+        const lastPoint = allPoints[allPoints.length - 1];
+        const firstPoint = allPoints[0];
+        const viewportBottom = viewportBounds.bottom;
+        
+        ctx.lineTo(lastPoint.x, viewportBottom);
+        ctx.lineTo(firstPoint.x, viewportBottom);
         ctx.closePath();
         ctx.fill();
     }
 
-    // Calculate viewport bounds for optimization
-    getViewportBounds(ctx) {
-        const viewportX = ctx.viewportX || 0;
-        const viewportY = ctx.viewportY || 0;
-        const viewportWidth = ctx.canvas.width;
-        const viewportHeight = ctx.canvas.height;
+    // Calculate viewport bounds using scene viewport
+    getViewportBounds() {
+        const viewportX = this.gameObject?.scene?.settings?.viewportX || 0;
+        const viewportY = this.gameObject?.scene?.settings?.viewportY || 0;
+        const viewportWidth = this.gameObject?.scene?.settings?.width || 800;
+        const viewportHeight = this.gameObject?.scene?.settings?.height || 600;
 
         return {
             left: viewportX,
@@ -243,13 +309,15 @@ class DrawPlatformerHills extends Module {
     }
 
     draw(ctx) {
-        const viewportBounds = this.getViewportBounds(ctx);
-        const viewportX = ctx.viewportX || 0;
-        const viewportY = ctx.viewportY || 0;
+        const viewportBounds = this.getViewportBounds();
+        const viewportX = this.gameObject?.scene?.settings?.viewportX || 0;
+        const viewportY = this.gameObject?.scene?.settings?.viewportY || 0;
 
         // Draw background
         ctx.fillStyle = this.backgroundColor;
-        ctx.fillRect(viewportBounds.left, viewportBounds.top, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillRect(viewportBounds.left, viewportBounds.top, 
+                    viewportBounds.right - viewportBounds.left, 
+                    viewportBounds.bottom - viewportBounds.top);
 
         // Generate hill layers from back to front
         for (let layer = this.hillLayers - 1; layer >= 0; layer--) {
@@ -268,23 +336,30 @@ class DrawPlatformerHills extends Module {
             const startSegment = Math.floor(effectiveViewportLeft / this.segmentWidth);
             const endSegment = Math.ceil(effectiveViewportRight / this.segmentWidth);
 
-            // Draw visible segments
+            // Collect all visible segments for this layer
+            const segments = [];
             for (let segmentIndex = startSegment; segmentIndex <= endSegment; segmentIndex++) {
                 const points = this.getHillSegment(segmentIndex, layer);
-                const segmentOffsetX = segmentIndex * this.segmentWidth + parallaxOffsetX;
-                const layerOffsetY = layer * 20; // Vertical offset between layers
-
-                this.drawSpline(ctx, points, this.hillStyle, segmentOffsetX, layerOffsetY);
+                segments.push({
+                    segmentIndex: segmentIndex,
+                    points: points
+                });
             }
+
+            // Draw all segments as one connected path
+            const layerOffsetY = layer * 20; // Vertical offset between layers
+            this.drawConnectedSegments(ctx, segments, this.hillStyle, parallaxOffsetX, layerOffsetY, viewportBounds);
         }
     }
 
     drawGizmos(ctx) {
-        const viewportBounds = this.getViewportBounds(ctx);
+        const viewportBounds = this.getViewportBounds();
         
         // Draw viewport bounds for debugging
         ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-        ctx.strokeRect(viewportBounds.left, viewportBounds.top, ctx.canvas.width, ctx.canvas.height);
+        ctx.strokeRect(viewportBounds.left, viewportBounds.top, 
+                      viewportBounds.right - viewportBounds.left, 
+                      viewportBounds.bottom - viewportBounds.top);
         
         // Draw segment boundaries
         ctx.strokeStyle = "rgba(0, 255, 0, 0.3)";

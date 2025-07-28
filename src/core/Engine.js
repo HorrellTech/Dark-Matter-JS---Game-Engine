@@ -13,7 +13,9 @@ class Engine {
             width: 800,
             height: 600,
             x: 0,
-            y: 0
+            y: 0,
+            zoom: 1,
+            angle: 0 // Camera angle in degrees
         };
 
         this.renderConfig = {
@@ -34,6 +36,12 @@ class Engine {
         if (window.input) {
             window.input.setEngine(this);
         }
+
+        if(!window.viewport) {
+            window.viewport = this.viewport;
+        }
+
+        window.engine = this; // Global reference for easy access
 
          // Set up resize observer to continuously monitor container size
          this.setupResizeObserver();
@@ -381,22 +389,26 @@ class Engine {
     }
     
     applyViewportTransform() {
-        if (!this.scene || !this.scene.settings) return;
-        
-        const settings = this.scene.settings;
-        
         // Apply viewport offset
-        if (settings.viewportX || settings.viewportY) {
-            this.ctx.translate(-settings.viewportX || 0, -settings.viewportY || 0);
+        if (this.viewport.x || this.viewport.y) {
+            this.ctx.translate(-this.viewport.x || 0, -this.viewport.y || 0);
         }
-        
+
         // Apply camera zoom if available
-        if (settings.cameraZoom) {
+        if (this.viewport.zoom) {
             const centerX = this.canvas.width / 2;
             const centerY = this.canvas.height / 2;
-            
+
             this.ctx.translate(centerX, centerY);
-            this.ctx.scale(settings.cameraZoom, settings.cameraZoom);
+            this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
+
+            // Apply camera rotation if angle is set
+            if (this.viewport.angle && this.viewport.angle !== 0) {
+                // Convert degrees to radians
+                const radians = this.viewport.angle * Math.PI / 180;
+                this.ctx.rotate(radians);
+            }
+
             this.ctx.translate(-centerX, -centerY);
         }
     }
@@ -631,7 +643,7 @@ class Engine {
         this.canvasResized = true;
         
         // Debug info
-        console.log(`Canvas resized: ${this.canvas.width}x${this.canvas.height} (physical display: ${physicalWidth}x${physicalHeight})`);
+        //console.log(`Canvas resized: ${this.canvas.width}x${this.canvas.height} (physical display: ${physicalWidth}x${physicalHeight})`);
     }
     
     cleanup() {
