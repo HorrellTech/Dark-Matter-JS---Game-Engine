@@ -91,11 +91,11 @@ class DrawPlatformerHills extends Module {
             onChange: (val) => { this.timeScale = val; }
         });
 
-        this.exposeProperty("currentTime", "number", this.currentTime, {
+        /*this.exposeProperty("currentTime", "number", this.currentTime, {
             description: "Current time (0=midnight, 0.5=noon, 1=midnight)",
             min: 0, max: 1, step: 0.01,
             onChange: (val) => { this.currentTime = val; }
-        });
+        });*/
 
         this.exposeProperty("currentHour", "number", this.currentHour, {
             description: "Current hour (0-24, syncs with currentTime)",
@@ -297,7 +297,7 @@ class DrawPlatformerHills extends Module {
             .startGroup("Day/Night Cycle", false, { color: "#4A90E2" })
             .exposeProperty("enableDayNightCycle", "boolean", this.enableDayNightCycle, { label: "Enable Day/Night Cycle" })
             .exposeProperty("timeScale", "number", this.timeScale, { label: "Time Scale" })
-            .exposeProperty("currentTime", "number", this.currentTime, { label: "Current Time" })
+            //.exposeProperty("currentTime", "number", this.currentTime, { label: "Current Time" })
             .exposeProperty("currentHour", "number", this.currentHour, { label: "Current Hour" })
             .exposeProperty("dayColor", "color", this.dayColor, { label: "Day Sky Color" })
             .exposeProperty("nightColor", "color", this.nightColor, { label: "Night Sky Color" })
@@ -397,10 +397,21 @@ class DrawPlatformerHills extends Module {
         }
     }
 
+    start() {
+        // Initialize time and celestial bodies
+        this.currentTime = currentHour / 24;
+    }
+
+    loop(deltaTime) {
+        this.updateTime(deltaTime);
+    }
+
     // Update time progression
     updateTime(deltaTime) {
         if (this.enableDayNightCycle) {
-            this.currentTime += (deltaTime / 1000) * (this.timeScale / 60);
+            // 1 real second = 1 in-game hour at timeScale=1
+            // 24 seconds = full day at timeScale=1
+            this.currentTime += (deltaTime / 1000) * (this.timeScale / 24);
             if (this.currentTime > 1) this.currentTime -= 1;
             if (this.currentTime < 0) this.currentTime += 1;
             this.currentHour = this.currentTime * 24;
@@ -438,30 +449,44 @@ class DrawPlatformerHills extends Module {
 
     // Get celestial body position (sun/moon)
     getCelestialPosition(time, viewportBounds, isMoon = false) {
-        const viewportX = window.engine.viewport.x || 0;
+        // Sun: visible from 5:00 (0.208) to 19:00 (0.792)
+        // Moon: visible from 19:00 to 5:00
         const viewportWidth = viewportBounds.right - viewportBounds.left;
         const viewportHeight = viewportBounds.bottom - viewportBounds.top;
-        const arcHeight = viewportHeight * this.celestialArcHeight;
-        const arcRadius = viewportWidth * 0.5;
-        const centerX = viewportBounds.left + viewportWidth / 2 - viewportX * (1 - this.celestialParallax);
-        const centerY = viewportBounds.top + arcHeight;
 
-        // Sun: 1 revolution per day
-        // Moon: slightly slower, e.g. 0.97 revolutions per day, so it lags and can overlap
+        // Arc settings: arc above the viewport, with extra width for off-screen entry/exit
+        const arcRadius = viewportWidth * 0.6; // wider arc for off-screen
+        const arcHeight = viewportHeight * 0.45; // higher arc
+        const centerX = viewportBounds.left + viewportWidth / 2;
+        const centerY = viewportBounds.top + arcHeight + 30; // 30px below the top
+
+        // Sun time window (start before left edge, end after right edge)
+        const sunRise = -0.08; // before 0 (off-screen left)
+        const sunSet = 1.08;   // after 1 (off-screen right)
+
+        // Moon time window (opposite)
+        const moonRise = 0.5 - 0.08;
+        const moonSet = 1.5 + 0.08;
+
         let angle;
         if (!isMoon) {
-            angle = Math.PI + time * Math.PI; // 0 = right, 0.5 = top, 1 = left
+            // t: 0 = left off-screen, 1 = right off-screen
+            let t = (time - sunRise) / (sunSet - sunRise);
+            t = Math.max(0, Math.min(1, t));
+            // Arc from left (sunrise, off-screen) to right (sunset, off-screen), top at t=0.5
+            angle = Math.PI - Math.PI * t; // 180deg (left) to 0deg (right), arc upward
         } else {
-            // Moon lags and is slower
-            const moonLag = 0.08; // how much moon lags behind sun (fraction of day)
-            const moonSpeed = 0.97; // slightly slower than sun
-            const moonTime = (time * moonSpeed + moonLag) % 1;
-            angle = Math.PI + moonTime * Math.PI;
+            // Moon follows opposite arc, lags behind sun
+            let moonTime = time;
+            if (moonTime < moonRise) moonTime += 1; // wrap
+            let t = (moonTime - moonRise) / (moonSet - moonRise);
+            t = Math.max(0, Math.min(1, t));
+            angle = Math.PI - Math.PI * t;
         }
 
         return {
             x: centerX + Math.cos(angle) * arcRadius,
-            y: centerY - Math.sin(angle) * arcHeight
+            y: centerY - Math.sin(angle) * arcHeight // arc upward
         };
     }
 
