@@ -400,6 +400,7 @@ class ExportManager {
             'DrawRectangle': 'src/core/Modules/Drawing/DrawRectangle.js',
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
             'DrawPlatformerHills': 'src/core/Modules/Drawing/DrawPlatformerHills.js',
+            'DrawInfiniteStarFieldParallax': 'src/core/Modules/Drawing/DrawInfiniteStarFieldParallax.js',
 
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',

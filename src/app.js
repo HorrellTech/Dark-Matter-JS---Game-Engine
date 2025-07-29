@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeMobileSupport();
 
     // Setup mobile touch handling
-    setupMobileTouchHandling();
+    //setupMobileTouchHandling();
 
     // Tab functionality
     document.querySelectorAll('.tab-button').forEach(button => {
@@ -435,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (tab.dataset.canvas === 'editor' && editor) {
                 // Sync game object positions from engine to editor
                 if (engine.running) {
-                    syncGameToEditor();
+                    //syncGameToEditor();
                 }
                 editor.refreshCanvas();
             }
@@ -464,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Dynamically load the script
             return new Promise((resolve) => {
                 const script = document.createElement('script');
-                script.src = './core/ScriptEditor.js';
+                script.src = './core/Windows/ScriptEditor.js';
                 script.onload = () => {
                     console.log("ScriptEditor.js loaded, initializing...");
                     setTimeout(() => {
@@ -698,6 +698,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize the engine
     const gameCanvas = document.getElementById('gameCanvas');
     const engine = new Engine(gameCanvas);
+
+    if(!window.engine) {
+        window.engine = engine;
+    }
+
     engine.editor = editor;
     
     // Store engine reference in editor for convenience

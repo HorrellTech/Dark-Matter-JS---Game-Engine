@@ -235,12 +235,12 @@ class CameraController extends Module {
     updateSceneViewport() {
         const engine = window.engine;
         if (!engine) {
-            console.warn("CameraController: Engine or scene not available, cannot update viewport.");
+            console.warn("CameraController: Engine not available, cannot update viewport.");
             return;
         }
 
-        const viewportWidth = engine.canvas ? engine.canvas.width : 800;
-        const viewportHeight = engine.canvas ? engine.canvas.height : 600;
+        const viewportWidth = engine.viewport.width ? engine.viewport.width : 800;
+        const viewportHeight = engine.viewport.height ? engine.viewport.height : 600;
 
         let centerX = this.position.x;
         let centerY = this.position.y;

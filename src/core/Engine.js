@@ -394,7 +394,7 @@ class Engine {
             this.ctx.fillStyle = "#ffffff";
             this.ctx.font = "20px Arial";
             this.ctx.textAlign = "center";
-            this.ctx.fillText("No objects in scene", this.canvas.width / 2, this.canvas.height / 2);
+            this.ctx.fillText("No objects in scene... What is a game without objects?", this.canvas.width / 2, this.canvas.height / 2);
         } else {
             // Debug: Log objects being drawn
             //console.log(`Drawing ${allObjects.length} objects`);
