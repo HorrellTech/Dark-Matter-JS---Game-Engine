@@ -116,13 +116,28 @@ class ScriptEditor {
                         </div>
                     </div>
                 </div>
-                <div class="se-hint-resizer"></div>
+               <div class="se-hint-resizer"></div>
                 <div class="se-hint-box">
-                    <div class="se-hint-header">
-                        <div class="se-hint-title">Documentation</div>
-                        <div class="se-hint-close"><i class="fas fa-chevron-down"></i></div>
+                    <div class="se-hint-tabs">
+                        <button class="se-hint-tab active" data-tab="docs">Documentation</button>
+                        <button class="se-hint-tab" data-tab="console">Console</button>
                     </div>
-                    <div class="se-hint-content"></div>
+                    <div class="se-hint-tab-content se-hint-docs-tab">
+                        <div class="se-hint-header">
+                            <div class="se-hint-title">Documentation</div>
+                            <div class="se-hint-close"><i class="fas fa-chevron-down"></i></div>
+                        </div>
+                        <div class="se-hint-content"></div>
+                    </div>
+                    <div class="se-hint-tab-content se-hint-console-tab" style="display:none;">
+                        <div class="se-console-toolbar">
+                            <button class="se-button se-console-play" title="Run Script"><i class="fas fa-play"></i></button>
+                            <label style="margin-left:10px;">
+                                <input type="checkbox" id="se-console-autocheck"> Check on Edit
+                            </label>
+                        </div>
+                        <div class="se-console-errors"></div>
+                    </div>
                 </div>
                 <div class="se-modal-status">
                     <span class="se-status-position">Ln 1, Col 1</span>
@@ -132,10 +147,10 @@ class ScriptEditor {
         `;
 
         document.body.appendChild(this.modal);
-        
+
         // Create AI settings dialog
         this.createAISettingsDialog();
-        
+
         // Create save confirmation dialog
         this.confirmDialog = document.createElement('div');
         this.confirmDialog.className = 'se-confirm-dialog';
@@ -156,6 +171,117 @@ class ScriptEditor {
         // Initialize AI panel
         this.aiPanel = this.modal.querySelector('#se-ai-panel');
         this.setupAIPanel();
+
+        // Set initial editor width state
+        this.modal.querySelector('.se-modal-editor-container').classList.add('fullwidth');
+
+        // Setup tabs
+        this.setupHintTabs();
+
+        // Setup console
+        this.setupConsole();
+    }
+
+    setupHintTabs() {
+        const tabs = this.modal.querySelectorAll('.se-hint-tab');
+        const docsTab = this.modal.querySelector('.se-hint-docs-tab');
+        const consoleTab = this.modal.querySelector('.se-hint-console-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                if (tab.dataset.tab === 'docs') {
+                    docsTab.style.display = '';
+                    consoleTab.style.display = 'none';
+                } else {
+                    docsTab.style.display = 'none';
+                    consoleTab.style.display = '';
+                }
+                this.editor?.refresh();
+            });
+        });
+    }
+
+    setupConsole() {
+        this.consoleErrors = [];
+        this.consoleErrorSet = new Set();
+        this.consoleErrorsDiv = this.modal.querySelector('.se-console-errors');
+        this.consolePlayBtn = this.modal.querySelector('.se-console-play');
+        this.consoleAutoCheck = this.modal.querySelector('#se-console-autocheck');
+
+        this.consolePlayBtn.addEventListener('click', () => this.checkScriptEval());
+        this.consoleAutoCheck.addEventListener('change', () => {
+            if (this.consoleAutoCheck.checked) {
+                this.editor.on('change', this._autoCheckHandler = () => this.checkScriptEval(true));
+            } else if (this._autoCheckHandler) {
+                this.editor.off('change', this._autoCheckHandler);
+            }
+        });
+    }
+
+    checkScriptEval(isAuto = false) {
+        if (!this.editor) return;
+        const code = this.editor.getValue();
+        let error = null;
+        try {
+            new Function(code);
+            if (this.consoleErrors.length > 0) {
+                this.consoleErrors = [];
+                this.consoleErrorSet.clear();
+                this.renderConsoleErrors();
+            }
+        } catch (e) {
+            // Extract line/column from stack if possible
+            let mainError = e.message;
+            let lineInfo = '';
+            let lineNum = null;
+            let colNum = null;
+            if (e.stack) {
+                // Chrome/Edge: "at new Function (<anonymous>:3:10)"
+                const match = e.stack.match(/<anonymous>:(\d+):(\d+)/);
+                if (match) {
+                    lineNum = parseInt(match[1], 10);
+                    colNum = parseInt(match[2], 10);
+                    lineInfo = ` (Line ${lineNum}${colNum ? `, Col ${colNum}` : ''})`;
+                }
+            }
+            mainError += lineInfo;
+            if (!this.consoleErrorSet.has(mainError)) {
+                this.consoleErrors.push(mainError);
+                this.consoleErrorSet.add(mainError);
+                this.renderConsoleErrors();
+                // Optionally highlight the error line in CodeMirror
+                if (lineNum && this.editor) {
+                    this.editor.addLineClass(lineNum - 1, 'background', 'se-error-line');
+                }
+            }
+        }
+        // Remove error if fixed
+        if (!error && this.consoleErrors.length > 0) {
+            try {
+                new Function(code);
+                this.consoleErrors = [];
+                this.consoleErrorSet.clear();
+                this.renderConsoleErrors();
+                // Remove error highlights
+                if (this.editor) {
+                    for (let i = 0; i < this.editor.lineCount(); i++) {
+                        this.editor.removeLineClass(i, 'background', 'se-error-line');
+                    }
+                }
+            } catch { }
+        }
+    }
+
+    renderConsoleErrors() {
+        if (!this.consoleErrorsDiv) return;
+        if (this.consoleErrors.length === 0) {
+            this.consoleErrorsDiv.innerHTML = `<div class="se-console-ok">No errors detected.</div>`;
+        } else {
+            this.consoleErrorsDiv.innerHTML = this.consoleErrors.map(err =>
+                `<div class="se-console-error"><i class="fas fa-exclamation-triangle"></i> ${err}</div>`
+            ).join('');
+        }
     }
 
     createAISettingsDialog() {
@@ -234,7 +360,7 @@ class ScriptEditor {
         const inputArea = this.modal.querySelector('#se-ai-input');
 
         sendButton.addEventListener('click', () => this.sendAIMessage());
-        
+
         inputArea.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
@@ -304,13 +430,13 @@ class ScriptEditor {
         // Handle keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (!this.isOpen) return;
-            
+
             // Save: Ctrl+S
             if (e.ctrlKey && e.key === 's') {
                 e.preventDefault();
                 this.save();
             }
-            
+
             // Close: Escape
             if (e.key === 'Escape') {
                 this.promptCloseIfModified();
@@ -323,19 +449,19 @@ class ScriptEditor {
                 this.promptCloseIfModified();
             }
         });
-        
+
         // Set up confirmation dialog buttons
         document.getElementById('se-save-close').addEventListener('click', async () => {
             await this.save();
             this.close();
             this.hideConfirmDialog();
         });
-        
+
         document.getElementById('se-discard').addEventListener('click', () => {
             this.close();
             this.hideConfirmDialog();
         });
-        
+
         document.getElementById('se-cancel').addEventListener('click', () => {
             this.hideConfirmDialog();
         });
@@ -343,35 +469,35 @@ class ScriptEditor {
         // Hint box resizing
         const resizer = this.modal.querySelector('.se-hint-resizer');
         const hintBox = this.modal.querySelector('.se-hint-box');
-        
+
         resizer.addEventListener('mousedown', (e) => {
             e.preventDefault();
             const startY = e.clientY;
             const startHeight = hintBox.offsetHeight;
-            
+
             const onMouseMove = (moveEvent) => {
                 const deltaY = startY - moveEvent.clientY;
                 const newHeight = Math.max(32, Math.min(500, startHeight + deltaY));
                 hintBox.style.height = `${newHeight}px`;
                 this.editor?.refresh();
             };
-            
+
             const onMouseUp = () => {
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
             };
-            
+
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         });
-        
+
         // Toggle hint box collapse
         const hintToggle = this.modal.querySelector('.se-hint-close');
         hintToggle.addEventListener('click', () => {
             hintBox.classList.toggle('collapsed');
             const isCollapsed = hintBox.classList.contains('collapsed');
-            hintToggle.innerHTML = isCollapsed 
-                ? '<i class="fas fa-chevron-up"></i>' 
+            hintToggle.innerHTML = isCollapsed
+                ? '<i class="fas fa-chevron-up"></i>'
                 : '<i class="fas fa-chevron-down"></i>';
             this.editor?.refresh();
         });
@@ -379,10 +505,10 @@ class ScriptEditor {
 
     async loadFile(path, content) {
         if (!path) return;
-    
+
         this.currentPath = path;
         this.originalContent = content;
-        
+
         // Set path in UI
         this.modal.querySelector('.se-modal-path').textContent = path;
 
@@ -390,7 +516,7 @@ class ScriptEditor {
             this.editor.toTextArea();
             this.editor = null;
         }
-        
+
         // Reset undo history when opening a new file
         if (this.editor) {
             this.editor.setValue(content);
@@ -403,7 +529,7 @@ class ScriptEditor {
             // Initialize the hint box once CodeMirror is ready
             this.updateHintBox();
         }
-        
+
         this.updateModifiedStatus(false);
         this.open();
     }
@@ -415,7 +541,7 @@ class ScriptEditor {
         }
 
         const editorArea = document.getElementById('se-editor');
-        
+
         this.editor = CodeMirror.fromTextArea(editorArea, {
             mode: "javascript",
             theme: "dracula",
@@ -443,17 +569,17 @@ class ScriptEditor {
             const position = this.editor.getCursor();
             const lineCol = `Ln ${position.line + 1}, Col ${position.ch + 1}`;
             this.modal.querySelector('.se-status-position').textContent = lineCol;
-            
+
             // Update the hint box with documentation for word under cursor
             this.updateHintBox();
         });
-        
+
         // Setup change event to track modifications
         this.editor.on("change", () => {
             const isModified = this.editor.getValue() !== this.originalContent;
             this.updateModifiedStatus(isModified);
         });
-        
+
         // Setup cursor activity event to update line/column info
         this.editor.on("cursorActivity", () => {
             const position = this.editor.getCursor();
@@ -478,7 +604,7 @@ class ScriptEditor {
                 document.head.appendChild(link);
             });
         };
-        
+
         // Create and load script
         const loadScript = (url) => {
             return new Promise((resolve) => {
@@ -500,27 +626,27 @@ class ScriptEditor {
 
         // Load required JS files
         await loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js");
-        
+
         // Load modes
         await loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/javascript/javascript.min.js");
-        
+
         // Load addons
         await Promise.all([
             // Editing addons
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/edit/closebrackets.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/edit/matchbrackets.min.js"),
-            
+
             // Search addons
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/search/search.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/search/searchcursor.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/dialog/dialog.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/search/jump-to-line.min.js"),
-            
+
             // Fold addons
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/foldcode.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/foldgutter.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/brace-fold.min.js"),
-            
+
             // Hint addons
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/show-hint.min.js"),
             loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/javascript-hint.min.js"),
@@ -545,23 +671,23 @@ class ScriptEditor {
     updateHintBox() {
         const hintContent = this.modal.querySelector('.se-hint-content');
         const doc = this.getDocumentationForCursor();
-        
+
         if (!doc) {
             hintContent.innerHTML = '<p>No documentation available for current selection.</p>';
             return;
         }
-        
+
         let html = `<h3>${doc.name || 'Documentation'}</h3>`;
-        
+
         if (doc.description) {
             html += `<p>${doc.description}</p>`;
         }
-        
+
         if (doc.example) {
             html += `<p><strong>Example:</strong></p>
                      <code>${doc.example}</code>`;
         }
-        
+
         if (doc.params && doc.params.length > 0) {
             html += `<p><strong>Parameters:</strong></p>`;
             doc.params.forEach(param => {
@@ -572,7 +698,7 @@ class ScriptEditor {
                         </div>`;
             });
         }
-        
+
         if (doc.returns) {
             html += `<p><strong>Returns:</strong></p>
                     <div class="param">
@@ -580,28 +706,28 @@ class ScriptEditor {
                       <div>${doc.returns.description || ''}</div>
                     </div>`;
         }
-        
+
         hintContent.innerHTML = html;
     }
-    
+
     getDocumentationForCursor() {
         if (!this.editor) return null;
-        
+
         const cursor = this.editor.getCursor();
         const line = this.editor.getLine(cursor.line);
-        
+
         // Check if the cursor is inside a function call parentheses
         const leftPart = line.substring(0, cursor.ch);
         const rightPart = line.substring(cursor.ch);
-        
+
         // If we're inside parentheses, check for a function name before them
         const insideParenMatch = /([a-zA-Z0-9_$]+)\s*\([^()]*$/.exec(leftPart);
         if (insideParenMatch && rightPart.match(/^[^()]*\)/)) {
             const functionName = insideParenMatch[1];
-            
+
             // Try to find documentation for this function
             for (const category in window.DarkMatterDocs) {
-                if (window.DarkMatterDocs[category].functions && 
+                if (window.DarkMatterDocs[category].functions &&
                     window.DarkMatterDocs[category].functions[functionName]) {
                     return {
                         name: functionName,
@@ -610,15 +736,15 @@ class ScriptEditor {
                 }
             }
         }
-        
+
         // If not in parentheses, or function not found, check word under cursor
         const token = this.editor.getTokenAt(cursor);
         if (token && token.type && (token.type.includes('variable') || token.type.includes('property'))) {
             const word = token.string;
-            
+
             // Look for the word in the documentation
             for (const category in window.DarkMatterDocs) {
-                if (window.DarkMatterDocs[category].functions && 
+                if (window.DarkMatterDocs[category].functions &&
                     window.DarkMatterDocs[category].functions[word]) {
                     return {
                         name: word,
@@ -627,13 +753,13 @@ class ScriptEditor {
                 }
             }
         }
-        
+
         return null;
     }
 
     formatCode() {
         if (!this.editor) return;
-        
+
         // Simple JavaScript code formatter using js-beautify if available
         if (window.js_beautify) {
             const formatted = js_beautify(this.editor.getValue(), {
@@ -651,22 +777,22 @@ class ScriptEditor {
 
     async save() {
         if (!this.editor || !this.currentPath) return;
-        
+
         const content = this.editor.getValue();
-        
+
         try {
             // Save the file
             if (window.fileBrowser) {
                 await window.fileBrowser.createFile(this.currentPath, content, true); // true to overwrite
                 this.originalContent = content;
                 this.updateModifiedStatus(false);
-                
+
                 // Show brief success message
                 this.showStatusMessage('File saved successfully');
-                
+
                 // Check if this is a module file and reload it
                 this.reloadModuleIfNeeded(this.currentPath, content);
-                
+
                 return true;
             } else {
                 console.error('FileBrowser instance not found');
@@ -685,40 +811,40 @@ class ScriptEditor {
 
         // Check if this is a module script file
         if (!filePath.toLowerCase().endsWith('.js')) return;
-        
+
         // Extract class name from file path
         const fileName = filePath.split('/').pop().split('\\').pop();
         const className = fileName.replace('.js', '');
-        
+
         // Validate it looks like a module class
         if (!content.includes(`class ${className}`) && !content.includes(`class ${className} extends Module`)) {
             return;
         }
-        
+
         console.log(`Attempting to reload module: ${className}`);
-        
+
         // Use the ModuleReloader if available
         if (window.moduleReloader) {
             const success = window.moduleReloader.reloadModuleClass(className, content);
-            
+
             if (success) {
                 // Update all instances in the editor's scene
                 let instancesUpdated = 0;
-                
+
                 if (window.editor && window.editor.activeScene) {
                     instancesUpdated = window.moduleReloader.updateModuleInstances(
-                        className, 
+                        className,
                         window.editor.activeScene.gameObjects
                     );
 
                     if (instancesUpdated > 0) {
                         this.showStatusMessage(`Updated ${instancesUpdated} instances of ${className}`);
-                        
+
                         // Refresh the inspector if visible and method exists
                         if (window.editor.inspector && typeof window.editor.inspector.refreshInspector === 'function') {
                             window.editor.inspector.refreshInspector();
                         }
-                        
+
                         // Refresh canvas
                         window.editor.refreshCanvas();
                     }
@@ -737,14 +863,14 @@ class ScriptEditor {
             messageEl.className = 'se-status-message';
             this.modal.querySelector('.se-modal-status').appendChild(messageEl);
         }
-        
+
         // Set message and style
         messageEl.textContent = message;
         messageEl.classList.toggle('error', isError);
-        
+
         // Show message
         messageEl.style.opacity = '1';
-        
+
         // Hide after delay
         clearTimeout(this.messageTimeout);
         this.messageTimeout = setTimeout(() => {
@@ -760,7 +886,7 @@ class ScriptEditor {
     showConfirmDialog() {
         this.confirmDialog.style.display = 'flex';
     }
-    
+
     hideConfirmDialog() {
         this.confirmDialog.style.display = 'none';
     }
@@ -770,7 +896,7 @@ class ScriptEditor {
             this.close();
             return;
         }
-        
+
         if (this.hasUnsavedChanges()) {
             this.showConfirmDialog();
         } else {
@@ -809,7 +935,7 @@ class ScriptEditor {
                 })
                 .catch(err => console.error("Couldn't check module on close:", err));
         }
-        
+
         // Proceed with normal close
         this.modal.style.display = 'none';
         this.isOpen = false;
@@ -820,11 +946,15 @@ class ScriptEditor {
     toggleAIPanel() {
         this.aiPanel.classList.toggle('open');
         const button = this.modal.querySelector('#se-ai-toggle');
+        const editorContainer = this.modal.querySelector('.se-modal-editor-container');
         if (this.aiPanel.classList.contains('open')) {
             button.classList.add('active');
+            editorContainer.classList.remove('fullwidth');
         } else {
             button.classList.remove('active');
+            editorContainer.classList.add('fullwidth');
         }
+        setTimeout(() => this.editor?.refresh(), 200); // Ensure CodeMirror resizes after animation
     }
 
     showAISettings() {
@@ -833,7 +963,7 @@ class ScriptEditor {
         this.aiSettingsDialog.querySelector('#se-chatgpt-key').value = this.aiSettings.apiKeys.chatgpt;
         this.aiSettingsDialog.querySelector('#se-gemini-key').value = this.aiSettings.apiKeys.gemini;
         this.aiSettingsDialog.querySelector('#se-claude-key').value = this.aiSettings.apiKeys.claude;
-        
+
         this.aiSettingsDialog.style.display = 'flex';
     }
 
@@ -846,22 +976,22 @@ class ScriptEditor {
         this.aiSettings.apiKeys.chatgpt = this.aiSettingsDialog.querySelector('#se-chatgpt-key').value;
         this.aiSettings.apiKeys.gemini = this.aiSettingsDialog.querySelector('#se-gemini-key').value;
         this.aiSettings.apiKeys.claude = this.aiSettingsDialog.querySelector('#se-claude-key').value;
-        
+
         this.saveAISettings();
         this.hideAISettings();
-        
+
         // Update provider select
         this.modal.querySelector('#se-ai-provider-select').value = this.aiSettings.provider;
-        
+
         this.showStatusMessage('AI settings saved');
     }
 
     includeCurrentModule() {
         if (!this.editor) return;
-        
+
         const currentCode = this.editor.getValue();
         const inputArea = this.modal.querySelector('#se-ai-input');
-        
+
         const contextText = `\n\n**Current Module Code:**\n\`\`\`javascript\n${currentCode}\n\`\`\`\n\n`;
         inputArea.value = contextText + inputArea.value;
         inputArea.focus();
@@ -869,13 +999,13 @@ class ScriptEditor {
 
     includeSelection() {
         if (!this.editor) return;
-        
+
         const selection = this.editor.getSelection();
         if (!selection) {
             this.showStatusMessage('No text selected', true);
             return;
         }
-        
+
         const inputArea = this.modal.querySelector('#se-ai-input');
         const contextText = `\n\n**Selected Code:**\n\`\`\`javascript\n${selection}\n\`\`\`\n\n`;
         inputArea.value = contextText + inputArea.value;
@@ -969,25 +1099,25 @@ Ask me to create, fix, or improve modules for your game!
     async sendAIMessage() {
         const inputArea = this.modal.querySelector('#se-ai-input');
         const message = inputArea.value.trim();
-        
+
         if (!message) return;
-        
+
         const provider = this.aiSettings.provider;
         const apiKey = this.aiSettings.apiKeys[provider];
-        
+
         if (!apiKey) {
             this.showStatusMessage(`Please set your ${provider.toUpperCase()} API key in settings`, true);
             this.showAISettings();
             return;
         }
-        
+
         // Add user message to chat
         this.addMessageToChat('user', message);
         inputArea.value = '';
-        
+
         // Show loading
         const loadingId = this.addMessageToChat('assistant', 'Thinking...', true);
-        
+
         try {
             const response = await this.callAI(provider, apiKey, message);
             this.updateMessageInChat(loadingId, response);
@@ -1161,14 +1291,14 @@ Provide working, complete modules. Keep code concise but functional.`;
     addMessageToChat(role, content, isLoading = false) {
         const messagesContainer = this.modal.querySelector('#se-ai-messages');
         const messageId = 'msg-' + Date.now();
-        
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `se-ai-message ${role}`;
         messageDiv.id = messageId;
-        
+
         const icon = role === 'user' ? 'fas fa-user' : 'fas fa-robot';
         const formattedContent = isLoading ? content : this.formatMessage(content);
-        
+
         messageDiv.innerHTML = `
             <div class="se-message-icon">
                 <i class="${icon}"></i>
@@ -1176,10 +1306,10 @@ Provide working, complete modules. Keep code concise but functional.`;
             <div class="se-message-content">${formattedContent}</div>
             ${role === 'assistant' && !isLoading ? '<div class="se-message-actions"><button class="se-button se-small" onclick="this.closest(\'.se-script-editor\').scriptEditor.insertCodeFromMessage(this)"><i class="fas fa-plus"></i> Insert</button></div>' : ''}
         `;
-        
+
         messagesContainer.appendChild(messageDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        
+
         return messageId;
     }
 
@@ -1188,7 +1318,7 @@ Provide working, complete modules. Keep code concise but functional.`;
         if (messageEl) {
             const contentEl = messageEl.querySelector('.se-message-content');
             contentEl.innerHTML = this.formatMessage(content);
-            
+
             // Add insert button for assistant messages
             if (!messageEl.querySelector('.se-message-actions')) {
                 const actionsDiv = document.createElement('div');
@@ -1209,10 +1339,10 @@ Provide working, complete modules. Keep code concise but functional.`;
 
     insertCodeFromMessage(button) {
         if (!this.editor) return;
-        
+
         const messageContent = button.closest('.se-ai-message').querySelector('.se-message-content');
         const codeBlocks = messageContent.querySelectorAll('code, pre code');
-        
+
         if (codeBlocks.length === 1) {
             // Single code block - insert directly
             const code = codeBlocks[0].textContent;
@@ -1244,9 +1374,9 @@ Provide working, complete modules. Keep code concise but functional.`;
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(dialog);
-        
+
         // Handle selection
         dialog.querySelectorAll('.se-code-option').forEach(option => {
             option.addEventListener('click', () => {
@@ -1256,7 +1386,7 @@ Provide working, complete modules. Keep code concise but functional.`;
                 document.body.removeChild(dialog);
             });
         });
-        
+
         dialog.querySelector('#se-cancel-code-selection').addEventListener('click', () => {
             document.body.removeChild(dialog);
         });

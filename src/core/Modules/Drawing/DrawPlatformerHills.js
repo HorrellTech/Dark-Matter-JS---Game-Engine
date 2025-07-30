@@ -64,6 +64,8 @@ class DrawPlatformerHills extends Module {
         this.lastViewportBounds = null;
 
         this.lastDay = this.getDay(); // Track last day for moon phase updates
+        
+        this.moonWasVisible = false; 
 
         this.setupProperties();
         this.generateStars();
@@ -420,12 +422,14 @@ class DrawPlatformerHills extends Module {
             this.currentHour = this.currentTime * 24;
         }
 
-        // --- Advance moon phase after each day ---
-        if (this.currentTime < 0.01) { // Midnight
-            // Advance moon phase by one step per day (cycle in 30 days)
+        // --- Advance moon phase only when moon disappears ---
+        const moonVisible = this.isMoonVisible();
+        if (this.moonWasVisible && !moonVisible) {
+            // Moon just disappeared, advance phase
             this.moonPhase += 1 / 30;
             if (this.moonPhase > 1) this.moonPhase -= 1;
         }
+        this.moonWasVisible = moonVisible;
     }
 
     // Get current sky color based on time
@@ -544,63 +548,85 @@ class DrawPlatformerHills extends Module {
 
     // Draw moon with phases
     drawMoon(ctx, position, opacity) {
-        if (opacity <= 0) return;
+    if (opacity <= 0) return;
 
-        ctx.save();
-        ctx.globalAlpha = opacity;
+    // --- Offscreen canvas for masking ---
+    const size = this.moonSize * 2 + 4;
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width = size;
+    offCanvas.height = size;
+    const offCtx = offCanvas.getContext("2d");
 
-        // Draw the full moon body
-        ctx.fillStyle = this.moonColor;
-        ctx.beginPath();
-        ctx.arc(position.x, position.y, this.moonSize, 0, Math.PI * 2);
-        ctx.fill();
+    // Draw full moon
+    offCtx.save();
+    offCtx.globalAlpha = opacity;
+    offCtx.fillStyle = this.moonColor;
+    offCtx.beginPath();
+    offCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
+    offCtx.fill();
 
-        // Draw craters (optional, for realism)
-        const craterColor = "#e0dcc0";
-        const craters = [
-            { dx: -this.moonSize * 0.35, dy: -this.moonSize * 0.2, r: this.moonSize * 0.18 },
-            { dx: this.moonSize * 0.2, dy: this.moonSize * 0.1, r: this.moonSize * 0.12 },
-            { dx: -this.moonSize * 0.1, dy: this.moonSize * 0.3, r: this.moonSize * 0.09 },
-            { dx: this.moonSize * 0.28, dy: -this.moonSize * 0.22, r: this.moonSize * 0.07 }
-        ];
-        ctx.save();
-        ctx.globalAlpha = 0.25 * opacity;
-        ctx.fillStyle = craterColor;
-        for (const c of craters) {
-            ctx.beginPath();
-            ctx.arc(position.x + c.dx, position.y + c.dy, c.r, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        ctx.restore();
-
-        // --- Moon phase effect ---
-        if (this.moonPhase !== 0.5) { // Not full moon
-            ctx.save();
-            ctx.globalCompositeOperation = "source-atop"; // Use source-atop to cut out the overlay
-            ctx.beginPath();
-
-            const phase = this.moonPhase;
-            const p = Math.max(0, Math.min(1, phase));
-            const shadowOffset = (p - 0.5) * this.moonSize * 2.1;
-
-            ctx.arc(position.x - shadowOffset, position.y, this.moonSize, 0, Math.PI * 2);
-            ctx.fillStyle = this.getCurrentSkyColor();
-            ctx.fill();
-            ctx.restore();
-
-            // Optionally, tint the shadowed area with sky color for realism (soften the edge)
-            ctx.save();
-            ctx.globalCompositeOperation = "lighter";
-            ctx.globalAlpha = 0.10 * opacity;
-            ctx.fillStyle = this.getCurrentSkyColor();
-            ctx.beginPath();
-            ctx.arc(position.x - shadowOffset, position.y, this.moonSize * 0.98, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
-        }
-
-        ctx.restore();
+    // Draw craters
+    const craterColor = "#e0dcc0";
+    const craters = [
+        { dx: -this.moonSize * 0.35, dy: -this.moonSize * 0.2, r: this.moonSize * 0.18 },
+        { dx: this.moonSize * 0.2, dy: this.moonSize * 0.1, r: this.moonSize * 0.12 },
+        { dx: -this.moonSize * 0.1, dy: this.moonSize * 0.3, r: this.moonSize * 0.09 },
+        { dx: this.moonSize * 0.28, dy: -this.moonSize * 0.22, r: this.moonSize * 0.07 }
+    ];
+    offCtx.save();
+    offCtx.globalAlpha = 0.25 * opacity;
+    offCtx.fillStyle = craterColor;
+    for (const c of craters) {
+        offCtx.beginPath();
+        offCtx.arc(size / 2 + c.dx, size / 2 + c.dy, c.r, 0, Math.PI * 2);
+        offCtx.fill();
     }
+    offCtx.restore();
+
+    // --- Moon phase effect ---
+    if (this.moonPhase !== 0.5) {
+        offCtx.save();
+        offCtx.globalCompositeOperation = "source-atop";
+        offCtx.beginPath();
+        const phase = this.moonPhase;
+        const p = Math.max(0, Math.min(1, phase));
+        const shadowOffset = (p - 0.5) * this.moonSize * 2.1;
+        offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize, 0, Math.PI * 2);
+        offCtx.fillStyle = this.getCurrentSkyColor();
+        offCtx.fill();
+        offCtx.restore();
+
+        // Optional: soften the edge
+        offCtx.save();
+        offCtx.globalCompositeOperation = "lighter";
+        offCtx.globalAlpha = 0.10 * opacity;
+        offCtx.fillStyle = this.getCurrentSkyColor();
+        offCtx.beginPath();
+        offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize * 0.98, 0, Math.PI * 2);
+        offCtx.fill();
+        offCtx.restore();
+    }
+    offCtx.restore();
+
+    // --- Mask to moon circle ---
+    const maskedCanvas = document.createElement("canvas");
+    maskedCanvas.width = size;
+    maskedCanvas.height = size;
+    const maskedCtx = maskedCanvas.getContext("2d");
+    maskedCtx.save();
+    maskedCtx.beginPath();
+    maskedCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
+    maskedCtx.closePath();
+    maskedCtx.clip();
+    maskedCtx.drawImage(offCanvas, 0, 0);
+    maskedCtx.restore();
+
+    // --- Draw to main context ---
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.drawImage(maskedCanvas, position.x - size / 2, position.y - size / 2);
+    ctx.restore();
+}
 
     // Draw stars
     drawStars(ctx, viewportBounds, time, opacity) {
@@ -981,6 +1007,13 @@ class DrawPlatformerHills extends Module {
     }
     setMoonPhase(phase) {
         this.moonPhase = Math.max(0, Math.min(1, phase));
+    }
+
+    // Returns true if the moon is visible at the current time
+    isMoonVisible() {
+        // Moon: visible from 19:00 (0.792) to 5:00 (0.208)
+        // But time wraps around, so visible if time > 0.792 or time < 0.208
+        return (this.currentTime > 0.792 || this.currentTime < 0.208);
     }
 
     // Regenerate hills when properties change

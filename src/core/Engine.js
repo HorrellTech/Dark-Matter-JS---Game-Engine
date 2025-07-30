@@ -587,7 +587,7 @@ class Engine {
         
         // Ensure we have positive dimensions to work with
         if (containerWidth <= 0 || containerHeight <= 0) {
-            console.warn('Container has invalid dimensions:', containerWidth, containerHeight);
+            //console.warn('Container has invalid dimensions:', containerWidth, containerHeight);
             return;
         }
         
