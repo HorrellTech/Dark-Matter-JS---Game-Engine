@@ -855,6 +855,13 @@ class FileBrowser {
 */
 
 class ${pascalCaseName} extends Module {
+    static namespace = "Generic"; // Change to the appropriate namespace
+    static icon = "fa-cog"; // Change to an appropriate icon class
+    static color = "#aec7e4ff"; // Change to an appropriate color
+    static description = "A brief description of what this module does"; // Change to your module's description
+    static allowMultiple = false; // Change to true if multiple instances are allowed
+    static drawInEditor = true; // Change to false if this module should not be drawn in the editor, only gizmos will be drawn (good if drawing is slowing down the editor)
+
     /**
      * Create a new ${pascalCaseName}
      * @param {Object} options - Configuration options

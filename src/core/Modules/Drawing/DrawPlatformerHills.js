@@ -2,6 +2,9 @@ class DrawPlatformerHills extends Module {
     static namespace = "Drawing";
     static description = "Generates layered procedural hills with spline curves, parallax effect, infinite horizontal generation, and day/night cycle";
     static allowMultiple = false;
+    static icon = "fa-mountain";
+    static color = "#6ba06dff"; // Green color for hills
+    static drawInEditor = false; // This module does not need to be drawn in the editor
 
     constructor() {
         super("DrawPlatformerHills");
@@ -64,8 +67,8 @@ class DrawPlatformerHills extends Module {
         this.lastViewportBounds = null;
 
         this.lastDay = this.getDay(); // Track last day for moon phase updates
-        
-        this.moonWasVisible = false; 
+
+        this.moonWasVisible = false;
 
         this.setupProperties();
         this.generateStars();
@@ -548,85 +551,85 @@ class DrawPlatformerHills extends Module {
 
     // Draw moon with phases
     drawMoon(ctx, position, opacity) {
-    if (opacity <= 0) return;
+        if (opacity <= 0) return;
 
-    // --- Offscreen canvas for masking ---
-    const size = this.moonSize * 2 + 4;
-    const offCanvas = document.createElement("canvas");
-    offCanvas.width = size;
-    offCanvas.height = size;
-    const offCtx = offCanvas.getContext("2d");
+        // --- Offscreen canvas for masking ---
+        const size = this.moonSize * 2 + 4;
+        const offCanvas = document.createElement("canvas");
+        offCanvas.width = size;
+        offCanvas.height = size;
+        const offCtx = offCanvas.getContext("2d");
 
-    // Draw full moon
-    offCtx.save();
-    offCtx.globalAlpha = opacity;
-    offCtx.fillStyle = this.moonColor;
-    offCtx.beginPath();
-    offCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
-    offCtx.fill();
-
-    // Draw craters
-    const craterColor = "#e0dcc0";
-    const craters = [
-        { dx: -this.moonSize * 0.35, dy: -this.moonSize * 0.2, r: this.moonSize * 0.18 },
-        { dx: this.moonSize * 0.2, dy: this.moonSize * 0.1, r: this.moonSize * 0.12 },
-        { dx: -this.moonSize * 0.1, dy: this.moonSize * 0.3, r: this.moonSize * 0.09 },
-        { dx: this.moonSize * 0.28, dy: -this.moonSize * 0.22, r: this.moonSize * 0.07 }
-    ];
-    offCtx.save();
-    offCtx.globalAlpha = 0.25 * opacity;
-    offCtx.fillStyle = craterColor;
-    for (const c of craters) {
-        offCtx.beginPath();
-        offCtx.arc(size / 2 + c.dx, size / 2 + c.dy, c.r, 0, Math.PI * 2);
-        offCtx.fill();
-    }
-    offCtx.restore();
-
-    // --- Moon phase effect ---
-    if (this.moonPhase !== 0.5) {
+        // Draw full moon
         offCtx.save();
-        offCtx.globalCompositeOperation = "source-atop";
+        offCtx.globalAlpha = opacity;
+        offCtx.fillStyle = this.moonColor;
         offCtx.beginPath();
-        const phase = this.moonPhase;
-        const p = Math.max(0, Math.min(1, phase));
-        const shadowOffset = (p - 0.5) * this.moonSize * 2.1;
-        offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize, 0, Math.PI * 2);
-        offCtx.fillStyle = this.getCurrentSkyColor();
+        offCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
         offCtx.fill();
+
+        // Draw craters
+        const craterColor = "#e0dcc0";
+        const craters = [
+            { dx: -this.moonSize * 0.35, dy: -this.moonSize * 0.2, r: this.moonSize * 0.18 },
+            { dx: this.moonSize * 0.2, dy: this.moonSize * 0.1, r: this.moonSize * 0.12 },
+            { dx: -this.moonSize * 0.1, dy: this.moonSize * 0.3, r: this.moonSize * 0.09 },
+            { dx: this.moonSize * 0.28, dy: -this.moonSize * 0.22, r: this.moonSize * 0.07 }
+        ];
+        offCtx.save();
+        offCtx.globalAlpha = 0.25 * opacity;
+        offCtx.fillStyle = craterColor;
+        for (const c of craters) {
+            offCtx.beginPath();
+            offCtx.arc(size / 2 + c.dx, size / 2 + c.dy, c.r, 0, Math.PI * 2);
+            offCtx.fill();
+        }
         offCtx.restore();
 
-        // Optional: soften the edge
-        offCtx.save();
-        offCtx.globalCompositeOperation = "lighter";
-        offCtx.globalAlpha = 0.10 * opacity;
-        offCtx.fillStyle = this.getCurrentSkyColor();
-        offCtx.beginPath();
-        offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize * 0.98, 0, Math.PI * 2);
-        offCtx.fill();
+        // --- Moon phase effect ---
+        if (this.moonPhase !== 0.5) {
+            offCtx.save();
+            offCtx.globalCompositeOperation = "source-atop";
+            offCtx.beginPath();
+            const phase = this.moonPhase;
+            const p = Math.max(0, Math.min(1, phase));
+            const shadowOffset = (p - 0.5) * this.moonSize * 2.1;
+            offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize, 0, Math.PI * 2);
+            offCtx.fillStyle = this.getCurrentSkyColor();
+            offCtx.fill();
+            offCtx.restore();
+
+            // Optional: soften the edge
+            offCtx.save();
+            offCtx.globalCompositeOperation = "lighter";
+            offCtx.globalAlpha = 0.10 * opacity;
+            offCtx.fillStyle = this.getCurrentSkyColor();
+            offCtx.beginPath();
+            offCtx.arc(size / 2 - shadowOffset, size / 2, this.moonSize * 0.98, 0, Math.PI * 2);
+            offCtx.fill();
+            offCtx.restore();
+        }
         offCtx.restore();
+
+        // --- Mask to moon circle ---
+        const maskedCanvas = document.createElement("canvas");
+        maskedCanvas.width = size;
+        maskedCanvas.height = size;
+        const maskedCtx = maskedCanvas.getContext("2d");
+        maskedCtx.save();
+        maskedCtx.beginPath();
+        maskedCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
+        maskedCtx.closePath();
+        maskedCtx.clip();
+        maskedCtx.drawImage(offCanvas, 0, 0);
+        maskedCtx.restore();
+
+        // --- Draw to main context ---
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.drawImage(maskedCanvas, position.x - size / 2, position.y - size / 2);
+        ctx.restore();
     }
-    offCtx.restore();
-
-    // --- Mask to moon circle ---
-    const maskedCanvas = document.createElement("canvas");
-    maskedCanvas.width = size;
-    maskedCanvas.height = size;
-    const maskedCtx = maskedCanvas.getContext("2d");
-    maskedCtx.save();
-    maskedCtx.beginPath();
-    maskedCtx.arc(size / 2, size / 2, this.moonSize, 0, Math.PI * 2);
-    maskedCtx.closePath();
-    maskedCtx.clip();
-    maskedCtx.drawImage(offCanvas, 0, 0);
-    maskedCtx.restore();
-
-    // --- Draw to main context ---
-    ctx.save();
-    ctx.globalAlpha = 1;
-    ctx.drawImage(maskedCanvas, position.x - size / 2, position.y - size / 2);
-    ctx.restore();
-}
 
     // Draw stars
     drawStars(ctx, viewportBounds, time, opacity) {
@@ -854,9 +857,13 @@ class DrawPlatformerHills extends Module {
             ctx.fillStyle = layerColor;
 
             // Calculate parallax offset for this layer (X and Y)
-            const parallaxFactor = 1 - (layer / (this.hillLayers - 1)) * this.parallaxStrength;
-            const parallaxOffsetX = viewportX * (1 - parallaxFactor);
-            const parallaxOffsetY = viewportY * (1 - parallaxFactor);
+            let layerRatio = 1;
+            if (this.hillLayers > 1) {
+                layerRatio = layer / (this.hillLayers - 1);
+            }
+            const parallaxAmount = this.parallaxStrength * layerRatio;
+            const parallaxOffsetX = viewportX * parallaxAmount;
+            const parallaxOffsetY = viewportY * parallaxAmount;
 
             // Calculate which segments are visible for this layer
             const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;

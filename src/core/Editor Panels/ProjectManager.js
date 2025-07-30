@@ -9,6 +9,10 @@ class ProjectManager {
         this.lastSaveTime = Date.now();
         this._startSaveReminderTimer();
         this.showSaveReminder = true;
+        
+        this.lastProjectFileHandle = null;
+        this._loadLastProjectFileHandle();
+        this._setupKeyboardShortcuts();
 
         console.log("ProjectManager initialized");
     }
@@ -236,6 +240,10 @@ class ProjectManager {
         }
 
         return projectData;
+    }
+
+    async saveProjectAs() {
+        await this.saveProject({ saveAs: true });
     }
 
     async saveProject() {
@@ -596,6 +604,50 @@ class ProjectManager {
         }
     }
 
+    async tryAutoOpenLastProject() {
+        // Try to open last project on startup
+        if ('showOpenFilePicker' in window && this.lastProjectFileHandle) {
+            try {
+                const handle = await window.showOpenFilePicker({
+                    types: [{ description: 'Dark Matter Project', accept: { 'application/zip': ['.dmproj'] } }],
+                    startIn: this.lastProjectFileHandle
+                });
+                if (handle && handle[0]) {
+                    await this._loadProjectFromHandle(handle[0]);
+                    return true;
+                }
+            } catch {}
+        } else if (this.lastProjectFileHandle) {
+            // Not supported, just show a message
+            // Could auto-load from IndexedDB or similar if implemented
+        }
+        return false;
+    }
+
+    _loadLastProjectFileHandle() {
+        // Try to restore last file handle (if File System Access API is supported)
+        if ('showOpenFilePicker' in window) {
+            const handleStr = localStorage.getItem('lastProjectFileHandle');
+            if (handleStr) {
+                try {
+                    this.lastProjectFileHandle = JSON.parse(handleStr);
+                } catch {}
+            }
+        } else {
+            this.lastProjectFileHandle = localStorage.getItem('lastProjectFileName') || null;
+        }
+    }
+
+    _saveLastProjectFileHandle(handle, fileName) {
+        if (handle) {
+            // File System Access API
+            localStorage.setItem('lastProjectFileHandle', JSON.stringify(handle));
+        }
+        if (fileName) {
+            localStorage.setItem('lastProjectFileName', fileName);
+        }
+    }
+
     // Helper method to load class files
     async loadClassFile(className) {
         const classFilePaths = {
@@ -754,6 +806,25 @@ class ProjectManager {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         console.log(`Download triggered for ${fileName}`);
+    }
+
+    _setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 's' || e.key === 'S') {
+                    e.preventDefault();
+                    this.saveProject();
+                }
+                if (e.key === 'o' || e.key === 'O') {
+                    e.preventDefault();
+                    this.loadProject();
+                }
+                if (e.shiftKey && (e.key === 's' || e.key === 'S')) {
+                    e.preventDefault();
+                    this.saveProjectAs();
+                }
+            }
+        });
     }
 }
 

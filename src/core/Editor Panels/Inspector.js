@@ -863,7 +863,34 @@ class Inspector {
         const moduleContainer = document.createElement('div');
         moduleContainer.className = 'module-container';
         moduleContainer.dataset.moduleId = module.id;
-        moduleContainer.draggable = true; // Make modules draggable
+
+        const moduleColor = module.constructor.color || null;
+        if (moduleColor) {
+            moduleContainer.style.setProperty('--module-color', moduleColor);
+            // Simple luminance check for dark/light text
+            const rgb = moduleColor.startsWith('#') ? moduleColor.substring(1) : moduleColor;
+            const r = parseInt(rgb.substr(0, 2), 16), g = parseInt(rgb.substr(2, 2), 16), b = parseInt(rgb.substr(4, 2), 16);
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            moduleContainer.style.setProperty('--module-text-color', luminance > 0.5 ? '#222' : '#fff');
+            // Generate lighter/darker backgrounds for inputs
+            function shade(hex, percent) {
+                let R = parseInt(hex.substring(0,2),16);
+                let G = parseInt(hex.substring(2,4),16);
+                let B = parseInt(hex.substring(4,6),16);
+                R = Math.min(255, Math.max(0, Math.floor(R * (100 + percent) / 100)));
+                G = Math.min(255, Math.max(0, Math.floor(G * (100 + percent) / 100)));
+                B = Math.min(255, Math.max(0, Math.floor(B * (100 + percent) / 100)));
+                return "#" + ((1 << 24) + (R << 16) + (G << 8) + B).toString(16).slice(1);
+            }
+            const base = rgb.length === 6 ? rgb : "23272b";
+            moduleContainer.style.setProperty('--module-input-bg', shade(base, luminance > 0.5 ? -10 : 15));
+            moduleContainer.style.setProperty('--module-input-border', shade(base, luminance > 0.5 ? -25 : 30));
+        } else {
+            moduleContainer.style.removeProperty('--module-color');
+            moduleContainer.style.removeProperty('--module-text-color');
+            moduleContainer.style.removeProperty('--module-input-bg');
+            moduleContainer.style.removeProperty('--module-input-border');
+        }
 
         // Get module display name and description
         const moduleDisplayName = module.type || module.constructor.name || 'Unknown Module';
@@ -3216,6 +3243,72 @@ class Inspector {
             .property-input select:focus {
                 border-color: #0078D7;
                 outline: none;
+            }
+                
+            /* Module color theming */
+            .module-container {
+                background: var(--module-color, #23272b);
+                border-left: 6px solid var(--module-color, #444);
+                color: var(--module-text-color, #e0e6f0);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                margin-bottom: 16px;
+                transition: background 0.2s, border-color 0.2s;
+            }
+            .module-container .module-header {
+                background: linear-gradient(90deg, var(--module-color, #23272b) 80%, rgba(0,0,0,0.05));
+                color: var(--module-text-color, #fff);
+                border-radius: 8px 8px 0 0;
+            }
+            .module-container .module-content {
+                background: rgba(0,0,0,0.07);
+                border-radius: 0 0 8px 8px;
+            }
+            .module-container .property-row label,
+            .module-container .property-header,
+            .module-container .group-label {
+                color: var(--module-text-color, #e0e6f0);
+            }
+
+            .module-container .property-input,
+            .module-container .property-slider,
+            .module-container .property-row select {
+                background: var(--module-input-bg, #23272b);
+                color: var(--module-text-color, #e0e6f0);
+                border: 1px solid var(--module-input-border, #3a3f4b);
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 1em;
+                transition: background 0.2s, border-color 0.2s;
+            } 
+
+            /* --- Improved Property Group Styling --- */
+            .property-group {
+                background: var(--module-color, #23272b);
+                border-radius: 8px;
+                padding: 12px 16px 12px 16px;
+                margin-bottom: 16px;
+                box-shadow:
+                    -12px 0 24px -8px color-mix(in srgb, var(--module-color, #23272b) 60%, #000 60%),
+                    0 2px 8px rgba(36, 36, 36, 0.08);
+                border-left: 4px solid color-mix(in srgb, var(--module-color, #23272b) 60%, #000 60%);
+            }
+            .property-group .group-label {
+                font-weight: bold;
+                color: var(--module-text-color, #fff);
+                margin-bottom: 8px;
+                font-size: 1.05em;
+            }
+            .module-title {
+                font-weight: bold;
+            }
+            .property-header {
+                color: var(--module-text-color, #e0e6f0);
+            }
+            .property-help {
+                color: var(--module-text-color, #b3c0d6);
+            }
+            .property-color-block {
+                border: 1px solid var(--module-input-border, #3a3f4b);
             }
         `;
 

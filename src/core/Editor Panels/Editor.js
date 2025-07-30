@@ -446,9 +446,6 @@ class Editor {
         this.ctx.translate(this.camera.position.x, this.camera.position.y);
         this.ctx.scale(this.camera.zoom, this.camera.zoom);
 
-        // Draw viewport bounds
-        this.drawSceneViewport();
-
         // Draw all game objects from activeScene
         if (this.activeScene && this.activeScene.gameObjects) {
             this.activeScene.gameObjects.forEach(obj => {
@@ -464,6 +461,9 @@ class Editor {
                 }
             });
         }
+
+        // Draw viewport bounds (draw this last so it's on top)
+        this.drawSceneViewport();
 
         // Draw transform handles for selected object
         if (this.hierarchy && this.hierarchy.selectedObject && this.hierarchy.selectedObject.active) {

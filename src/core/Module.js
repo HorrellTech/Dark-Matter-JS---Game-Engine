@@ -39,6 +39,7 @@ class MyCustomModule extends Module {
  */
 class Module {
     static allowMultiple = true; // Allow multiple instances of this module type
+    static drawInEditor = true; // Whether this module should be drawn in the editor
     /**
      * Create a new Module
      * @param {string} name - The name of this module instance
