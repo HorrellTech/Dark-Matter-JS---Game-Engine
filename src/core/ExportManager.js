@@ -199,43 +199,38 @@ class ExportManager {
         const assets = {};
 
         if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
-            const files = await window.fileBrowser.getAllFiles();
-            for (const file of files) {
-                // We only want to bundle assets, not code or configuration files that are already handled.
-                if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+        const files = await window.fileBrowser.getAllFiles();
+        for (const file of files) {
+            if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+                continue;
+            }
+
+            let content = file.content;
+            const path = file.path || file.name;
+
+            if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
+                // Always convert to data URL if not already
+                if (typeof content === 'string' && content.startsWith('data:')) {
+                    // Already a data URL
+                } else if (content instanceof Blob) {
+                    content = await this.blobToDataURL(content);
+                } else if (content instanceof ArrayBuffer) {
+                    content = this.arrayBufferToDataURL(content, file.type);
+                } else if (content instanceof File) {
+                    content = await this.fileToDataURL(content);
+                } else {
+                    console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
                     continue;
                 }
 
-                let content = file.content;
-                const path = file.path || file.name;
-
-                // For binary files (images, audio, fonts), convert to base64 data URL for embedding.
-                if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
-                    if (content instanceof Blob) {
-                        // Convert Blob to base64 data URL
-                        content = await this.blobToDataURL(content);
-                    } else if (content instanceof ArrayBuffer) {
-                        // Convert ArrayBuffer to base64 data URL
-                        content = this.arrayBufferToDataURL(content, file.type);
-                    } else if (content instanceof File) {
-                        // Convert File to base64 data URL
-                        content = await this.fileToDataURL(content);
-                    } else if (typeof content === 'string' && content.startsWith('data:')) {
-                        // Already a data URL, use as-is
-                        content = content;
-                    } else {
-                        console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
-                        continue;
-                    }
-
-                    const normalizedPath = this.normalizePath(path);
-                    assets[normalizedPath] = {
-                        content: content,
-                        type: file.type,
-                        binary: true,
-                        originalFile: file
-                    };
-                } else {
+                const normalizedPath = this.normalizePath(path);
+                assets[normalizedPath] = {
+                    content: content,
+                    type: file.type,
+                    binary: true,
+                    originalFile: file
+                };
+            } else {
                     // For text-based assets (JSON, TXT, etc.), ensure content is a string.
                     if (content instanceof Blob) {
                         content = await content.text();
