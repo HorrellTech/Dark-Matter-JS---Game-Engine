@@ -1093,6 +1093,25 @@ class SpriteRenderer extends Module {
     }
 
     /**
+     * Load image from data URL (for deserialization)
+     */
+    async loadImageFromData(dataUrl) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                this._image = img;
+                this._imageWidth = img.naturalWidth;
+                this._imageHeight = img.naturalHeight;
+                this._isLoaded = true;
+                window.editor?.refreshCanvas();
+                resolve(img);
+            };
+            img.onerror = reject;
+            img.src = dataUrl;
+        });
+    }
+
+    /**
      * Override to handle serialization
      */
     toJSON() {
@@ -1119,6 +1138,23 @@ class SpriteRenderer extends Module {
         json.sliceMode = this.sliceMode;
         json.sliceBorder = { ...this.sliceBorder };
 
+        // --- Serialize image as data URL if loaded ---
+        if (this._image && this._isLoaded) {
+            try {
+                // Create a canvas to get the data URL
+                const canvas = document.createElement('canvas');
+                canvas.width = this._image.naturalWidth || this._image.width;
+                canvas.height = this._image.naturalHeight || this._image.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(this._image, 0, 0);
+                json.imageData = canvas.toDataURL('image/png');
+            } catch (e) {
+                json.imageData = null;
+            }
+        } else {
+            json.imageData = null;
+        }
+
         return json;
     }
 
@@ -1132,21 +1168,30 @@ class SpriteRenderer extends Module {
 
         // Restore sprite properties
         if (json.imageAsset) {
-            // Handle AssetReference safely
-            try {
-                if (window.AssetReference && typeof window.AssetReference.fromJSON === 'function') {
-                    this.imageAsset = window.AssetReference.fromJSON(json.imageAsset);
-                } else {
-                    // Simple fallback
-                    this.imageAsset = {
-                        path: json.imageAsset.path,
-                        type: 'image',
-                        load: () => this.fallbackLoadImage(json.imageAsset.path)
-                    };
+            // If imageData is present, use it instead of path
+            if (json.imageData) {
+                this.imageAsset = {
+                    path: null,
+                    type: 'image',
+                    load: () => Promise.resolve(null) // Not used, we load from data below
+                };
+                // Actually load the image from the data URL and set _image/_isLoaded
+                this.loadImageFromData(json.imageData);
+            } else {
+                try {
+                    if (window.AssetReference && typeof window.AssetReference.fromJSON === 'function') {
+                        this.imageAsset = window.AssetReference.fromJSON(json.imageAsset);
+                    } else {
+                        this.imageAsset = {
+                            path: json.imageAsset.path,
+                            type: 'image',
+                            load: () => this.fallbackLoadImage(json.imageAsset.path)
+                        };
+                    }
+                    this.loadImage();
+                } catch (error) {
+                    console.error("Error restoring image asset:", error);
                 }
-                this.loadImage(); // Start loading the image
-            } catch (error) {
-                console.error("Error restoring image asset:", error);
             }
         }
 

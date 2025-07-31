@@ -84,9 +84,9 @@ class Editor {
         this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));
 
         // Add touch event handlers for panning
-        /*this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
+        this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
         this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
-        this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));*/
+        this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
 
         // Add navigation arrows
         this.addNavigationButtons();

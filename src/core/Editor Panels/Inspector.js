@@ -1174,6 +1174,11 @@ class Inspector {
             return this.generatePlaceholderPropertiesUI(module);
         }
 
+        // Use custom UI for SpriteRenderer
+        if (module instanceof SpriteRenderer && typeof this.generateSpriteRendererUI === 'function') {
+            return this.generateSpriteRendererUI(module);
+        }
+
         // If module has a style() method, use it for custom inspector UI
         if (typeof module.style === 'function') {
             // Create a style helper object
@@ -2078,26 +2083,25 @@ class Inspector {
                 value = prop.value;
             }
 
-            // Get path from value (handle both string paths and AssetReference objects)
-            const path = value?.path || value || '';
+            // Safely extract path
+            let path = '';
+            if (typeof value === 'string') {
+                path = value;
+            } else if (value && typeof value === 'object' && 'path' in value) {
+                path = value.path;
+            }
 
             return `
-                <div class="property-row">
-                    <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                    <div class="image-drop-target" 
-                        data-property="${prop.name}" 
-                        ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
-                        title="Drag an image here or click to select">
-                        ${path ? `
-                            <div class="image-path">${this.formatImagePath(path)}</div>
-                        ` : ''}
-                    </div>
-                    <input type="text" id="${inputId}" class="property-input" 
-                        data-prop-name="${prop.name}" 
-                        ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
-                        value="${path}" title="${tooltip}">
-                </div>
-            `;
+        <div class="property-row">
+            <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
+            <div class="image-drop-target" 
+                data-prop-name="${prop.name}"
+                ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
+                title="Drag an image here or click to select">
+                ${path ? `<div class="image-path">${this.formatImagePath(path)}</div>` : ''}
+            </div>
+        </div>
+    `;
         }
 
         // Add slider if requested
