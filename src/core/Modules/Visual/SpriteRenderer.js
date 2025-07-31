@@ -13,6 +13,8 @@ class SpriteRenderer extends Module {
     constructor() {
         super("SpriteRenderer");
 
+        this.imageData = null;
+
         // Import AssetReference if it's not already available
         if (!window.AssetReference) {
             console.warn("AssetReference not found, SpriteRenderer may not work correctly");
@@ -271,6 +273,17 @@ class SpriteRenderer extends Module {
         if (!this.imageAsset || !this.imageAsset.path) {
             this._image = null;
             this._isLoaded = false;
+            // Try to load from imageData if available
+            if (this.imageData) {
+                this._image = await this.loadImageFromDataURL(this.imageData);
+                if (this._image) {
+                    this._imageWidth = this._image.naturalWidth;
+                    this._imageHeight = this._image.naturalHeight;
+                    this._isLoaded = true;
+                    window.editor?.refreshCanvas();
+                    return this._image;
+                }
+            }
             return null;
         }
 
@@ -307,8 +320,31 @@ class SpriteRenderer extends Module {
             console.error("Error loading sprite image:", error);
             this._image = null;
             this._isLoaded = false;
+            // Try to load from imageData as fallback
+            if (this.imageData) {
+                this._image = await this.loadImageFromDataURL(this.imageData);
+                if (this._image) {
+                    this._imageWidth = this._image.naturalWidth;
+                    this._imageHeight = this._image.naturalHeight;
+                    this._isLoaded = true;
+                    window.editor?.refreshCanvas();
+                    return this._image;
+                }
+            }
             return null;
         }
+    }
+
+    /**
+     * Load an image from a Data URL
+     */
+    async loadImageFromDataURL(dataURL) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(null);
+            img.src = dataURL;
+        });
     }
 
     /**
@@ -381,6 +417,10 @@ class SpriteRenderer extends Module {
 
             // Load the image
             await this.loadImage();
+            // Serialize image data for fallback
+            if (this._image) {
+                this.imageData = await this.serializeImageToDataURL(this._image);
+            }
 
             // Update UI if inspector is showing this component
             if (window.editor && window.editor.inspector) {
@@ -502,6 +542,11 @@ class SpriteRenderer extends Module {
 
             const success = await this.handleImageDrop(e.dataTransfer);
             if (success) {
+                // After setting sprite, serialize image
+                if (this._image) {
+                    this.imageData = await this.serializeImageToDataURL(this._image);
+                }
+
                 // Find the parent Inspector instance to refresh UI
                 if (window.editor && window.editor.inspector) {
                     window.editor.inspector.refreshModuleUI(this);
@@ -1093,6 +1138,20 @@ class SpriteRenderer extends Module {
     }
 
     /**
+     * Serialize an HTMLImageElement to a Data URL (base64)
+     */
+    async serializeImageToDataURL(img) {
+        return new Promise((resolve) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        });
+    }
+
+    /**
      * Override to handle serialization
      */
     toJSON() {
@@ -1118,6 +1177,8 @@ class SpriteRenderer extends Module {
         // 9-slice properties
         json.sliceMode = this.sliceMode;
         json.sliceBorder = { ...this.sliceBorder };
+
+        json.imageData = this.imageData || null;
 
         return json;
     }
@@ -1171,6 +1232,8 @@ class SpriteRenderer extends Module {
         // 9-slice properties
         if (json.sliceMode !== undefined) this.sliceMode = json.sliceMode;
         if (json.sliceBorder) this.sliceBorder = { ...json.sliceBorder };
+
+        if (json.imageData) this.imageData = json.imageData;
     }
 }
 

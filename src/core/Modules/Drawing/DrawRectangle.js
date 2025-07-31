@@ -132,12 +132,13 @@ class DrawRectangle extends Module {
     fromJSON(data) {
         if (data.width !== undefined) this.width = data.width;
         if (data.height !== undefined) this.height = data.height;
-        if (data.offset) this.offset.fromJSON(data.offset);
+        if (data.offset) this.offset = data.offset;
         if (data.color !== undefined) this.color = data.color;
         if (data.fill !== undefined) this.fill = data.fill;
         if (data.outline !== undefined) this.outline = data.outline;
         if (data.outlineColor !== undefined) this.outlineColor = data.outlineColor;
         if (data.outlineWidth !== undefined) this.outlineWidth = data.outlineWidth;
+    }
 }
 
 // make it available to the engine

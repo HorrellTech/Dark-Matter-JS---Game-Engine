@@ -153,6 +153,15 @@ class Vector2 {
     clone() {
         return new Vector2(this.x, this.y);
     }
+
+    toJSON() {
+        return { x: this.x, y: this.y };
+    }
+
+    static fromJSON(data) {
+        if (!data) return Vector2.zero();
+        return new Vector2(data.x ?? 0, data.y ?? 0);
+    }
 }
 
 window.Vector2 = Vector2;

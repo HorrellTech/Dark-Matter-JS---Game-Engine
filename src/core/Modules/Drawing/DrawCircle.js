@@ -129,6 +129,7 @@ class DrawCircle extends Module {
         this.outline = data.outline !== undefined ? data.outline : this.outline;
         this.outlineColor = data.outlineColor || this.outlineColor;
         this.outlineWidth = data.outlineWidth || this.outlineWidth;
+    }
 }
 
 window.DrawCircle = DrawCircle;

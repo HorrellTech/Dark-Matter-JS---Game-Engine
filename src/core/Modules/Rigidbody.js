@@ -552,6 +552,7 @@ class RigidBody extends Module {
         if (this.gameObject) {
             this.createBody();
         }
+    }
 }
 
 // Register the module
