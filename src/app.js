@@ -1080,6 +1080,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Global override: allow touch events to propagate on UI elements
+    document.addEventListener('touchstart', function(e) {
+        // Only override for interactive UI elements
+        const target = e.target.closest(
+            '[class*="button"], [class*="tab"], [class*="item"], [class*="control"], [class*="action"], [class*="icon"], [class*="link"], ' +
+            'button, [role="button"], [role="tab"], [role="menuitem"], [data-action],' +
+            ' [data-toggle], [data-target], [data-action], [class*="clickable"], [class*="checkbox"], [class*="radio"]'
+        );
+        if (target) {
+            // Remove any preventDefault set by other listeners
+            e.stopImmediatePropagation();
+        }
+    }, { capture: true });
+
     // Global touch-to-click handler for interactive elements
     document.addEventListener('touchend', function(e) {
         // Match any interactive UI component
