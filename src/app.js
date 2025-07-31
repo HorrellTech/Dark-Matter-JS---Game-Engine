@@ -895,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             editorCanvas.addEventListener('touchstart', (e) => {
                 // Prevent default to avoid scrolling
-                e.preventDefault();
+                //e.preventDefault();
 
                 if (e.touches.length === 1) {
                     const touch = e.touches[0];
@@ -934,7 +934,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             editorCanvas.addEventListener('touchmove', (e) => {
-                e.preventDefault();
+                //e.preventDefault();
 
                 // Handle single finger panning
                 if (e.touches.length === 1 && touchStartPos) {
@@ -1013,8 +1013,8 @@ document.addEventListener('DOMContentLoaded', () => {
             button.style.minWidth = '32px';
 
             button.addEventListener('touchend', (e) => {
-                e.preventDefault(); // Prevent double-activation
-                button.click();     // Manually trigger click
+                //e.preventDefault(); // Prevent double-activation
+                //button.click();     // Manually trigger click
             });
         });
     }
