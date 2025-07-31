@@ -370,138 +370,6 @@ class Inspector {
     }
 
     /**
- * Populate the dropdown with available modules, grouped by namespace
- */
-    populateModuleDropdown() {
-        this.moduleDropdown.innerHTML = '';
-
-        if (!this.availableModules.length) {
-            const msg = document.createElement('div');
-            msg.className = 'dropdown-message';
-            msg.textContent = 'No modules available';
-            this.moduleDropdown.appendChild(msg);
-            return;
-        }
-
-        // Build namespace tree
-        const nsTree = {}, general = [];
-        this.availableModules.forEach(({ namespace, moduleClass }) => {
-            if (!namespace || namespace.toLowerCase() === 'general') {
-                general.push(moduleClass);
-            } else {
-                const parts = namespace.split('/');
-                let cur = nsTree;
-                parts.forEach(p => { cur[p] = cur[p] || { _children: {}, _modules: [] }; cur = cur[p]._children; });
-                cur._modules = cur._modules || [];
-                cur._modules.push(moduleClass);
-            }
-        });
-
-        // Recursive render
-        const render = (node, parentEl, level = 0) => {
-            // folders
-            Object.keys(node._children || {}).sort().forEach(folder => {
-                const frame = document.createElement('div');
-                frame.className = 'module-dropdown-folder';
-                const hdr = document.createElement('div');
-                hdr.className = 'module-dropdown-folder-header';
-                hdr.style.paddingLeft = `${10 + level * 15}px`;
-                const icon = document.createElement('i');
-                const collapsed = this.getFolderCollapseState(folder);
-                icon.className = `fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
-                hdr.append(icon, document.createTextNode(folder));
-                frame.appendChild(hdr);
-
-                const content = document.createElement('div');
-                content.className = 'module-dropdown-folder-content';
-                if (collapsed) content.style.display = 'none';
-                frame.appendChild(content);
-                parentEl.appendChild(frame);
-
-                hdr.addEventListener('click', e => {
-                    e.stopPropagation();
-                    const show = content.style.display === 'none';
-                    content.style.display = show ? 'block' : 'none';
-                    icon.className = `fas ${show ? 'fa-chevron-down' : 'fa-chevron-right'}`;
-                    this.saveFolderCollapseState(folder, !show);
-                });
-                render(node._children[folder], content, level + 1);
-            });
-
-            // modules
-            (node._modules || []).sort((a, b) => a.name.localeCompare(b.name))
-                .forEach(ModuleClass => {
-                    const desc = ModuleClass.description || '';
-                    const item = document.createElement('div');
-                    item.className = 'module-dropdown-item';
-                    item.style.paddingLeft = `${20 + level * 15}px`;
-                    item.title = desc || ModuleClass.name;
-
-                    const name = document.createElement('span');
-                    name.className = 'module-dropdown-item-name';
-                    name.textContent = ModuleClass.name;
-                    item.appendChild(name);
-
-                    if (desc) {
-                        const d = document.createElement('span');
-                        d.className = 'module-dropdown-item-description';
-                        d.textContent = desc.length > 60 ? desc.slice(0, 57) + '...' : desc;
-                        item.appendChild(d);
-                    }
-
-                    item.addEventListener('click', () => {
-                        if (this.addModuleToGameObject(ModuleClass)) {
-                            this.moduleDropdown.style.display = 'none';
-                        }
-                    });
-                    parentEl.appendChild(item);
-                });
-        };
-
-        render({ _children: nsTree, _modules: [] }, this.moduleDropdown);
-
-        // "General" at the end
-        if (general.length) {
-            if (Object.keys(nsTree).length) {
-                const hr = document.createElement('hr');
-                hr.className = 'module-dropdown-separator';
-                this.moduleDropdown.appendChild(hr);
-            }
-            const hdr = document.createElement('div');
-            hdr.className = 'module-dropdown-namespace';
-            hdr.textContent = 'General';
-            this.moduleDropdown.appendChild(hdr);
-
-            general.sort((a, b) => a.name.localeCompare(b.name)).forEach(ModuleClass => {
-                const desc = ModuleClass.description || '';
-                const item = document.createElement('div');
-                item.className = 'module-dropdown-item';
-                item.style.paddingLeft = '20px';
-                item.title = desc || ModuleClass.name;
-
-                const name = document.createElement('span');
-                name.className = 'module-dropdown-item-name';
-                name.textContent = ModuleClass.name;
-                item.appendChild(name);
-
-                if (desc) {
-                    const d = document.createElement('span');
-                    d.className = 'module-dropdown-item-description';
-                    d.textContent = desc.length > 60 ? desc.slice(0, 57) + '...' : desc;
-                    item.appendChild(d);
-                }
-
-                item.addEventListener('click', () => {
-                    if (this.addModuleToGameObject(ModuleClass)) {
-                        this.moduleDropdown.style.display = 'none';
-                    }
-                });
-                this.moduleDropdown.appendChild(item);
-            });
-        }
-    }
-
-    /**
      * Add a module to the selected GameObject
      */
     addModuleToGameObject(moduleClass) {
@@ -874,9 +742,9 @@ class Inspector {
             moduleContainer.style.setProperty('--module-text-color', luminance > 0.5 ? '#222' : '#fff');
             // Generate lighter/darker backgrounds for inputs
             function shade(hex, percent) {
-                let R = parseInt(hex.substring(0,2),16);
-                let G = parseInt(hex.substring(2,4),16);
-                let B = parseInt(hex.substring(4,6),16);
+                let R = parseInt(hex.substring(0, 2), 16);
+                let G = parseInt(hex.substring(2, 4), 16);
+                let B = parseInt(hex.substring(4, 6), 16);
                 R = Math.min(255, Math.max(0, Math.floor(R * (100 + percent) / 100)));
                 G = Math.min(255, Math.max(0, Math.floor(G * (100 + percent) / 100)));
                 B = Math.min(255, Math.max(0, Math.floor(B * (100 + percent) / 100)));
@@ -1379,6 +1247,18 @@ class Inspector {
                 `;
                     if (!styleHelper._sliders) styleHelper._sliders = [];
                     styleHelper._sliders.push({ inputId, onChange });
+                    return styleHelper;
+                },
+                addImageDrop: (name, value, options = {}) => {
+                    const inputId = `image-drop-${Math.random().toString(36).substr(2, 8)}`;
+                    styleHelper.html += `
+                        <div class="property-row">
+                            <label for="${inputId}">${options.label || this.formatPropertyName?.(name) || name}</label>
+                            <div id="${inputId}" class="image-drop-area" data-prop-name="${name}">
+                                ${value ? `<img src="${value}" alt="Image Preview">` : '<span>Drop an image here or click to select</span>'}
+                            </div>
+                        </div>
+                    `;
                     return styleHelper;
                 }
             };
@@ -1966,21 +1846,36 @@ class Inspector {
         }
 
         try {
-            // Get the FileBrowser instance
             const fileBrowser = this.editor?.fileBrowser;
             if (!fileBrowser) {
                 console.warn('FileBrowser not available for image upload');
                 return;
             }
 
-            // Upload to FileBrowser
-            await fileBrowser.handleFileUpload(file);
-
-            // Set the sprite to this path
             const path = `${fileBrowser.currentPath}/${file.name}`;
+
+            // Check if file already exists
+            let exists = false;
+            try {
+                await fileBrowser.readFile(path);
+                exists = true;
+            } catch (e) {
+                exists = false;
+            }
+
+            if (!exists) {
+                await fileBrowser.handleFileUpload(file);
+            } else {
+                // Optionally, ask the user if they want to overwrite
+                const overwrite = confirm(`File "${file.name}" already exists. Overwrite?`);
+                if (overwrite) {
+                    await fileBrowser.handleFileUpload(file, { overwrite: true });
+                }
+                // If not overwriting, just use the existing file
+            }
+
             await module.setSprite(path);
 
-            // Refresh UI
             this.refreshModuleUI(module);
             this.editor.refreshCanvas();
         } catch (error) {
@@ -2164,7 +2059,10 @@ class Inspector {
         }
 
         // Handle image assets specially
-        if (prop.type === 'image' || prop.type === 'asset' && prop.options?.assetType === 'image') {
+        if (
+            prop.type === 'image' ||
+            (prop.type === 'asset' && prop.options?.assetType === 'image')
+        ) {
             const inputId = `prop-${module.id}-${prop.name}`;
             const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
 
