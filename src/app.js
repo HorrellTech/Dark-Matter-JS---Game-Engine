@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Remove active class from all buttons and contents
             document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
+
             // Add active class to clicked button and corresponding content
             button.classList.add('active');
             document.getElementById(button.dataset.tab).classList.add('active');
@@ -55,22 +55,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Modify the engine to update physics
     const originalEngineUpdate = Engine.prototype.update;
-    Engine.prototype.update = function(deltaTime) {
+    Engine.prototype.update = function (deltaTime) {
         // Update physics first
         if (window.physicsManager) {
             window.physicsManager.update(deltaTime);
         }
-        
+
         // Call the original update method
         originalEngineUpdate.call(this, deltaTime);
     };
 
     // Add debug drawing to the engine's draw method
     const originalEngineDraw = Engine.prototype.draw;
-    Engine.prototype.draw = function() {
+    Engine.prototype.draw = function () {
         // Call the original draw method
         originalEngineDraw.call(this);
-        
+
         // Draw physics debug visualization
         if (window.physicsManager && this.ctx) {
             window.physicsManager.drawDebug(this.ctx);
@@ -79,10 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add physics reset when stopping the game
     const originalEngineStop = Engine.prototype.stop;
-    Engine.prototype.stop = function() {
+    Engine.prototype.stop = function () {
         // Call the original stop method
         originalEngineStop.call(this);
-        
+
         // Reset physics when stopping the game
         if (window.physicsManager) {
             window.physicsManager.reset();
@@ -110,39 +110,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize file browser with proper error handling and retry logic
     let fileBrowser;
-    
+
     function initializeFileBrowser() {
         console.log('Attempting to initialize FileBrowser...', typeof FileBrowser);
-        
+
         if (typeof FileBrowser === 'undefined') {
             console.warn('FileBrowser class not found, will retry...');
             return false;
         }
-        
+
         // Check if container exists and has dimensions
         const container = document.getElementById('fileBrowserContainer');
         if (!container) {
             console.warn('FileBrowser container not found, will retry...');
             return false;
         }
-        
+
         // Ensure container has proper dimensions
         const containerRect = container.getBoundingClientRect();
         if (containerRect.width === 0 || containerRect.height === 0) {
             console.warn(`FileBrowser container has invalid dimensions: ${containerRect.width} ${containerRect.height}, will retry...`);
             return false;
         }
-        
+
         try {
             fileBrowser = new FileBrowser('fileBrowserContainer');
             window.fileBrowser = fileBrowser;
             console.log('FileBrowser initialized successfully');
-            
+
             // Connect editor and fileBrowser
             if (editor) {
                 editor.fileBrowser = fileBrowser;
                 fileBrowser.editor = editor;
-                
+
                 // Scan for existing module scripts after a short delay to ensure DB is ready
                 setTimeout(() => {
                     if (fileBrowser.scanForModuleScripts) {
@@ -150,14 +150,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }, 1000);
             }
-            
+
             return true;
         } catch (error) {
             console.error('Error initializing FileBrowser:', error);
             return false;
         }
     }
-    
+
     // Wait a bit for the DOM to be fully rendered and styled
     setTimeout(() => {
         // Try to initialize immediately
@@ -165,16 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // If failed, retry with increasing delays
             let retryCount = 0;
             const maxRetries = 10; // Increased max retries
-            
+
             const retryInit = () => {
                 retryCount++;
                 console.log(`Retrying FileBrowser initialization (attempt ${retryCount}/${maxRetries})...`);
-                
+
                 if (initializeFileBrowser()) {
                     console.log('FileBrowser initialization successful on retry');
                     return;
                 }
-                
+
                 if (retryCount < maxRetries) {
                     setTimeout(retryInit, 200 + (retryCount * 100)); // Progressive delay
                 } else {
@@ -194,14 +194,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             };
-            
+
             setTimeout(retryInit, 200);
         }
     }, 100); // Initial delay to ensure DOM is fully rendered
 
     // Make editor globally accessible
     window.editor = editor;
-    
+
     // Ensure editor.sceneManager is available
     if (!editor.sceneManager && window.SceneManager) {
         editor.sceneManager = new SceneManager(editor);
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.ProjectManager && editor && editor.sceneManager && window.fileBrowser && !projectManager) {
             projectManager = new ProjectManager(editor, editor.sceneManager, window.fileBrowser);
             console.log('ProjectManager initialized successfully');
-            
+
             // Connect toolbar buttons after ProjectManager is initialized
             connectProjectManagerButtons();
             return true;
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(checkInterval);
             }
         }, 100);
-        
+
         // Stop checking after 10 seconds and show error
         setTimeout(() => {
             clearInterval(checkInterval);
@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize AutoSaveManager after editor is initialized
     if (!window.autoSaveManager) {
         window.autoSaveManager = new AutoSaveManager(window.editor);
-        
+
         // Automatically restore previous session when starting
         window.autoSaveManager.loadState().then(success => {
             if (!success && window.editor.scenes.length === 0) {
@@ -319,16 +319,16 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Creating panel manager from app.js");
             window.panelManager = new PanelManager();
         }
-        
+
         // Add a console command for easy testing
-        window.testMobileMode = function() {
+        window.testMobileMode = function () {
             if (window.panelManager) {
                 window.panelManager.testMobileMode();
             } else {
                 console.error("PanelManager not initialized");
             }
         };
-        
+
         // Add mobile detection
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         if (isMobile) {
@@ -414,23 +414,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // Canvas tabs
     document.querySelectorAll('.canvas-tab').forEach(tab => {
         tab.addEventListener('click', () => {
-            document.querySelectorAll('.canvas-tab, .canvas-view').forEach(el => 
+            document.querySelectorAll('.canvas-tab, .canvas-view').forEach(el =>
                 el.classList.remove('active')
             );
             tab.classList.add('active');
             document.getElementById(tab.dataset.canvas + 'View').classList.add('active');
-            
+
             // If switching to game view and game isn't running, start it
             if (tab.dataset.canvas === 'game') {
                 // Resize the game canvas immediately
                 engine.resizeCanvas();
-                
+
                 // If game was previously running but paused due to tab switch,
                 // resume it rather than restarting
                 if (engine.wasRunning && !engine.running) {
                     engine.resume();
                 }
-            } 
+            }
             // If switching to editor, don't stop the game, just update editor view
             else if (tab.dataset.canvas === 'editor' && editor) {
                 // Sync game object positions from engine to editor
@@ -460,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             console.warn("ScriptEditor class not found, attempting to load it dynamically");
-            
+
             // Dynamically load the script
             return new Promise((resolve) => {
                 const script = document.createElement('script');
@@ -490,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.appendChild(script);
             });
         }
-        
+
         return false;
     }
 
@@ -501,19 +501,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Deactivate all tabs and views
                 document.querySelectorAll('.canvas-tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.canvas-view').forEach(view => view.classList.remove('active'));
-                
+
                 // Activate the clicked tab and its associated view
                 tab.classList.add('active');
                 const viewId = tab.getAttribute('data-canvas') + 'View';
                 document.getElementById(viewId).classList.add('active');
-                
+
                 // If switching to editor view, refresh the canvas
                 if (viewId === 'editorView' && window.editor) {
                     setTimeout(() => {
                         window.editor.refreshCanvas();
                     }, 0);
                 }
-                
+
                 // If switching to game view, resize the game canvas
                 if (viewId === 'gameView' && window.engine) {
                     setTimeout(() => {
@@ -526,21 +526,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function syncGameToEditor() {
         if (!engine.running || !engine.activeScene || !editor.activeScene) return;
-        
+
         // Create a mapping function to find corresponding objects
         function findMatchingEditorObject(gameObj, editorObjects) {
             return editorObjects.find(obj => obj.id === gameObj.id);
         }
-        
+
         // Recursively sync position and rotation data
         function syncObjectData(gameObj, editorObj) {
             if (!gameObj || !editorObj) return;
-            
+
             // Copy transforms from game to editor
             editorObj.position = new Vector2(gameObj.position.x, gameObj.position.y);
             editorObj.rotation = gameObj.rotation;
             editorObj.scale = new Vector2(gameObj.scale.x, gameObj.scale.y);
-            
+
             // Sync children
             if (gameObj.children && editorObj.children) {
                 gameObj.children.forEach(childGameObj => {
@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
-        
+
         // Sync each root game object
         engine.activeScene.gameObjects.forEach(gameObj => {
             const editorObj = findMatchingEditorObject(gameObj, editor.activeScene.gameObjects);
@@ -613,27 +613,27 @@ document.addEventListener('DOMContentLoaded', () => {
         console[type] = (...args) => {
             // Call original method
             originalConsole[type].apply(console, args);
-            
+
             // Create message element
             const message = document.createElement('div');
             message.className = `console-message ${type}`;
-            
+
             // Add timestamp
             const timestamp = document.createElement('span');
             timestamp.className = 'console-timestamp';
             timestamp.textContent = getTimestamp();
             message.appendChild(timestamp);
-            
+
             // Add message content
             const content = document.createElement('span');
-            content.textContent = args.map(arg => 
+            content.textContent = args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
             ).join(' ');
             message.appendChild(content);
-            
+
             // Add to console output
             consoleOutput.appendChild(message);
-            
+
             // Auto-scroll to bottom
             consoleOutput.scrollTop = consoleOutput.scrollHeight;
         };
@@ -651,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 // Log the input
                 console.log('>', e.target.value);
-                
+
                 // Evaluate the input
                 const result = eval(e.target.value);
                 if (result !== undefined) {
@@ -660,7 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 console.error(error);
             }
-            
+
             // Clear input
             e.target.value = '';
         }
@@ -699,51 +699,51 @@ document.addEventListener('DOMContentLoaded', () => {
     const gameCanvas = document.getElementById('gameCanvas');
     const engine = new Engine(gameCanvas);
 
-    if(!window.engine) {
+    if (!window.engine) {
         window.engine = engine;
     }
 
     engine.editor = editor;
-    
+
     // Store engine reference in editor for convenience
     editor.engine = engine;
-    
+
     // Set up play/stop buttons
     const playButton = document.querySelector('.toolbar-button[title="Play"]');
     const stopButton = document.querySelector('.toolbar-button[title="Stop"]');
-    
+
     if (playButton && stopButton) {
         playButton.addEventListener('click', async () => {
             console.log("Play button clicked");
-            
+
             if (!editor.activeScene) {
                 console.error('No active scene to play');
                 return;
             }
-            
+
             // First add visual feedback - button active state
             playButton.classList.add('active');
             stopButton.classList.remove('active');
-            
+
             // Switch to game tab if needed
             const gameTab = document.querySelector('[data-canvas="game"]');
             if (gameTab) gameTab.click();
-            
+
             // If game was paused, resume it instead of restarting
             if (engine.wasRunning) {
                 console.log("Resuming previously running game");
                 engine.resume();
                 return;
             }
-            
+
             // Debug log
             console.log(`Starting game with scene: ${editor.activeScene.name}`);
             console.log(`Scene has ${editor.activeScene.gameObjects.length} root objects`);
-            
+
             // Load and start the scene
             engine.loadScene(editor.activeScene);
             engine.resizeCanvas();
-            
+
             try {
                 // Start the game with loading indicator
                 document.body.classList.add('game-loading');
@@ -756,10 +756,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.classList.remove('game-loading');
             }
         });
-        
+
         stopButton.addEventListener('click', () => {
             console.log("Stop button clicked");
-            
+
             if (engine.running) {
                 // Visual feedback - button active state
                 playButton.classList.remove('active');
@@ -768,13 +768,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Switch to editor tab
                 const editorTab = document.querySelector('[data-canvas="editor"]');
                 if (editorTab) editorTab.click();
-                
+
                 // Refresh editor canvas
                 editor.refreshCanvas();
-                
+
                 // Stop the game
                 engine.stop();
-                
+
                 // After a brief delay, remove the active state from the stop button
                 setTimeout(() => {
                     stopButton.classList.remove('active');
@@ -792,77 +792,77 @@ document.addEventListener('DOMContentLoaded', () => {
         const fpsCounter = document.getElementById('fpsCounter');
         const resolutionDisplay = document.getElementById('resolutionDisplay');
         const gameView = document.getElementById('gameView');
-        
+
         // Fullscreen toggle
         fullscreenButton.addEventListener('click', () => {
             if (!engine.running) return;
-            
+
             const isFullscreen = gameView.classList.toggle('fullscreen-mode');
             engine.renderConfig.fullscreen = isFullscreen;
-            
+
             // Update button icon
-            fullscreenButton.innerHTML = isFullscreen ? 
-                '<i class="fas fa-compress"></i>' : 
+            fullscreenButton.innerHTML = isFullscreen ?
+                '<i class="fas fa-compress"></i>' :
                 '<i class="fas fa-expand"></i>';
-                
+
             // Trigger resize
             engine.resizeCanvas();
             updateResolutionDisplay();
         });
-        
+
         // Scaling mode
         scaleModeSelect.addEventListener('change', () => {
             engine.renderConfig.scaleMode = scaleModeSelect.value;
             engine.resizeCanvas();
             updateResolutionDisplay();
         });
-        
+
         // Aspect ratio
         maintainAspectRatio.addEventListener('change', () => {
             engine.renderConfig.maintainAspectRatio = maintainAspectRatio.checked;
             engine.resizeCanvas();
             updateResolutionDisplay();
         });
-        
+
         // Pixel perfect
         pixelPerfect.addEventListener('change', () => {
             engine.renderConfig.pixelPerfect = pixelPerfect.checked;
             engine.resizeCanvas();
             updateResolutionDisplay();
         });
-        
+
         // Image smoothing
         smoothingEnabled.addEventListener('change', () => {
             engine.renderConfig.smoothing = smoothingEnabled.checked;
             engine.resizeCanvas();
         });
-        
+
         // Set up FPS counter
         let lastTime = performance.now();
         let frameCount = 0;
-        
+
         function updateFPS() {
             if (!engine.running) {
                 fpsCounter.textContent = '0 FPS';
                 return;
             }
-            
+
             const now = performance.now();
             frameCount++;
-            
+
             if (now - lastTime >= 1000) {
                 const fps = Math.round((frameCount * 1000) / (now - lastTime));
                 fpsCounter.textContent = `${fps} FPS`;
                 frameCount = 0;
                 lastTime = now;
             }
-            
+
             requestAnimationFrame(updateFPS);
         }
-        
+
         // Start FPS counter
         updateFPS();
-        
+
         // Initialize resolution display
         updateResolutionDisplay();
     }
@@ -871,10 +871,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateResolutionDisplay() {
         const resolutionDisplay = document.getElementById('resolutionDisplay');
         if (!resolutionDisplay || !engine.canvas) return;
-        
+
         const canvasWidth = engine.canvas.width;
         const canvasHeight = engine.canvas.height;
-        
+
         // If in pixel-perfect mode, show both logical and physical resolution
         if (engine.renderConfig.pixelPerfect) {
             const viewportWidth = engine.scene?.settings?.viewportWidth || 800;
@@ -888,23 +888,23 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupMobileTouchHandling() {
         // Add touch events for canvas interaction
         const editorCanvas = document.getElementById('editorCanvas');
-        
+
         if (editorCanvas && window.editor) {
             let touchStartPos = null;
             let touchStartTime = 0;
-            
+
             editorCanvas.addEventListener('touchstart', (e) => {
                 // Prevent default to avoid scrolling
                 e.preventDefault();
-                
+
                 if (e.touches.length === 1) {
                     const touch = e.touches[0];
-                    touchStartPos = { 
-                        x: touch.clientX, 
-                        y: touch.clientY 
+                    touchStartPos = {
+                        x: touch.clientX,
+                        y: touch.clientY
                     };
                     touchStartTime = Date.now();
-                    
+
                     // Simulate mousedown for object selection
                     const pointerEvent = new PointerEvent('pointerdown', {
                         clientX: touch.clientX,
@@ -914,41 +914,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     editorCanvas.dispatchEvent(pointerEvent);
                 }
-                
+
                 // Handle pinch zoom with two fingers
                 if (e.touches.length === 2) {
                     const touch1 = e.touches[0];
                     const touch2 = e.touches[1];
-                    
+
                     // Calculate initial distance between fingers
                     const initialDistance = Math.hypot(
-                        touch1.clientX - touch2.clientX, 
+                        touch1.clientX - touch2.clientX,
                         touch1.clientY - touch2.clientY
                     );
-                    
+
                     window.editor._pinchZoomData = {
                         initialDistance: initialDistance,
                         initialZoom: window.editor.camera.zoom
                     };
                 }
             });
-            
+
             editorCanvas.addEventListener('touchmove', (e) => {
                 e.preventDefault();
-                
+
                 // Handle single finger panning
                 if (e.touches.length === 1 && touchStartPos) {
                     const touch = e.touches[0];
                     const deltaX = touch.clientX - touchStartPos.x;
                     const deltaY = touch.clientY - touchStartPos.y;
-                    
+
                     // If we've moved enough, simulate drag for panning
                     if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-                        touchStartPos = { 
-                            x: touch.clientX, 
-                            y: touch.clientY 
+                        touchStartPos = {
+                            x: touch.clientX,
+                            y: touch.clientY
                         };
-                        
+
                         // Simulate mousemove for panning
                         const pointerEvent = new PointerEvent('pointerdown', {
                             clientX: touch.clientX,
@@ -959,46 +959,46 @@ document.addEventListener('DOMContentLoaded', () => {
                         editorCanvas.dispatchEvent(pointerEvent);
                     }
                 }
-                
+
                 // Handle pinch zoom
                 if (e.touches.length === 2 && window.editor._pinchZoomData) {
                     const touch1 = e.touches[0];
                     const touch2 = e.touches[1];
-                    
+
                     // Calculate new distance between fingers
                     const newDistance = Math.hypot(
-                        touch1.clientX - touch2.clientX, 
+                        touch1.clientX - touch2.clientX,
                         touch1.clientY - touch2.clientY
                     );
-                    
+
                     // Calculate zoom factor based on pinch
                     const pinchRatio = newDistance / window.editor._pinchZoomData.initialDistance;
                     const newZoom = window.editor._pinchZoomData.initialZoom * pinchRatio;
-                    
+
                     // Apply zoom with constraints
                     window.editor.camera.zoom = Math.max(0.1, Math.min(10, newZoom));
                     window.editor.updateZoomLevelDisplay();
                     window.editor.refreshCanvas();
                 }
             });
-            
+
             editorCanvas.addEventListener('touchend', (e) => {
                 // Handle touch ending
                 if (e.touches.length === 0) {
                     // Check if this was a tap (quick touch)
                     const touchDuration = Date.now() - touchStartTime;
-                    
+
                     if (touchDuration < 300 && touchStartPos) {
                         // Simulate click for selection
                         const pointerEvent = new PointerEvent('pointerdown', {
-                        clientX: touch.clientX,
-                        clientY: touch.clientY,
-                        bubbles: true,
-                        pointerType: 'touch'
-                    });
-                    editorCanvas.dispatchEvent(pointerEvent);
+                            clientX: touch.clientX,
+                            clientY: touch.clientY,
+                            bubbles: true,
+                            pointerType: 'touch'
+                        });
+                        editorCanvas.dispatchEvent(pointerEvent);
                     }
-                    
+
                     // Reset touch data
                     touchStartPos = null;
                     touchStartTime = 0;
@@ -1006,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
-        
+
         // Make toolbar and buttons more touch-friendly
         document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
             button.style.minHeight = '32px';
@@ -1041,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     } else {
-         console.warn("Settings button not found.");
+        console.warn("Settings button not found.");
     }
 
     // Connect export button
@@ -1057,22 +1057,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Call this after engine initialization
     setupGameViewControls();
-    
+
     // Add canvas tab handlers
     document.querySelectorAll('.canvas-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             // If switching to editor while game is running, stop the game
             if (tab.dataset.canvas === 'editor' && engine.running) {
-               // engine.stop();
+                // engine.stop();
             }
-            
+
             // If switching to game, make sure canvas is sized correctly
             if (tab.dataset.canvas === 'game') {
                 engine.resizeCanvas();
             }
         });
     });
-    
+
     // Handle window resize for game canvas
     window.addEventListener('resize', () => {
         if (engine.running) {
@@ -1081,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Global override: allow touch events to propagate on UI elements
-    document.addEventListener('touchstart', function(e) {
+    /*document.addEventListener('touchstart', function (e) {
         // Only override for interactive UI elements
         const target = e.target.closest(
             '[class*="button"], [class*="tab"], [class*="item"], [class*="control"], [class*="action"], [class*="icon"], [class*="link"], ' +
@@ -1095,7 +1095,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { capture: true });
 
     // Global touch-to-click handler for interactive elements
-    document.addEventListener('touchend', function(e) {
+    document.addEventListener('touchend', function (e) {
         // Match any interactive UI component
         let target = e.target.closest(
             '[class*="button"], [class*="tab"], [class*="item"], [class*="control"], [class*="action"], [class*="icon"], [class*="link"], ' +
@@ -1105,12 +1105,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!target) return;
         e.preventDefault();
         target.click();
-    }, { passive: false });
+    }, { passive: false });*/
 
     setTimeout(() => {
         if (window.editor) {
             window.editor.refreshCanvas();
-            
+
             // Add resize observer to maintain proper canvas rendering
             const resizeObserver = new ResizeObserver(entries => {
                 for (const entry of entries) {
@@ -1119,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             });
-            
+
             const editorView = document.getElementById('editorView');
             if (editorView) {
                 resizeObserver.observe(editorView);
