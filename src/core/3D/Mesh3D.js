@@ -4,6 +4,8 @@
  * This module renders 3D meshes using the 2D canvas API.
  */
 class Mesh3D extends Module {
+    static namespace = "WIP";
+    
     /**
      * Create a new Mesh3D
      */

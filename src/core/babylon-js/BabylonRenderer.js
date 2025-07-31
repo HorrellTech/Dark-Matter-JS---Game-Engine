@@ -8,8 +8,23 @@ class BabylonRenderer extends Module {
         this.camera = null;
         
         // Expose properties to the Inspector
-        this.exposeProperty("clearColor", "color", "#000000");
-        this.exposeProperty("enableShadows", "boolean", true);
+        this.exposeProperty("clearColor", "color", "#000000", {
+            description: "Background color of the scene",
+            onChange: (value) => {
+                if (this.scene) {
+                    this.scene.clearColor = BABYLON.Color3.FromHexString(value);
+                }
+            }
+        });
+        
+        this.exposeProperty("enableShadows", "boolean", true, {
+            description: "Enable shadows in the scene",
+            onChange: (value) => {
+                if (this.scene) {
+                    this.scene.shadowsEnabled = value;
+                }
+            }
+        });
     }
     
     async preload() {

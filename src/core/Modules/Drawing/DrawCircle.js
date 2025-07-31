@@ -61,6 +61,18 @@ class DrawCircle extends Module {
         });
     }
 
+    getBoundingBox() {
+        // Calculate bounding box based on radius and offset
+        const x = this.offset.x - this.radius;
+        const y = this.offset.y - this.radius;
+        return {
+            x: x,
+            y: y,
+            width: this.radius * 2,
+            height: this.radius * 2
+        };
+    }
+
     /**
      * Draw the circle centered at the GameObject,
      * then translated by offset.
@@ -90,6 +102,33 @@ class DrawCircle extends Module {
 
         ctx.restore();
     }
+
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            radius: this.radius,
+            offset: this.offset.toJSON(),
+            color: this.color,
+            fill: this.fill,
+            outline: this.outline,
+            outlineColor: this.outlineColor,
+            outlineWidth: this.outlineWidth
+        };
+    }
+
+    /**
+     * Override to handle deserialization
+     * @param {Object} data Serialized data
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+        this.radius = data.radius || this.radius;
+        this.offset = Vector2.fromJSON(data.offset) || this.offset;
+        this.color = data.color || this.color;
+        this.fill = data.fill !== undefined ? data.fill : this.fill;
+        this.outline = data.outline !== undefined ? data.outline : this.outline;
+        this.outlineColor = data.outlineColor || this.outlineColor;
+        this.outlineWidth = data.outlineWidth || this.outlineWidth;
 }
 
 window.DrawCircle = DrawCircle;

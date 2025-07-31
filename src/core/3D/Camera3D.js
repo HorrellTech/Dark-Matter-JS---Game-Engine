@@ -5,6 +5,8 @@
  * It handles perspective projection of 3D points onto a 2D plane.
  */
 class Camera3D extends Module {
+    static namespace = "WIP";
+    
     /**
      * Create a new Camera3D
      */
@@ -37,11 +39,23 @@ class Camera3D extends Module {
         });
         this.exposeProperty("nearPlane", "number", 0.1, {
             min: 0.01,
-            max: 10
+            max: 10,
+            step: 0.01,
+            onChange: (value) => {
+                if (value <= 0) {
+                    console.warn("Near plane must be greater than 0");
+                    this.nearPlane = 0.1; // Reset to default if invalid
+                }
+                this.nearPlane = value;
+            }
         });
         this.exposeProperty("farPlane", "number", 1000, {
             min: 10,
-            max: 10000
+            max: 10000,
+            step: 1,
+            onChange: (value) => {
+                this.farPlane = value;
+            }
         });
         this.exposeProperty("isActive", "boolean", false, {
             onChange: (value) => {

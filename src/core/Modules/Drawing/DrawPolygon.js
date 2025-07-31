@@ -64,6 +64,23 @@ class DrawPolygon extends Module {
         });
     }
 
+    getBoundingBox() {
+        if (!this.vertices || this.vertices.length < 3) return null;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const v of this.vertices) {
+            minX = Math.min(minX, v.x);
+            minY = Math.min(minY, v.y);
+            maxX = Math.max(maxX, v.x);
+            maxY = Math.max(maxY, v.y);
+        }
+        return {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
+    }
+
     _onVerticesChanged() {
         // Safety check: only continue if gameObject exists
         if (!this.gameObject) return;
@@ -262,6 +279,36 @@ class DrawPolygon extends Module {
         if (this.gameObject) {
             this._onVerticesChanged();
         }
+    }
+
+    toJSON() {
+        const json = super.toJSON();
+        json.vertices = this.vertices.map(v => v.toJSON());
+        json.offset = this.offset.toJSON();
+        json.color = this.color;
+        json.fill = this.fill;
+        json.outline = this.outline;
+        json.outlineColor = this.outlineColor;
+        json.outlineWidth = this.outlineWidth;
+        return json;
+    }
+
+    fromJSON(json) {
+        super.fromJSON(json);
+        this.vertices = json.vertices.map(v => Vector2.fromJSON(v));
+        this.offset = Vector2.fromJSON(json.offset) || new Vector2(0, 0);
+        this.color = json.color || "#ffffff";
+        this.fill = json.fill !== undefined ? json.fill : true;
+        this.outline = json.outline !== undefined ? json.outline : false;
+        this.outlineColor = json.outlineColor || "#000000";
+        this.outlineWidth = json.outlineWidth || 2;
+        
+        // Call _onVerticesChanged to sync with RigidBody if needed
+        if (this.gameObject) {
+            this._onVerticesChanged();
+        }
+        
+        return this;
     }
 }
 

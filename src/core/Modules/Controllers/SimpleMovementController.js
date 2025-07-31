@@ -191,6 +191,20 @@ class SimpleMovementController extends Module {
         
         return json;
     }
+
+    /**
+     * Override to handle deserialization
+     * @param {Object} json - Serialized data
+     */
+    fromJSON(json) {
+        super.fromJSON(json);
+        if (json.speed !== undefined) this.speed = json.speed;
+        if (json.usePhysics !== undefined) this.usePhysics = json.usePhysics;
+        if (json.allowDiagonal !== undefined) this.allowDiagonal = json.allowDiagonal;
+        if (json.acceleration !== undefined) this.acceleration = json.acceleration;
+        if (json.deceleration !== undefined) this.deceleration = json.deceleration;
+        if (json.controlScheme !== undefined) this.controlScheme = json.controlScheme;
+    }
 }
 
 // Register the module

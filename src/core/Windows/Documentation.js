@@ -1141,7 +1141,7 @@ stopSound() {
                 <p>Use AI to generate content, behaviors, and more. You can use this prompt with any AI chatbot that supports text input.</p>
                 
                 <h4>PROMPT:</h4>
-                <pre><code>You are an AI assistant specialized in the Dark Matter JS game engine module system.
+                <pre><code>You are an AI assistant specialized expert in the Dark Matter JS game engine module system.
 
 **Module System Basics:**
 - Modules extend GameObject functionality
@@ -1149,6 +1149,7 @@ stopSound() {
 - All modules extend the Module base class
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
+- Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
 
 **Module Template:**
 \`\`\`javascript
@@ -1165,10 +1166,8 @@ class MyModule extends Module {
         // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
             description: "Movement speed",
-            min: 0, max: 500,
-            step: 1,
             onChange: (val) => {
-                this.speed = val; // Update speed when changed
+                this.speed = val; // Update speed when property changes
             }
         });
     }
@@ -1189,6 +1188,16 @@ class MyModule extends Module {
 
     drawGizmos(ctx) {
         // Draw debug gizmos (optional)
+    }
+
+    toJSON() { // Serialize module state
+        return {
+            speed: this.speed
+        };
+    }
+
+    fromJSON(data) { // Deserialize module state
+        this.speed = data.speed || 100; // Default to 100 if not provided
     }
 }
 

@@ -5,6 +5,8 @@
  * colors, and rendering options.
  */
 class CubeMesh3D extends Module {
+    static namespace = "WIP";
+    
     /**
      * Create a new CubeMesh3D
      */
@@ -31,7 +33,10 @@ class CubeMesh3D extends Module {
         this.exposeProperty("size", "number", 100, {
             min: 1,
             max: 500,
-            onChange: () => this.updateCube()
+            onChange: () => {
+                this._size = size;
+                this.updateCube();
+            }
         });
         
         this.exposeProperty("position", "vector3", this._position, {

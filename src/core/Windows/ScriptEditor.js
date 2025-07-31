@@ -1057,7 +1057,8 @@ this.exposeProperty("speed", "number", 200, {
 });
 \`\`\`
 
-**Available Modules:** SpriteRenderer, RigidBody, Collider, KeyboardController, SimpleMovementController, AudioPlayer, SimpleHealth, BehaviorTrigger
+**Available Modules:** SpriteRenderer, RigidBody, Collider, KeyboardController, SimpleMovementController, AudioPlayer, 
+SimpleHealth, BehaviorTrigger
 
 Ask me to create, fix, or improve modules for your game!
 `;
@@ -1073,7 +1074,6 @@ Ask me to create, fix, or improve modules for your game!
 
 **Colliders:**
 - BoundingBoxCollider: Custom bounding box collision
-- Collider: Sensor-only collision detection
 
 **Drawing:**
 - DrawCircle: Draws circles
@@ -1090,6 +1090,7 @@ Ask me to create, fix, or improve modules for your game!
 
 **Physics:**
 - RigidBody: Physics body component
+- Collider: physics-only collision detection
 
 **Audio:**
 - AudioPlayer: Audio playback with spatial audio
@@ -1128,7 +1129,7 @@ Ask me to create, fix, or improve modules for your game!
     }
 
     async callAI(provider, apiKey, message) {
-        const systemPrompt = `You are an AI assistant specialized in the Dark Matter JS game engine module system.
+        const systemPrompt = `You are an AI assistant specialized expert in the Dark Matter JS game engine module system.
 
 **Module System Basics:**
 - Modules extend GameObject functionality
@@ -1136,7 +1137,7 @@ Ask me to create, fix, or improve modules for your game!
 - All modules extend the Module base class
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
-- Access viewport/camera through 'window.engine.viewport.*'
+- Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
 
 **Module Template:**
 \`\`\`javascript
@@ -1175,6 +1176,16 @@ class MyModule extends Module {
 
     drawGizmos(ctx) {
         // Draw debug gizmos (optional)
+    }
+
+    toJSON() { // Serialize module state
+        return {
+            speed: this.speed
+        };
+    }
+
+    fromJSON(data) { // Deserialize module state
+        this.speed = data.speed || 100; // Default to 100 if not provided
     }
 }
 

@@ -1,6 +1,23 @@
 class Engine {
     constructor(canvas) {
         this.canvas = canvas;
+
+        this.guiCanvas = document.createElement('canvas');
+        this.guiCanvas.width = 800;
+        this.guiCanvas.height = 600;
+        this.guiCanvas.style.position = 'absolute';
+        this.guiCanvas.style.left = '0px';
+        this.guiCanvas.style.top = '0px';
+        this.guiCanvas.style.pointerEvents = 'none';
+
+        this.backgroundCanvas = document.createElement('canvas');
+        this.backgroundCanvas.width = 800;
+        this.backgroundCanvas.height = 600;
+        this.backgroundCanvas.style.position = 'absolute';
+        this.backgroundCanvas.style.left = '0px';
+        this.backgroundCanvas.style.top = '0px';
+        this.backgroundCanvas.style.pointerEvents = 'none';
+
         this.ctx = canvas.getContext('2d');
         this.scene = null;
         this.gameObjects = [];
@@ -81,6 +98,19 @@ class Engine {
             setInterval(() => this.resizeCanvas(), 1000); // Check every second
         }
     }
+
+    // Set the canvas context for different drawing modes
+    getBackgroundCanvas() {
+        return this.backgroundCanvas.getContext('2d');
+    }
+
+    getGuiCanvas() {
+        return this.guiCanvas.getContext('2d');
+    }
+
+    getMainCanvas() {
+        return this.canvas.getContext('2d');
+    }   
 
     updateRenderConfig(settings) {
         // Update settings
@@ -384,6 +414,14 @@ class Engine {
         
         // Apply any camera transformations
         this.applyViewportTransform();
+
+        // Draw background canvas if available
+        if (this.backgroundCanvas) {
+            this.ctx.save();
+            this.ctx.globalAlpha = 1.0;
+            this.ctx.drawImage(this.backgroundCanvas, this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+            this.ctx.restore();
+        }
         
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
@@ -411,7 +449,15 @@ class Engine {
                     }
                 });
         }
-        
+
+        // Draw GUI canvas if available
+        if (this.guiCanvas) {
+            this.ctx.save();
+            this.ctx.globalAlpha = 1.0; // Reset alpha for GUI
+            this.ctx.drawImage(this.guiCanvas, this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+            this.ctx.restore();
+        }
+
         this.ctx.restore();
     }
     
@@ -653,6 +699,16 @@ class Engine {
         // IMPORTANT: Always use the viewport dimensions for the drawing surface
         this.canvas.width = viewportWidth;
         this.canvas.height = viewportHeight;
+
+        // Update GUI and background canvas sizes to match main canvas
+        if (this.guiCanvas) {
+            this.guiCanvas.width = this.canvas.width;
+            this.guiCanvas.height = this.canvas.height;
+        }
+        if (this.backgroundCanvas) {
+            this.backgroundCanvas.width = this.canvas.width;
+            this.backgroundCanvas.height = this.canvas.height;
+        }
         
         // Remove transform scaling which can cause positioning issues
         this.canvas.style.transform = 'none';

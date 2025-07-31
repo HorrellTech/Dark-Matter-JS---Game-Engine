@@ -3,7 +3,7 @@ class DrawPlatformerHills extends Module {
     static description = "Generates layered procedural hills with spline curves, parallax effect, infinite horizontal generation, and day/night cycle";
     static allowMultiple = false;
     static icon = "fa-mountain";
-    static color = "#6ba06dff"; // Green color for hills
+    static color = "#445844ff"; // Green color for hills
     static drawInEditor = false; // This module does not need to be drawn in the editor
 
     constructor() {
@@ -57,6 +57,18 @@ class DrawPlatformerHills extends Module {
         this.starTwinkleSpeed = 2.0; // Speed of star twinkling
         this.maxStarSize = 3; // Maximum star size
 
+        // --- Cloud properties ---
+        this.maxClouds = 6;
+        this.cloudSpeed = 40; // px/sec
+        this.windDirection = 1; // -1 = left, 1 = right
+        this.cloudSeed = 1234;
+        this.clouds = [];
+        this.cloudTypes = [
+            { w: 120, h: 48, alpha: 0.5 },
+            { w: 80, h: 32, alpha: 0.6 },
+            { w: 160, h: 56, alpha: 0.4 }
+        ];
+
         // Celestial body positioning
         this.celestialArcHeight = 0.6; // How high the sun/moon arc (0-1)
         this.celestialParallax = 0.2; // Parallax factor for celestial bodies
@@ -72,6 +84,7 @@ class DrawPlatformerHills extends Module {
 
         this.setupProperties();
         this.generateStars();
+        this.resetClouds();
     }
 
     setupProperties() {
@@ -296,6 +309,33 @@ class DrawPlatformerHills extends Module {
             min: 1, max: 5,
             onChange: (val) => { this.waveLayers = val; }
         });
+
+        /*this.exposeProperty("maxClouds", "number", this.maxClouds, {
+            description: "Maximum clouds on screen",
+            min: 1, max: 20,
+            onChange: (val) => {
+                this.maxClouds = val;
+                this.resetClouds();
+            }
+        });
+        this.exposeProperty("cloudSpeed", "number", this.cloudSpeed, {
+            description: "Cloud speed (px/sec)",
+            min: 5, max: 200,
+            onChange: (val) => { this.cloudSpeed = val; }
+        });
+        this.exposeProperty("windDirection", "number", this.windDirection, {
+            description: "Wind direction (-1 = left, 1 = right)",
+            min: -1, max: 1, step: 0.1,
+            onChange: (val) => { this.windDirection = val; }
+        });
+        this.exposeProperty("cloudSeed", "number", this.cloudSeed, {
+            description: "Cloud random seed",
+            min: 1, max: 10000,
+            onChange: (val) => {
+                this.cloudSeed = val;
+                this.resetClouds();
+            }
+        });*/
     }
 
     style(styleHelper) {
@@ -347,6 +387,12 @@ class DrawPlatformerHills extends Module {
             .exposeProperty("waveIntensity", "number", this.waveIntensity, { label: "Wave Intensity" })
             .exposeProperty("waveSpeed", "number", this.waveSpeed, { label: "Wave Speed" })
             .exposeProperty("waveLayers", "number", this.waveLayers, { label: "Wave Layers" })
+            .endGroup()
+            .startGroup("Clouds", false)
+            .exposeProperty("maxClouds", "number", this.maxClouds, { label: "Max Clouds" })
+            .exposeProperty("cloudSpeed", "number", this.cloudSpeed, { label: "Cloud Speed" })
+            .exposeProperty("windDirection", "number", this.windDirection, { label: "Wind Direction" })
+            .exposeProperty("cloudSeed", "number", this.cloudSeed, { label: "Cloud Seed" })
             .endGroup();
     }
 
@@ -410,10 +456,12 @@ class DrawPlatformerHills extends Module {
         this.lastDay = this.getDay();
         this.hillCache.clear();
         this.generateStars();
+        this.resetClouds();
     }
 
     loop(deltaTime) {
         this.updateTime(deltaTime);
+        this.updateClouds(deltaTime);
     }
 
     // Update time progression
@@ -850,6 +898,9 @@ class DrawPlatformerHills extends Module {
         this.drawSun(ctx, sunPos, sunOpacity);
         this.drawMoon(ctx, moonPos, moonOpacity);
 
+        // --- Draw clouds ---
+        this.drawClouds(ctx, viewportBounds);
+
         // Generate hill layers from back to front
         for (let layer = this.hillLayers - 1; layer >= 0; layer--) {
             const darkenPercent = (layer / (this.hillLayers - 1)) * 0.4;
@@ -897,6 +948,20 @@ class DrawPlatformerHills extends Module {
         // Draw water after hills
         const time = (window.engine?.time || performance.now()) * 0.001;
         this.drawWater(ctx, viewportBounds, time);
+
+        // --- Draw GUI overlays ---
+        const guiCtx = window.engine?.getGuiCanvas();
+        if (guiCtx) {
+            // Optionally clear the GUI canvas (if you want to fully control it)
+            // guiCtx.clearRect(0, 0, window.engine.guiCanvas.width, window.engine.guiCanvas.height);
+
+            guiCtx.save();
+            guiCtx.fillStyle = "#FFFFFF";
+            guiCtx.font = "16px Arial";
+            guiCtx.fillText(`Time: ${this.currentHour.toFixed(2)}h`, 10, 20);
+            guiCtx.fillText(`Eclipse: ${this.eclipseDarkness.toFixed(2)}`, 10, 40);
+            guiCtx.restore();
+        }
     }
 
     // Draw waving water at the bottom of the viewport
@@ -971,6 +1036,74 @@ class DrawPlatformerHills extends Module {
             ctx.moveTo(x, viewportBounds.top);
             ctx.lineTo(x, viewportBounds.bottom);
             ctx.stroke();
+        }
+    }
+
+    resetClouds() {
+        this.clouds = [];
+        for (let i = 0; i < this.maxClouds; i++) {
+            this.clouds.push(this.spawnCloud(i));
+        }
+    }
+
+    spawnCloud(idx = 0) {
+        const viewport = this.getViewportBounds();
+        const rngSeed = this.cloudSeed + idx * 1000;
+        const type = this.cloudTypes[Math.floor(this.seededRandom(rngSeed) * this.cloudTypes.length)];
+        // Y: anywhere in the top half of the viewport
+        const y = viewport.top + this.seededRandom(rngSeed + 1) * ((viewport.bottom - viewport.top) / 2);
+        // X: spawn just off the left or right, depending on wind
+        if (this.windDirection >= 0) {
+            // Wind right: spawn off left
+            const x = viewport.left - type.w - this.seededRandom(rngSeed + 2) * 200;
+            return {
+                x, y,
+                w: type.w,
+                h: type.h,
+                alpha: type.alpha,
+                speed: this.cloudSpeed * (0.7 + this.seededRandom(rngSeed + 3) * 0.6),
+                typeIdx: this.cloudTypes.indexOf(type)
+            };
+        } else {
+            // Wind left: spawn off right
+            const x = viewport.right + type.w + this.seededRandom(rngSeed + 2) * 200;
+            return {
+                x, y,
+                w: type.w,
+                h: type.h,
+                alpha: type.alpha,
+                speed: this.cloudSpeed * (0.7 + this.seededRandom(rngSeed + 3) * 0.6),
+                typeIdx: this.cloudTypes.indexOf(type)
+            };
+        }
+    }
+
+    updateClouds(deltaTime) {
+        const viewport = this.getViewportBounds();
+        for (let i = 0; i < this.clouds.length; i++) {
+            const c = this.clouds[i];
+            c.x += this.windDirection * c.speed * (deltaTime / 1000);
+            // Remove if out of screen, then respawn on opposite side
+            if ((this.windDirection > 0 && c.x > viewport.right + c.w) ||
+                (this.windDirection < 0 && c.x < viewport.left - c.w)) {
+                this.clouds[i] = this.spawnCloud(i);
+            }
+        }
+    }
+
+    drawClouds(ctx, viewport) {
+        for (const c of this.clouds) {
+            ctx.save();
+            ctx.globalAlpha = c.alpha;
+            ctx.fillStyle = "#fff";
+            // Simple cloud shape: 3 ellipses
+            ctx.beginPath();
+            ctx.ellipse(c.x, c.y, c.w * 0.5, c.h * 0.5, 0, 0, Math.PI * 2);
+            ctx.ellipse(c.x + c.w * 0.25, c.y + c.h * 0.1, c.w * 0.3, c.h * 0.3, 0, 0, Math.PI * 2);
+            ctx.ellipse(c.x - c.w * 0.2, c.y + c.h * 0.15, c.w * 0.25, c.h * 0.25, 0, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
         }
     }
 

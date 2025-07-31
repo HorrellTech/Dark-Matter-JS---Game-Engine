@@ -28,31 +28,37 @@ class Timer extends Module {
             min: 0.1,
             max: 60,
             step: 0.1,
-            description: "Timer duration in seconds"
+            description: "Timer duration in seconds",
+            onChange: (val) => this.duration = val
         });
         
         this.exposeProperty("repeat", "boolean", this.repeat, {
-            description: "Repeat the timer"
+            description: "Repeat the timer",
+            onChange: (val) => this.repeat = val
         });
         
         this.exposeProperty("repeatCount", "number", this.repeatCount, {
             min: -1,
             max: 100,
             step: 1,
-            description: "Number of repeats (-1 for infinite)"
+            description: "Number of repeats (-1 for infinite)",
+            onChange: (val) => this.repeatCount = val
         });
         
         this.exposeProperty("autoStart", "boolean", this.autoStart, {
-            description: "Start timer automatically when enabled"
+            description: "Start timer automatically when enabled",
+            onChange: (val) => this.autoStart = val
         });
         
         this.exposeProperty("actionType", "enum", this.actionType, {
             options: ["log", "destroy", "disable", "enable", "custom"],
-            description: "Action to perform when timer completes"
+            description: "Action to perform when timer completes",
+            onChange: (val) => this.actionType = val
         });
         
         this.exposeProperty("customMessage", "string", this.customMessage, {
-            description: "Message to log when timer completes"
+            description: "Message to log when timer completes",
+            onChange: (val) => this.customMessage = val
         });
     }
     

@@ -1,5 +1,5 @@
 class DrawInfiniteStarFieldParallax extends Module {
-    static namespace = "Drawing";
+    static namespace = "WIP";
     static description = "Infinite parallax star field with optimized nebula fog";
     static allowMultiple = false;
 

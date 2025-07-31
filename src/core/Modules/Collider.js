@@ -382,6 +382,30 @@ class Collider extends Module {
         // Remove collider from physics world
         this.removeCollider();
     }
+
+    toJSON() {
+        const json = super.toJSON();
+        
+        json.shape = this.shape;
+        json.width = this.width;
+        json.height = this.height;
+        json.radius = this.radius;
+        json.vertices = this.vertices.map(v => ({ x: v.x, y: v.y }));
+        json.offset = { x: this.offset.x, y: this.offset.y };
+        
+        return json;
+    }
+
+    fromJSON(json) {
+        super.fromJSON(json);
+        
+        this.shape = json.shape;
+        this.width = json.width;
+        this.height = json.height;
+        this.radius = json.radius;
+        this.vertices = json.vertices.map(v => new Vector2(v.x, v.y));
+        this.offset = new Vector2(json.offset.x, json.offset.y);
+    }
 }
 
 // Register the module

@@ -488,34 +488,6 @@ class RigidBody extends Module {
     }
 
     /**
-     * Custom fromJSON implementation to handle physics body references
-     */
-    fromJSON(data) {
-        // First call the parent class implementation to set basic properties
-        // But completely prevent any property changes from triggering rebuilds
-        const oldSkipRebuild = this._skipRebuild;
-        this._skipRebuild = true;
-
-        try {
-            // Set properties without triggering rebuilds
-            super.fromJSON(data);
-
-            // Ensure body is null during clone 
-            this.body = null;
-
-            // Flag that body needs to be created later when safely possible
-            this.pendingBodyCreation = true;
-        } catch (error) {
-            console.error("Error in RigidBody.fromJSON:", error);
-        } finally {
-            // Restore previous skip status
-            this._skipRebuild = oldSkipRebuild;
-        }
-
-        return this;
-    }
-
-    /**
      * Override onEnable to handle pending body creation
      */
     onEnable() {
@@ -538,6 +510,48 @@ class RigidBody extends Module {
         // Remove body from physics world
         this.removeBody();
     }
+
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            bodyType: this.bodyType,
+            shape: this.shape,
+            width: this.width,
+            height: this.height,
+            radius: this.radius,
+            density: this.density,
+            friction: this.friction,
+            restitution: this.restitution,
+            fixedRotation: this.fixedRotation,
+            isSensor: this.isSensor,
+            collisionFilter: { ...this.collisionFilter },
+            vertices: this.vertices
+        };
+    }
+
+    /**
+     * Override from Module to handle deserialization
+     * @param {Object} data - The serialized data
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+        this.bodyType = data.bodyType || this.bodyType;
+        this.shape = data.shape || this.shape;
+        this.width = data.width || this.width;
+        this.height = data.height || this.height;
+        this.radius = data.radius || this.radius;
+        this.density = data.density || this.density;
+        this.friction = data.friction || this.friction;
+        this.restitution = data.restitution || this.restitution;
+        this.fixedRotation = data.fixedRotation || false;
+        this.isSensor = data.isSensor || false;
+        this.collisionFilter = { ...this.collisionFilter, ...data.collisionFilter };
+        this.vertices = data.vertices || [];
+        
+        // Rebuild the body with new properties
+        if (this.gameObject) {
+            this.createBody();
+        }
 }
 
 // Register the module

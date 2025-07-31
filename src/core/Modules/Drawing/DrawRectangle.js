@@ -68,6 +68,19 @@ class DrawRectangle extends Module {
         });
     }
 
+    getBoundingBox() {
+        if (!this.gameObject) return null;
+        // Calculate bounding box based on width, height and offset
+        const x = this.gameObject.position.x + this.offset.x - this.width / 2;
+        const y = this.gameObject.position.y + this.offset.y - this.height / 2;
+        return {
+            x: x,
+            y: y,
+            width: this.width,
+            height: this.height
+        };
+    }
+
     /**
      * Draw the rectangle centered at the GameObject,
      * then translated by offset.
@@ -98,6 +111,33 @@ class DrawRectangle extends Module {
 
         ctx.restore();
     }
+
+    toJSON() {
+        return {
+            width: this.width,
+            height: this.height,
+            offset: this.offset.toJSON(),
+            color: this.color,
+            fill: this.fill,
+            outline: this.outline,
+            outlineColor: this.outlineColor,
+            outlineWidth: this.outlineWidth
+        };
+    }
+
+    /**
+     * Override to handle serialization
+     * @returns {Object} Serialized data
+     */
+    fromJSON(data) {
+        if (data.width !== undefined) this.width = data.width;
+        if (data.height !== undefined) this.height = data.height;
+        if (data.offset) this.offset.fromJSON(data.offset);
+        if (data.color !== undefined) this.color = data.color;
+        if (data.fill !== undefined) this.fill = data.fill;
+        if (data.outline !== undefined) this.outline = data.outline;
+        if (data.outlineColor !== undefined) this.outlineColor = data.outlineColor;
+        if (data.outlineWidth !== undefined) this.outlineWidth = data.outlineWidth;
 }
 
 // make it available to the engine

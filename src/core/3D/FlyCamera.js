@@ -5,6 +5,8 @@
  * It needs to be attached to a GameObject with a Camera3D module.
  */
 class FlyCamera extends Module {
+    static namespace = "WIP";
+    
     /**
      * Create a new FlyCamera
      */

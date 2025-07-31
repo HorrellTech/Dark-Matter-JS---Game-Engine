@@ -257,6 +257,37 @@ class SimpleHealth extends Module {
             ctx.fillRect(barX, barY, this.healthBarWidth, this.healthBarHeight);
         }
     }
+
+    toJSON() {
+        return {
+            maxHealth: this.maxHealth,
+            currentHealth: this.currentHealth,
+            invulnerable: this.invulnerable,
+            invulnerabilityTime: this.invulnerabilityTime,
+            showHealthBar: this.showHealthBar,
+            healthBarColor: this.healthBarColor,
+            healthBarWidth: this.healthBarWidth,
+            healthBarHeight: this.healthBarHeight,
+            healthBarOffsetY: this.healthBarOffsetY,
+            isDead: this.isDead
+        };
+    }
+
+    fromJSON(data) {
+        this.maxHealth = data.maxHealth || 100;
+        this.currentHealth = data.currentHealth || 100;
+        this.invulnerable = data.invulnerable || false;
+        this.invulnerabilityTime = data.invulnerabilityTime || 1.0;
+        this.showHealthBar = data.showHealthBar !== undefined ? data.showHealthBar : true;
+        this.healthBarColor = data.healthBarColor || "#ff0000";
+        this.healthBarWidth = data.healthBarWidth || 50;
+        this.healthBarHeight = data.healthBarHeight || 5;
+        this.healthBarOffsetY = data.healthBarOffsetY || -20;
+        this.isDead = data.isDead || false;
+        
+        // Reset invulnerability timer
+        this.invulnerabilityTimer = 0;
+    }
 }
 
 // Register the module

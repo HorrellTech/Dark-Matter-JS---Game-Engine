@@ -5,6 +5,11 @@
  * It needs to be attached to a GameObject with a Camera3D module.
  */
 class MouseLook extends Module {
+    static namespace = "WIP";
+    static description = "Controls camera rotation with mouse movement";
+    static allowMultiple = false;
+    static icon = "fa-mouse";
+    
     /**
      * Create a new MouseLook
      */
