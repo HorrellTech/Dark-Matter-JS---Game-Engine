@@ -455,6 +455,7 @@ class ExportManager {
             'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',
             'Rigidbody': 'src/core/Modules/Rigidbody.js',
             'Collider': 'src/core/Modules/Collider.js',
+            'PlatformCharacterAuto': 'src/core/Modules/Platform Game/PlatformCharacterAuto.js',
 
             // Other Modules
             'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
