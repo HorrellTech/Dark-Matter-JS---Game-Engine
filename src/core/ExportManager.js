@@ -449,6 +449,7 @@ class ExportManager {
             // Utility Modules
             'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',
+            'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
             // Physics and Collision Modules
             'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',

@@ -22,6 +22,17 @@ class DrawPlatformerHills extends Module {
         this.parallaxStrength = 0.5; // Parallax effect strength (0-1)
         this.segmentWidth = 800; // Width of each hill segment for generation
 
+        // Ground properties
+        this.enableGround = true; // Toggle ground layer
+        this.groundHeight = 150; // Base ground height from bottom (can go above/below water)
+        this.groundColor = "#8B4513"; // Brown ground color
+        this.groundVariation = 80; // Maximum height variation above/below base height
+        this.groundSeed = 1111; // Separate seed for ground generation
+        this.groundSmoothness = 0.5; // Ground smoothness (0-1, 0=rough, 1=smooth)
+        this.groundFrequency = 0.003; // Ground wave frequency (lower=wider features)
+        this.groundSegmentWidth = 600; // Width of each ground segment
+        this.groundCache = new Map(); // Cache for ground segments
+
         // Water properties
         this.waterHeight = 80; // Height of water from bottom
         this.waterColor = "#1E90FF";
@@ -128,6 +139,77 @@ class DrawPlatformerHills extends Module {
             onChange: (val) => {
                 this.imageHeight = val;
                 this.clearCache();
+            }
+        });
+
+        // Ground properties
+        this.exposeProperty("enableGround", "boolean", this.enableGround, {
+            description: "Enable customizable ground layer",
+            onChange: (val) => {
+                this.enableGround = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundHeight", "number", this.groundHeight, {
+            description: "Base ground height from bottom (can go above/below water)",
+            min: 50, max: 400,
+            onChange: (val) => {
+                this.groundHeight = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundColor", "color", this.groundColor, {
+            description: "Ground color",
+            onChange: (val) => {
+                this.groundColor = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundVariation", "number", this.groundVariation, {
+            description: "Maximum height variation above/below base ground height",
+            min: 0, max: 200,
+            onChange: (val) => {
+                this.groundVariation = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundSeed", "number", this.groundSeed, {
+            description: "Random seed for ground generation",
+            min: 1, max: 10000,
+            onChange: (val) => {
+                this.groundSeed = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundSmoothness", "number", this.groundSmoothness, {
+            description: "Ground smoothness (0=rough terrain, 1=smooth hills)",
+            min: 0, max: 1, step: 0.05,
+            onChange: (val) => {
+                this.groundSmoothness = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundFrequency", "number", this.groundFrequency, {
+            description: "Ground feature frequency (lower=wider features)",
+            min: 0.001, max: 0.01, step: 0.0005,
+            onChange: (val) => {
+                this.groundFrequency = val;
+                this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("groundSegmentWidth", "number", this.groundSegmentWidth, {
+            description: "Width of each ground segment for generation",
+            min: 200, max: 1200, step: 50,
+            onChange: (val) => {
+                this.groundSegmentWidth = val;
+                this.clearGroundCache();
             }
         });
 
@@ -565,6 +647,16 @@ class DrawPlatformerHills extends Module {
             .startGroup("Parallax", false)
             .exposeProperty("parallaxStrength", "number", this.parallaxStrength, { label: "Parallax Strength" })
             .endGroup()
+            .startGroup("Ground", false, { color: "#8B4513" })
+            .exposeProperty("enableGround", "boolean", this.enableGround, { label: "Enable Ground" })
+            .exposeProperty("groundHeight", "number", this.groundHeight, { label: "Base Ground Height" })
+            .exposeProperty("groundColor", "color", this.groundColor, { label: "Ground Color" })
+            .exposeProperty("groundVariation", "number", this.groundVariation, { label: "Height Variation" })
+            .exposeProperty("groundSeed", "number", this.groundSeed, { label: "Ground Seed" })
+            .exposeProperty("groundSmoothness", "number", this.groundSmoothness, { label: "Ground Smoothness" })
+            .exposeProperty("groundFrequency", "number", this.groundFrequency, { label: "Ground Frequency" })
+            .exposeProperty("groundSegmentWidth", "number", this.groundSegmentWidth, { label: "Ground Segment Width" })
+            .endGroup()
             .startGroup("Water", false)
             .exposeProperty("waterHeight", "number", this.waterHeight, { label: "Water Height" })
             .exposeProperty("waterColor", "color", this.waterColor, { label: "Water Color" })
@@ -736,9 +828,12 @@ class DrawPlatformerHills extends Module {
 
         if (moonVisible) {
             // Calculate moon light intensity based on moon phase
-            // Full moon = full intensity, new moon = minimal intensity
             const phaseIntensity = 0.2 + (Math.cos((this.moonPhase - 0.5) * Math.PI * 2) * 0.5 + 0.5) * 0.8;
-            const finalIntensity = this.moonLightIntensity * phaseIntensity;
+            let finalIntensity = this.moonLightIntensity * phaseIntensity;
+
+            // Simplified occlusion - just check if moon center is below terrain
+            const occlusionFactor = this.calculateSimpleMoonOcclusion(moonPos, viewportBounds);
+            finalIntensity *= (1 - occlusionFactor);
 
             if (this.moonLightId === null) {
                 // Create moon light source
@@ -769,6 +864,342 @@ class DrawPlatformerHills extends Module {
                 this.moonLightId = null;
             }
         }
+    }
+
+    calculateSimpleMoonOcclusion(moonPos, viewportBounds) {
+        const viewportX = window.engine?.viewport?.x || 0;
+        const viewportY = window.engine?.viewport?.y || 0;
+
+        // Only check if moon is below the front hill layer at moon's X position
+        const frontLayer = 0;
+        const parallaxAmount = this.parallaxStrength * (frontLayer / (this.hillLayers - 1));
+        const parallaxOffsetX = viewportX * parallaxAmount;
+        const parallaxOffsetY = viewportY * parallaxAmount;
+
+        // Convert moon screen position to world coordinates
+        const worldX = moonPos.x - parallaxOffsetX;
+        const hillHeightAtMoonX = this.getHeightAtPosition(worldX, frontLayer) + parallaxOffsetY;
+
+        // Moon is occluded if it's below the hill surface
+        if (moonPos.y >= hillHeightAtMoonX) {
+            return 1.0; // Fully occluded
+        }
+
+        // Check if moon is close to hills for partial occlusion
+        const distanceToHill = hillHeightAtMoonX - moonPos.y;
+        if (distanceToHill < this.moonSize) {
+            return Math.max(0, 1 - (distanceToHill / this.moonSize));
+        }
+
+        // Check buildings at moon position
+        const buildingOcclusion = this.checkBuildingOcclusionAtPoint(moonPos.x, moonPos.y, viewportBounds, viewportX, viewportY);
+
+        return buildingOcclusion;
+    }
+
+    checkBuildingOcclusionAtPoint(x, y, viewportBounds, viewportX, viewportY) {
+        if (!this.enableBuildings) return 0;
+
+        const parallaxOffsetX = viewportX * this.buildingParallax;
+        const parallaxOffsetY = viewportY * this.buildingParallax;
+
+        // Only check the segment containing the moon
+        const worldX = x - parallaxOffsetX;
+        const segmentIndex = Math.floor(worldX / this.segmentWidth);
+
+        const buildings = this.getBuildingSegment(segmentIndex);
+        const segmentOffsetX = segmentIndex * this.segmentWidth;
+
+        for (const building of buildings) {
+            const buildingX = building.x + segmentOffsetX + parallaxOffsetX;
+            const buildingGroundY = building.groundY + parallaxOffsetY;
+            const buildingTopY = buildingGroundY - building.height;
+
+            // Check if moon is within building bounds
+            if (x >= buildingX && x <= buildingX + building.width &&
+                y >= buildingTopY && y <= buildingGroundY) {
+                return 1.0; // Fully occluded by building
+            }
+        }
+
+        return 0; // Not occluded
+    }
+
+    // Calculate how much the moon is occluded by buildings and hills (0-1)
+    calculateMoonOcclusion(moonPos, viewportBounds) {
+        const viewportX = window.engine?.viewport?.x || 0;
+        const viewportY = window.engine?.viewport?.y || 0;
+
+        let totalOcclusion = 0;
+        let sampleCount = 0;
+
+        // Sample points around the moon to check for occlusion
+        const sampleRadius = this.moonSize;
+        const samples = 16; // Number of sample points around moon
+
+        for (let i = 0; i < samples; i++) {
+            const angle = (i / samples) * Math.PI * 2;
+            const sampleX = moonPos.x + Math.cos(angle) * sampleRadius;
+            const sampleY = moonPos.y + Math.sin(angle) * sampleRadius;
+
+            // Check if this sample point is occluded
+            if (this.isPointOccluded(sampleX, sampleY, viewportBounds, viewportX, viewportY)) {
+                totalOcclusion++;
+            }
+            sampleCount++;
+        }
+
+        // Also check the center of the moon
+        if (this.isPointOccluded(moonPos.x, moonPos.y, viewportBounds, viewportX, viewportY)) {
+            totalOcclusion++;
+        }
+        sampleCount++;
+
+        return Math.min(1, totalOcclusion / sampleCount);
+    }
+
+    // Check if a point is occluded by buildings or hills
+    isPointOccluded(x, y, viewportBounds, viewportX, viewportY) {
+        // Check building occlusion
+        if (this.isPointBehindBuildings(x, y, viewportBounds, viewportX, viewportY)) {
+            return true;
+        }
+
+        // Check hill occlusion
+        if (this.isPointBehindHills(x, y, viewportBounds, viewportX, viewportY)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    isPointBehindBuildings(x, y, viewportBounds, viewportX, viewportY) {
+        if (!this.enableBuildings) return false;
+
+        const parallaxOffsetX = viewportX * this.buildingParallax;
+        const parallaxOffsetY = viewportY * this.buildingParallax;
+
+        const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
+        const effectiveViewportRight = viewportBounds.right - parallaxOffsetX;
+
+        const startSegment = Math.floor(effectiveViewportLeft / this.segmentWidth) - 1;
+        const endSegment = Math.ceil(effectiveViewportRight / this.segmentWidth) + 1;
+
+        for (let segmentIndex = startSegment; segmentIndex <= endSegment; segmentIndex++) {
+            const buildings = this.getBuildingSegment(segmentIndex);
+            const segmentOffsetX = segmentIndex * this.segmentWidth;
+
+            for (const building of buildings) {
+                const buildingX = building.x + segmentOffsetX + parallaxOffsetX;
+                const buildingGroundY = building.groundY + parallaxOffsetY;
+                const buildingTopY = buildingGroundY - building.height;
+
+                // Check if point is within building bounds
+                if (x >= buildingX && x <= buildingX + building.width &&
+                    y >= buildingTopY && y <= buildingGroundY) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    isPointBehindHills(x, y, viewportBounds, viewportX, viewportY) {
+        // Check against the front-most hill layer
+        const frontLayer = 0;
+        const parallaxAmount = this.parallaxStrength * (frontLayer / (this.hillLayers - 1));
+        const parallaxOffsetX = viewportX * parallaxAmount;
+        const parallaxOffsetY = viewportY * parallaxAmount;
+
+        // Convert screen point to world coordinates for hill sampling
+        const worldX = x - parallaxOffsetX;
+        const hillHeightAtX = this.getHeightAtPosition(worldX, frontLayer) + parallaxOffsetY;
+
+        // Point is behind hill if it's below the hill surface
+        return y >= hillHeightAtX;
+    }
+
+    getMoonOcclusionMasks(moonPos, viewportBounds) {
+        const masks = [];
+        const viewportX = window.engine?.viewport?.x || 0;
+        const viewportY = window.engine?.viewport?.y || 0;
+
+        // Get building shadow masks
+        const buildingMasks = this.getBuildingShadowMasks(moonPos, viewportBounds, viewportX, viewportY);
+        masks.push(...buildingMasks);
+
+        // Get hill shadow masks
+        const hillMasks = this.getHillShadowMasks(moonPos, viewportBounds, viewportX, viewportY);
+        masks.push(...hillMasks);
+
+        return masks;
+    }
+
+    // Generate shadow masks for buildings
+    getBuildingShadowMasks(moonPos, viewportBounds, viewportX, viewportY) {
+        if (!this.enableBuildings) return [];
+
+        const masks = [];
+        const parallaxOffsetX = viewportX * this.buildingParallax;
+        const parallaxOffsetY = viewportY * this.buildingParallax;
+
+        const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
+        const effectiveViewportRight = viewportBounds.right - parallaxOffsetX;
+
+        const startSegment = Math.floor(effectiveViewportLeft / this.segmentWidth) - 1;
+        const endSegment = Math.ceil(effectiveViewportRight / this.segmentWidth) + 1;
+
+        for (let segmentIndex = startSegment; segmentIndex <= endSegment; segmentIndex++) {
+            const buildings = this.getBuildingSegment(segmentIndex);
+            const segmentOffsetX = segmentIndex * this.segmentWidth;
+
+            for (const building of buildings) {
+                const buildingX = building.x + segmentOffsetX + parallaxOffsetX;
+                const buildingGroundY = building.groundY + parallaxOffsetY;
+                const buildingTopY = buildingGroundY - building.height;
+
+                // Only create shadows for buildings that could block the moon
+                if (buildingX + building.width < moonPos.x - this.moonLightSize ||
+                    buildingX > moonPos.x + this.moonLightSize) {
+                    continue;
+                }
+
+                // Calculate shadow projection from moon position
+                const shadowMask = this.calculateBuildingShadow(
+                    moonPos,
+                    { x: buildingX, y: buildingTopY, width: building.width, height: building.height },
+                    viewportBounds
+                );
+
+                if (shadowMask) {
+                    masks.push(shadowMask);
+                }
+            }
+        }
+
+        return masks;
+    }
+
+    // Calculate building shadow projection
+    calculateBuildingShadow(moonPos, building, viewportBounds) {
+        // Simple shadow casting - project building corners away from moon
+        const shadowLength = this.moonLightSize * 2; // How far to extend shadows
+
+        const corners = [
+            { x: building.x, y: building.y }, // Top-left
+            { x: building.x + building.width, y: building.y }, // Top-right
+            { x: building.x + building.width, y: building.y + building.height }, // Bottom-right
+            { x: building.x, y: building.y + building.height } // Bottom-left
+        ];
+
+        const shadowPoints = [];
+
+        // Project each corner away from moon
+        corners.forEach(corner => {
+            const dx = corner.x - moonPos.x;
+            const dy = corner.y - moonPos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0) {
+                const normalizedDx = dx / distance;
+                const normalizedDy = dy / distance;
+
+                shadowPoints.push({
+                    x: corner.x + normalizedDx * shadowLength,
+                    y: corner.y + normalizedDy * shadowLength
+                });
+            } else {
+                shadowPoints.push(corner);
+            }
+        });
+
+        return {
+            type: 'polygon',
+            points: [
+                ...corners,
+                ...shadowPoints.reverse() // Reverse to create proper polygon winding
+            ]
+        };
+    }
+
+    // Generate shadow masks for hills
+    getHillShadowMasks(moonPos, viewportBounds, viewportX, viewportY) {
+        const masks = [];
+
+        // Only create hill shadows for the front layer
+        const frontLayer = 0;
+        const parallaxAmount = this.parallaxStrength * (frontLayer / (this.hillLayers - 1));
+        const parallaxOffsetX = viewportX * parallaxAmount;
+        const parallaxOffsetY = viewportY * parallaxAmount;
+
+        const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
+        const effectiveViewportRight = viewportBounds.right - parallaxOffsetX;
+
+        const startSegment = Math.floor(effectiveViewportLeft / this.segmentWidth);
+        const endSegment = Math.ceil(effectiveViewportRight / this.segmentWidth);
+
+        // Collect hill points that could cast shadows
+        const hillPoints = [];
+        for (let segmentIndex = startSegment; segmentIndex <= endSegment; segmentIndex++) {
+            const points = this.getHillSegment(segmentIndex, frontLayer);
+            const segmentOffsetX = segmentIndex * this.segmentWidth;
+
+            points.forEach(point => {
+                hillPoints.push({
+                    x: point.x + segmentOffsetX + parallaxOffsetX,
+                    y: point.y + parallaxOffsetY
+                });
+            });
+        }
+
+        if (hillPoints.length > 0) {
+            const shadowMask = this.calculateHillShadow(moonPos, hillPoints, viewportBounds);
+            if (shadowMask) {
+                masks.push(shadowMask);
+            }
+        }
+
+        return masks;
+    }
+
+    // Calculate hill shadow projection
+    calculateHillShadow(moonPos, hillPoints, viewportBounds) {
+        const shadowLength = this.moonLightSize * 2;
+        const shadowPoints = [];
+
+        // Project hill silhouette away from moon
+        hillPoints.forEach(point => {
+            const dx = point.x - moonPos.x;
+            const dy = point.y - moonPos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0) {
+                const normalizedDx = dx / distance;
+                const normalizedDy = dy / distance;
+
+                shadowPoints.push({
+                    x: point.x + normalizedDx * shadowLength,
+                    y: point.y + normalizedDy * shadowLength
+                });
+            }
+        });
+
+        // Create shadow polygon
+        const shadowPolygon = [
+            ...hillPoints,
+            // Add bottom boundary
+            { x: hillPoints[hillPoints.length - 1].x, y: viewportBounds.bottom + 100 },
+            { x: shadowPoints[shadowPoints.length - 1].x, y: viewportBounds.bottom + 100 },
+            ...shadowPoints.reverse(),
+            { x: shadowPoints[0].x, y: viewportBounds.bottom + 100 },
+            { x: hillPoints[0].x, y: viewportBounds.bottom + 100 }
+        ];
+
+        return {
+            type: 'polygon',
+            points: shadowPolygon
+        };
     }
 
     // Get current sky color based on time
@@ -1053,12 +1484,18 @@ class DrawPlatformerHills extends Module {
         ctx.restore();
     }
 
-    // Clear the hill cache when properties change
+    // Clear ground cache
+    clearGroundCache() {
+        this.groundCache.clear();
+    }
+
+    // Clear all caches
     clearCache() {
         this.hillCache.clear();
         this.buildingCache.clear();
         this.cloudCache.clear();
         this.starCache.clear();
+        this.groundCache.clear();
     }
 
     clearCloudCache() {
@@ -1208,31 +1645,28 @@ class DrawPlatformerHills extends Module {
             viewportBounds.right - viewportBounds.left + 256,
             viewportBounds.bottom - viewportBounds.top + 64);
 
-        // --- Calculate night strength for consistent darkness with smooth transitions ---
+        // Calculate night strength for consistent darkness with smooth transitions
         let nightStrength = 1;
         if (this.currentTime < 0.15) {
-            nightStrength = 1; // Deep night
+            nightStrength = 1;
         } else if (this.currentTime < 0.35) {
-            // Dawn fade with smooth curve
             const t = (this.currentTime - 0.15) / 0.2;
             nightStrength = 1 - Math.sin(t * Math.PI / 2);
         } else if (this.currentTime < 0.65) {
-            nightStrength = 0; // Day
+            nightStrength = 0;
         } else if (this.currentTime < 0.85) {
-            // Dusk fade with smooth curve
             const t = (this.currentTime - 0.65) / 0.2;
             nightStrength = Math.sin(t * Math.PI / 2);
         } else {
-            nightStrength = 1; // Night
+            nightStrength = 1;
         }
 
-        // Eclipse adds to darkness
         nightStrength = Math.max(nightStrength, eclipseDarkness);
 
-        // --- Draw stars ---
+        // Draw stars
         this.drawStars(ctx, viewportBounds, (window.engine?.time || performance.now()) * 0.001, nightStrength);
 
-        // --- Draw sun and moon ---
+        // Draw sun and moon
         let sunOpacity = 1 - nightStrength;
         if (eclipseDarkness > 0) sunOpacity *= (1 - eclipseDarkness * 0.9);
         let moonOpacity = nightStrength;
@@ -1283,25 +1717,26 @@ class DrawPlatformerHills extends Module {
                 viewportBounds
             );
 
-            // --- Draw buildings AFTER the back hill layer ---
+            // Draw buildings AFTER the back hill layer
             if (layer === this.hillLayers - 1) {
                 this.drawBuildings(ctx, viewportBounds, viewportX, viewportY);
-
-                // --- Draw clouds AFTER buildings but BEFORE the next hill layer ---
                 this.drawClouds(ctx, viewportBounds, viewportX, viewportY);
             }
         }
 
-        // Draw water after hills
+        // Draw ground layer AFTER hills but BEFORE water
+        this.drawGround(ctx, viewportBounds, viewportX, viewportY);
+
+        // Draw water after ground
         const time = (window.engine?.time || performance.now()) * 0.001;
         this.drawWater(ctx, viewportBounds, time);
 
-        // --- Draw night overlay using GUI canvas (ALWAYS draw if there's any darkness) ---
+        // Draw night overlay
         if (nightStrength > 0) {
             this.drawNightOverlay(nightStrength, viewportBounds);
         }
 
-        // --- Draw GUI overlays ---
+        // Draw GUI overlays
         const guiCtx = window.engine?.getGuiCanvas();
         if (guiCtx) {
             guiCtx.save();
@@ -1310,6 +1745,11 @@ class DrawPlatformerHills extends Module {
             guiCtx.fillText(`Time: ${this.currentHour.toFixed(2)}h`, 10, 20);
             guiCtx.fillText(`Night Strength: ${nightStrength.toFixed(2)}`, 10, 40);
             guiCtx.fillText(`Light Sources: ${this.lightSources.length}`, 10, 60);
+            if (this.enableGround) {
+                const mouseX = window.engine?.mouse?.worldX || 0;
+                const groundY = this.getGroundY(mouseX);
+                guiCtx.fillText(`Ground Y at ${mouseX.toFixed(0)}: ${groundY.toFixed(1)}`, 10, 80);
+            }
             guiCtx.restore();
         }
     }
@@ -1323,82 +1763,71 @@ class DrawPlatformerHills extends Module {
 
         guiCtx.save();
 
-        // Create a dark overlay that gets more opaque at night
         const baseOpacity = nightStrength * 0.8;
 
-        // If no light sources, draw simple overlay
         if (this.lightSources.length === 0) {
             guiCtx.globalAlpha = baseOpacity;
-            guiCtx.fillStyle = "#000018"; // Slightly blue tint for night
+            guiCtx.fillStyle = "#000018";
             guiCtx.fillRect(0, 0, guiCtx.canvas.width, guiCtx.canvas.height);
             guiCtx.restore();
             return;
         }
 
-        // Get viewport offset for light positioning
         const viewportX = window.engine?.viewport?.x || 0;
         const viewportY = window.engine?.viewport?.y || 0;
         const time = (window.engine?.time || performance.now()) * 0.001;
 
-        // Create an offscreen canvas for the darkness with light holes
+        // Create darkness overlay
         const offCanvas = document.createElement('canvas');
         offCanvas.width = guiCtx.canvas.width;
         offCanvas.height = guiCtx.canvas.height;
         const offCtx = offCanvas.getContext('2d');
 
-        // Draw the base darkness
+        // Draw base darkness
         offCtx.globalAlpha = baseOpacity;
         offCtx.fillStyle = "#000018";
         offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
 
-        // Cut holes in the darkness for each light source
+        // Cut holes for light sources (simplified - no complex occlusion masks)
         offCtx.globalCompositeOperation = 'destination-out';
 
         for (const light of this.lightSources) {
             if (!light.enabled) continue;
 
-            // Convert world coordinates to screen coordinates
             const screenX = light.x - viewportX;
             const screenY = light.y - viewportY;
 
-            // Skip lights that are way off screen
             if (screenX < -light.size * 2 || screenX > offCanvas.width + light.size * 2 ||
                 screenY < -light.size * 2 || screenY > offCanvas.height + light.size * 2) {
                 continue;
             }
 
-            // Calculate flicker effect if enabled
             let currentIntensity = light.intensity;
             if (light.flicker) {
                 const flickerValue = Math.sin(time * light.flickerSpeed + light.flickerPhase) * light.flickerAmount;
                 currentIntensity = Math.max(0, light.intensity + flickerValue);
             }
 
-            // Boost light effectiveness at night
             const nightBoost = 1 + (nightStrength * 0.8);
             currentIntensity *= nightBoost;
 
-            // Create mask gradient to cut hole in darkness
+            // Simple circular light without complex occlusion
             const maskGradient = offCtx.createRadialGradient(
                 screenX, screenY, 0,
                 screenX, screenY, light.size
             );
 
-            // Inner core - full transparency (complete hole)
             const coreAlpha = Math.min(1.0, currentIntensity * 0.8);
             maskGradient.addColorStop(0, `rgba(255, 255, 255, ${coreAlpha})`);
 
-            // Smooth falloff based on light smoothness
             const falloffStart = Math.max(0.1, light.smoothness * 0.5);
             const midAlpha = Math.min(0.8, currentIntensity * 0.6);
             maskGradient.addColorStop(falloffStart, `rgba(255, 255, 255, ${midAlpha})`);
 
-            // Outer edge with soft transition
             const edgeStart = Math.max(0.3, light.smoothness * 0.8);
             const edgeAlpha = Math.min(0.6, currentIntensity * 0.4);
             maskGradient.addColorStop(edgeStart, `rgba(255, 255, 255, ${edgeAlpha})`);
 
-            // Very soft outer edge
             const outerEdge = Math.min(0.95, light.smoothness);
             const outerAlpha = Math.min(0.3, currentIntensity * 0.2);
             maskGradient.addColorStop(outerEdge, `rgba(255, 255, 255, ${outerAlpha})`);
@@ -1410,54 +1839,45 @@ class DrawPlatformerHills extends Module {
             offCtx.fill();
         }
 
-        // Draw the darkness with holes cut out
+        // Draw the result
         guiCtx.drawImage(offCanvas, 0, 0);
 
-        // Now add colored light effects using additive blending
+        // Add simplified colored light effects
         guiCtx.globalCompositeOperation = 'lighter';
 
         for (const light of this.lightSources) {
             if (!light.enabled) continue;
 
-            // Convert world coordinates to screen coordinates
             const screenX = light.x - viewportX;
             const screenY = light.y - viewportY;
 
-            // Skip lights that are way off screen
             if (screenX < -light.size * 2 || screenX > guiCtx.canvas.width + light.size * 2 ||
                 screenY < -light.size * 2 || screenY > guiCtx.canvas.height + light.size * 2) {
                 continue;
             }
 
-            // Calculate flicker effect if enabled
             let currentIntensity = light.intensity;
             if (light.flicker) {
                 const flickerValue = Math.sin(time * light.flickerSpeed + light.flickerPhase) * light.flickerAmount;
                 currentIntensity = Math.max(0, light.intensity + flickerValue);
             }
 
-            // Reduced intensity for colored overlay (just for tinting)
             const colorIntensity = currentIntensity * 0.3;
-
-            // Convert light color to RGB for gradient
             const lightRgb = this.hexToRgb(light.color);
 
-            // Create colored radial gradient for tinting
+            // Simple colored light gradient
             const colorGradient = guiCtx.createRadialGradient(
                 screenX, screenY, 0,
-                screenX, screenY, light.size * 0.8  // Slightly smaller than the hole
+                screenX, screenY, light.size * 0.8
             );
 
-            // Inner core with color tint
             const coreAlpha = Math.min(0.4, colorIntensity * 0.5);
             colorGradient.addColorStop(0, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${coreAlpha})`);
 
-            // Smooth falloff
             const falloffStart = Math.max(0.2, light.smoothness * 0.6);
             const midAlpha = Math.min(0.3, colorIntensity * 0.4);
             colorGradient.addColorStop(falloffStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${midAlpha})`);
 
-            // Outer edge
             const edgeStart = Math.max(0.5, light.smoothness * 0.9);
             const edgeAlpha = Math.min(0.2, colorIntensity * 0.2);
             colorGradient.addColorStop(edgeStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${edgeAlpha})`);
@@ -1470,6 +1890,129 @@ class DrawPlatformerHills extends Module {
         }
 
         guiCtx.restore();
+    }
+
+    drawLightWithOcclusion(ctx, light, screenX, screenY, intensity, viewportX, viewportY) {
+        // Create a temporary canvas for this light
+        const lightCanvas = document.createElement('canvas');
+        lightCanvas.width = light.size * 3;
+        lightCanvas.height = light.size * 3;
+        const lightCtx = lightCanvas.getContext('2d');
+
+        const centerX = lightCanvas.width / 2;
+        const centerY = lightCanvas.height / 2;
+
+        // Draw the basic light gradient
+        const maskGradient = lightCtx.createRadialGradient(
+            centerX, centerY, 0,
+            centerX, centerY, light.size
+        );
+
+        const coreAlpha = Math.min(1.0, intensity * 0.8);
+        maskGradient.addColorStop(0, `rgba(255, 255, 255, ${coreAlpha})`);
+
+        const falloffStart = Math.max(0.1, light.smoothness * 0.5);
+        const midAlpha = Math.min(0.8, intensity * 0.6);
+        maskGradient.addColorStop(falloffStart, `rgba(255, 255, 255, ${midAlpha})`);
+
+        const edgeStart = Math.max(0.3, light.smoothness * 0.8);
+        const edgeAlpha = Math.min(0.6, intensity * 0.4);
+        maskGradient.addColorStop(edgeStart, `rgba(255, 255, 255, ${edgeAlpha})`);
+
+        const outerEdge = Math.min(0.95, light.smoothness);
+        const outerAlpha = Math.min(0.3, intensity * 0.2);
+        maskGradient.addColorStop(outerEdge, `rgba(255, 255, 255, ${outerAlpha})`);
+        maskGradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
+
+        lightCtx.fillStyle = maskGradient;
+        lightCtx.beginPath();
+        lightCtx.arc(centerX, centerY, light.size, 0, Math.PI * 2);
+        lightCtx.fill();
+
+        // Apply occlusion masks if they exist
+        if (light.occlusionMasks && light.occlusionMasks.length > 0) {
+            lightCtx.globalCompositeOperation = 'destination-out';
+
+            for (const mask of light.occlusionMasks) {
+                this.drawOcclusionMask(lightCtx, mask, light.x, light.y, centerX, centerY, viewportX, viewportY);
+            }
+        }
+
+        // Draw the final light to the main context
+        ctx.drawImage(lightCanvas, screenX - centerX, screenY - centerY);
+    }
+
+    // Draw colored light with occlusion masks applied
+    drawColoredLightWithOcclusion(ctx, light, screenX, screenY, intensity, lightRgb, viewportX, viewportY) {
+        // Create temporary canvas for colored light
+        const lightCanvas = document.createElement('canvas');
+        lightCanvas.width = light.size * 2;
+        lightCanvas.height = light.size * 2;
+        const lightCtx = lightCanvas.getContext('2d');
+
+        const centerX = lightCanvas.width / 2;
+        const centerY = lightCanvas.height / 2;
+
+        // Draw colored gradient
+        const colorGradient = lightCtx.createRadialGradient(
+            centerX, centerY, 0,
+            centerX, centerY, light.size * 0.8
+        );
+
+        const coreAlpha = Math.min(0.4, intensity * 0.5);
+        colorGradient.addColorStop(0, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${coreAlpha})`);
+
+        const falloffStart = Math.max(0.2, light.smoothness * 0.6);
+        const midAlpha = Math.min(0.3, intensity * 0.4);
+        colorGradient.addColorStop(falloffStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${midAlpha})`);
+
+        const edgeStart = Math.max(0.5, light.smoothness * 0.9);
+        const edgeAlpha = Math.min(0.2, intensity * 0.2);
+        colorGradient.addColorStop(edgeStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${edgeAlpha})`);
+        colorGradient.addColorStop(1, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, 0)`);
+
+        lightCtx.fillStyle = colorGradient;
+        lightCtx.beginPath();
+        lightCtx.arc(centerX, centerY, light.size * 0.8, 0, Math.PI * 2);
+        lightCtx.fill();
+
+        // Apply occlusion masks
+        if (light.occlusionMasks && light.occlusionMasks.length > 0) {
+            lightCtx.globalCompositeOperation = 'destination-out';
+
+            for (const mask of light.occlusionMasks) {
+                this.drawOcclusionMask(lightCtx, mask, light.x, light.y, centerX, centerY, viewportX, viewportY);
+            }
+        }
+
+        // Draw to main context
+        ctx.drawImage(lightCanvas, screenX - centerX, screenY - centerY);
+    }
+
+    // Draw an occlusion mask (shadow shape)
+    drawOcclusionMask(ctx, mask, lightWorldX, lightWorldY, canvasCenterX, canvasCenterY, viewportX, viewportY) {
+        if (mask.type === 'polygon' && mask.points) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+            ctx.beginPath();
+
+            const firstPoint = mask.points[0];
+            if (firstPoint) {
+                // Convert world coordinates to canvas coordinates
+                const canvasX = (firstPoint.x - lightWorldX) + canvasCenterX;
+                const canvasY = (firstPoint.y - lightWorldY) + canvasCenterY;
+                ctx.moveTo(canvasX, canvasY);
+
+                for (let i = 1; i < mask.points.length; i++) {
+                    const point = mask.points[i];
+                    const canvasX = (point.x - lightWorldX) + canvasCenterX;
+                    const canvasY = (point.y - lightWorldY) + canvasCenterY;
+                    ctx.lineTo(canvasX, canvasY);
+                }
+
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
     }
 
     // Draw waving water at the bottom of the viewport
@@ -1882,12 +2425,14 @@ class DrawPlatformerHills extends Module {
             id: this.lightIdCounter++,
             x: options.x || 0,
             y: options.y || 0,
-            color: options.color || "#FFFF88", // Warm white
-            size: options.size || 100, // Radius of light
-            intensity: options.intensity || 1.0, // 0-1 brightness
-            smoothness: options.smoothness || 0.8, // 0-1, higher = softer edges
+            color: options.color || "#FFFF88",
+            size: options.size || 100,
+            intensity: options.intensity || 1.0,
+            smoothness: options.smoothness || 0.8,
             enabled: options.enabled !== undefined ? options.enabled : true,
-            // Optional animation properties
+            // Occlusion support
+            occlusionMasks: options.occlusionMasks || [],
+            // Animation properties
             flicker: options.flicker || false,
             flickerSpeed: options.flickerSpeed || 2.0,
             flickerAmount: options.flickerAmount || 0.2,
@@ -1911,6 +2456,7 @@ class DrawPlatformerHills extends Module {
         return this.lightSources.find(light => light.id === id);
     }
 
+    // Enhanced updateLightSource to support occlusion masks
     updateLightSource(id, options = {}) {
         const light = this.getLightSource(id);
         if (!light) return false;
@@ -1981,6 +2527,223 @@ class DrawPlatformerHills extends Module {
             this.moonLightId = null;
         }
         this.updateMoonLight();
+    }
+
+    // Generate ground height at a specific global x position
+    getGroundHeightAtPosition(globalX) {
+        if (!this.enableGround) return 0;
+
+        const worldHeight = window.engine?.worldHeight || 1000;
+        const baseGroundY = worldHeight - this.groundHeight;
+
+        // Create multiple noise layers for varied terrain
+        const frequency1 = this.groundFrequency;
+        const frequency2 = this.groundFrequency * 2.3;
+        const frequency3 = this.groundFrequency * 4.7;
+        
+        const seedValue = this.groundSeed;
+        const noiseInput1 = globalX * frequency1 + seedValue;
+        const noiseInput2 = globalX * frequency2 + seedValue * 2;
+        const noiseInput3 = globalX * frequency3 + seedValue * 3;
+
+        // Apply smoothness factor to noise
+        const smoothFactor = this.groundSmoothness;
+        let noise1, noise2, noise3;
+
+        if (smoothFactor < 0.5) {
+            // More rough terrain - use more angular noise
+            const sharpness = (1 - smoothFactor * 2);
+            noise1 = Math.sign(Math.sin(noiseInput1)) * Math.pow(Math.abs(Math.sin(noiseInput1)), 1 - sharpness) * 0.6;
+            noise2 = Math.sign(Math.sin(noiseInput2)) * Math.pow(Math.abs(Math.sin(noiseInput2)), 1 - sharpness) * 0.3;
+            noise3 = Math.sign(Math.sin(noiseInput3)) * Math.pow(Math.abs(Math.sin(noiseInput3)), 1 - sharpness) * 0.1;
+        } else {
+            // Smooth terrain - use sine waves
+            const smoothAmount = (smoothFactor - 0.5) * 2;
+            noise1 = Math.sin(noiseInput1) * 0.6;
+            noise2 = Math.sin(noiseInput2) * 0.3 * (1 - smoothAmount * 0.5);
+            noise3 = Math.sin(noiseInput3) * 0.1 * (1 - smoothAmount * 0.8);
+        }
+
+        const combinedNoise = noise1 + noise2 + noise3;
+        const heightVariation = combinedNoise * this.groundVariation;
+
+        return baseGroundY - heightVariation; // Subtract because Y increases downward
+    }
+
+    // Generate control points for a ground segment
+    generateGroundPoints(segmentIndex) {
+        const points = [];
+        const segmentStartX = segmentIndex * this.groundSegmentWidth;
+        const pointsPerSegment = Math.max(4, Math.floor(this.groundSegmentWidth / 50)); // Adaptive point density
+
+        // Generate points across the segment width
+        for (let i = 0; i <= pointsPerSegment; i++) {
+            const localX = (i / pointsPerSegment) * this.groundSegmentWidth;
+            const globalX = segmentStartX + localX;
+            const y = this.getGroundHeightAtPosition(globalX);
+            points.push({ x: localX, y: y });
+        }
+
+        return points;
+    }
+
+    // Get or generate ground segment
+    getGroundSegment(segmentIndex) {
+        if (!this.enableGround) return [];
+
+        const cacheKey = segmentIndex.toString();
+        if (!this.groundCache.has(cacheKey)) {
+            const points = this.generateGroundPoints(segmentIndex);
+            this.groundCache.set(cacheKey, points);
+        }
+        return this.groundCache.get(cacheKey);
+    }
+
+    // Draw ground layer
+    drawGround(ctx, viewportBounds, viewportX, viewportY) {
+        if (!this.enableGround) return;
+
+        ctx.save();
+        ctx.fillStyle = this.groundColor;
+
+        // Ground has no parallax - it's the reference layer
+        const parallaxOffsetX = 0;
+        const parallaxOffsetY = 0;
+
+        // Calculate which segments are visible
+        const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
+        const effectiveViewportRight = viewportBounds.right - parallaxOffsetX;
+
+        const startSegment = Math.floor(effectiveViewportLeft / this.groundSegmentWidth);
+        const endSegment = Math.ceil(effectiveViewportRight / this.groundSegmentWidth);
+
+        // Collect all visible segments
+        const segments = [];
+        for (let segmentIndex = startSegment; segmentIndex <= endSegment; segmentIndex++) {
+            const points = this.getGroundSegment(segmentIndex);
+            segments.push({
+                segmentIndex: segmentIndex,
+                points: points
+            });
+        }
+
+        // Draw ground using connected segments
+        this.drawConnectedGroundSegments(
+            ctx,
+            segments,
+            parallaxOffsetX,
+            parallaxOffsetY,
+            viewportBounds
+        );
+
+        ctx.restore();
+    }
+
+    // Draw connected ground segments
+    drawConnectedGroundSegments(ctx, segments, offsetX, offsetY, viewportBounds) {
+        if (segments.length === 0) return;
+
+        ctx.beginPath();
+
+        let allPoints = [];
+
+        // Combine all segment points into one continuous path
+        for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+            const segment = segments[segIdx];
+            const segmentOffsetX = segment.segmentIndex * this.groundSegmentWidth;
+
+            for (let i = 0; i < segment.points.length; i++) {
+                // Skip the first point of subsequent segments to avoid duplicates
+                if (segIdx > 0 && i === 0) continue;
+
+                const point = segment.points[i];
+                allPoints.push({
+                    x: point.x + segmentOffsetX + offsetX,
+                    y: point.y + offsetY
+                });
+            }
+        }
+
+        if (allPoints.length < 2) return;
+
+        // Start the path
+        ctx.moveTo(allPoints[0].x, allPoints[0].y);
+
+        // Use smoothness to determine curve style
+        if (this.groundSmoothness > 0.3) {
+            // Use quadratic curves for smooth ground
+            for (let i = 1; i < allPoints.length - 1; i++) {
+                const curr = allPoints[i];
+                const next = allPoints[i + 1];
+                const mx = (curr.x + next.x) / 2;
+                const my = (curr.y + next.y) / 2;
+                ctx.quadraticCurveTo(curr.x, curr.y, mx, my);
+            }
+            // Last segment
+            const last = allPoints[allPoints.length - 1];
+            ctx.quadraticCurveTo(last.x, last.y, last.x, last.y);
+        } else {
+            // Use straight lines for rough ground
+            for (let i = 1; i < allPoints.length; i++) {
+                ctx.lineTo(allPoints[i].x, allPoints[i].y);
+            }
+        }
+
+        // Close the shape to bottom of viewport
+        const lastPoint = allPoints[allPoints.length - 1];
+        const firstPoint = allPoints[0];
+        const viewportBottom = viewportBounds.bottom;
+
+        ctx.lineTo(lastPoint.x, viewportBottom);
+        ctx.lineTo(firstPoint.x, viewportBottom);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Public API: Get ground Y position at world X coordinate
+    getGroundY(worldX) {
+        return this.getGroundHeightAtPosition(worldX);
+    }
+
+    // Public API: Check if a point is above ground
+    isAboveGround(worldX, worldY) {
+        if (!this.enableGround) return true;
+        const groundY = this.getGroundY(worldX);
+        return worldY < groundY;
+    }
+
+    // Public API: Check if a point is below ground
+    isBelowGround(worldX, worldY) {
+        if (!this.enableGround) return false;
+        const groundY = this.getGroundY(worldX);
+        return worldY > groundY;
+    }
+
+    // Public API: Get the nearest ground point to a world position
+    getNearestGroundPoint(worldX) {
+        if (!this.enableGround) return { x: worldX, y: 0 };
+        return {
+            x: worldX,
+            y: this.getGroundY(worldX)
+        };
+    }
+
+    // Public API: Check collision with ground (returns collision info or null)
+    checkGroundCollision(worldX, worldY, radius = 0) {
+        if (!this.enableGround) return null;
+        
+        const groundY = this.getGroundY(worldX);
+        const bottomY = worldY + radius;
+        
+        if (bottomY >= groundY) {
+            return {
+                point: { x: worldX, y: groundY },
+                penetration: bottomY - groundY,
+                normal: { x: 0, y: -1 } // Ground normal points up
+            };
+        }
+        
+        return null;
     }
 
     // --- Time and Day API ---
@@ -2112,6 +2875,16 @@ class DrawPlatformerHills extends Module {
 
         if (json.moonPhaseAdvanced !== undefined) this.moonPhaseAdvanced = json.moonPhaseAdvanced;
         if (json.moonWasVisible !== undefined) this.moonWasVisible = json.moonWasVisible;
+        
+        // Ground properties
+        json.enableGround = this.enableGround;
+        json.groundHeight = this.groundHeight;
+        json.groundColor = this.groundColor;
+        json.groundVariation = this.groundVariation;
+        json.groundSeed = this.groundSeed;
+        json.groundSmoothness = this.groundSmoothness;
+        json.groundFrequency = this.groundFrequency;
+        json.groundSegmentWidth = this.groundSegmentWidth;
 
         return json;
     }
@@ -2192,6 +2965,16 @@ class DrawPlatformerHills extends Module {
         if (json.moonLightSize !== undefined) this.moonLightSize = json.moonLightSize;
         if (json.moonLightColor !== undefined) this.moonLightColor = json.moonLightColor;
         if (json.moonLightId !== undefined) this.moonLightId = json.moonLightId;
+        
+        // Ground properties
+        if (json.enableGround !== undefined) this.enableGround = json.enableGround;
+        if (json.groundHeight !== undefined) this.groundHeight = json.groundHeight;
+        if (json.groundColor !== undefined) this.groundColor = json.groundColor;
+        if (json.groundVariation !== undefined) this.groundVariation = json.groundVariation;
+        if (json.groundSeed !== undefined) this.groundSeed = json.groundSeed;
+        if (json.groundSmoothness !== undefined) this.groundSmoothness = json.groundSmoothness;
+        if (json.groundFrequency !== undefined) this.groundFrequency = json.groundFrequency;
+        if (json.groundSegmentWidth !== undefined) this.groundSegmentWidth = json.groundSegmentWidth;
 
         this.clearCache();
     }
