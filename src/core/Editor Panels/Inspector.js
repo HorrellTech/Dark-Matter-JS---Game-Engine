@@ -3257,12 +3257,20 @@ class Inspector {
                 const imagePath = await this.getImagePathFromDropEvent(e.dataTransfer);
                 if (!imagePath) return false;
 
-                // Update the module property
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propertyName, imagePath);
-                } else if (typeof module.setSprite === 'function' && propertyName === 'imageAsset') {
+                // Special handling for SpriteRenderer modules
+                if (module instanceof SpriteRenderer && propertyName === 'imageAsset') {
                     await module.setSprite(imagePath);
-                } else {
+                }
+                // Special handling for modules with setSprite method
+                else if (typeof module.setSprite === 'function' && propertyName === 'imageAsset') {
+                    await module.setSprite(imagePath);
+                }
+                // Try the module's setProperty method first
+                else if (typeof module.setProperty === 'function') {
+                    module.setProperty(propertyName, imagePath);
+                }
+                // Fallback to direct property assignment
+                else {
                     module[propertyName] = imagePath;
                 }
 
@@ -3278,11 +3286,20 @@ class Inspector {
         });
 
         // Make it clickable to open file browser if module supports it
-        if (typeof module.loadImageFromFile === 'function') {
-            element.addEventListener('click', () => {
+        element.addEventListener('click', () => {
+            // Special handling for SpriteRenderer
+            if (module instanceof SpriteRenderer) {
+                if (typeof this.showImageSelector === 'function') {
+                    this.showImageSelector(module);
+                } else if (typeof module.loadImageFromFile === 'function') {
+                    module.loadImageFromFile();
+                }
+            }
+            // Generic handling for other modules
+            else if (typeof module.loadImageFromFile === 'function') {
                 module.loadImageFromFile();
-            });
-        }
+            }
+        });
     }
 
     /**
@@ -3294,9 +3311,15 @@ class Inspector {
         const selectImageButton = container.querySelector('.select-image-button');
         const clearImageButton = container.querySelector('.clear-image-button');
 
-        // Set up the image preview drag and drop if the module has setupDragAndDrop method
-        if (imagePreview && typeof module.setupDragAndDrop === 'function') {
-            module.setupDragAndDrop(imagePreview);
+        // Set up the image preview drag and drop
+        if (imagePreview) {
+            // Use the module's own setupDragAndDrop method if available
+            if (typeof module.setupDragAndDrop === 'function') {
+                module.setupDragAndDrop(imagePreview);
+            } else {
+                // Fallback to our own drag and drop setup
+                this.setupImageDropTarget(imagePreview, module);
+            }
         }
 
         // Set up select button
@@ -3321,7 +3344,7 @@ class Inspector {
             });
         }
 
-        // Standard property handlers for width and height inputs
+        // Standard property handlers for other inputs
         container.querySelectorAll('.property-input').forEach(input => {
             if (!input) return;
 
@@ -3330,14 +3353,22 @@ class Inspector {
                 if (!propName) return;
 
                 let value;
-                if (input.type === 'number') {
+                if (input.type === 'checkbox') {
+                    value = input.checked;
+                } else if (input.type === 'number') {
                     value = parseFloat(input.value);
                     if (isNaN(value)) value = 0;
                 } else {
                     value = input.value;
                 }
 
-                module[propName] = value;
+                // Use setProperty if available, otherwise direct assignment
+                if (typeof module.setProperty === 'function') {
+                    module.setProperty(propName, value);
+                } else {
+                    module[propName] = value;
+                }
+
                 this.editor.refreshCanvas();
             });
         });

@@ -189,7 +189,20 @@ class ExportManager {
     }
 
     normalizePath(path) {
-        return path.replace(/^\/+/, '').replace(/\\/g, '/');
+        if (!path) return '';
+
+        // Remove leading slashes and backslashes, convert backslashes to forward slashes
+        let normalized = path.replace(/^[\/\\]+/, '').replace(/\\/g, '/');
+
+        // Handle URL decoding for paths with spaces and special characters
+        try {
+            normalized = decodeURIComponent(normalized);
+        } catch (e) {
+            // If decoding fails, use the original normalized path
+            console.warn('Failed to decode path:', normalized);
+        }
+
+        return normalized;
     }
 
     /**
@@ -199,39 +212,61 @@ class ExportManager {
         const assets = {};
 
         if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
-        const files = await window.fileBrowser.getAllFiles();
-        for (const file of files) {
-            if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
-                continue;
-            }
-
-            let content = file.content;
-            const path = file.path || file.name;
-
-            if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
-                // Always convert to data URL if not already
-                if (typeof content === 'string' && content.startsWith('data:')) {
-                    // Already a data URL
-                } else if (content instanceof Blob) {
-                    content = await this.blobToDataURL(content);
-                } else if (content instanceof ArrayBuffer) {
-                    content = this.arrayBufferToDataURL(content, file.type);
-                } else if (content instanceof File) {
-                    content = await this.fileToDataURL(content);
-                } else {
-                    console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
+            const files = await window.fileBrowser.getAllFiles();
+            for (const file of files) {
+                if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
                     continue;
                 }
 
+                let content = file.content;
+                const path = file.path || file.name;
+                // Improved path normalization
                 const normalizedPath = this.normalizePath(path);
-                assets[normalizedPath] = {
-                    content: content,
-                    type: file.type,
-                    binary: true,
-                    originalFile: file
-                };
-            } else {
-                    // For text-based assets (JSON, TXT, etc.), ensure content is a string.
+
+                if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
+                    // For binary files, ensure we have a proper data URL
+                    if (typeof content === 'string' && content.startsWith('data:')) {
+                        // Already a data URL
+                        assets[normalizedPath] = {
+                            content: content,
+                            type: file.type,
+                            binary: true,
+                            originalFile: file,
+                            rawContent: content
+                        };
+                    } else if (content instanceof Blob) {
+                        const dataUrl = await this.blobToDataURL(content);
+                        assets[normalizedPath] = {
+                            content: dataUrl,
+                            type: file.type,
+                            binary: true,
+                            originalFile: file,
+                            rawContent: content
+                        };
+                    } else if (content instanceof ArrayBuffer) {
+                        const dataUrl = this.arrayBufferToDataURL(content, file.type);
+                        assets[normalizedPath] = {
+                            content: dataUrl,
+                            type: file.type,
+                            binary: true,
+                            originalFile: file,
+                            rawContent: content
+                        };
+                    } else if (content instanceof File) {
+                        const dataUrl = await this.fileToDataURL(content);
+                        assets[normalizedPath] = {
+                            content: dataUrl,
+                            type: file.type,
+                            binary: true,
+                            originalFile: file,
+                            rawContent: content
+                        };
+                    } else {
+                        console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
+                        continue;
+                    }
+                } else {
+                    // For text-based assets, ensure content is a string
                     if (content instanceof Blob) {
                         content = await content.text();
                     } else if (content instanceof ArrayBuffer) {
@@ -239,7 +274,8 @@ class ExportManager {
                     } else if (content instanceof File) {
                         content = await content.text();
                     }
-                    assets[path] = {
+
+                    assets[normalizedPath] = {
                         content: content,
                         type: file.type || 'text/plain',
                         binary: false
@@ -247,6 +283,8 @@ class ExportManager {
                 }
             }
         }
+
+        console.log('Collected assets:', Object.keys(assets));
         return assets;
     }
 
@@ -394,7 +432,7 @@ class ExportManager {
             'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
             'DrawRectangle': 'src/core/Modules/Drawing/DrawRectangle.js',
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
-            'DrawPlatformerHills': 'src/core/Modules/Drawing/DrawPlatformerHills.js',
+            'DrawPlatformerHills': 'src/core/Modules/Platform Game/DrawPlatformerHills.js',
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Drawing/DrawInfiniteStarFieldParallax.js',
 
             // Animation Modules
@@ -675,38 +713,28 @@ html {
  * Generate game initialization code
  */
     generateGameInitialization(data, settings) {
-        const assetsJsonString = settings.standalone && settings.includeAssets ?
-            JSON.stringify(data.assets).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'") :
-            'null';
+    // Use safer JSON embedding approach
+    const scenesData = this.safeStringify(data.scenes);
+    const assetsData = settings.standalone && settings.includeAssets ?
+        this.safeStringify(data.assets) : 'null';
 
-        return `
+    return `
 // Game Initialization
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Initializing exported game...');
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
-        // Prevent arrow keys, space, page up/down from scrolling
         if ([32, 33, 34, 35, 36, 37, 38, 39, 40].includes(e.keyCode)) {
             e.preventDefault();
         }
     }, { passive: false });
     
-    // Prevent context menu
-    document.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-    });
+    // Prevent context menu and drag/drop
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', (e) => e.preventDefault());
     
-    // Prevent drag and drop
-    document.addEventListener('dragover', (e) => {
-        e.preventDefault();
-    });
-    
-    document.addEventListener('drop', (e) => {
-        e.preventDefault();
-    });
-    
-    // Hide loading screen
     const loadingScreen = document.getElementById('loading-screen');
     
     // Initialize module registry
@@ -714,20 +742,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.moduleRegistry = new ModuleRegistry();
     }
     
-    // Register all available modules with the registry
+    // Register all available modules
     console.log('Registering modules...');
-    console.log('Available module classes:', [${data.modules.map(module => `'${module.className}'`).join(', ')}]);
     ${data.modules.map(module => `
     if (typeof ${module.className} !== 'undefined') {
         window.moduleRegistry.register(${module.className});
         console.log('Registered module: ${module.className}');
     } else {
         console.error('Module class not found: ${module.className}');
-        console.log('Available global objects:', Object.keys(window).filter(key => key.includes('${module.className.substring(0, 4)}')));
     }`).join('')}
     
     console.log('Total registered modules:', window.moduleRegistry.modules.size);
-    console.log('Registered module names:', Array.from(window.moduleRegistry.modules.keys()));
     
     // Initialize input manager
     if (!window.input) {
@@ -740,33 +765,150 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Initialize AssetManager
-    const assetBasePath = ${!settings.standalone ? "'assets/'" : "''"};
-    window.assetManager = new AssetManager(assetBasePath);
-    
-    // For standalone mode, pre-populate the asset cache from the embedded data
-    if (${settings.standalone && settings.includeAssets}) {
-        const preloadedAssets = ${settings.standalone && settings.includeAssets ? JSON.stringify(data.assets) : 'null'};
-
-        if (preloadedAssets) {
-            console.log('Pre-caching embedded assets...');
-            const assetPromises = [];
-            
-            for (const path in preloadedAssets) {
-                const assetInfo = preloadedAssets[path];
-                // Use the new AssetManager method to load from data URL
-                const promise = window.assetManager.addAssetToCache(path, assetInfo.content, assetInfo.type);
-                assetPromises.push(promise);
-            }
-            
-            // Wait for all assets to be processed by the cache before starting the game
-            try {
-                await Promise.all(assetPromises);
-                console.log('All embedded assets cached successfully.');
-            } catch (error) {
-                console.error('Error caching assets:', error);
-            }
+    ${settings.standalone ?
+            `window.assetManager = new AssetManager('');` :
+            `window.assetManager = new AssetManager('assets/');`
         }
+    
+    // Enhanced path normalization function
+    window.assetManager.normalizePath = function(path) {
+        if (!path) return '';
+        // Remove leading slashes/backslashes and normalize separators
+        let normalized = path.replace(/^[\/\\\\]+/, '').replace(/\\\\/g, '/');
+        // Handle URL encoding for spaces and special characters
+        try {
+            normalized = decodeURIComponent(normalized);
+        } catch (e) {
+            // If decoding fails, use the original normalized path
+        }
+        return normalized;
+    };
+    
+    // Load game data safely
+    let gameData;
+    try {
+        gameData = {
+            scenes: ${scenesData},
+            assets: ${assetsData}
+        };
+    } catch (error) {
+        console.error('Error parsing game data:', error);
+        loadingScreen.innerHTML = '<div>Error loading game data: ' + error.message + '</div>';
+        return;
     }
+    
+    // Pre-load assets for standalone mode
+    ${settings.standalone && settings.includeAssets ? `
+    if (gameData.assets) {
+        console.log('Pre-caching embedded assets...');
+        console.log('Assets to cache:', Object.keys(gameData.assets));
+        
+        // Enhanced asset caching with better path handling and data URL support
+        window.assetManager.addAssetToCache = function(path, content, type) {
+            const normalizedPath = this.normalizePath(path);
+            
+            console.log('Caching asset:', { originalPath: path, normalizedPath, type });
+            
+            if (type && type.startsWith('image/')) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Create comprehensive path variations for better lookup
+                        const pathVariations = [
+                            path,                                    // Original path
+                            normalizedPath,                         // Normalized path
+                            path.replace(/^[\/\\\\]+/, ''),         // Remove leading slashes
+                            path.replace(/\\\\/g, '/'),             // Backslashes to forward slashes
+                            path.replace(/\\\\/g, '/').replace(/^[\/\\\\]+/, ''), // Both normalizations
+                            decodeURIComponent(path),               // URL decoded
+                            decodeURIComponent(normalizedPath),     // URL decoded normalized
+                            encodeURIComponent(path.split('/').pop()), // Just filename encoded
+                            path.split('/').pop(),                  // Just filename
+                            path.split('\\\\').pop(),               // Just filename (backslash)
+                            '/' + path,                             // With leading slash
+                            '/' + normalizedPath,                   // Normalized with leading slash
+                        ];
+                        
+                        // Remove duplicates and empty strings
+                        const uniquePaths = [...new Set(pathVariations.filter(p => p && p.length > 0))];
+                        
+                        // Cache under all variations
+                        uniquePaths.forEach(variation => {
+                            this.cache[variation] = img;
+                            console.log('Cached image under path:', variation);
+                        });
+                        
+                        console.log('Successfully cached image with', uniquePaths.length, 'path variations');
+                        console.log('Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+                        resolve(img);
+                    };
+                    img.onerror = (error) => {
+                        console.error('Failed to cache image:', normalizedPath, error);
+                        console.error('Content preview:', content.substring(0, 100));
+                        reject(error);
+                    };
+                    
+                    // Validate data URL format
+                    if (!content || !content.startsWith('data:')) {
+                        console.error('Invalid data URL for image:', normalizedPath);
+                        console.error('Content type:', typeof content, 'Length:', content ? content.length : 'null');
+                        reject(new Error('Invalid data URL format'));
+                        return;
+                    }
+                    
+                    img.src = content;
+                });
+            } else {
+                // For non-image assets, cache with path variations
+                const pathVariations = [
+                    path,
+                    normalizedPath,
+                    path.replace(/^[\/\\\\]+/, ''),
+                    decodeURIComponent(path),
+                    decodeURIComponent(normalizedPath),
+                    '/' + path,
+                    '/' + normalizedPath
+                ];
+                
+                const uniquePaths = [...new Set(pathVariations.filter(p => p && p.length > 0))];
+                uniquePaths.forEach(variation => {
+                    this.cache[variation] = content;
+                    console.log('Cached non-image asset under path:', variation);
+                });
+                
+                return Promise.resolve(content);
+            }
+        };
+        
+        const assetPromises = [];
+        for (const path in gameData.assets) {
+            const assetInfo = gameData.assets[path];
+            
+            // Validate asset content
+            if (!assetInfo.content) {
+                console.warn('Asset has no content:', path);
+                continue;
+            }
+            
+            console.log('Processing asset:', path, 'Type:', assetInfo.type, 'Binary:', assetInfo.binary);
+            
+            const promise = window.assetManager.addAssetToCache(path, assetInfo.content, assetInfo.type)
+                .catch(error => {
+                    console.error('Failed to cache asset:', path, error);
+                    // Don't fail the entire export for one bad asset
+                    return null;
+                });
+            assetPromises.push(promise);
+        }
+        
+        try {
+            await Promise.all(assetPromises);
+            console.log('Asset caching completed.');
+            console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
+        } catch (error) {
+            console.error('Error during asset caching:', error);
+        }
+    }` : ''}
     
     // Initialize engine
     const canvas = document.getElementById('gameCanvas');
@@ -781,34 +923,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
-        
-        // Get the original canvas dimensions
         const originalWidth = ${settings.viewport.width};
         const originalHeight = ${settings.viewport.height};
         
-        // Calculate scale to fit while maintaining aspect ratio
         const scaleX = containerWidth / originalWidth;
         const scaleY = containerHeight / originalHeight;
         const scale = Math.min(scaleX, scaleY);
         
-        // Apply the scale
         const scaledWidth = originalWidth * scale;
         const scaledHeight = originalHeight * scale;
         
         canvas.style.width = scaledWidth + 'px';
         canvas.style.height = scaledHeight + 'px';
-        
-        // Center the canvas
         canvas.style.position = 'absolute';
         canvas.style.left = '50%';
         canvas.style.top = '50%';
         canvas.style.transform = 'translate(-50%, -50%)';
     }
     
-    // Initial resize
     resizeCanvas();
-    
-    // Resize on window resize
     window.addEventListener('resize', resizeCanvas);
     
     // Connect physics to engine if available
@@ -829,14 +962,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Load scenes
-    const scenes = ${JSON.stringify(data.scenes, null, 2)};
+    const scenes = gameData.scenes || [];
     const loadedScenes = [];
     
     scenes.forEach(sceneData => {
         const scene = new Scene(sceneData.name);
         scene.settings = sceneData.settings;
         
-        // Load game objects
         sceneData.gameObjects.forEach(objData => {
             const gameObject = createGameObjectFromData(objData);
             scene.gameObjects.push(gameObject);
@@ -868,23 +1000,38 @@ document.addEventListener('DOMContentLoaded', async () => {
                 module.enabled = moduleData.enabled;
                 module.id = moduleData.id;
                 
-                // Restore module data using fromJSON if available
-                if (moduleData.data && typeof module.fromJSON === 'function') {
-                    module.fromJSON(moduleData.data);
-                } else {
-                    // Fallback: Set properties directly
-                    Object.keys(moduleData.data.properties || {}).forEach(key => {
-                        if (key in module) {
-                            module[key] = moduleData.data.properties[key];
+                // Restore module data - IMPROVED FOR SPRITERENDERER
+                if (moduleData.data) {
+                    if (typeof module.fromJSON === 'function') {
+                        try {
+                            module.fromJSON(moduleData.data);
+                            console.log('Module data restored via fromJSON for:', moduleData.type);
+                        } catch (error) {
+                            console.error('Error restoring module data via fromJSON:', error);
+                            // Fallback to property restoration
+                            if (moduleData.data.properties) {
+                                Object.keys(moduleData.data.properties).forEach(key => {
+                                    if (key in module) {
+                                        module[key] = moduleData.data.properties[key];
+                                    }
+                                });
+                            }
                         }
-                    });
+                    } else {
+                        // Fallback: Set properties directly from data root or properties
+                        const sourceData = moduleData.data.properties || moduleData.data;
+                        Object.keys(sourceData).forEach(key => {
+                            if (key in module) {
+                                module[key] = sourceData[key];
+                            }
+                        });
+                    }
                 }
                 
                 obj.addModule(module);
                 console.log('Successfully added module:', moduleData.type);
             } else {
                 console.error('Module class not found:', moduleData.type);
-                console.log('Available modules:', Array.from(window.moduleRegistry.modules.keys()));
             }
         });
         
@@ -915,6 +1062,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 `;
+}
+
+    /**
+     * Safely stringify JSON data for embedding in JavaScript code
+     * @param {*} data - Data to stringify
+     * @returns {string} - Safe JavaScript representation
+     */
+    safeStringify(data) {
+        if (data === null || data === undefined) {
+            return 'null';
+        }
+
+        try {
+            // First stringify normally
+            let jsonString = JSON.stringify(data);
+
+            // Then escape it for safe embedding in JavaScript
+            // Use a more comprehensive escaping approach
+            /*jsonString = jsonString
+                .replace(/\\/g, '\\\\')     // Escape backslashes
+                .replace(/'/g, "\\'")       // Escape single quotes
+                .replace(/"/g, '\\"')       // Escape double quotes
+                .replace(/\n/g, '\\n')      // Escape newlines
+                .replace(/\r/g, '\\r')      // Escape carriage returns
+                .replace(/\t/g, '\\t')      // Escape tabs
+                .replace(/\f/g, '\\f')      // Escape form feeds
+                .replace(/\b/g, '\\b')      // Escape backspaces
+                .replace(/\v/g, '\\v')      // Escape vertical tabs
+                .replace(/\0/g, '\\0')      // Escape null characters
+                .replace(/\u2028/g, '\\u2028') // Escape line separator
+                .replace(/\u2029/g, '\\u2029') // Escape paragraph separator
+                .replace(/</g, '\\u003c')   // Escape < to prevent script injection
+                .replace(/>/g, '\\u003e')   // Escape > to prevent script injection
+                .replace(/\//g, '\\/');     // Escape forward slashes last*/
+
+            return JSON.stringify(data);
+            //return `"${jsonString}"`;
+        } catch (error) {
+            console.error('Error in safeStringify:', error);
+            return 'null';
+        }
     }
 
     /**
@@ -948,44 +1136,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             const assetsFolder = zip.folder('assets');
             for (const [path, asset] of Object.entries(data.assets)) {
                 if (asset.binary) {
-                    // For binary assets, use the original file if available
-                    if (asset.originalFile && asset.originalFile.content) {
-                        let fileContent = asset.originalFile.content;
+                    // Use rawContent (original file content) for binary assets
+                    const rawContent = asset.rawContent || asset.originalFile?.content;
 
-                        if (fileContent instanceof Blob) {
-                            // Add Blob directly to ZIP
-                            assetsFolder.file(path, fileContent);
-                        } else if (fileContent instanceof File) {
-                            // Add File directly to ZIP
-                            assetsFolder.file(path, fileContent);
-                        } else if (fileContent instanceof ArrayBuffer) {
-                            // Add ArrayBuffer directly to ZIP
-                            assetsFolder.file(path, fileContent);
-                        } else if (typeof fileContent === 'string' && fileContent.startsWith('data:')) {
-                            // Extract base64 data from data URL and convert to binary
-                            const commaIndex = fileContent.indexOf(',');
-                            if (commaIndex !== -1) {
-                                const base64Data = fileContent.substring(commaIndex + 1);
-                                assetsFolder.file(path, base64Data, { base64: true });
-                            } else {
-                                console.warn(`Invalid data URL format for asset ${path}`);
-                            }
-                        } else {
-                            console.warn(`Unsupported content type for binary asset ${path}:`, typeof fileContent);
+                    if (rawContent instanceof Blob) {
+                        assetsFolder.file(path, rawContent);
+                    } else if (rawContent instanceof File) {
+                        assetsFolder.file(path, rawContent);
+                    } else if (rawContent instanceof ArrayBuffer) {
+                        assetsFolder.file(path, rawContent);
+                    } else if (typeof rawContent === 'string' && rawContent.startsWith('data:')) {
+                        // Extract base64 data from data URL
+                        const commaIndex = rawContent.indexOf(',');
+                        if (commaIndex !== -1) {
+                            const base64Data = rawContent.substring(commaIndex + 1);
+                            assetsFolder.file(path, base64Data, { base64: true });
                         }
                     } else {
-                        // Fallback: extract from data URL and convert to binary
+                        // Fallback: try to use the processed content
                         if (typeof asset.content === 'string' && asset.content.startsWith('data:')) {
                             const commaIndex = asset.content.indexOf(',');
                             if (commaIndex !== -1) {
                                 const base64Data = asset.content.substring(commaIndex + 1);
-                                // Convert base64 to binary data for ZIP
                                 assetsFolder.file(path, base64Data, { base64: true });
-                            } else {
-                                console.warn(`Invalid data URL format for asset ${path}`);
                             }
-                        } else {
-                            console.warn(`Binary asset ${path} is not in expected format`);
                         }
                     }
                 } else {
