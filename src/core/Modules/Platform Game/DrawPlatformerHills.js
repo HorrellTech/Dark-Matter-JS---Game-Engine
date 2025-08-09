@@ -32,6 +32,7 @@ class DrawPlatformerHills extends Module {
         this.groundFrequency = 0.003; // Ground wave frequency (lower=wider features)
         this.groundSegmentWidth = 600; // Width of each ground segment
         this.groundCache = new Map(); // Cache for ground segments
+        this.frontLayerLinear = true; // Use linear lines for front layer collision (vs curves)
 
         // Water properties
         this.waterHeight = 80; // Height of water from bottom
@@ -210,6 +211,14 @@ class DrawPlatformerHills extends Module {
             onChange: (val) => {
                 this.groundSegmentWidth = val;
                 this.clearGroundCache();
+            }
+        });
+
+        this.exposeProperty("frontLayerLinear", "boolean", true, {
+            description: "Use linear lines for front layer collision (vs curves)",
+            onChange: (val) => {
+                this.frontLayerLinear = val;
+                this.clearCache();
             }
         });
 
@@ -656,6 +665,7 @@ class DrawPlatformerHills extends Module {
             .exposeProperty("groundSmoothness", "number", this.groundSmoothness, { label: "Ground Smoothness" })
             .exposeProperty("groundFrequency", "number", this.groundFrequency, { label: "Ground Frequency" })
             .exposeProperty("groundSegmentWidth", "number", this.groundSegmentWidth, { label: "Ground Segment Width" })
+            .exposeProperty("frontLayerLinear", "boolean", this.frontLayerLinear, { label: "Front Layer Linear" })
             .endGroup()
             .startGroup("Water", false)
             .exposeProperty("waterHeight", "number", this.waterHeight, { label: "Water Height" })
@@ -1550,7 +1560,7 @@ class DrawPlatformerHills extends Module {
     }
 
     // Draw spline curve through points with seamless segment connections
-    drawConnectedSegments(ctx, segments, style, offsetX, offsetY, viewportBounds) {
+    drawConnectedSegments(ctx, segments, style, offsetX, offsetY, viewportBounds, layer = 0) {
         if (segments.length === 0) return;
 
         ctx.beginPath();
@@ -1579,22 +1589,32 @@ class DrawPlatformerHills extends Module {
         // Start the path
         ctx.moveTo(allPoints[0].x, allPoints[0].y);
 
-        if (style === "rounded") {
-            // Use quadratic curves for smooth hills
-            for (let i = 1; i < allPoints.length - 1; i++) {
-                const curr = allPoints[i];
-                const next = allPoints[i + 1];
-                const mx = (curr.x + next.x) / 2;
-                const my = (curr.y + next.y) / 2;
-                ctx.quadraticCurveTo(curr.x, curr.y, mx, my);
-            }
-            // Last segment
-            const last = allPoints[allPoints.length - 1];
-            ctx.quadraticCurveTo(last.x, last.y, last.x, last.y);
-        } else {
-            // Pointy/angular hills
+        // Front layer (layer 0) uses straight lines for precise collision
+        // Back layers use curves for visual appeal
+        if (layer === 0) {
+            // Use straight lines for front layer (precise collision)
             for (let i = 1; i < allPoints.length; i++) {
                 ctx.lineTo(allPoints[i].x, allPoints[i].y);
+            }
+        } else {
+            // Use curves for back layers (visual appeal)
+            if (style === "rounded") {
+                // Use quadratic curves for smooth hills
+                for (let i = 1; i < allPoints.length - 1; i++) {
+                    const curr = allPoints[i];
+                    const next = allPoints[i + 1];
+                    const mx = (curr.x + next.x) / 2;
+                    const my = (curr.y + next.y) / 2;
+                    ctx.quadraticCurveTo(curr.x, curr.y, mx, my);
+                }
+                // Last segment
+                const last = allPoints[allPoints.length - 1];
+                ctx.quadraticCurveTo(last.x, last.y, last.x, last.y);
+            } else {
+                // Pointy/angular hills
+                for (let i = 1; i < allPoints.length; i++) {
+                    ctx.lineTo(allPoints[i].x, allPoints[i].y);
+                }
             }
         }
 
@@ -1707,14 +1727,15 @@ class DrawPlatformerHills extends Module {
                 });
             }
 
-            // Draw all segments as one connected path
+            // Draw all segments as one connected path, passing the layer index
             this.drawConnectedSegments(
                 ctx,
                 segments,
                 this.hillStyle,
                 parallaxOffsetX,
                 parallaxOffsetY,
-                viewportBounds
+                viewportBounds,
+                layer  // Pass layer index to determine rendering style
             );
 
             // Draw buildings AFTER the back hill layer
@@ -2540,7 +2561,7 @@ class DrawPlatformerHills extends Module {
         const frequency1 = this.groundFrequency;
         const frequency2 = this.groundFrequency * 2.3;
         const frequency3 = this.groundFrequency * 4.7;
-        
+
         const seedValue = this.groundSeed;
         const noiseInput1 = globalX * frequency1 + seedValue;
         const noiseInput2 = globalX * frequency2 + seedValue * 2;
@@ -2700,6 +2721,99 @@ class DrawPlatformerHills extends Module {
         ctx.fill();
     }
 
+    getSplineHeightAtPosition(globalX, layer) {
+        // Find which segment this X position belongs to
+        const segmentIndex = Math.floor(globalX / this.segmentWidth);
+        const localX = globalX - (segmentIndex * this.segmentWidth);
+
+        // Get the hill segment points
+        const points = this.getHillSegment(segmentIndex, layer);
+        if (points.length < 2) return this.getHeightAtPosition(globalX, layer);
+
+        // Find the two points that surround our X position
+        let leftPoint = null;
+        let rightPoint = null;
+        let leftIndex = -1;
+
+        for (let i = 0; i < points.length - 1; i++) {
+            if (localX >= points[i].x && localX <= points[i + 1].x) {
+                leftPoint = points[i];
+                rightPoint = points[i + 1];
+                leftIndex = i;
+                break;
+            }
+        }
+
+        // If we couldn't find surrounding points, fall back to mathematical calculation
+        if (!leftPoint || !rightPoint) {
+            return this.getHeightAtPosition(globalX, layer);
+        }
+
+        if (this.hillStyle === "rounded") {
+            // For rounded hills, we need to exactly replicate the quadratic curve drawing
+            // This matches the logic in drawConnectedSegments for quadratic curves
+
+            // Get the next point for proper quadratic curve calculation
+            let nextPoint = null;
+            if (leftIndex + 2 < points.length) {
+                nextPoint = points[leftIndex + 2];
+            } else {
+                // If no next point, use linear interpolation
+                const t = (localX - leftPoint.x) / (rightPoint.x - leftPoint.x);
+                return leftPoint.y + (rightPoint.y - leftPoint.y) * t;
+            }
+
+            // Calculate the quadratic curve exactly as done in drawConnectedSegments
+            // The curve goes from leftPoint through rightPoint to the midpoint between rightPoint and nextPoint
+            const controlPoint = rightPoint;
+            const endX = (rightPoint.x + nextPoint.x) / 2;
+            const endY = (rightPoint.y + nextPoint.y) / 2;
+
+            // Check if we're in the first or second half of the current segment
+            const midX = (leftPoint.x + rightPoint.x) / 2;
+
+            if (localX <= midX) {
+                // We're in the curve from previous midpoint to current rightPoint
+                // But since we only have leftPoint and rightPoint, use simpler quadratic
+                const t = (localX - leftPoint.x) / (rightPoint.x - leftPoint.x);
+
+                // Quadratic interpolation with rightPoint as control point
+                const startX = leftPoint.x;
+                const startY = leftPoint.y;
+                const ctrlX = rightPoint.x;
+                const ctrlY = rightPoint.y;
+                const endSegX = (rightPoint.x + (nextPoint ? nextPoint.x : rightPoint.x + this.segmentWidth / this.pointCount)) / 2;
+                const endSegY = (rightPoint.y + (nextPoint ? nextPoint.y : rightPoint.y)) / 2;
+
+                // Use proper quadratic Bezier formula: (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+                const oneMinusT = 1 - t;
+                const x = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * ctrlX + t * t * endSegX;
+                const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * ctrlY + t * t * endSegY;
+
+                return y;
+            } else {
+                // We're in the second half, use the current segment with next point
+                const segmentT = (localX - midX) / (rightPoint.x - midX);
+
+                const startX = (leftPoint.x + rightPoint.x) / 2;
+                const startY = (leftPoint.y + rightPoint.y) / 2;
+                const ctrlX = rightPoint.x;
+                const ctrlY = rightPoint.y;
+                const endSegX = (rightPoint.x + nextPoint.x) / 2;
+                const endSegY = (rightPoint.y + nextPoint.y) / 2;
+
+                const oneMinusT = 1 - segmentT;
+                const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * segmentT * ctrlY + segmentT * segmentT * endSegY;
+
+                return y;
+            }
+        } else {
+            // For pointy hills, use linear interpolation
+            const t = (localX - leftPoint.x) / (rightPoint.x - leftPoint.x);
+            return leftPoint.y + (rightPoint.y - leftPoint.y) * t;
+        }
+    }
+
     // Public API: Get ground Y position at world X coordinate
     getGroundY(worldX) {
         return this.getGroundHeightAtPosition(worldX);
@@ -2729,21 +2843,232 @@ class DrawPlatformerHills extends Module {
     }
 
     // Public API: Check collision with ground (returns collision info or null)
-    checkGroundCollision(worldX, worldY, radius = 0) {
-        if (!this.enableGround) return null;
-        
-        const groundY = this.getGroundY(worldX);
-        const bottomY = worldY + radius;
-        
-        if (bottomY >= groundY) {
-            return {
-                point: { x: worldX, y: groundY },
-                penetration: bottomY - groundY,
-                normal: { x: 0, y: -1 } // Ground normal points up
+    checkGroundCollision() {
+        this.wasGrounded = this.isGrounded;
+        this.isGrounded = false;
+        this.groundContactPoints = [];
+
+        if (!this.hillsModule) return;
+
+        const pos = this.gameObject.position;
+        let groundContact = null;
+
+        if (this.colliderShape === "circle") {
+            groundContact = this.checkCircleGroundCollision(pos);
+        } else {
+            groundContact = this.checkRectangleGroundCollision(pos);
+        }
+
+        if (groundContact) {
+            this.isGrounded = true;
+            this.lastGroundY = groundContact.groundY;
+
+            // IMPROVED: More precise position correction
+            if (this.colliderShape === "circle") {
+                const currentBottomY = pos.y + this.characterRadius;
+                const penetrationDepth = currentBottomY - groundContact.groundY;
+
+                // Only adjust position if significantly penetrating (more than 1 pixel)
+                if (penetrationDepth > 1) {
+                    const targetY = groundContact.groundY - this.characterRadius;
+                    this.gameObject.position.y = targetY;
+                }
+            } else {
+                const currentBottomY = pos.y + this.characterHeight / 2;
+                const penetrationDepth = currentBottomY - groundContact.groundY;
+
+                // Only adjust position if significantly penetrating (more than 1 pixel)
+                if (penetrationDepth > 1) {
+                    const targetY = groundContact.groundY - this.characterHeight / 2;
+                    this.gameObject.position.y = targetY;
+                }
+            }
+
+            // Stop downward movement when touching ground
+            if (this.velocity.y > 0) {
+                this.velocity.y = 0;
+                this.isJumping = false;
+                this.jumpHoldTimer = 0;
+            }
+        }
+    }
+
+    getPixelPerfectHeightAtPosition(globalX, layer = 0) {
+        // Find which segment this X position belongs to
+        const segmentIndex = Math.floor(globalX / this.segmentWidth);
+        const localX = globalX - (segmentIndex * this.segmentWidth);
+
+        // Get the hill segment points
+        const points = this.getHillSegment(segmentIndex, layer);
+        if (points.length < 2) return this.getHeightAtPosition(globalX, layer);
+
+        // For the front layer (layer 0), always use linear interpolation for precise collision
+        if (layer === 0 || !this.hillStyle || this.hillStyle === "pointy") {
+            return this.getLinearHeightAtPosition(points, localX);
+        }
+
+        // For back layers with rounded style, use spline collision
+        return this.getSplineHeightAtExactPosition(points, localX, segmentIndex, layer);
+    }
+
+    getPixelPerfectHeightAtPosition(globalX, layer = 0) {
+        // Find which segment this X position belongs to
+        const segmentIndex = Math.floor(globalX / this.segmentWidth);
+        const localX = globalX - (segmentIndex * this.segmentWidth);
+
+        // Get the hill segment points
+        const points = this.getHillSegment(segmentIndex, layer);
+        if (points.length < 2) return this.getHeightAtPosition(globalX, layer);
+
+        // For the front layer (layer 0), always use linear interpolation for precise collision
+        if (layer === 0) {
+            return this.getLinearHeightAtPosition(points, localX);
+        }
+
+        // For back layers, keep the spline collision for consistency
+        if (this.hillStyle === "rounded") {
+            return this.getSplineHeightAtExactPosition(points, localX, segmentIndex, layer);
+        } else {
+            return this.getLinearHeightAtPosition(points, localX);
+        }
+    }
+
+    getLinearHeightAtPosition(points, localX) {
+        // Find the two points that surround our X position
+        for (let i = 0; i < points.length - 1; i++) {
+            if (localX >= points[i].x && localX <= points[i + 1].x) {
+                const leftPoint = points[i];
+                const rightPoint = points[i + 1];
+                const t = (localX - leftPoint.x) / (rightPoint.x - leftPoint.x);
+                return leftPoint.y + (rightPoint.y - leftPoint.y) * t;
+            }
+        }
+
+        // If outside bounds, use edge points
+        if (localX < points[0].x) return points[0].y;
+        if (localX > points[points.length - 1].x) return points[points.length - 1].y;
+        return points[0].y;
+    }
+
+    getSplineHeightAtExactPosition(points, localX, segmentIndex, layer) {
+        // This method needs to exactly replicate the quadratic curve drawing logic
+        // from drawConnectedSegments to ensure perfect collision detection
+
+        // We need to get adjacent segments to properly calculate the curves
+        const prevSegmentPoints = segmentIndex > 0 ? this.getHillSegment(segmentIndex - 1, layer) : null;
+        const nextSegmentPoints = this.getHillSegment(segmentIndex + 1, layer);
+
+        // Combine points as done in drawConnectedSegments
+        let allPoints = [];
+
+        // Add last point from previous segment if it exists
+        if (prevSegmentPoints && prevSegmentPoints.length > 0) {
+            const lastPrevPoint = prevSegmentPoints[prevSegmentPoints.length - 1];
+            allPoints.push({
+                x: lastPrevPoint.x + (segmentIndex - 1) * this.segmentWidth,
+                y: lastPrevPoint.y
+            });
+        }
+
+        // Add current segment points
+        for (let point of points) {
+            allPoints.push({
+                x: point.x + segmentIndex * this.segmentWidth,
+                y: point.y
+            });
+        }
+
+        // Add first point from next segment if it exists
+        if (nextSegmentPoints && nextSegmentPoints.length > 0) {
+            const firstNextPoint = nextSegmentPoints[0];
+            allPoints.push({
+                x: firstNextPoint.x + (segmentIndex + 1) * this.segmentWidth,
+                y: firstNextPoint.y
+            });
+        }
+
+        const globalX = localX + segmentIndex * this.segmentWidth;
+
+        // Find the curve segment that contains our X position
+        for (let i = 1; i < allPoints.length - 1; i++) {
+            const curr = allPoints[i];
+            const next = allPoints[i + 1];
+            const prev = allPoints[i - 1];
+
+            // Calculate the midpoint coordinates as done in drawConnectedSegments
+            const midX = (curr.x + next.x) / 2;
+            const midY = (curr.y + next.y) / 2;
+            const prevMidX = (prev.x + curr.x) / 2;
+            const prevMidY = (prev.y + curr.y) / 2;
+
+            // Check if our X position is in this curve segment
+            if (globalX >= prevMidX && globalX <= midX) {
+                // Calculate the quadratic Bezier curve exactly as drawn
+                const t = (globalX - prevMidX) / (midX - prevMidX);
+
+                // Quadratic Bezier: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+                const oneMinusT = 1 - t;
+                const y = oneMinusT * oneMinusT * prevMidY +
+                    2 * oneMinusT * t * curr.y +
+                    t * t * midY;
+
+                return y;
+            }
+        }
+
+        // Fallback to linear interpolation if curve calculation fails
+        return this.getLinearHeightAtPosition(points, localX);
+    }
+
+    getGroundInfoAtPosition(globalX, layer = 0) {
+        const height = this.getPixelPerfectHeightAtPosition(globalX, layer);
+
+        // Calculate surface normal by sampling nearby points
+        const sampleDistance = 2;
+        const leftHeight = this.getPixelPerfectHeightAtPosition(globalX - sampleDistance, layer);
+        const rightHeight = this.getPixelPerfectHeightAtPosition(globalX + sampleDistance, layer);
+
+        const deltaY = rightHeight - leftHeight;
+        const deltaX = sampleDistance * 2;
+
+        const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        let normal = { x: 0, y: -1 };
+
+        if (length > 0) {
+            normal = {
+                x: -deltaY / length,
+                y: deltaX / length
             };
         }
-        
-        return null;
+
+        return {
+            height: height,
+            normal: normal,
+            slope: Math.atan2(deltaY, deltaX) * (180 / Math.PI)
+        };
+    }
+
+    drawCollisionDebug(ctx, viewportBounds) {
+        if (!this.showCollisionDebug) return;
+
+        const viewportX = window.engine?.viewport?.x || 0;
+        const step = 5; // Check every 5 pixels
+
+        ctx.save();
+        ctx.strokeStyle = "#FF0000";
+        ctx.lineWidth = 1;
+
+        // Draw collision points across the visible area
+        for (let x = viewportBounds.left; x < viewportBounds.right; x += step) {
+            const height = this.getPixelPerfectHeightAtPosition(x, 0);
+
+            ctx.beginPath();
+            ctx.moveTo(x - viewportX, height - 2);
+            ctx.lineTo(x - viewportX, height + 2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
     }
 
     // --- Time and Day API ---
@@ -2875,7 +3200,7 @@ class DrawPlatformerHills extends Module {
 
         if (json.moonPhaseAdvanced !== undefined) this.moonPhaseAdvanced = json.moonPhaseAdvanced;
         if (json.moonWasVisible !== undefined) this.moonWasVisible = json.moonWasVisible;
-        
+
         // Ground properties
         json.enableGround = this.enableGround;
         json.groundHeight = this.groundHeight;
@@ -2885,6 +3210,7 @@ class DrawPlatformerHills extends Module {
         json.groundSmoothness = this.groundSmoothness;
         json.groundFrequency = this.groundFrequency;
         json.groundSegmentWidth = this.groundSegmentWidth;
+        json.frontLayerLinear = this.frontLayerLinear;
 
         return json;
     }
@@ -2965,7 +3291,7 @@ class DrawPlatformerHills extends Module {
         if (json.moonLightSize !== undefined) this.moonLightSize = json.moonLightSize;
         if (json.moonLightColor !== undefined) this.moonLightColor = json.moonLightColor;
         if (json.moonLightId !== undefined) this.moonLightId = json.moonLightId;
-        
+
         // Ground properties
         if (json.enableGround !== undefined) this.enableGround = json.enableGround;
         if (json.groundHeight !== undefined) this.groundHeight = json.groundHeight;
@@ -2975,6 +3301,8 @@ class DrawPlatformerHills extends Module {
         if (json.groundSmoothness !== undefined) this.groundSmoothness = json.groundSmoothness;
         if (json.groundFrequency !== undefined) this.groundFrequency = json.groundFrequency;
         if (json.groundSegmentWidth !== undefined) this.groundSegmentWidth = json.groundSegmentWidth;
+
+        if (json.frontLayerLinear !== undefined) this.frontLayerLinear = json.frontLayerLinear;
 
         this.clearCache();
     }
