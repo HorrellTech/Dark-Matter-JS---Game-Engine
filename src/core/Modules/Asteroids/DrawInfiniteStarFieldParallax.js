@@ -1,5 +1,5 @@
 class DrawInfiniteStarFieldParallax extends Module {
-    static namespace = "Effects";
+    static namespace = "Asteroids";
     static description = "Infinite scrolling star field with parallax layers for top-down view";
     static allowMultiple = false;
 
@@ -11,13 +11,14 @@ class DrawInfiniteStarFieldParallax extends Module {
         this.starsPerGrid = 80;
         this.gridSize = 800; // Fixed grid size
         this.starColor = "#ffffff";
-        this.minSize = 0.5;
-        this.maxSize = 2.5;
-        this.flickerRate = 0.03;
+        this.minSize = 0.25;
+        this.maxSize = 3.5;
+        this.flickerRate = 1.83;
         this.parallaxStrength = 0.6;
         this.seed = 12345;
         this.baseDepth = 0.2;
         this.brightness = 1.0;
+        this.viewportMargin = 200;
 
         // Internal state
         this.layers = [];
@@ -78,7 +79,7 @@ class DrawInfiniteStarFieldParallax extends Module {
             }
         });
 
-        this.exposeProperty("flickerRate", "number", 0.03, {
+        this.exposeProperty("flickerRate", "number", 0.83, {
             description: "Star flicker intensity (0-1)",
             onChange: (val) => {
                 this.flickerRate = Math.max(0, Math.min(1, val));
@@ -105,6 +106,13 @@ class DrawInfiniteStarFieldParallax extends Module {
                 this.brightness = Math.max(0.1, Math.min(3, val));
             }
         });
+
+        this.exposeProperty("viewportMargin", "number", 200, {
+            description: "Extra margin for star generation beyond viewport",
+            onChange: (val) => {
+                this.viewportMargin = Math.max(0, val);
+            }
+        });
     }
 
     start() {
@@ -122,7 +130,7 @@ class DrawInfiniteStarFieldParallax extends Module {
             const layer = {
                 depth: this.baseDepth + ((i + 1) / this.layerCount) * (1 - this.baseDepth),
                 parallaxFactor: 1 - (i / this.layerCount) * this.parallaxStrength,
-                starSizeMultiplier: 0.3 + (i / this.layerCount) * 0.7,
+                starSizeMultiplier: 0.7 - (i / this.layerCount) * 0.4, // Reversed: closer layers (higher i) get bigger stars
                 grids: new Map()
             };
             this.layers.push(layer);
@@ -171,13 +179,19 @@ class DrawInfiniteStarFieldParallax extends Module {
         const gridWorldX = gridX * this.gridSize;
         const gridWorldY = gridY * this.gridSize;
 
-        // Create deterministic seed for this grid
-        const gridSeed = this.seed + gridX * 1000 + gridY * 100000 + layerIndex * 10000000;
+        // Use a more robust seeding approach for large coordinates
+        // Combine coordinates in a way that avoids precision issues
+        const gridSeed = this.seed + 
+            ((gridX & 0xFFFF) * 73856093) + 
+            ((gridY & 0xFFFF) * 19349663) + 
+            ((layerIndex & 0xFF) * 83492791);
+        
         let seedCounter = 0;
 
         for (let i = 0; i < this.starsPerGrid; i++) {
             const baseSize = this.minSize + this.seededRandom(gridSeed + seedCounter++) * (this.maxSize - this.minSize);
-
+            
+            // Use layer depth instead of individual random depth
             const star = {
                 x: gridWorldX + this.seededRandom(gridSeed + seedCounter++) * this.gridSize,
                 y: gridWorldY + this.seededRandom(gridSeed + seedCounter++) * this.gridSize,
@@ -215,26 +229,67 @@ class DrawInfiniteStarFieldParallax extends Module {
     }
 
     // Get visible grids for current viewport (like DrawPlatformerHills)
-    getVisibleGrids(viewportBounds, parallaxFactor) {
+    getVisibleGrids(viewportBounds) {
         const viewportX = window.engine.viewport.x || 0;
         const viewportY = window.engine.viewport.y || 0;
 
-        // Camera center for this layer
-        const layerCameraX = viewportX * parallaxFactor;
-        const layerCameraY = viewportY * parallaxFactor;
-
+        // Calculate bounds for each layer and combine them
         const vpWidth = (viewportBounds.right - viewportBounds.left);
         const vpHeight = (viewportBounds.bottom - viewportBounds.top);
         const halfWidth = vpWidth / 2;
         const halfHeight = vpHeight / 2;
+        const margin = this.viewportMargin;
 
-        // Add margin so we pre-load offscreen grids to avoid popping
-        const margin = this.gridSize;
+        let minGridX = Infinity;
+        let maxGridX = -Infinity;
+        let minGridY = Infinity;
+        let maxGridY = -Infinity;
 
+        // Calculate grid bounds for each layer to ensure we cover all stars
+        this.layers.forEach(layer => {
+            const layerCameraX = viewportX * layer.parallaxFactor;
+            const layerCameraY = viewportY * layer.parallaxFactor;
+
+            const startGridX = Math.floor((layerCameraX - halfWidth - margin) / this.gridSize);
+            const endGridX = Math.floor((layerCameraX + halfWidth + margin) / this.gridSize);
+            const startGridY = Math.floor((layerCameraY - halfHeight - margin) / this.gridSize);
+            const endGridY = Math.floor((layerCameraY + halfHeight + margin) / this.gridSize);
+
+            minGridX = Math.min(minGridX, startGridX);
+            maxGridX = Math.max(maxGridX, endGridX);
+            minGridY = Math.min(minGridY, startGridY);
+            maxGridY = Math.max(maxGridY, endGridY);
+        });
+
+        const visibleGrids = [];
+        for (let x = minGridX; x <= maxGridX; x++) {
+            for (let y = minGridY; y <= maxGridY; y++) {
+                visibleGrids.push({ x, y });
+            }
+        }
+        return visibleGrids;
+    }
+
+    // Get visible grids for a specific layer
+    getVisibleGridsForLayer(viewportBounds, layer) {
+        const viewportX = window.engine.viewport.x || 0;
+        const viewportY = window.engine.viewport.y || 0;
+        
+        const vpWidth = (viewportBounds.right - viewportBounds.left);
+        const vpHeight = (viewportBounds.bottom - viewportBounds.top);
+        const halfWidth = vpWidth / 2;
+        const halfHeight = vpHeight / 2;
+        const margin = this.viewportMargin;
+
+        // Calculate layer-specific camera position
+        const layerCameraX = viewportX * layer.parallaxFactor;
+        const layerCameraY = viewportY * layer.parallaxFactor;
+
+        // Calculate grid bounds for this specific layer
         const startGridX = Math.floor((layerCameraX - halfWidth - margin) / this.gridSize);
-        const endGridX   = Math.floor((layerCameraX + halfWidth + margin) / this.gridSize);
+        const endGridX = Math.floor((layerCameraX + halfWidth + margin) / this.gridSize);
         const startGridY = Math.floor((layerCameraY - halfHeight - margin) / this.gridSize);
-        const endGridY   = Math.floor((layerCameraY + halfHeight + margin) / this.gridSize);
+        const endGridY = Math.floor((layerCameraY + halfHeight + margin) / this.gridSize);
 
         const visibleGrids = [];
         for (let x = startGridX; x <= endGridX; x++) {
@@ -255,14 +310,15 @@ class DrawInfiniteStarFieldParallax extends Module {
         // Clear active grids set
         this.activeGrids.clear();
 
-        // Update active grids for each layer
+        // Update active grids for each layer separately
         this.layers.forEach((layer, layerIndex) => {
-            const visibleGrids = this.getVisibleGrids(viewportBounds, layer.parallaxFactor);
-
             // Clear old grids from layer
             layer.grids.clear();
 
-            // Load visible grids
+            // Get visible grids for this specific layer
+            const visibleGrids = this.getVisibleGridsForLayer(viewportBounds, layer);
+
+            // Load visible grids for this layer
             visibleGrids.forEach(grid => {
                 const gridKey = this.getGridKey(grid.x, grid.y, layerIndex);
                 const stars = this.generateGrid(grid.x, grid.y, layerIndex);
@@ -300,18 +356,18 @@ class DrawInfiniteStarFieldParallax extends Module {
         const viewportX = window.engine.viewport.x || 0;
         const viewportY = window.engine.viewport.y || 0;
 
-        // Camera center for this layer (parallax)
-        const layerCameraX = viewportX * layer.parallaxFactor;
-        const layerCameraY = viewportY * layer.parallaxFactor;
-
         const vpWidth = (viewportBounds.right - viewportBounds.left);
         const vpHeight = (viewportBounds.bottom - viewportBounds.top);
         const halfWidth = vpWidth / 2;
         const halfHeight = vpHeight / 2;
 
+        // Use layer's parallax factor consistently
+        const layerCameraX = viewportX * layer.parallaxFactor;
+        const layerCameraY = viewportY * layer.parallaxFactor;
+
         layer.grids.forEach(grid => {
             grid.stars.forEach(star => {
-                // Screen position relative to this layer's camera
+                // Screen position relative to layer's parallax
                 const screenX = (star.x - layerCameraX) + halfWidth;
                 const screenY = (star.y - layerCameraY) + halfHeight;
 
@@ -423,7 +479,8 @@ class DrawInfiniteStarFieldParallax extends Module {
             flickerRate: this.flickerRate,
             parallaxStrength: this.parallaxStrength,
             baseDepth: this.baseDepth,
-            brightness: this.brightness
+            brightness: this.brightness,
+            viewportMargin: this.viewportMargin
         };
     }
 
@@ -439,6 +496,7 @@ class DrawInfiniteStarFieldParallax extends Module {
         this.parallaxStrength = data.parallaxStrength || 0.6;
         this.baseDepth = data.baseDepth || 0.2;
         this.brightness = data.brightness || 1.0;
+        this.viewportMargin = data.viewportMargin || 200;
 
         this.initializeLayers();
     }
