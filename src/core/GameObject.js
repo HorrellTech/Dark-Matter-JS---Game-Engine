@@ -114,7 +114,7 @@ class GameObject {
             this.yd = worldPos.y;
         }*/
 
-        ctx.translate(this.position.x, this.position.y);
+        ctx.translate(worldPos.x, worldPos.y);
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
         

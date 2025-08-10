@@ -77,108 +77,189 @@ class PlatformCharacterAuto extends Module {
     setupProperties() {
         // Object reference
         this.exposeProperty("hillsObjectName", "string", this.hillsObjectName, {
-            description: "Name of GameObject containing DrawPlatformerHills module"
+            description: "Name of GameObject containing DrawPlatformerHills module",
+            onChange: (value) => {
+                this.hillsObjectName = value;
+                this.hillsObject = this.findHillsModule();
+            }   
         });
 
         // Movement
         this.exposeProperty("moveSpeed", "number", this.moveSpeed, {
             description: "Horizontal movement speed",
-            min: 50, max: 500
+            min: 50, max: 500,
+            onChange: (value) => {
+                this.moveSpeed = value;
+            }
         });
 
         this.exposeProperty("acceleration", "number", this.acceleration, {
             description: "Acceleration to reach max speed",
-            min: 100, max: 2000
+            min: 100, max: 2000,
+            onChange: (value) => {
+                this.acceleration = value;
+            }
         });
 
         this.exposeProperty("deceleration", "number", this.deceleration, {
             description: "Deceleration when stopping",
-            min: 100, max: 3000
+            min: 100, max: 3000,
+            onChange: (value) => {
+                this.deceleration = value;
+            }
         });
 
         this.exposeProperty("airControl", "number", this.airControl, {
             description: "Air control factor (0=no control, 1=full control)",
-            min: 0, max: 1, step: 0.1
+            min: 0, max: 1, step: 0.1,
+            onChange: (value) => {
+                this.airControl = value;
+            }
         });
 
         // Jump
         this.exposeProperty("jumpForce", "number", this.jumpForce, {
             description: "Jump force",
-            min: 100, max: 800
+            min: 100, max: 800,
+            onChange: (value) => {
+                this.jumpForce = value;
+            }
         });
 
         this.exposeProperty("jumpBufferTime", "number", this.jumpBufferTime, {
             description: "Jump input buffer time (seconds)",
-            min: 0, max: 0.5, step: 0.05
+            min: 0, max: 0.5, step: 0.05,
+            onChange: (value) => {
+                this.jumpBufferTime = value;
+            }
         });
 
         this.exposeProperty("coyoteTime", "number", this.coyoteTime, {
             description: "Coyote time after leaving ground (seconds)",
-            min: 0, max: 0.5, step: 0.05
+            min: 0, max: 0.5, step: 0.05,
+            onChange: (value) => {
+                this.coyoteTime = value;
+            }
         });
 
         this.exposeProperty("variableJumpHeight", "boolean", this.variableJumpHeight, {
-            description: "Allow variable jump height based on hold time"
+            description: "Allow variable jump height based on hold time",
+            onChange: (value) => {
+                this.variableJumpHeight = value;
+            }
         });
 
         // Physics
         this.exposeProperty("gravity", "number", this.gravity, {
             description: "Gravity force",
-            min: 200, max: 2000
+            min: 200, max: 2000,
+            onChange: (value) => {
+                this.gravity = value;
+            }
         });
 
         this.exposeProperty("maxFallSpeed", "number", this.maxFallSpeed, {
             description: "Maximum falling speed",
-            min: 200, max: 1000
+            min: 200, max: 1000,
+            onChange: (value) => {
+                this.maxFallSpeed = value;
+            }
         });
 
         this.exposeProperty("groundFriction", "number", this.groundFriction, {
             description: "Ground friction (0-1)",
-            min: 0, max: 1, step: 0.1
+            min: 0, max: 1, step: 0.1,
+            onChange: (value) => {
+                this.groundFriction = value;
+            }
         });
 
         // Collision
         this.exposeProperty("colliderShape", "enum", this.colliderShape, {
             description: "Collider shape",
-            options: ["rectangle", "circle"]
+            options: ["rectangle", "circle"],
+            onChange: (value) => {
+                this.colliderShape = value;
+                // Update collider dimensions based on shape
+                if (this.colliderShape === "circle") {
+                    this.characterWidth = this.characterRadius * 2;
+                    this.characterHeight = this.characterRadius * 2;
+                } else {
+                    this.characterRadius = Math.min(this.characterWidth, this.characterHeight) / 2;
+                }
+            }
         });
 
         this.exposeProperty("characterRadius", "number", this.characterRadius, {
             description: "Circle collider radius",
-            min: 4, max: 64
+            min: 4, max: 64,
+            onChange: (value) => {
+                this.characterRadius = value;
+                this.characterWidth = value * 2;
+                this.characterHeight = value * 2;
+            }
         });
 
         this.exposeProperty("characterWidth", "number", this.characterWidth, {
             description: "Rectangle collider width",
-            min: 8, max: 64
+            min: 8, max: 64,
+            onChange: (value) => {
+                this.characterWidth = value;
+                if (this.colliderShape === "circle") {
+                    this.characterRadius = value / 2;
+                    this.characterHeight = value; // Keep height same as width for circle
+                }
+            }
         });
 
         this.exposeProperty("characterHeight", "number", this.characterHeight, {
             description: "Rectangle collider height",
-            min: 16, max: 128
+            min: 16, max: 128,
+            onChange: (value) => {
+                this.characterHeight = value;
+                if (this.colliderShape === "circle") {
+                    this.characterRadius = value / 2;
+                    this.characterWidth = value; // Keep width same as height for circle
+                }
+            }
         });
 
         this.exposeProperty("groundSnapDistance", "number", this.groundSnapDistance, {
             description: "Maximum distance to snap to ground when walking",
-            min: 1, max: 50
+            min: 1, max: 50,
+            onChange: (value) => {
+                this.groundSnapDistance = value;
+            }
         });
 
         this.exposeProperty("maxGroundAngle", "number", this.maxGroundAngle, {
             description: "Maximum walkable slope angle in degrees",
-            min: 0, max: 90
+            min: 0, max: 90,
+            onChange: (value) => {
+                this.maxGroundAngle = value;
+            }
         });
 
         // Visual
         this.exposeProperty("characterColor", "color", this.characterColor, {
-            description: "Character color"
+            description: "Character color",
+            onChange: (value) => {
+                this.characterColor = value;
+            }
         });
 
         this.exposeProperty("showDebugInfo", "boolean", this.showDebugInfo, {
-            description: "Show debug information"
+            description: "Show debug information",
+            onChange: (value) => {
+                this.showDebugInfo = value;
+            }
         });
 
         this.exposeProperty("showHitbox", "boolean", this.showHitbox, {
-            description: "Show character hitbox"
+            description: "Show character hitbox",
+            onChange: (value) => {
+                this.showHitbox = value;
+            }
         });
     }
 
@@ -309,10 +390,11 @@ class PlatformCharacterAuto extends Module {
                 this.velocity.y = this.maxFallSpeed;
             }
         } else {
-            // When grounded, align with ground contour
+            // FIXED: When grounded, force velocity to follow ground or stay at zero
             if (Math.abs(this.velocity.x) > 10 && this.lastGroundContact) {
                 this.followGroundContour(deltaTime);
             } else {
+                // Keep grounded with zero Y velocity
                 this.velocity.y = 0;
             }
         }
@@ -342,18 +424,20 @@ class PlatformCharacterAuto extends Module {
             return;
         }
 
-        // Calculate desired Y velocity based on ground slope
+        // Calculate slope angle from normal
         const slopeAngle = Math.atan2(this.groundNormal.x, this.groundNormal.y);
         const slopeAngleDegrees = Math.abs(slopeAngle * (180 / Math.PI));
 
         // Only follow contour if slope is walkable
         if (slopeAngleDegrees <= this.maxGroundAngle) {
+            // ENHANCED: More responsive ground following
             const slopeVelocity = -this.groundNormal.x * Math.abs(this.velocity.x);
-            this.velocity.y = this.moveTowards(this.velocity.y, slopeVelocity, 500 * deltaTime);
+            const followSpeed = 2000; // Increased from 1000 for faster response
+            this.velocity.y = this.moveTowards(this.velocity.y, slopeVelocity, followSpeed * deltaTime);
         } else {
             // Too steep, character should fall
             this.isGrounded = false;
-            this.velocity.y = 0;
+            this.velocity.y = Math.max(0, this.velocity.y); // Don't add upward velocity
         }
     }
 
@@ -378,77 +462,82 @@ class PlatformCharacterAuto extends Module {
             this.lastGroundContact = groundContact;
             this.groundNormal = groundContact.normal;
 
-            // Position correction
-            if (this.colliderShape === "circle") {
-                const targetY = groundContact.contactPoint.y - this.characterRadius;
-                if (this.gameObject.position.y > targetY) {
-                    this.gameObject.position.y = targetY;
+            // FIXED: Only snap to ground if character is moving downward or very close
+            const distanceToGround = this.gameObject.position.y - groundContact.targetY;
+
+            // Only snap if falling down or very close to ground (within snap distance)
+            if (this.velocity.y >= 0 || Math.abs(distanceToGround) <= 2) {
+                this.gameObject.position.y = groundContact.targetY;
+
+                // Stop downward movement when grounded
+                if (this.velocity.y > 0) {
+                    this.velocity.y = 0;
+                    this.isJumping = false;
+                    this.jumpHoldTimer = 0;
                 }
             } else {
-                const targetY = groundContact.contactPoint.y - this.characterHeight / 2;
-                if (this.gameObject.position.y > targetY) {
-                    this.gameObject.position.y = targetY;
-                }
-            }
-
-            // Stop downward movement when landing
-            if (this.velocity.y > 0) {
-                this.velocity.y = 0;
-                this.isJumping = false;
-                this.jumpHoldTimer = 0;
+                // Character is jumping/moving upward, don't snap to ground
+                this.isGrounded = false;
+                this.lastGroundContact = null;
             }
         }
     }
 
     checkCircleGroundCollision(pos) {
-        const checkRadius = this.characterRadius + this.groundSnapDistance;
-        const bottomY = pos.y + this.characterRadius;
-        
-        let closestContact = null;
-        let minDistance = Infinity;
+        // Check directly below the character center
+        const checkX = pos.x;
+        const checkY = pos.y + this.characterRadius; // Bottom of circle
 
-        // Check multiple points around the bottom of the circle
-        const checkPoints = 9;
-        for (let i = 0; i < checkPoints; i++) {
-            const angle = Math.PI + (Math.PI * 0.6 * (i - checkPoints/2)) / checkPoints; // Bottom arc
-            const checkX = pos.x + Math.cos(angle) * this.characterRadius;
-            const checkY = pos.y + Math.sin(angle) * this.characterRadius;
+        const searchDistance = this.groundSnapDistance + 10;
+        const contact = this.getGroundContactAtPoint(checkX, checkY, searchDistance);
 
-            const contact = this.getGroundContactAtPoint(checkX, checkY, checkRadius);
-            if (contact && contact.distance < minDistance) {
-                minDistance = contact.distance;
-                closestContact = contact;
+        if (contact && contact.distance >= -2) { // Reduced penetration tolerance
+            // Calculate where the character center should be positioned
+            const targetY = contact.contactPoint.y - this.characterRadius;
+            const distance = pos.y - targetY;
+
+            if (distance >= -2 && distance <= searchDistance) {
+                return {
+                    ...contact,
+                    targetY: targetY,
+                    distance: distance
+                };
             }
         }
 
-        // Also check center bottom point
-        const centerContact = this.getGroundContactAtPoint(pos.x, bottomY, checkRadius);
-        if (centerContact && centerContact.distance < minDistance) {
-            closestContact = centerContact;
-        }
-
-        return closestContact;
+        return null;
     }
 
     checkRectangleGroundCollision(pos) {
         const characterBottom = pos.y + this.characterHeight / 2;
         const characterLeft = pos.x - this.characterWidth / 2;
         const characterRight = pos.x + this.characterWidth / 2;
-        const checkDistance = this.groundSnapDistance;
 
         let closestContact = null;
         let minDistance = Infinity;
 
-        // Check multiple points across the bottom of the rectangle
-        const checkPoints = 5;
+        // Check points across the bottom edge
+        const checkPoints = 5; // Reduced for better performance
         for (let i = 0; i < checkPoints; i++) {
             const t = i / (checkPoints - 1);
             const checkX = characterLeft + (characterRight - characterLeft) * t;
-            
-            const contact = this.getGroundContactAtPoint(checkX, characterBottom, checkDistance);
-            if (contact && contact.distance < minDistance) {
-                minDistance = contact.distance;
-                closestContact = contact;
+
+            const searchDistance = this.groundSnapDistance + 10;
+            const contact = this.getGroundContactAtPoint(checkX, characterBottom, searchDistance);
+
+            if (contact && contact.distance >= -2) { // Reduced penetration tolerance
+                // Calculate where the character center should be positioned
+                const targetY = contact.contactPoint.y - this.characterHeight / 2;
+                const adjustedDistance = pos.y - targetY;
+
+                if (adjustedDistance < minDistance && adjustedDistance >= -2) {
+                    minDistance = adjustedDistance;
+                    closestContact = {
+                        ...contact,
+                        targetY: targetY,
+                        distance: adjustedDistance
+                    };
+                }
             }
         }
 
@@ -460,7 +549,7 @@ class PlatformCharacterAuto extends Module {
 
         // Get ground segments that might contain this X position
         const segments = this.getGroundSegmentsAtX(x);
-        
+
         let closestContact = null;
         let minDistance = Infinity;
 
@@ -477,10 +566,9 @@ class PlatformCharacterAuto extends Module {
 
     getGroundSegmentsAtX(x) {
         const segments = [];
-        
-        // Check both ground and hills for collision
+
+        // Check ground FIRST (higher priority for collision)
         if (this.hillsModule.enableGround) {
-            // Get ground segment
             const groundSegmentIndex = Math.floor(x / this.hillsModule.groundSegmentWidth);
             const groundPoints = this.hillsModule.getGroundSegment(groundSegmentIndex);
             if (groundPoints && groundPoints.length > 1) {
@@ -493,7 +581,7 @@ class PlatformCharacterAuto extends Module {
             }
         }
 
-        // Get hill segments (front layer for collision)
+        // Only check hills if no ground found or for additional collision layers
         const hillSegmentIndex = Math.floor(x / this.hillsModule.segmentWidth);
         const hillPoints = this.hillsModule.getHillSegment(hillSegmentIndex, 0);
         if (hillPoints && hillPoints.length > 1) {
@@ -509,49 +597,87 @@ class PlatformCharacterAuto extends Module {
     }
 
     getContactWithGroundSegment(x, y, segment, maxDistance) {
-        const points = segment.points;
-        const offsetX = segment.offsetX;
-        const offsetY = segment.offsetY;
+        if (segment.type === 'ground' && this.hillsModule.groundSmoothness > 0.3) {
+            // Use precise curved collision for smooth ground
+            const groundY = this.hillsModule.getPixelPerfectHeightAtPosition(x, 0);
+            const distance = y - groundY;
 
-        let closestContact = null;
-        let minDistance = Infinity;
+            if (distance >= -2 && distance <= maxDistance) { // Reduced from -5 to -2
+                // Calculate normal by sampling nearby points
+                const sampleDistance = 1;
+                const leftY = this.hillsModule.getGroundHeightAtExactPosition(x - sampleDistance);
+                const rightY = this.hillsModule.getGroundHeightAtExactPosition(x + sampleDistance);
 
-        // Check each line segment in the ground
-        for (let i = 0; i < points.length - 1; i++) {
-            const p1 = {
-                x: points[i].x + offsetX,
-                y: points[i].y + offsetY
-            };
-            const p2 = {
-                x: points[i + 1].x + offsetX,
-                y: points[i + 1].y + offsetY
-            };
+                const deltaY = rightY - leftY;
+                const deltaX = sampleDistance * 2;
+                const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-            // Check if X is within this segment's horizontal range
-            if (x >= Math.min(p1.x, p2.x) && x <= Math.max(p1.x, p2.x)) {
-                const contact = this.getContactWithLineSegment(x, y, p1, p2, maxDistance);
-                if (contact && contact.distance < minDistance) {
-                    minDistance = contact.distance;
-                    closestContact = contact;
+                let normal = { x: 0, y: -1 };
+                if (length > 0) {
+                    normal = {
+                        x: -deltaY / length,
+                        y: deltaX / length
+                    };
+
+                    // Ensure normal points upward
+                    if (normal.y > 0) {
+                        normal.x = -normal.x;
+                        normal.y = -normal.y;
+                    }
+                }
+
+                return {
+                    contactPoint: { x: x, y: groundY },
+                    distance: distance,
+                    normal: normal
+                };
+            }
+
+            return null;
+        } else {
+            const points = segment.points;
+            const offsetX = segment.offsetX;
+            const offsetY = segment.offsetY;
+
+            let closestContact = null;
+            let minDistance = Infinity;
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = {
+                    x: points[i].x + offsetX,
+                    y: points[i].y + offsetY
+                };
+                const p2 = {
+                    x: points[i + 1].x + offsetX,
+                    y: points[i + 1].y + offsetY
+                };
+
+                // Check if X is within segment bounds with margin
+                const margin = 5;
+                if (x >= Math.min(p1.x, p2.x) - margin && x <= Math.max(p1.x, p2.x) + margin) {
+                    const contact = this.getContactWithLineSegment(x, y, p1, p2, maxDistance);
+                    if (contact && contact.distance < minDistance) {
+                        minDistance = contact.distance;
+                        closestContact = contact;
+                    }
                 }
             }
-        }
 
-        return closestContact;
+            return closestContact;
+        }
     }
 
     getContactWithLineSegment(x, y, p1, p2, maxDistance) {
-        // Calculate the point on the line segment closest to (x, y)
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
-        
+
         if (dx === 0 && dy === 0) {
             // Degenerate line segment
             const distance = Math.sqrt((x - p1.x) * (x - p1.x) + (y - p1.y) * (y - p1.y));
-            if (distance <= maxDistance && y >= p1.y) {
+            if (distance <= maxDistance && y >= p1.y - 2) {
                 return {
                     contactPoint: { x: p1.x, y: p1.y },
-                    distance: distance,
+                    distance: y - p1.y,
                     normal: { x: 0, y: -1 }
                 };
             }
@@ -560,18 +686,18 @@ class PlatformCharacterAuto extends Module {
 
         // Find the parameter t for the closest point on the line
         const t = Math.max(0, Math.min(1, ((x - p1.x) * dx + (y - p1.y) * dy) / (dx * dx + dy * dy)));
-        
+
         // Calculate the closest point on the line segment
         const contactPoint = {
             x: p1.x + t * dx,
             y: p1.y + t * dy
         };
 
-        // Calculate distance
+        // Calculate distance (positive when character is above ground)
         const distance = y - contactPoint.y;
 
-        // Only consider contact if character is above or close to the ground
-        if (distance >= -1 && distance <= maxDistance) {
+        // Tighter contact detection - reduced from -15 to -2
+        if (distance >= -2 && distance <= maxDistance) {
             // Calculate surface normal
             const lineLength = Math.sqrt(dx * dx + dy * dy);
             const normal = {
@@ -681,8 +807,8 @@ class PlatformCharacterAuto extends Module {
 
             // Draw direction indicator
             const eyeSize = 3;
-            const eyeOffsetX = this.velocity.x > 0 ? this.characterRadius * 0.3 : 
-                             this.velocity.x < 0 ? -this.characterRadius * 0.3 : 0;
+            const eyeOffsetX = this.velocity.x > 0 ? this.characterRadius * 0.3 :
+                this.velocity.x < 0 ? -this.characterRadius * 0.3 : 0;
             ctx.fillStyle = "#FFFFFF";
             ctx.fillRect(eyeOffsetX - eyeSize / 2, -eyeSize, eyeSize, eyeSize);
 

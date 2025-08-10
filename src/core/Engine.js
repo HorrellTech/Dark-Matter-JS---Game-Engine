@@ -32,7 +32,14 @@ class Engine {
             x: 0,
             y: 0,
             zoom: 1,
-            angle: 0 // Camera angle in degrees
+            angle: 0,
+            // Add bounds checking
+            minZoom: 0.1,
+            maxZoom: 10,
+            // Track if viewport is dirty and needs updates
+            dirty: true,
+            // Add viewport shake for effects
+            shake: { x: 0, y: 0, intensity: 0, duration: 0 }
         };
 
         this.viewportOriginalPosition = {
@@ -49,7 +56,9 @@ class Engine {
             fullscreen: false,
             maintainAspectRatio: true,
             pixelPerfect: false,
-            smoothing: true    // Image smoothing
+            smoothing: true,
+            // Add DPI awareness
+            pixelRatio: window.devicePixelRatio || 1
         };
         
         // Add reference to the editor
@@ -57,6 +66,9 @@ class Engine {
         
         // Track if canvas was resized
         this.canvasResized = true;
+        
+        // Add viewport change callbacks
+        this.viewportCallbacks = [];
 
         // Set the input manager reference to this engine
         if (window.input) {
@@ -81,6 +93,56 @@ class Engine {
          window.addEventListener('panel-resized', () => {
              this.resizeCanvas();
          });
+         
+         // Initialize viewport properly
+         this.initializeViewport();
+    }
+
+    // Add viewport management methods
+    initializeViewport() {
+        // Ensure viewport is properly initialized
+        this.viewport.dirty = true;
+        this.updateViewport();
+    }
+
+    updateViewport() {
+        // Add safety check for shake object
+        if (!this.viewport.shake) {
+            this.viewport.shake = { x: 0, y: 0, intensity: 0, duration: 0 };
+        }
+        
+        // Clamp zoom within bounds
+        this.viewport.zoom = Math.max(this.viewport.minZoom, 
+                                    Math.min(this.viewport.maxZoom, this.viewport.zoom));
+        
+        // Normalize angle to 0-360 range
+        this.viewport.angle = ((this.viewport.angle % 360) + 360) % 360;
+        
+        // Update viewport shake
+        if (this.viewport.shake.duration > 0) {
+            this.viewport.shake.duration -= 16; // Assuming 60fps
+            if (this.viewport.shake.duration <= 0) {
+                this.viewport.shake.x = 0;
+                this.viewport.shake.y = 0;
+                this.viewport.shake.intensity = 0;
+            } else {
+                const intensity = this.viewport.shake.intensity * (this.viewport.shake.duration / 1000);
+                this.viewport.shake.x = (Math.random() - 0.5) * intensity;
+                this.viewport.shake.y = (Math.random() - 0.5) * intensity;
+            }
+        }
+        
+        // Mark as clean
+        this.viewport.dirty = false;
+        
+        // Notify callbacks
+        this.viewportCallbacks.forEach(callback => {
+            try {
+                callback(this.viewport);
+            } catch (error) {
+                console.error('Error in viewport callback:', error);
+            }
+        });
     }
 
     setupResizeObserver() {
@@ -171,6 +233,113 @@ class Engine {
         });
     }
 
+    setViewportPosition(x, y) {
+        this.viewport.x = x;
+        this.viewport.y = y;
+        this.viewport.dirty = true;
+    }
+
+    moveViewport(deltaX, deltaY) {
+        this.viewport.x += deltaX;
+        this.viewport.y += deltaY;
+        this.viewport.dirty = true;
+    }
+
+    setViewportZoom(zoom) {
+        this.viewport.zoom = Math.max(this.viewport.minZoom, 
+                                    Math.min(this.viewport.maxZoom, zoom));
+        this.viewport.dirty = true;
+    }
+
+    zoomViewport(factor) {
+        this.setViewportZoom(this.viewport.zoom * factor);
+    }
+
+    setViewportAngle(angle) {
+        this.viewport.angle = angle;
+        this.viewport.dirty = true;
+    }
+
+    rotateViewport(deltaAngle) {
+        this.viewport.angle += deltaAngle;
+        this.viewport.dirty = true;
+    }
+
+    shakeViewport(intensity, duration) {
+        this.viewport.shake.intensity = intensity;
+        this.viewport.shake.duration = duration;
+    }
+
+    worldToScreen(worldX, worldY) {
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        // Apply viewport transformations in reverse order
+        let screenX = worldX - this.viewport.x + this.viewport.shake.x;
+        let screenY = worldY - this.viewport.y + this.viewport.shake.y;
+        
+        // Apply zoom
+        screenX = (screenX - centerX) * this.viewport.zoom + centerX;
+        screenY = (screenY - centerY) * this.viewport.zoom + centerY;
+        
+        // Apply rotation if needed
+        if (this.viewport.angle !== 0) {
+            const radians = this.viewport.angle * Math.PI / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            
+            const relX = screenX - centerX;
+            const relY = screenY - centerY;
+            
+            screenX = centerX + (relX * cos - relY * sin);
+            screenY = centerY + (relX * sin + relY * cos);
+        }
+        
+        return { x: screenX, y: screenY };
+    }
+
+    screenToWorld(screenX, screenY) {
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        let worldX = screenX;
+        let worldY = screenY;
+        
+        // Reverse rotation
+        if (this.viewport.angle !== 0) {
+            const radians = -this.viewport.angle * Math.PI / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            
+            const relX = worldX - centerX;
+            const relY = worldY - centerY;
+            
+            worldX = centerX + (relX * cos - relY * sin);
+            worldY = centerY + (relX * sin + relY * cos);
+        }
+        
+        // Reverse zoom
+        worldX = (worldX - centerX) / this.viewport.zoom + centerX;
+        worldY = (worldY - centerY) / this.viewport.zoom + centerY;
+        
+        // Reverse position offset and shake
+        worldX = worldX + this.viewport.x - this.viewport.shake.x;
+        worldY = worldY + this.viewport.y - this.viewport.shake.y;
+        
+        return { x: worldX, y: worldY };
+    }
+
+    onViewportChange(callback) {
+        this.viewportCallbacks.push(callback);
+    }
+
+    removeViewportCallback(callback) {
+        const index = this.viewportCallbacks.indexOf(callback);
+        if (index > -1) {
+            this.viewportCallbacks.splice(index, 1);
+        }
+    }
+
     async start() {
         if (!this.scene) {
             console.error('No scene loaded');
@@ -249,13 +418,19 @@ class Engine {
         this.wasRunning = false;
         cancelAnimationFrame(this.animationFrameId);
 
+        // Preserve shake object structure when resetting viewport
         this.viewport = {
             width: this.viewportOriginalPosition.width,
             height: this.viewportOriginalPosition.height,
             x: this.viewportOriginalPosition.x,
             y: this.viewportOriginalPosition.y,
             zoom: this.viewportOriginalPosition.zoom,
-            angle: this.viewportOriginalPosition.angle
+            angle: this.viewportOriginalPosition.angle,
+            // Preserve all viewport properties
+            minZoom: this.viewport.minZoom,
+            maxZoom: this.viewport.maxZoom,
+            dirty: this.viewport.dirty,
+            shake: { x: 0, y: 0, intensity: 0, duration: 0 }
         };
         
         // Call onDestroy on all game objects
@@ -313,6 +488,11 @@ class Engine {
         // Update input manager at the start of the frame
         if (window.input) {
             window.input.beginFrame();
+        }
+        
+        // Update viewport if dirty
+        if (this.viewport.dirty) {
+            this.updateViewport();
         }
     
         this.update(deltaTime);
@@ -419,7 +599,8 @@ class Engine {
         if (this.backgroundCanvas) {
             this.ctx.save();
             this.ctx.globalAlpha = 1.0;
-            this.ctx.drawImage(this.backgroundCanvas, this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+            // Apply proper background positioning
+            this.ctx.drawImage(this.backgroundCanvas, 0, 0);
             this.ctx.restore();
         }
         
@@ -434,9 +615,6 @@ class Engine {
             this.ctx.textAlign = "center";
             this.ctx.fillText("No objects in scene... What is a game without objects?", this.canvas.width / 2, this.canvas.height / 2);
         } else {
-            // Debug: Log objects being drawn
-            //console.log(`Drawing ${allObjects.length} objects`);
-            
             // Draw each active and visible object
             allObjects
                 .filter(obj => obj.active && obj.visible !== false)
@@ -450,40 +628,42 @@ class Engine {
                 });
         }
 
-        // Draw GUI canvas if available
+        this.ctx.restore();
+
+        // Draw GUI canvas AFTER restoring transform (GUI should not be affected by viewport)
         if (this.guiCanvas) {
             this.ctx.save();
-            this.ctx.globalAlpha = 1.0; // Reset alpha for GUI
-            this.ctx.drawImage(this.guiCanvas, this.viewport.x, this.viewport.y, this.viewport.width, this.viewport.height);
+            this.ctx.globalAlpha = 1.0;
+            this.ctx.drawImage(this.guiCanvas, 0, 0);
             this.ctx.restore();
         }
-
-        this.ctx.restore();
     }
     
     applyViewportTransform() {
-        // Apply viewport offset
-        if (this.viewport.x || this.viewport.y) {
-            this.ctx.translate(-this.viewport.x || 0, -this.viewport.y || 0);
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+
+        // Apply viewport transformations in the correct order
+        
+        // 1. Translate to center for zoom and rotation
+        this.ctx.translate(centerX, centerY);
+        
+        // 2. Apply rotation
+        if (this.viewport.angle && this.viewport.angle !== 0) {
+            const radians = this.viewport.angle * Math.PI / 180;
+            this.ctx.rotate(radians);
         }
-
-        // Apply camera zoom if available
-        if (this.viewport.zoom) {
-            const centerX = this.canvas.width / 2;
-            const centerY = this.canvas.height / 2;
-
-            this.ctx.translate(centerX, centerY);
+        
+        // 3. Apply zoom
+        if (this.viewport.zoom && this.viewport.zoom !== 1) {
             this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
-
-            // Apply camera rotation if angle is set
-            if (this.viewport.angle && this.viewport.angle !== 0) {
-                // Convert degrees to radians
-                const radians = this.viewport.angle * Math.PI / 180;
-                this.ctx.rotate(radians);
-            }
-
-            this.ctx.translate(-centerX, -centerY);
         }
+        
+        // 4. Translate back and apply position offset + shake
+        this.ctx.translate(
+            -centerX - this.viewport.x + this.viewport.shake.x,
+            -centerY - this.viewport.y + this.viewport.shake.y
+        );
     }
     
     getAllObjects(objects) {
@@ -508,23 +688,31 @@ class Engine {
     
         console.log(`Loading scene: ${scene.name}`);
         console.log(`Scene has ${scene.gameObjects.length} game objects`);
-    
+
         // Clone the scene to avoid modifying the editor version
         this.scene = scene;
         
-        // Copy viewport settings
+        // Copy viewport settings and validate them
         if (scene.settings) {
-            this.viewport.width = scene.settings.viewportWidth;
-            this.viewport.height = scene.settings.viewportHeight;
+            this.viewport.width = Math.max(1, scene.settings.viewportWidth || 800);
+            this.viewport.height = Math.max(1, scene.settings.viewportHeight || 600);
             this.viewport.x = scene.settings.viewportX || 0;
             this.viewport.y = scene.settings.viewportY || 0;
+            this.viewport.zoom = Math.max(0.1, scene.settings.viewportZoom || 1);
+            this.viewport.angle = scene.settings.viewportAngle || 0;
         }
+        
+        // Mark viewport as dirty to force update
+        this.viewport.dirty = true;
         
         // Deep clone the game objects to avoid modifying editor objects
         this.gameObjects = this.cloneGameObjects(scene.gameObjects);
         
         this.preloaded = false;
         this.canvasResized = true;
+        
+        // Force canvas resize with new viewport settings
+        this.resizeCanvas();
     }
 
     findGameObjectByName(name) {
@@ -633,13 +821,12 @@ class Engine {
         
         // Ensure we have positive dimensions to work with
         if (containerWidth <= 0 || containerHeight <= 0) {
-            //console.warn('Container has invalid dimensions:', containerWidth, containerHeight);
             return;
         }
         
         // Get the desired viewport dimensions from scene settings
-        const viewportWidth = this.scene?.settings?.viewportWidth || 800;
-        const viewportHeight = this.scene?.settings?.viewportHeight || 600;
+        const viewportWidth = this.viewport.width || 800;
+        const viewportHeight = this.viewport.height || 600;
         const aspectRatio = viewportWidth / viewportHeight;
         
         // Set physical dimensions based on scaling mode
@@ -675,6 +862,9 @@ class Engine {
             physicalHeight = viewportHeight * scale;
         }
         
+        // Apply pixel ratio for high-DPI displays
+        const pixelRatio = this.renderConfig.pixelRatio;
+        
         // Ensure we don't have zero dimensions
         physicalWidth = Math.max(1, Math.floor(physicalWidth));
         physicalHeight = Math.max(1, Math.floor(physicalHeight));
@@ -696,18 +886,31 @@ class Engine {
         this.canvas.style.maxWidth = 'none';
         this.canvas.style.maxHeight = 'none';
         
-        // IMPORTANT: Always use the viewport dimensions for the drawing surface
-        this.canvas.width = viewportWidth;
-        this.canvas.height = viewportHeight;
+        // Set the drawing surface size (use viewport dimensions)
+        this.canvas.width = viewportWidth * pixelRatio;
+        this.canvas.height = viewportHeight * pixelRatio;
+
+        // Scale the context for high-DPI displays
+        if (pixelRatio !== 1) {
+            this.ctx.scale(pixelRatio, pixelRatio);
+        }
 
         // Update GUI and background canvas sizes to match main canvas
         if (this.guiCanvas) {
             this.guiCanvas.width = this.canvas.width;
             this.guiCanvas.height = this.canvas.height;
+            const guiCtx = this.guiCanvas.getContext('2d');
+            if (pixelRatio !== 1) {
+                guiCtx.scale(pixelRatio, pixelRatio);
+            }
         }
         if (this.backgroundCanvas) {
             this.backgroundCanvas.width = this.canvas.width;
             this.backgroundCanvas.height = this.canvas.height;
+            const bgCtx = this.backgroundCanvas.getContext('2d');
+            if (pixelRatio !== 1) {
+                bgCtx.scale(pixelRatio, pixelRatio);
+            }
         }
         
         // Remove transform scaling which can cause positioning issues
@@ -724,9 +927,7 @@ class Engine {
         }
         
         this.canvasResized = true;
-        
-        // Debug info
-        //console.log(`Canvas resized: ${this.canvas.width}x${this.canvas.height} (physical display: ${physicalWidth}x${physicalHeight})`);
+        this.viewport.dirty = true; // Mark viewport as dirty after resize
     }
     
     cleanup() {
@@ -737,5 +938,8 @@ class Engine {
         
         window.removeEventListener('resize', this.resizeCanvas);
         window.removeEventListener('panel-resized', this.resizeCanvas);
+        
+        // Clear viewport callbacks
+        this.viewportCallbacks = [];
     }
 }

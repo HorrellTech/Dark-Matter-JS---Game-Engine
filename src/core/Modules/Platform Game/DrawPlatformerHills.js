@@ -1,5 +1,5 @@
 class DrawPlatformerHills extends Module {
-    static namespace = "Drawing";
+    static namespace = "Platform Game";
     static description = "Generates layered procedural hills with spline curves, parallax effect, infinite horizontal generation, and day/night cycle";
     static allowMultiple = false;
     static icon = "fa-mountain";
@@ -796,9 +796,21 @@ class DrawPlatformerHills extends Module {
     }
 
     loop(deltaTime) {
+        const startTime = performance.now();
+
         this.updateTime(deltaTime);
         this.updateMoonLight();
-        //this.updateClouds(deltaTime);
+
+        const endTime = performance.now();
+        const frameTime = endTime - startTime;
+
+        // Log performance warnings
+        if (frameTime > 5) { // More than 5ms
+            console.warn(`DrawPlatformerHills: Slow frame detected: ${frameTime.toFixed(2)}ms`);
+        }
+
+        //this.gameObject.position.x = 0;
+        //this.gameObject.position.y = 0;
     }
 
     // Update time progression
@@ -832,7 +844,13 @@ class DrawPlatformerHills extends Module {
     updateMoonLight() {
         if (!this.enableMoonLight) return;
 
-        const viewportBounds = this.getViewportBounds();
+        // Cache viewport bounds calculation
+        if (!this._cachedViewportBounds || performance.now() - this._lastViewportCache > 100) {
+            this._cachedViewportBounds = this.getViewportBounds();
+            this._lastViewportCache = performance.now();
+        }
+
+        const viewportBounds = this._cachedViewportBounds;
         const moonPos = this.getCelestialPosition(this.currentTime, viewportBounds, true);
         const moonVisible = this.isMoonVisible();
 
@@ -841,12 +859,11 @@ class DrawPlatformerHills extends Module {
             const phaseIntensity = 0.2 + (Math.cos((this.moonPhase - 0.5) * Math.PI * 2) * 0.5 + 0.5) * 0.8;
             let finalIntensity = this.moonLightIntensity * phaseIntensity;
 
-            // Simplified occlusion - just check if moon center is below terrain
+            // Simplified occlusion
             const occlusionFactor = this.calculateSimpleMoonOcclusion(moonPos, viewportBounds);
             finalIntensity *= (1 - occlusionFactor);
 
             if (this.moonLightId === null) {
-                // Create moon light source
                 this.moonLightId = this.addLightSource({
                     x: moonPos.x,
                     y: moonPos.y,
@@ -858,17 +875,13 @@ class DrawPlatformerHills extends Module {
                     enabled: true
                 });
             } else {
-                // Update existing moon light position and intensity
                 this.updateLightSource(this.moonLightId, {
                     x: moonPos.x,
                     y: moonPos.y,
-                    intensity: finalIntensity,
-                    color: this.moonLightColor,
-                    size: this.moonLightSize
+                    intensity: finalIntensity
                 });
             }
         } else {
-            // Moon not visible, remove light source
             if (this.moonLightId !== null) {
                 this.removeLightSource(this.moonLightId);
                 this.moonLightId = null;
@@ -877,6 +890,7 @@ class DrawPlatformerHills extends Module {
     }
 
     calculateSimpleMoonOcclusion(moonPos, viewportBounds) {
+        // Simplified occlusion calculation - just check basic collision
         const viewportX = window.engine?.viewport?.x || 0;
         const viewportY = window.engine?.viewport?.y || 0;
 
@@ -895,16 +909,8 @@ class DrawPlatformerHills extends Module {
             return 1.0; // Fully occluded
         }
 
-        // Check if moon is close to hills for partial occlusion
-        const distanceToHill = hillHeightAtMoonX - moonPos.y;
-        if (distanceToHill < this.moonSize) {
-            return Math.max(0, 1 - (distanceToHill / this.moonSize));
-        }
-
-        // Check buildings at moon position
-        const buildingOcclusion = this.checkBuildingOcclusionAtPoint(moonPos.x, moonPos.y, viewportBounds, viewportX, viewportY);
-
-        return buildingOcclusion;
+        // OPTIMIZATION: Removed complex building occlusion check
+        return 0; // Not occluded
     }
 
     checkBuildingOcclusionAtPoint(x, y, viewportBounds, viewportX, viewportY) {
@@ -1636,11 +1642,16 @@ class DrawPlatformerHills extends Module {
         const viewportWidth = window.engine.viewport.width || 800;
         const viewportHeight = window.engine.viewport.height || 600;
 
+        // viewport.x and viewport.y represent the world coordinates at the CENTER of the screen
+        // so we need to calculate the actual bounds from the center
+        const halfWidth = viewportWidth / 2;
+        const halfHeight = viewportHeight / 2;
+
         return {
-            left: viewportX,
-            right: viewportX + viewportWidth,
-            top: viewportY,
-            bottom: viewportY + viewportHeight
+            left: viewportX - halfWidth,
+            right: viewportX + halfWidth,
+            top: viewportY - halfHeight,
+            bottom: viewportY + halfHeight
         };
     }
 
@@ -1786,7 +1797,8 @@ class DrawPlatformerHills extends Module {
 
         const baseOpacity = nightStrength * 0.8;
 
-        if (this.lightSources.length === 0) {
+        // OPTIMIZATION: Skip complex light rendering if too many lights or low performance
+        if (this.lightSources.length === 0 || this.lightSources.length > 10) {
             guiCtx.globalAlpha = baseOpacity;
             guiCtx.fillStyle = "#000018";
             guiCtx.fillRect(0, 0, guiCtx.canvas.width, guiCtx.canvas.height);
@@ -1798,30 +1810,40 @@ class DrawPlatformerHills extends Module {
         const viewportY = window.engine?.viewport?.y || 0;
         const time = (window.engine?.time || performance.now()) * 0.001;
 
-        // Create darkness overlay
+        // OPTIMIZATION: Use smaller canvas for light calculations
+        const scaleFactor = 0.5; // Render lights at half resolution
+        const lightCanvasWidth = Math.floor(guiCtx.canvas.width * scaleFactor);
+        const lightCanvasHeight = Math.floor(guiCtx.canvas.height * scaleFactor);
+
         const offCanvas = document.createElement('canvas');
-        offCanvas.width = guiCtx.canvas.width;
-        offCanvas.height = guiCtx.canvas.height;
+        offCanvas.width = lightCanvasWidth;
+        offCanvas.height = lightCanvasHeight;
         const offCtx = offCanvas.getContext('2d');
 
-        // Draw base darkness
+        // Draw base darkness at reduced resolution
         offCtx.globalAlpha = baseOpacity;
         offCtx.fillStyle = "#000018";
-        offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+        offCtx.fillRect(0, 0, lightCanvasWidth, lightCanvasHeight);
 
         // Cut holes for light sources (simplified - no complex occlusion masks)
         offCtx.globalCompositeOperation = 'destination-out';
 
-        for (const light of this.lightSources) {
-            if (!light.enabled) continue;
+        // OPTIMIZATION: Limit the number of lights processed per frame
+        const maxLightsPerFrame = 8;
+        const visibleLights = this.lightSources
+            .filter(light => light.enabled)
+            .filter(light => {
+                const screenX = (light.x - viewportX) * scaleFactor;
+                const screenY = (light.y - viewportY) * scaleFactor;
+                return screenX > -light.size && screenX < lightCanvasWidth + light.size &&
+                    screenY > -light.size && screenY < lightCanvasHeight + light.size;
+            })
+            .slice(0, maxLightsPerFrame);
 
-            const screenX = light.x - viewportX;
-            const screenY = light.y - viewportY;
-
-            if (screenX < -light.size * 2 || screenX > offCanvas.width + light.size * 2 ||
-                screenY < -light.size * 2 || screenY > offCanvas.height + light.size * 2) {
-                continue;
-            }
+        for (const light of visibleLights) {
+            const screenX = (light.x - viewportX) * scaleFactor;
+            const screenY = (light.y - viewportY) * scaleFactor;
+            const scaledSize = light.size * scaleFactor;
 
             let currentIntensity = light.intensity;
             if (light.flicker) {
@@ -1832,50 +1854,37 @@ class DrawPlatformerHills extends Module {
             const nightBoost = 1 + (nightStrength * 0.8);
             currentIntensity *= nightBoost;
 
-            // Simple circular light without complex occlusion
+            // OPTIMIZATION: Use simpler gradient with fewer color stops
             const maskGradient = offCtx.createRadialGradient(
                 screenX, screenY, 0,
-                screenX, screenY, light.size
+                screenX, screenY, scaledSize
             );
 
             const coreAlpha = Math.min(1.0, currentIntensity * 0.8);
             maskGradient.addColorStop(0, `rgba(255, 255, 255, ${coreAlpha})`);
-
-            const falloffStart = Math.max(0.1, light.smoothness * 0.5);
-            const midAlpha = Math.min(0.8, currentIntensity * 0.6);
-            maskGradient.addColorStop(falloffStart, `rgba(255, 255, 255, ${midAlpha})`);
-
-            const edgeStart = Math.max(0.3, light.smoothness * 0.8);
-            const edgeAlpha = Math.min(0.6, currentIntensity * 0.4);
-            maskGradient.addColorStop(edgeStart, `rgba(255, 255, 255, ${edgeAlpha})`);
-
-            const outerEdge = Math.min(0.95, light.smoothness);
-            const outerAlpha = Math.min(0.3, currentIntensity * 0.2);
-            maskGradient.addColorStop(outerEdge, `rgba(255, 255, 255, ${outerAlpha})`);
+            maskGradient.addColorStop(0.5, `rgba(255, 255, 255, ${coreAlpha * 0.5})`);
             maskGradient.addColorStop(1, `rgba(255, 255, 255, 0)`);
 
             offCtx.fillStyle = maskGradient;
             offCtx.beginPath();
-            offCtx.arc(screenX, screenY, light.size, 0, Math.PI * 2);
+            offCtx.arc(screenX, screenY, scaledSize, 0, Math.PI * 2);
             offCtx.fill();
         }
 
-        // Draw the result
-        guiCtx.drawImage(offCanvas, 0, 0);
+        // OPTIMIZATION: Scale up with image smoothing disabled for better performance
+        guiCtx.imageSmoothingEnabled = false;
+        guiCtx.drawImage(offCanvas, 0, 0, guiCtx.canvas.width, guiCtx.canvas.height);
+        guiCtx.imageSmoothingEnabled = true;
 
-        // Add simplified colored light effects
+        // OPTIMIZATION: Simplified colored light effects with fewer lights
         guiCtx.globalCompositeOperation = 'lighter';
 
-        for (const light of this.lightSources) {
-            if (!light.enabled) continue;
+        const maxColoredLights = 4; // Further limit colored light effects
+        const coloredLights = visibleLights.slice(0, maxColoredLights);
 
+        for (const light of coloredLights) {
             const screenX = light.x - viewportX;
             const screenY = light.y - viewportY;
-
-            if (screenX < -light.size * 2 || screenX > guiCtx.canvas.width + light.size * 2 ||
-                screenY < -light.size * 2 || screenY > guiCtx.canvas.height + light.size * 2) {
-                continue;
-            }
 
             let currentIntensity = light.intensity;
             if (light.flicker) {
@@ -1883,30 +1892,22 @@ class DrawPlatformerHills extends Module {
                 currentIntensity = Math.max(0, light.intensity + flickerValue);
             }
 
-            const colorIntensity = currentIntensity * 0.3;
+            const colorIntensity = currentIntensity * 0.2; // Reduced intensity
             const lightRgb = this.hexToRgb(light.color);
 
-            // Simple colored light gradient
+            // OPTIMIZATION: Simpler colored light gradient
             const colorGradient = guiCtx.createRadialGradient(
                 screenX, screenY, 0,
-                screenX, screenY, light.size * 0.8
+                screenX, screenY, light.size * 0.6
             );
 
-            const coreAlpha = Math.min(0.4, colorIntensity * 0.5);
-            colorGradient.addColorStop(0, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${coreAlpha})`);
-
-            const falloffStart = Math.max(0.2, light.smoothness * 0.6);
-            const midAlpha = Math.min(0.3, colorIntensity * 0.4);
-            colorGradient.addColorStop(falloffStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${midAlpha})`);
-
-            const edgeStart = Math.max(0.5, light.smoothness * 0.9);
-            const edgeAlpha = Math.min(0.2, colorIntensity * 0.2);
-            colorGradient.addColorStop(edgeStart, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${edgeAlpha})`);
+            const alpha = Math.min(0.3, colorIntensity * 0.5);
+            colorGradient.addColorStop(0, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, ${alpha})`);
             colorGradient.addColorStop(1, `rgba(${lightRgb.r}, ${lightRgb.g}, ${lightRgb.b}, 0)`);
 
             guiCtx.fillStyle = colorGradient;
             guiCtx.beginPath();
-            guiCtx.arc(screenX, screenY, light.size * 0.8, 0, Math.PI * 2);
+            guiCtx.arc(screenX, screenY, light.size * 0.6, 0, Math.PI * 2);
             guiCtx.fill();
         }
 
@@ -2814,6 +2815,104 @@ class DrawPlatformerHills extends Module {
         }
     }
 
+    getGroundHeightAtExactPosition(globalX) {
+        if (!this.enableGround) return 0;
+
+        const segmentIndex = Math.floor(globalX / this.groundSegmentWidth);
+        const localX = globalX - (segmentIndex * this.groundSegmentWidth);
+        const points = this.getGroundSegment(segmentIndex);
+
+        if (points.length < 2) return this.getGroundHeightAtPosition(globalX);
+
+        // Match the drawing logic exactly
+        if (this.groundSmoothness > 0.3) {
+            // Use quadratic curve collision to match quadratic curve drawing
+            return this.getQuadraticGroundHeight(points, localX, segmentIndex);
+        } else {
+            // Use linear interpolation to match straight line drawing
+            return this.getLinearGroundHeight(points, localX);
+        }
+    }
+
+    getQuadraticGroundHeight(points, localX, segmentIndex) {
+        // Get adjacent segments for proper curve calculation
+        const prevSegmentPoints = segmentIndex > 0 ? this.getGroundSegment(segmentIndex - 1) : null;
+        const nextSegmentPoints = this.getGroundSegment(segmentIndex + 1);
+
+        // Build connected points array like in drawConnectedGroundSegments
+        let allPoints = [];
+
+        // Add last point from previous segment
+        if (prevSegmentPoints && prevSegmentPoints.length > 0) {
+            const lastPrevPoint = prevSegmentPoints[prevSegmentPoints.length - 1];
+            allPoints.push({
+                x: lastPrevPoint.x + (segmentIndex - 1) * this.groundSegmentWidth,
+                y: lastPrevPoint.y
+            });
+        }
+
+        // Add current segment points
+        for (let point of points) {
+            allPoints.push({
+                x: point.x + segmentIndex * this.groundSegmentWidth,
+                y: point.y
+            });
+        }
+
+        // Add first point from next segment
+        if (nextSegmentPoints && nextSegmentPoints.length > 0) {
+            const firstNextPoint = nextSegmentPoints[0];
+            allPoints.push({
+                x: firstNextPoint.x + (segmentIndex + 1) * this.groundSegmentWidth,
+                y: firstNextPoint.y
+            });
+        }
+
+        const globalX = localX + segmentIndex * this.groundSegmentWidth;
+
+        // Find the curve segment containing this X position
+        for (let i = 1; i < allPoints.length - 1; i++) {
+            const curr = allPoints[i];
+            const next = allPoints[i + 1];
+            const prev = allPoints[i - 1];
+
+            const midX = (curr.x + next.x) / 2;
+            const midY = (curr.y + next.y) / 2;
+            const prevMidX = (prev.x + curr.x) / 2;
+            const prevMidY = (prev.y + curr.y) / 2;
+
+            if (globalX >= prevMidX && globalX <= midX) {
+                const t = (globalX - prevMidX) / (midX - prevMidX);
+
+                // Quadratic Bezier: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
+                const oneMinusT = 1 - t;
+                const y = oneMinusT * oneMinusT * prevMidY +
+                    2 * oneMinusT * t * curr.y +
+                    t * t * midY;
+
+                return y;
+            }
+        }
+
+        // Fallback to linear
+        return this.getLinearGroundHeight(points, localX);
+    }
+
+    getLinearGroundHeight(points, localX) {
+        // Find surrounding points and interpolate linearly
+        for (let i = 0; i < points.length - 1; i++) {
+            if (localX >= points[i].x && localX <= points[i + 1].x) {
+                const t = (localX - points[i].x) / (points[i + 1].x - points[i].x);
+                return points[i].y + (points[i + 1].y - points[i].y) * t;
+            }
+        }
+
+        // Outside bounds
+        if (localX < points[0].x) return points[0].y;
+        if (localX > points[points.length - 1].x) return points[points.length - 1].y;
+        return points[0].y;
+    }
+
     // Public API: Get ground Y position at world X coordinate
     getGroundY(worldX) {
         return this.getGroundHeightAtPosition(worldX);
@@ -2840,75 +2939,6 @@ class DrawPlatformerHills extends Module {
             x: worldX,
             y: this.getGroundY(worldX)
         };
-    }
-
-    // Public API: Check collision with ground (returns collision info or null)
-    checkGroundCollision() {
-        this.wasGrounded = this.isGrounded;
-        this.isGrounded = false;
-        this.groundContactPoints = [];
-
-        if (!this.hillsModule) return;
-
-        const pos = this.gameObject.position;
-        let groundContact = null;
-
-        if (this.colliderShape === "circle") {
-            groundContact = this.checkCircleGroundCollision(pos);
-        } else {
-            groundContact = this.checkRectangleGroundCollision(pos);
-        }
-
-        if (groundContact) {
-            this.isGrounded = true;
-            this.lastGroundY = groundContact.groundY;
-
-            // IMPROVED: More precise position correction
-            if (this.colliderShape === "circle") {
-                const currentBottomY = pos.y + this.characterRadius;
-                const penetrationDepth = currentBottomY - groundContact.groundY;
-
-                // Only adjust position if significantly penetrating (more than 1 pixel)
-                if (penetrationDepth > 1) {
-                    const targetY = groundContact.groundY - this.characterRadius;
-                    this.gameObject.position.y = targetY;
-                }
-            } else {
-                const currentBottomY = pos.y + this.characterHeight / 2;
-                const penetrationDepth = currentBottomY - groundContact.groundY;
-
-                // Only adjust position if significantly penetrating (more than 1 pixel)
-                if (penetrationDepth > 1) {
-                    const targetY = groundContact.groundY - this.characterHeight / 2;
-                    this.gameObject.position.y = targetY;
-                }
-            }
-
-            // Stop downward movement when touching ground
-            if (this.velocity.y > 0) {
-                this.velocity.y = 0;
-                this.isJumping = false;
-                this.jumpHoldTimer = 0;
-            }
-        }
-    }
-
-    getPixelPerfectHeightAtPosition(globalX, layer = 0) {
-        // Find which segment this X position belongs to
-        const segmentIndex = Math.floor(globalX / this.segmentWidth);
-        const localX = globalX - (segmentIndex * this.segmentWidth);
-
-        // Get the hill segment points
-        const points = this.getHillSegment(segmentIndex, layer);
-        if (points.length < 2) return this.getHeightAtPosition(globalX, layer);
-
-        // For the front layer (layer 0), always use linear interpolation for precise collision
-        if (layer === 0 || !this.hillStyle || this.hillStyle === "pointy") {
-            return this.getLinearHeightAtPosition(points, localX);
-        }
-
-        // For back layers with rounded style, use spline collision
-        return this.getSplineHeightAtExactPosition(points, localX, segmentIndex, layer);
     }
 
     getPixelPerfectHeightAtPosition(globalX, layer = 0) {

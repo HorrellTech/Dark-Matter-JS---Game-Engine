@@ -6,8 +6,8 @@
  */
 class CameraController extends Module {
     static allowMultiple = false;
-    static namespace = "Controllers";
-    static description = "Makes this GameObject control the camera";
+    static namespace = "Camera";
+    static description = "Control the viewport camera for the game scene. ";
     static iconClass = "fas fa-video";
 
     constructor() {

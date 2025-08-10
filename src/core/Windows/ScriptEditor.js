@@ -1138,6 +1138,7 @@ Ask me to create, fix, or improve modules for your game!
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
 - Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
+- Viewport x and y is viewport center, and width and height is overall width/height
 
 **Module Template:**
 \`\`\`javascript
@@ -1154,7 +1155,7 @@ class MyModule extends Module {
         // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
             description: "Movement speed",
-            onChange: (val) => {
+            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
                 this.speed = val; // Update speed when property changes
             }
         });
@@ -1195,7 +1196,7 @@ window.MyModule = MyModule; // Register globally
 **Common Property Types:**
 - "number", "string", "boolean", "color"
 - "enum" (needs options: ["A", "B", "C"])
-- "vector2" (for Vector2 objects)
+- "vector2" (for Vector2 objects, does NOT have static methods for add / subtract etc)
 
 **Available Input:**
 - window.input.keyDown("w") - check if key held

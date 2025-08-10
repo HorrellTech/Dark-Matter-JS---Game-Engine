@@ -15,6 +15,9 @@
  * 7. onDestroy - Called when the module is being destroyed
  * 
  * 
+ * NOTE: If you want to draw to a position relative to the viewport, you need to make sure
+ * to set the gameObject's position to (0, 0) inside the module's loop method, to prevent any offset.
+ * 
  * 
   ICON URL ADDITION(for module icon)
  class MyCustomModule extends Module {
@@ -40,6 +43,10 @@ class MyCustomModule extends Module {
 class Module {
     static allowMultiple = true; // Allow multiple instances of this module type
     static drawInEditor = true; // Whether this module should be drawn in the editor
+    static namespace = "Core"; // Namespace for module categorization
+    static description = "Base module class for game objects"; // Description of the module
+    static iconClass = "fas fa-cube"; // Default icon class for the module
+
     /**
      * Create a new Module
      * @param {string} name - The name of this module instance
