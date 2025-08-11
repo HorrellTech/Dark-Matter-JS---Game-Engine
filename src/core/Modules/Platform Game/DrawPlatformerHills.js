@@ -809,8 +809,8 @@ class DrawPlatformerHills extends Module {
             console.warn(`DrawPlatformerHills: Slow frame detected: ${frameTime.toFixed(2)}ms`);
         }
 
-        //this.gameObject.position.x = 0;
-        //this.gameObject.position.y = 0;
+        this.gameObject.position.x = window.engine.viewport.x + (window.engine.viewport.width / 2) || 0;
+        this.gameObject.position.y = window.engine.viewport.y + (window.engine.viewport.height / 2) || 0;
     }
 
     // Update time progression
