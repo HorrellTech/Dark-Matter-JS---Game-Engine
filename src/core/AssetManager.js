@@ -247,44 +247,12 @@ class AssetManager {
  * @param {Object} assetsData - Object containing all asset data
  */
     addEmbeddedAssets(assetsData) {
-    console.log('Adding embedded assets:', Object.keys(assetsData));
+        console.log('Adding embedded assets:', Object.keys(assetsData));
 
-    for (const [path, assetInfo] of Object.entries(assetsData)) {
-        const normalizedPath = this.normalizePath(path);
+        for (const [path, assetInfo] of Object.entries(assetsData)) {
+            const normalizedPath = this.normalizePath(path);
 
-        // For images, ensure we load them as Image objects, not just data URLs
-        if (assetInfo.type && assetInfo.type.startsWith('image/')) {
-            // Load the image immediately
-            this.loadImage(assetInfo.content).then(img => {
-                // Store the loaded Image object in all path variations
-                const pathVariations = [
-                    path,
-                    normalizedPath,
-                    path.replace(/^[\/\\]+/, ''),
-                    normalizedPath.replace(/^[\/\\]+/, ''),
-                    '/' + path.replace(/^[\/\\]+/, ''),
-                    '/' + normalizedPath.replace(/^[\/\\]+/, ''),
-                    decodeURIComponent(path),
-                    decodeURIComponent(normalizedPath),
-                    path.split('/').pop(),
-                    normalizedPath.split('/').pop()
-                ];
-
-                pathVariations.forEach(variation => {
-                    if (variation) {
-                        this.cache[variation] = img;
-                    }
-                });
-
-                console.log(`Cached image asset: ${path} with ${pathVariations.length} path variations`);
-            }).catch(error => {
-                console.error(`Failed to load embedded image ${path}:`, error);
-            });
-        } else {
-            // Store the asset content directly in cache for non-images
-            this.cache[normalizedPath] = assetInfo.content;
-
-            // Also store under various path variations for better lookup
+            // Get all path variations
             const pathVariations = [
                 path,
                 normalizedPath,
@@ -298,16 +266,43 @@ class AssetManager {
                 normalizedPath.split('/').pop()
             ];
 
-            pathVariations.forEach(variation => {
-                if (variation && variation !== normalizedPath) {
-                    this.cache[variation] = assetInfo.content;
-                }
-            });
+            // For images, load them as Image objects and cache both data URL and Image
+            if (assetInfo.type && assetInfo.type.startsWith('image/')) {
+                // First, cache the data URL immediately for fallback
+                pathVariations.forEach(variation => {
+                    if (variation && !this.cache[variation]) {
+                        this.cache[variation + '_dataurl'] = assetInfo.content;
+                    }
+                });
 
-            console.log(`Cached asset: ${path} with ${pathVariations.length} path variations`);
+                // Then load as HTMLImageElement asynchronously
+                this.loadImage(assetInfo.content).then(img => {
+                    pathVariations.forEach(variation => {
+                        if (variation) {
+                            this.cache[variation] = img;
+                        }
+                    });
+                    console.log(`Cached image asset as HTMLImageElement: ${path} with ${pathVariations.length} path variations`);
+                }).catch(error => {
+                    console.error(`Failed to load embedded image ${path}:`, error);
+                    // Fallback: keep the data URL in cache
+                    pathVariations.forEach(variation => {
+                        if (variation && !this.cache[variation]) {
+                            this.cache[variation] = assetInfo.content;
+                        }
+                    });
+                });
+            } else {
+                // Store the asset content directly in cache for non-images
+                pathVariations.forEach(variation => {
+                    if (variation) {
+                        this.cache[variation] = assetInfo.content;
+                    }
+                });
+                console.log(`Cached asset: ${path} with ${pathVariations.length} path variations`);
+            }
         }
     }
-}
 
     /**
      * Manually adds a pre-loaded asset (like a base64 data URL) to the cache.
@@ -425,7 +420,27 @@ class AssetManager {
         for (const variation of pathVariations) {
             if (this.cache[variation]) {
                 console.log('Found asset in cache with path variation:', variation);
-                return Promise.resolve(this.cache[variation]);
+                const cachedAsset = this.cache[variation];
+
+                // Check if it's already a proper HTMLImageElement
+                if (cachedAsset instanceof HTMLImageElement) {
+                    return Promise.resolve(cachedAsset);
+                }
+
+                // If it's a data URL string for an image, convert it to HTMLImageElement
+                if (typeof cachedAsset === 'string' && cachedAsset.startsWith('data:image/')) {
+                    console.log('Converting cached data URL to HTMLImageElement for:', variation);
+                    return this.loadImage(cachedAsset).then(img => {
+                        // Update cache with the HTMLImageElement
+                        pathVariations.forEach(v => {
+                            this.cache[v] = img;
+                        });
+                        return img;
+                    });
+                }
+
+                // For non-image assets, return as-is
+                return Promise.resolve(cachedAsset);
             }
         }
 

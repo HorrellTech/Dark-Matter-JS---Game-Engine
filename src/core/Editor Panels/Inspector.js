@@ -1522,56 +1522,62 @@ class Inspector {
     }
 
     /**
-     * Show image selector dialog for SpriteRenderer
+     * Show image selector dialog for any module
+     * @param { Module } module - The module
+     * @param { string } propertyName - The property name(optional, defaults to 'imageAsset')
      */
-    showImageSelector(module) {
+    showImageSelector(module, propertyName = 'imageAsset') {
         // Create the image selector dialog
         const dialog = document.createElement('div');
         dialog.className = 'image-selector-dialog';
         dialog.innerHTML = `
-            <div class="image-selector-content">
-                <div class="image-selector-header">
-                    <h3>Select Image</h3>
-                    <button class="image-selector-close"><i class="fas fa-times"></i></button>
-                </div>
-                <div class="image-selector-tabs">
-                    <button class="image-tab active" data-tab="project">Project Images</button>
-                    <button class="image-tab" data-tab="url">From URL</button>
-                    <button class="image-tab" data-tab="upload">Upload</button>
-                </div>
-                <div class="image-selector-body">
-                    <div class="image-tab-content active" data-tab="project">
-                        <div class="project-images-grid">
-                            <div class="loading-message">Loading images...</div>
-                        </div>
-                    </div>
-                    <div class="image-tab-content" data-tab="url">
-                        <div class="url-input-container">
-                            <label>Image URL:</label>
-                            <input type="text" class="url-input" placeholder="https://example.com/image.png">
-                            <button class="load-url-button">Load</button>
-                        </div>
-                    </div>
-                    <div class="image-tab-content" data-tab="upload">
-                        <div class="upload-container">
-                            <div class="upload-dropzone">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                <p>Drag and drop an image file here</p>
-                                <p>or</p>
-                                <button class="upload-button">Select File</button>
-                            </div>
-                        </div>
+        <div class="image-selector-content">
+            <div class="image-selector-header">
+                <h3>Select Image for ${module.type}</h3>
+                <button class="image-selector-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="image-selector-tabs">
+                <button class="image-tab active" data-tab="project">Project Images</button>
+                <button class="image-tab" data-tab="url">From URL</button>
+                <button class="image-tab" data-tab="upload">Upload</button>
+            </div>
+            <div class="image-selector-body">
+                <div class="image-tab-content active" data-tab="project">
+                    <div class="project-images-grid">
+                        <div class="loading-message">Loading images...</div>
                     </div>
                 </div>
-                <div class="image-selector-footer">
-                    <button class="cancel-button">Cancel</button>
+                <div class="image-tab-content" data-tab="url">
+                    <div class="url-input-container">
+                        <label>Image URL:</label>
+                        <input type="text" class="url-input" placeholder="https://example.com/image.png">
+                        <button class="load-url-button">Load</button>
+                    </div>
+                </div>
+                <div class="image-tab-content" data-tab="upload">
+                    <div class="upload-container">
+                        <div class="upload-dropzone">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag and drop an image file here</p>
+                            <p>or</p>
+                            <button class="upload-button">Select File</button>
+                        </div>
+                    </div>
                 </div>
             </div>
-        `;
+            <div class="image-selector-footer">
+                <button class="cancel-button">Cancel</button>
+            </div>
+        </div>
+    `;
 
-        // Add styles for the dialog
-        const style = document.createElement('style');
-        style.innerHTML = `
+        // Add styles for the dialog (reuse existing styles)
+        const existingStyle = document.getElementById('image-selector-styles');
+        if (!existingStyle) {
+            const style = document.createElement('style');
+            style.id = 'image-selector-styles';
+            style.innerHTML = `
+            /* Image selector dialog styles */
             .image-selector-dialog {
                 position: fixed;
                 top: 0;
@@ -1742,7 +1748,9 @@ class Inspector {
                 cursor: pointer;
             }
         `;
-        document.head.appendChild(style);
+            document.head.appendChild(style);
+        }
+
         document.body.appendChild(dialog);
 
         // Set up tab switching
@@ -1761,7 +1769,7 @@ class Inspector {
         });
 
         // Load project images
-        this.loadProjectImages(dialog.querySelector('.project-images-grid'), module);
+        this.loadProjectImagesGeneric(dialog.querySelector('.project-images-grid'), module, propertyName);
 
         // Set up URL tab functionality
         const urlInput = dialog.querySelector('.url-input');
@@ -1771,10 +1779,10 @@ class Inspector {
             const url = urlInput.value.trim();
             if (url) {
                 try {
-                    await module.loadImageFromUrl(url);
+                    this.setModuleImageProperty(module, propertyName, url);
                     this.refreshModuleUI(module);
-                    this.editor.refreshCanvas();
-                    this.closeDialog(dialog, style);
+                    this.editor?.refreshCanvas();
+                    this.closeDialog(dialog);
                 } catch (error) {
                     console.error('Failed to load image from URL:', error);
                     alert('Failed to load image. Please check the URL and try again.');
@@ -1801,8 +1809,8 @@ class Inspector {
 
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 const file = e.dataTransfer.files[0];
-                await this.handleImageUpload(file, module);
-                this.closeDialog(dialog, style);
+                await this.handleImageUpload(file, module, propertyName);
+                this.closeDialog(dialog);
             }
         });
 
@@ -1813,8 +1821,8 @@ class Inspector {
 
             input.onchange = async (e) => {
                 if (e.target.files && e.target.files[0]) {
-                    await this.handleImageUpload(e.target.files[0], module);
-                    this.closeDialog(dialog, style);
+                    await this.handleImageUpload(e.target.files[0], module, propertyName);
+                    this.closeDialog(dialog);
                 }
             };
 
@@ -1826,7 +1834,7 @@ class Inspector {
         const cancelButton = dialog.querySelector('.cancel-button');
 
         const closeHandler = () => {
-            this.closeDialog(dialog, style);
+            this.closeDialog(dialog);
         };
 
         closeButton.addEventListener('click', closeHandler);
@@ -1834,17 +1842,18 @@ class Inspector {
     }
 
     /**
-     * Close the image selector dialog
-     */
-    closeDialog(dialog, style) {
-        document.body.removeChild(dialog);
-        document.head.removeChild(style);
+    * Close the image selector dialog
+    */
+    closeDialog(dialog) {
+        if (dialog && dialog.parentNode) {
+            document.body.removeChild(dialog);
+        }
     }
 
     /**
-     * Handle image upload for SpriteRenderer
-     */
-    async handleImageUpload(file, module) {
+ * Handle image upload for any module
+ */
+    async handleImageUpload(file, module, propertyName = 'imageAsset') {
         if (!file.type.startsWith('image/')) {
             alert('The selected file is not an image.');
             return;
@@ -1879,13 +1888,112 @@ class Inspector {
                 // If not overwriting, just use the existing file
             }
 
-            await module.setSprite(path);
+            // Set the image property
+            this.setModuleImageProperty(module, propertyName, path);
 
             this.refreshModuleUI(module);
-            this.editor.refreshCanvas();
+            this.editor?.refreshCanvas();
         } catch (error) {
             console.error('Error uploading image:', error);
             alert('Failed to upload image. Please try again.');
+        }
+    }
+
+    /**
+     * Load project images for the image selector (generic version)
+     */
+    async loadProjectImagesGeneric(container, module, propertyName) {
+        container.innerHTML = '<div class="loading-message">Loading images...</div>';
+
+        try {
+            const fileBrowser = this.editor?.fileBrowser;
+            if (!fileBrowser) {
+                container.innerHTML = '<div class="loading-message">File Browser not available</div>';
+                return;
+            }
+
+            // Get all files
+            const allFiles = await fileBrowser.getAllFiles();
+
+            // Filter for image files using the Inspector's isImagePath method
+            const imageFiles = allFiles.filter(file => {
+                return file.type === 'file' && this.isImagePath(file.path);
+            });
+
+            if (imageFiles.length === 0) {
+                container.innerHTML = '<div class="loading-message">No images found in project</div>';
+                return;
+            }
+
+            // Clear container
+            container.innerHTML = '';
+
+            // Get current image value for selection highlighting
+            let currentImagePath = '';
+            if (typeof module.getProperty === 'function') {
+                const value = module.getProperty(propertyName);
+                currentImagePath = typeof value === 'string' ? value : (value?.path || '');
+            } else if (propertyName in module) {
+                const value = module[propertyName];
+                currentImagePath = typeof value === 'string' ? value : (value?.path || '');
+            }
+
+            // Add image items
+            imageFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'project-image-item';
+                item.dataset.path = file.path;
+
+                // Check if this is the currently selected image
+                if (currentImagePath === file.path) {
+                    item.classList.add('selected');
+                }
+
+                const filename = file.name || file.path.split('/').pop();
+
+                item.innerHTML = `
+                <div class="project-image-thumbnail">
+                    <img src="${file.path}" alt="${filename}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div class="image-error" style="display:none; color:#888; text-align:center; padding:10px;">
+                        <i class="fas fa-image"></i><br>
+                        Image Error
+                    </div>
+                </div>
+                <div class="project-image-name" title="${file.path}">${filename}</div>
+            `;
+
+                item.addEventListener('click', async () => {
+                    // Remove selected class from all items
+                    container.querySelectorAll('.project-image-item').forEach(i => {
+                        i.classList.remove('selected');
+                    });
+
+                    // Add selected class to this item
+                    item.classList.add('selected');
+
+                    // Set the image property
+                    this.setModuleImageProperty(module, propertyName, file.path);
+
+                    // Refresh UI
+                    this.refreshModuleUI(module);
+                    this.editor?.refreshCanvas();
+
+                    // Close dialog after a short delay to provide visual feedback
+                    setTimeout(() => {
+                        const dialog = container.closest('.image-selector-dialog');
+                        if (dialog) {
+                            this.closeDialog(dialog);
+                        }
+                    }, 300);
+                });
+
+                container.appendChild(item);
+            });
+
+            console.log(`Found ${imageFiles.length} image files in project`);
+        } catch (error) {
+            console.error('Error loading project images:', error);
+            container.innerHTML = '<div class="loading-message error">Error loading images: ' + error.message + '</div>';
         }
     }
 
@@ -2006,89 +2114,49 @@ class Inspector {
      * @returns {string} HTML for the property UI
      */
     generatePropertyUI(prop, module) {
-    if (prop.type === '_header') {
-        // Render header with optional color and custom styles
-        const color = prop.options?.color || prop.options?.textColor || '';
-        const customStyle = prop.options?.style || '';
-        const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
-        return `<div class="property-header" style="${combinedStyle}">${prop.text}</div>`;
-    }
-    if (prop.type === '_divider') {
-        const customStyle = prop.options?.style || '';
-        return `<hr class="property-divider" style="${customStyle}">`;
-    }
-    if (prop.type === '_helpText') {
-        const color = prop.options?.color || '';
-        const customStyle = prop.options?.style || '';
-        const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
-        return `<div class="property-help" style="${combinedStyle}">${prop.text}</div>`;
-    }
-    if (prop.type === '_groupStart') {
-        const groupColor = prop.group.options?.color ? `border-left:4px solid ${prop.group.options.color};padding-left:8px;` : '';
-        const customStyle = prop.group.options?.style || '';
-        const combinedStyle = `${groupColor}${customStyle}`;
-        return `<div class="property-group" style="${combinedStyle}"><div class="group-label">${prop.group.name}</div>`;
-    }
-    if (prop.type === '_groupEnd') {
-        return `</div>`;
-    }
-    if (prop.type === '_space') {
-        const customStyle = prop.options?.style || '';
-        return `<div style="height:${prop.height};${customStyle}"></div>`;
-    }
-    if (prop.type === '_colorBlock') {
-        const color = prop.options?.color || '#3498db';
-        const customStyle = prop.options?.style || '';
-        const combinedStyle = `background:${color};height:20px;border-radius:4px;margin:4px 0;${customStyle}`;
-        return `<div class="property-color-block" style="${combinedStyle}"></div>`;
-    }
-    if (prop.type === '_button') {
-        // Button will be wired up after insertion
-        const customStyle = prop.options?.style || '';
-        return `<button id="${prop.name}" class="property-btn" style="${customStyle}">${prop.label}</button>`;
-    }
+        if (prop.type === '_header') {
+            // Render header with optional color and custom styles
+            const color = prop.options?.color || prop.options?.textColor || '';
+            const customStyle = prop.options?.style || '';
+            const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
+            return `<div class="property-header" style="${combinedStyle}">${prop.text}</div>`;
+        }
+        if (prop.type === '_divider') {
+            const customStyle = prop.options?.style || '';
+            return `<hr class="property-divider" style="${customStyle}">`;
+        }
+        if (prop.type === '_helpText') {
+            const color = prop.options?.color || '';
+            const customStyle = prop.options?.style || '';
+            const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
+            return `<div class="property-help" style="${combinedStyle}">${prop.text}</div>`;
+        }
+        if (prop.type === '_groupStart') {
+            const groupColor = prop.group.options?.color ? `border-left:4px solid ${prop.group.options.color};padding-left:8px;` : '';
+            const customStyle = prop.group.options?.style || '';
+            const combinedStyle = `${groupColor}${customStyle}`;
+            return `<div class="property-group" style="${combinedStyle}"><div class="group-label">${prop.group.name}</div>`;
+        }
+        if (prop.type === '_groupEnd') {
+            return `</div>`;
+        }
+        if (prop.type === '_space') {
+            const customStyle = prop.options?.style || '';
+            return `<div style="height:${prop.height};${customStyle}"></div>`;
+        }
+        if (prop.type === '_colorBlock') {
+            const color = prop.options?.color || '#3498db';
+            const customStyle = prop.options?.style || '';
+            const combinedStyle = `background:${color};height:20px;border-radius:4px;margin:4px 0;${customStyle}`;
+            return `<div class="property-color-block" style="${combinedStyle}"></div>`;
+        }
+        if (prop.type === '_button') {
+            // Button will be wired up after insertion
+            const customStyle = prop.options?.style || '';
+            return `<button id="${prop.name}" class="property-btn" style="${customStyle}">${prop.label}</button>`;
+        }
 
-    // Get the property value, trying different access methods
-    let value;
-    if (typeof module.getProperty === 'function') {
-        value = module.getProperty(prop.name, prop.value);
-    } else if (prop.name in module) {
-        value = module[prop.name];
-    } else if (module.properties && prop.name in module.properties) {
-        value = module.properties[prop.name];
-    } else {
-        value = prop.value;
-    }
-
-    // Add drag and drop styles on first call
-    this.addDragAndDropStyles();
-
-    const inputId = `prop-${module.id}-${prop.name}`;
-
-    // Get description for tooltip from options if available
-    const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-    // Get custom styles for the property row and input
-    const rowStyle = prop.options?.rowStyle || '';
-    const inputStyle = prop.options?.inputStyle || prop.options?.style || '';
-    const labelStyle = prop.options?.labelStyle || '';
-
-    // Check if the property is a Vector2 or Vector3
-    if (value instanceof Vector2 || value instanceof Vector3 ||
-        (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
-        // Generate collapsible vector fields
-        return this.generateVectorUI(prop, module, value);
-    }
-
-    // Handle image assets specially
-    if (
-        prop.type === 'image' ||
-        (prop.type === 'asset' && prop.options?.assetType === 'image')
-    ) {
-        const inputId = `prop-${module.id}-${prop.name}`;
-        const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-        // Get current value
+        // Get the property value, trying different access methods
         let value;
         if (typeof module.getProperty === 'function') {
             value = module.getProperty(prop.name, prop.value);
@@ -2100,46 +2168,95 @@ class Inspector {
             value = prop.value;
         }
 
-        // Safely extract path
-        let path = '';
-        if (typeof value === 'string') {
-            path = value;
-        } else if (value && typeof value === 'object' && 'path' in value) {
-            path = value.path;
+        // Add drag and drop styles on first call
+        this.addDragAndDropStyles();
+
+        const inputId = `prop-${module.id}-${prop.name}`;
+
+        // Get description for tooltip from options if available
+        const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+
+        // Get custom styles for the property row and input
+        const rowStyle = prop.options?.rowStyle || '';
+        const inputStyle = prop.options?.inputStyle || prop.options?.style || '';
+        const labelStyle = prop.options?.labelStyle || '';
+
+        // Check if the property is a Vector2 or Vector3
+        if (value instanceof Vector2 || value instanceof Vector3 ||
+            (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
+            // Generate collapsible vector fields
+            return this.generateVectorUI(prop, module, value);
         }
 
-        return `
+        // Handle image assets specially
+        if (
+            prop.type === 'image' ||
+            prop.type === 'asset' && prop.options?.assetType === 'image'
+        ) {
+            const inputId = `prop-${module.id}-${prop.name}`;
+            const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+
+            // Get current value
+            let value;
+            if (typeof module.getProperty === 'function') {
+                value = module.getProperty(prop.name, prop.value);
+            } else if (prop.name in module) {
+                value = module[prop.name];
+            } else if (module.properties && prop.name in module.properties) {
+                value = module.properties[prop.name];
+            } else {
+                value = prop.value;
+            }
+
+            // Safely extract path
+            let path = '';
+            if (typeof value === 'string') {
+                path = value;
+            } else if (value && typeof value === 'object' && 'path' in value) {
+                path = value.path;
+            }
+
+            return `
         <div class="property-row" style="${rowStyle}">
-            <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+            <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
             <div class="image-drop-target" 
                 data-prop-name="${prop.name}"
-                ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
+                data-property-type="image"
+                data-asset-type="image"
                 title="Drag an image here or click to select"
                 style="${inputStyle}">
-                ${path ? `<div class="image-path">${this.formatImagePath(path)}</div>` : ''}
+                ${path ? `<div class="image-path">${this.formatImagePath(path)}</div>` : '<span class="drop-hint">Drop image here</span>'}
+                <div class="image-actions">
+                    <button class="asset-btn select-btn" title="Select Image" type="button">
+                        <i class="fas fa-folder-open"></i>
+                    </button>
+                    <button class="asset-btn clear-btn" title="Clear Image" type="button" ${!path ? 'disabled' : ''}>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
         </div>
     `;
-    }
+        }
 
-    // Add slider if requested
-    let sliderHtml = '';
-    if (prop.options?.slider) {
-        const sliderStyle = prop.options?.sliderStyle || '';
-        sliderHtml = `
+        // Add slider if requested
+        let sliderHtml = '';
+        if (prop.options?.slider) {
+            const sliderStyle = prop.options?.sliderStyle || '';
+            sliderHtml = `
             <input type="range" id="${inputId}-slider" class="property-slider"
                 data-prop-name="${prop.name}"
                 min="${prop.options.min ?? 0}" max="${prop.options.max ?? 100}"
                 step="${prop.options.step ?? 0.01}" value="${value}"
                 style="${sliderStyle}">
             `;
-    }
+        }
 
-    // Add dropdown for enum or custom options
-    let dropdownHtml = '';
-    if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
-        const options = prop.options?.options || [];
-        dropdownHtml = `
+        // Add dropdown for enum or custom options
+        let dropdownHtml = '';
+        if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
+            const options = prop.options?.options || [];
+            dropdownHtml = `
             <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" 
                 title="${tooltip}" style="${inputStyle}">
                 ${options.map(option => `
@@ -2149,19 +2266,19 @@ class Inspector {
                 `).join('')}
             </select>
             `;
-    }
+        }
 
-    let helpHtml = '';
-    if (prop.options?.helpText) {
-        const helpStyle = prop.options?.helpStyle || '';
-        helpHtml = `<div class="property-help" style="${helpStyle}">${prop.options.helpText}</div>`;
-    }
+        let helpHtml = '';
+        if (prop.options?.helpText) {
+            const helpStyle = prop.options?.helpStyle || '';
+            helpHtml = `<div class="property-help" style="${helpStyle}">${prop.options.helpText}</div>`;
+        }
 
-    let labelHtml = `<label for="${inputId}" title="${tooltip}" style="${prop.options?.textColor ? `color:${prop.options.textColor};` : ''}${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>`;
+        let labelHtml = `<label for="${inputId}" title="${tooltip}" style="${prop.options?.textColor ? `color:${prop.options.textColor};` : ''}${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>`;
 
-    switch (prop.type) {
-        case 'number':
-            return `
+        switch (prop.type) {
+            case 'number':
+                return `
                 <div class="property-row" style="${rowStyle}">
                     ${labelHtml}
                     <input type="number" id="${inputId}" class="property-input"
@@ -2177,8 +2294,8 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
-        case 'boolean':
-            return `
+            case 'boolean':
+                return `
                 <div class="property-row" style="${rowStyle}">
                     <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
                     <input type="checkbox" id="${inputId}" class="property-input" 
@@ -2187,8 +2304,8 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
-        case 'color':
-            return `
+            case 'color':
+                return `
                 <div class="property-row" style="${rowStyle}">
                     <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
                     <input type="color" id="${inputId}" class="property-input" 
@@ -2197,11 +2314,11 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
-        case 'enum':
-        case 'dropdown':
-        case 'select':
-            const options = prop.options?.options || [];
-            return `
+            case 'enum':
+            case 'dropdown':
+            case 'select':
+                const options = prop.options?.options || [];
+                return `
                 <div class="property-row" style="${rowStyle}">
                     <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
                     <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
@@ -2215,17 +2332,17 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
-        case 'vector2':
-            return this.generateVectorUI(prop, module, value);
-        case 'vector3':
-            return this.generateVectorUI(prop, module, value);
-        case 'polygon':
-            return this.generatePolygonUI(prop, module);
+            case 'vector2':
+                return this.generateVectorUI(prop, module, value);
+            case 'vector3':
+                return this.generateVectorUI(prop, module, value);
+            case 'polygon':
+                return this.generatePolygonUI(prop, module);
 
-        case 'gameobject':
-            const objName = value ? (value.name || 'Unnamed GameObject') : 'None';
-            const objId = value ? value.id : null;
-            return `
+            case 'gameobject':
+                const objName = value ? (value.name || 'Unnamed GameObject') : 'None';
+                const objId = value ? value.id : null;
+                return `
                 <div class="property-row" style="${rowStyle}">
                     ${labelHtml}
                     <div class="gameobject-field" data-prop-name="${prop.name}" data-object-id="${objId || ''}" style="${inputStyle}">
@@ -2247,12 +2364,12 @@ class Inspector {
                 </div>
             `;
 
-        case 'button':
-            const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
-            const btnClass = prop.options?.style || 'primary';
-            const btnIcon = prop.options?.icon ? `<i class="${prop.options.icon}"></i> ` : '';
-            const buttonStyle = prop.options?.buttonStyle || inputStyle;
-            return `
+            case 'button':
+                const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
+                const btnClass = prop.options?.style || 'primary';
+                const btnIcon = prop.options?.icon ? `<i class="${prop.options.icon}"></i> ` : '';
+                const buttonStyle = prop.options?.buttonStyle || inputStyle;
+                return `
                 <div class="property-row" style="${rowStyle}">
                     <div class="property-button-container">
                         <button id="${btnId}" class="property-button ${btnClass}" 
@@ -2265,14 +2382,14 @@ class Inspector {
                 </div>
             `;
 
-        case 'range':
-        case 'slider':
-            const min = prop.options?.min ?? 0;
-            const max = prop.options?.max ?? 100;
-            const step = prop.options?.step ?? 1;
-            const rangeStyle = prop.options?.rangeStyle || inputStyle;
-            const valueStyle = prop.options?.valueStyle || '';
-            return `
+            case 'range':
+            case 'slider':
+                const min = prop.options?.min ?? 0;
+                const max = prop.options?.max ?? 100;
+                const step = prop.options?.step ?? 1;
+                const rangeStyle = prop.options?.rangeStyle || inputStyle;
+                const valueStyle = prop.options?.valueStyle || '';
+                return `
                 <div class="property-row" style="${rowStyle}">
                     ${labelHtml}
                     <div class="range-container">
@@ -2286,10 +2403,10 @@ class Inspector {
                 </div>
             `;
 
-        case 'file':
-            const fileName = value ? (typeof value === 'string' ? value.split('/').pop() : 'File selected') : 'No file selected';
-            const fileTypes = prop.options?.accept || '*';
-            return `
+            case 'file':
+                const fileName = value ? (typeof value === 'string' ? value.split('/').pop() : 'File selected') : 'No file selected';
+                const fileTypes = prop.options?.accept || '*';
+                return `
                 <div class="property-row" style="${rowStyle}">
                     ${labelHtml}
                     <div class="file-input-container" data-prop-name="${prop.name}" style="${inputStyle}">
@@ -2311,20 +2428,20 @@ class Inspector {
                 </div>
             `;
 
-        case 'array':
-            return this.generateArrayUI(prop, module, value);
+            case 'array':
+                return this.generateArrayUI(prop, module, value);
 
-        case 'object':
-            return this.generateObjectUI(prop, module, value);
+            case 'object':
+                return this.generateObjectUI(prop, module, value);
 
-        case 'curve':
-            return this.generateCurveUI(prop, module, value);
+            case 'curve':
+                return this.generateCurveUI(prop, module, value);
 
-        case 'gradient':
-            return this.generateGradientUI(prop, module, value);
+            case 'gradient':
+                return this.generateGradientUI(prop, module, value);
 
-        default:
-            return `
+            default:
+                return `
                 <div class="property-row" style="${rowStyle}">
                     <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
                     <input type="text" id="${inputId}" class="property-input" 
@@ -2333,12 +2450,12 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
+        }
     }
-}
 
     /**
- * Generate UI for array properties
- */
+    * Generate UI for array properties
+    */
     generateArrayUI(prop, module, value) {
         const arrayId = `array-${module.id}-${prop.name}`;
         const items = Array.isArray(value) ? value : [];
@@ -2695,21 +2812,21 @@ class Inspector {
      * @returns {string} HTML for the vector UI
      */
     generateVectorUI(prop, module, vector) {
-    const propName = prop.name;
-    const collapsibleId = `vector-${module.id}-${propName}`;
-    const isCollapsed = this.getVectorCollapseState(collapsibleId);
-    const isVector3 = vector.z !== undefined;
+        const propName = prop.name;
+        const collapsibleId = `vector-${module.id}-${propName}`;
+        const isCollapsed = this.getVectorCollapseState(collapsibleId);
+        const isVector3 = vector.z !== undefined;
 
-    // Get tooltip from options if available
-    const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
+        // Get tooltip from options if available
+        const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
 
-    // Get custom styles
-    const rowStyle = prop.options?.rowStyle || '';
-    const headerStyle = prop.options?.headerStyle || '';
-    const componentStyle = prop.options?.componentStyle || prop.options?.inputStyle || prop.options?.style || '';
-    const labelStyle = prop.options?.labelStyle || '';
+        // Get custom styles
+        const rowStyle = prop.options?.rowStyle || '';
+        const headerStyle = prop.options?.headerStyle || '';
+        const componentStyle = prop.options?.componentStyle || prop.options?.inputStyle || prop.options?.style || '';
+        const labelStyle = prop.options?.labelStyle || '';
 
-    return `
+        return `
         <div class="property-row vector-property" style="${rowStyle}">
             <div class="vector-header" style="${headerStyle}">
                 <label title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(propName)}</label>
@@ -2756,7 +2873,7 @@ class Inspector {
             </div>
         </div>
         `;
-}
+    }
 
     /**
      * Format a property name for display (camelCase to Title Case)
@@ -2843,9 +2960,42 @@ class Inspector {
             }
         };
 
-        // Image drop targets
-        container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"]').forEach(element => {
+        // Image drop targets - Updated to handle both data attributes
+        container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"], .image-drop-target').forEach(element => {
             this.setupImageDropTarget(element, module);
+        });
+
+        // Set up select and clear buttons for image assets
+        container.querySelectorAll('.image-drop-target').forEach(dropTarget => {
+            const propName = dropTarget.dataset.propName;
+            const selectBtn = dropTarget.querySelector('.select-btn');
+            const clearBtn = dropTarget.querySelector('.clear-btn');
+
+            if (selectBtn) {
+                selectBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.showImageSelector(module, propName);
+                });
+            }
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Clear the image
+                    if (typeof module.setProperty === 'function') {
+                        module.setProperty(propName, null);
+                    } else {
+                        module[propName] = null;
+                    }
+
+                    // Update UI
+                    this.refreshModuleUI(module);
+                    updateGameObject();
+                });
+            }
         });
 
         // GameObject drop targets
@@ -3224,8 +3374,8 @@ class Inspector {
     }
 
     /**
- * Setup GameObject drop target
- */
+    * Setup GameObject drop target
+    */
     setupGameObjectDropTarget(element, module) {
         const propName = element.dataset.propName;
 
@@ -3496,13 +3646,13 @@ class Inspector {
     }
 
     /**
-     * Check if a path is an image file based on extension
-     * @param {string} path - File path to check
-     * @returns {boolean} - True if it's an image path
-     */
+ * Check if a path is an image file based on extension
+ * @param {string} path - File path to check
+ * @returns {boolean} - True if it's an image path
+ */
     isImagePath(path) {
-        if (!path) return false;
-        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+        if (!path || typeof path !== 'string') return false;
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'];
         const lowercasePath = path.toLowerCase();
         return imageExtensions.some(ext => lowercasePath.endsWith(ext));
     }
@@ -3519,39 +3669,72 @@ class Inspector {
         styleElement.textContent = `
             /* Image drop target styles (existing) */
             .image-drop-target {
-                position: relative;
-                border: 2px dashed #555;
-                border-radius: 4px;
-                min-height: 40px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            }
-            
-            .image-drop-target:hover {
-                border-color: #0078D7;
-            }
-            
-            .image-drop-target.drag-over {
-                border-color: #0078D7;
-                background-color: rgba(0, 120, 215, 0.05);
-            }
-            
-            .image-drop-target::after {
-                content: "Drag image here";
-                position: absolute;
-                color: #888;
-                pointer-events: none;
-                opacity: 0;
-                transition: opacity 0.2s ease;
-            }
-            
-            .image-drop-target:empty::after,
-            .image-drop-target.drag-over::after {
-                opacity: 1;
-            }
+            position: relative;
+            border: 2px dashed #555;
+            border-radius: 4px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            padding: 8px;
+            background: #333;
+        }
+        
+        .image-drop-target:hover {
+            border-color: #0078D7;
+            background: #3a3a3a;
+        }
+        
+        .image-drop-target.drag-over {
+            border-color: #0078D7;
+            background-color: rgba(0, 120, 215, 0.1);
+        }
+        
+        .image-drop-target .drop-hint {
+            color: #888;
+            font-style: italic;
+            flex: 1;
+        }
+        
+        .image-drop-target .image-path {
+            color: #ccc;
+            font-size: 12px;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .image-drop-target .image-actions {
+            display: flex;
+            gap: 4px;
+            margin-left: 8px;
+        }
+        
+        .image-drop-target .asset-btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #444;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .image-drop-target .asset-btn:hover:not(:disabled) {
+            background: #555;
+        }
+        
+        .image-drop-target .asset-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
             
             .property-input[data-property-type="image"],
             .property-input[data-asset-type="image"] {
@@ -4366,10 +4549,10 @@ class Inspector {
     }
 
     /**
-     * Set up drag and drop for image properties
-     * @param {HTMLElement} element - The element that should accept image drops
-     * @param {Module} module - The module with the image property
-     */
+    * Set up drag and drop for image properties
+    * @param {HTMLElement} element - The element that should accept image drops
+    * @param {Module} module - The module with the image property
+    */
     setupImageDropTarget(element, module) {
         const propertyName = element.dataset.propName || element.dataset.property;
         if (!propertyName) return;
@@ -4405,21 +4588,29 @@ class Inspector {
                 const imagePath = await this.getImagePathFromDropEvent(e.dataTransfer);
                 if (!imagePath) return false;
 
+                // Try the module's specialized image setter first
+                if (typeof module.setParticleImage === 'function' && propertyName === 'imageAsset') {
+                    await module.setParticleImage(imagePath);
+                }
                 // Special handling for SpriteRenderer modules
-                if (module instanceof SpriteRenderer && propertyName === 'imageAsset') {
+                else if (module instanceof SpriteRenderer && propertyName === 'imageAsset') {
                     await module.setSprite(imagePath);
                 }
                 // Special handling for modules with setSprite method
                 else if (typeof module.setSprite === 'function' && propertyName === 'imageAsset') {
                     await module.setSprite(imagePath);
                 }
-                // Try the module's setProperty method first
-                else if (typeof module.setProperty === 'function') {
-                    module.setProperty(propertyName, imagePath);
+                // Check if module has a specific image drop handler
+                else if (typeof module.handleImageDrop === 'function') {
+                    const result = await module.handleImageDrop(e.dataTransfer);
+                    if (!result) {
+                        // Fallback to generic property setting
+                        this.setModuleImageProperty(module, propertyName, imagePath);
+                    }
                 }
-                // Fallback to direct property assignment
+                // Generic property setting
                 else {
-                    module[propertyName] = imagePath;
+                    this.setModuleImageProperty(module, propertyName, imagePath);
                 }
 
                 // Refresh UI and canvas
@@ -4433,21 +4624,30 @@ class Inspector {
             }
         });
 
-        // Make it clickable to open file browser if module supports it
-        element.addEventListener('click', () => {
-            // Special handling for SpriteRenderer
-            if (module instanceof SpriteRenderer) {
-                if (typeof this.showImageSelector === 'function') {
-                    this.showImageSelector(module);
-                } else if (typeof module.loadImageFromFile === 'function') {
-                    module.loadImageFromFile();
-                }
-            }
-            // Generic handling for other modules
-            else if (typeof module.loadImageFromFile === 'function') {
-                module.loadImageFromFile();
-            }
+        // Make it clickable to open file browser
+        element.addEventListener('click', (e) => {
+            // Don't trigger on button clicks
+            if (e.target.closest('button')) return;
+
+            this.showImageSelector(module, propertyName);
         });
+    }
+
+    /**
+     * Generic method to set an image property on a module
+     * @param {Module} module - The module
+     * @param {string} propertyName - The property name
+     * @param {string} imagePath - The image path
+     */
+    setModuleImageProperty(module, propertyName, imagePath) {
+        // Try the module's setProperty method first
+        if (typeof module.setProperty === 'function') {
+            module.setProperty(propertyName, imagePath);
+        }
+        // Fallback to direct property assignment
+        else {
+            module[propertyName] = imagePath;
+        }
     }
 
     /**

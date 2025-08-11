@@ -265,6 +265,7 @@ class ParticleSystem extends Module {
                 fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
                 onDropCallback: this.handleImageDrop.bind(this),
                 showImageDropdown: true
+
             });
 
             this.exposeProperty("imageScaleMode", "enum", this.imageScaleMode, {
@@ -708,12 +709,28 @@ class ParticleSystem extends Module {
             // Try asset manager (runtime mode)
             if (window.assetManager) {
                 try {
-                    this._image = await window.assetManager.loadAsset(this.imageAsset.path);
+                    const loadedImage = await window.assetManager.loadAsset(this.imageAsset.path);
                     console.log('Particle image loaded via asset manager successfully');
-                    this._imageWidth = this._image.naturalWidth || this._image.width;
-                    this._imageHeight = this._image.naturalHeight || this._image.height;
-                    this._isImageLoaded = true;
-                    return this._image;
+
+                    // Ensure we have a valid HTMLImageElement
+                    if (loadedImage && loadedImage instanceof HTMLImageElement) {
+                        this._image = loadedImage;
+                        this._imageWidth = loadedImage.naturalWidth || loadedImage.width;
+                        this._imageHeight = loadedImage.naturalHeight || loadedImage.height;
+                        this._isImageLoaded = true;
+
+                        // Validate the image is actually loaded
+                        if (this._image.complete && this._imageWidth > 0 && this._imageHeight > 0) {
+                            console.log('Particle image validated successfully, dimensions:', this._imageWidth, 'x', this._imageHeight);
+                            return this._image;
+                        } else {
+                            console.warn('Asset manager returned invalid image, trying fallback');
+                            throw new Error('Invalid image from asset manager');
+                        }
+                    } else {
+                        console.warn('Asset manager did not return a valid HTMLImageElement');
+                        throw new Error('Invalid image type from asset manager');
+                    }
                 } catch (assetManagerError) {
                     console.warn('Asset manager failed, trying fallback:', assetManagerError.message);
                 }
@@ -730,6 +747,31 @@ class ParticleSystem extends Module {
             this._image = null;
             this._isImageLoaded = false;
             return null;
+        }
+    }
+
+    /**
+ * Force reload the particle image
+ */
+    async forceReloadImage() {
+        console.log('Force reloading particle image...');
+        this._image = null;
+        this._isImageLoaded = false;
+        this._imageWidth = 0;
+        this._imageHeight = 0;
+
+        if (this.imageAsset && this.imageAsset.path) {
+            try {
+                const image = await this.loadImage();
+                if (image) {
+                    console.log('Force reload successful');
+                    if (window.editor) {
+                        window.editor.refreshCanvas();
+                    }
+                }
+            } catch (error) {
+                console.error('Force reload failed:', error);
+            }
         }
     }
 
@@ -803,7 +845,51 @@ class ParticleSystem extends Module {
     }
 
     async loadImageFromData(dataUrl) {
-        return this.loadImageFromDataURL(dataUrl);
+        return new Promise((resolve, reject) => {
+            if (!dataUrl || typeof dataUrl !== 'string') {
+                reject(new Error('Invalid data URL provided'));
+                return;
+            }
+
+            const img = new Image();
+
+            img.onload = () => {
+                // Validate the loaded image
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    reject(new Error('Image loaded but has invalid dimensions'));
+                    return;
+                }
+
+                this._image = img;
+                this._imageWidth = img.naturalWidth;
+                this._imageHeight = img.naturalHeight;
+                this._isImageLoaded = true;
+                console.log('Particle image loaded from data URL, dimensions:', this._imageWidth, 'x', this._imageHeight);
+
+                // Trigger canvas refresh if in editor
+                if (window.editor) {
+                    window.editor.refreshCanvas();
+                }
+
+                resolve(img);
+            };
+
+            img.onerror = (error) => {
+                console.error('Failed to load particle image from data URL:', error);
+                this._image = null;
+                this._isImageLoaded = false;
+                reject(new Error('Failed to load image from data URL'));
+            };
+
+            // Set a timeout to prevent hanging
+            setTimeout(() => {
+                if (!this._isImageLoaded) {
+                    reject(new Error('Image loading timeout'));
+                }
+            }, 10000);
+
+            img.src = dataUrl;
+        });
     }
 
     start() {
@@ -1022,8 +1108,17 @@ class ParticleSystem extends Module {
         // Update life
         particle.life -= deltaTime;
 
-        // Apply gravity
-        particle.vy += this.gravity * deltaTime;
+        // Apply gravity relative to GameObject's rotation
+        if (this.gravity !== 0) {
+            const gameObjectAngle = (this.gameObject?.angle || 0) * Math.PI / 180;
+
+            // Calculate gravity direction relative to GameObject rotation
+            const gravityX = Math.sin(gameObjectAngle) * this.gravity * deltaTime;
+            const gravityY = Math.cos(gameObjectAngle) * this.gravity * deltaTime;
+
+            particle.vx += gravityX;
+            particle.vy += gravityY;
+        }
 
         // Apply drag
         particle.vx *= this.drag;
@@ -1044,6 +1139,12 @@ class ParticleSystem extends Module {
 
     draw(ctx) {
         if (!this.enabled || this.particles.length === 0) return;
+
+        // Additional safety check for canvas context
+        if (!ctx || typeof ctx.save !== 'function') {
+            console.warn('Invalid canvas context provided to ParticleSystem.draw');
+            return;
+        }
 
         ctx.save();
 
@@ -1168,8 +1269,12 @@ class ParticleSystem extends Module {
     }
 
     drawImageParticle(ctx, particle, currentSize) {
-        if (!this._image || !this._isImageLoaded) {
-            // Fallback to circle if image not loaded
+        // Enhanced validation - check if image is actually a valid HTMLImageElement
+        if (!this._image || !this._isImageLoaded ||
+            !(this._image instanceof HTMLImageElement) ||
+            !this._image.complete ||
+            this._image.naturalWidth === 0) {
+            // Fallback to circle if image not loaded or invalid
             this.drawFallbackParticle(ctx, currentSize);
             return;
         }
@@ -1217,12 +1322,17 @@ class ParticleSystem extends Module {
             this.applyAlphaGradient(ctx, drawWidth, drawHeight);
         }
 
-        // Draw the image
-        ctx.drawImage(
-            this._image,
-            -drawWidth / 2, -drawHeight / 2,
-            drawWidth, drawHeight
-        );
+        try {
+            // Draw the image with additional error handling
+            ctx.drawImage(
+                this._image,
+                -drawWidth / 2, -drawHeight / 2,
+                drawWidth, drawHeight
+            );
+        } catch (error) {
+            console.warn('Error drawing particle image, falling back to shape:', error);
+            this.drawFallbackParticle(ctx, currentSize);
+        }
 
         ctx.restore();
     }
@@ -1353,7 +1463,15 @@ class ParticleSystem extends Module {
     }
 
     drawFallbackParticle(ctx, currentSize) {
-        ctx.fillStyle = "#ffffff";
+        // Use the current particle color if available
+        const lifeRatio = 1; // Assume full life for fallback
+        const startRGB = this.hexToRgb(this.startColor);
+        const endRGB = this.hexToRgb(this.endColor);
+        const currentR = Math.round(startRGB.r);
+        const currentG = Math.round(startRGB.g);
+        const currentB = Math.round(startRGB.b);
+
+        ctx.fillStyle = `rgb(${currentR}, ${currentG}, ${currentB})`;
         ctx.beginPath();
         ctx.arc(0, 0, currentSize / 2, 0, Math.PI * 2);
         ctx.fill();
@@ -1438,8 +1556,9 @@ class ParticleSystem extends Module {
         json.enableBatching = this.enableBatching;
         json.cullingEnabled = this.cullingEnabled;
 
-        // Mark for embedded data handling
-        json.useEmbeddedData = true;
+        // Handle image data embedding for export (like SpriteRenderer)
+        json.imageData = null; // Don't embed here - let ExportManager handle it
+        json.useEmbeddedData = true; // Indicate that this uses embedded data
 
         return json;
     }
@@ -1493,11 +1612,21 @@ class ParticleSystem extends Module {
         if (json.imageFlipX !== undefined) this.imageFlipX = json.imageFlipX;
         if (json.imageFlipY !== undefined) this.imageFlipY = json.imageFlipY;
 
-        // Handle image loading similar to SpriteRenderer
+        // Control properties
+        if (json.autoStart !== undefined) this.autoStart = json.autoStart;
+        if (json.loopEmitter !== undefined) this.loopEmitter = json.loopEmitter;
+        if (json.duration !== undefined) this.duration = json.duration;
+
+        // Performance properties
+        if (json.useObjectPooling !== undefined) this.useObjectPooling = json.useObjectPooling;
+        if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
+        if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
+
+        // Handle image loading - MATCH SpriteRenderer exactly
         const hasExistingImage = this._image && this._isImageLoaded;
 
         if (json.useEmbeddedData === true && json.imageData) {
-            // Exported game with embedded data
+            // Exported game with embedded data - PRIORITY CASE
             console.log('Loading particle image from embedded data');
             this.loadImageFromData(json.imageData).then(() => {
                 console.log('Successfully loaded particle image from embedded data');
@@ -1513,7 +1642,7 @@ class ParticleSystem extends Module {
             };
 
         } else if (json.imageData && json.useEmbeddedData !== false) {
-            // Legacy support
+            // Legacy support for imageData without useEmbeddedData flag
             console.log('Loading particle image from legacy embedded data');
             this.loadImageFromData(json.imageData).then(() => {
                 console.log('Successfully loaded particle image from legacy embedded data');
@@ -1529,7 +1658,7 @@ class ParticleSystem extends Module {
             };
 
         } else if (json.imageAsset && json.imageAsset.path) {
-            // Development mode
+            // Development mode with normal imageAsset
             console.log('Loading particle image from path:', json.imageAsset.path);
             try {
                 if (window.AssetReference && typeof window.AssetReference.fromJSON === 'function') {
@@ -1553,7 +1682,7 @@ class ParticleSystem extends Module {
             }
 
         } else {
-            // No valid image data
+            // No valid image data found
             if (!hasExistingImage) {
                 console.log('No particle image data found in JSON, clearing image asset');
                 this.imageAsset = {
@@ -1568,16 +1697,6 @@ class ParticleSystem extends Module {
                 console.log('No particle image data in JSON, but keeping existing loaded image');
             }
         }
-
-        // Control properties
-        if (json.autoStart !== undefined) this.autoStart = json.autoStart;
-        if (json.loopEmitter !== undefined) this.loopEmitter = json.loopEmitter;
-        if (json.duration !== undefined) this.duration = json.duration;
-
-        // Performance properties
-        if (json.useObjectPooling !== undefined) this.useObjectPooling = json.useObjectPooling;
-        if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
-        if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
     }
 }
 
