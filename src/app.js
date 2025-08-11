@@ -1120,9 +1120,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Call this after engine initialization
     setupGameViewControls();
 
-    // Enable global touch compatibility
-    enableGlobalTouchCompat();
-
     // Add canvas tab handlers
     document.querySelectorAll('.canvas-tab').forEach(tab => {
         tab.addEventListener('click', () => {

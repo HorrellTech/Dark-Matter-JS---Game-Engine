@@ -9,7 +9,7 @@ class ProjectManager {
         this.lastSaveTime = Date.now();
         this._startSaveReminderTimer();
         this.showSaveReminder = true;
-        
+
         this.lastProjectFileHandle = null;
         this._loadLastProjectFileHandle();
         this._setupKeyboardShortcuts();
@@ -46,7 +46,7 @@ class ProjectManager {
     _showSaveReminderToast() {
         if (document.getElementById('save-reminder-toast')) return; // Only one at a time
 
-        if(!this.showSaveReminder) return; // User has disabled reminders
+        if (!this.showSaveReminder) return; // User has disabled reminders
 
         // Play a "boop" sound
         try {
@@ -616,7 +616,7 @@ class ProjectManager {
                     await this._loadProjectFromHandle(handle[0]);
                     return true;
                 }
-            } catch {}
+            } catch { }
         } else if (this.lastProjectFileHandle) {
             // Not supported, just show a message
             // Could auto-load from IndexedDB or similar if implemented
@@ -631,7 +631,7 @@ class ProjectManager {
             if (handleStr) {
                 try {
                     this.lastProjectFileHandle = JSON.parse(handleStr);
-                } catch {}
+                } catch { }
             }
         } else {
             this.lastProjectFileHandle = localStorage.getItem('lastProjectFileName') || null;
@@ -810,6 +810,18 @@ class ProjectManager {
 
     _setupKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
+            // Check if any modal is open
+            const scriptEditorOpen = window.scriptEditor && window.scriptEditor.isOpen;
+            const anyModalOpen = document.querySelector('.se-modal[style*="flex"]') ||
+                document.querySelector('.modal[style*="block"]') ||
+                document.querySelector('.modal[style*="flex"]') ||
+                scriptEditorOpen;
+
+            // Don't trigger shortcuts if any modal is open
+            if (anyModalOpen) {
+                return;
+            }
+
             if (e.ctrlKey || e.metaKey) {
                 if (e.key === 's' || e.key === 'S') {
                     e.preventDefault();

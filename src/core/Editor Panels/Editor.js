@@ -605,7 +605,7 @@ class Editor {
      */
     handleTouchStart(e) {
         // Prevent default behavior to avoid scrolling the page
-        //e.preventDefault();
+        e.preventDefault();
 
         const rect = this.canvas.getBoundingClientRect();
 
@@ -794,7 +794,7 @@ class Editor {
      */
     handleTouchEnd(e) {
         // Prevent default behavior
-        //e.preventDefault();
+        e.preventDefault();
 
         if (this.dragInfo.dragging) {
             // --- End viewport dragging ---
