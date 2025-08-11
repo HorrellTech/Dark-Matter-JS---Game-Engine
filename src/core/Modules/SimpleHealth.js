@@ -231,6 +231,13 @@ class SimpleHealth extends Module {
     draw(ctx) {
         if (!this.showHealthBar || this.isDead) return;
         
+        // Save current transformation state
+        ctx.save();
+        
+        // Reset rotation to 0 while keeping position
+        const currentTransform = ctx.getTransform();
+        ctx.setTransform(1, 0, 0, 1, currentTransform.e, currentTransform.f);
+        
         // Calculate health percentage
         const healthPercent = this.currentHealth / this.maxHealth;
         
@@ -256,6 +263,9 @@ class SimpleHealth extends Module {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.fillRect(barX, barY, this.healthBarWidth, this.healthBarHeight);
         }
+        
+        // Restore transformation state
+        ctx.restore();
     }
 
     toJSON() {

@@ -6,7 +6,9 @@ class HierarchyManager {
         this.draggedObject = null;
         this.draggedOver = null;
         this.dropIndicator = null; // Element to show where item will be dropped
-        this.selectedObject = null;
+        this.selectedObject = null;        
+        this.prefabManager = new PrefabManager(this); // Add prefab manager
+
         this.initializeUI();
         this.createDropIndicator();
 
@@ -40,6 +42,9 @@ class HierarchyManager {
                 </button>
                 <button class="hierarchy-button" id="duplicateGameObject" title="Duplicate GameObject">
                     <i class="fas fa-clone"></i>
+                </button>
+                <button class="hierarchy-button" id="createPrefab" title="Create Prefab">
+                    <i class="fas fa-cube"></i>
                 </button>
             </div>
             <div class="hierarchy-list"></div>
@@ -84,6 +89,9 @@ class HierarchyManager {
         });
         document.getElementById('duplicateGameObject').addEventListener('click', () => {
             this.duplicateSelectedGameObject();
+        });
+        document.getElementById('createPrefab').addEventListener('click', () => {
+            this.createPrefabFromSelected();
         });
     
         // Context menu for right-clicks on any part of the hierarchy panel
@@ -170,6 +178,13 @@ class HierarchyManager {
             e.preventDefault();
             e.stopPropagation(); // Stop propagation to prevent conflicts
             
+            // Check for prefab files being dragged
+            if (e.dataTransfer.types.includes('application/prefab-file')) {
+                this.listContainer.classList.add('drag-over-prefab');
+                e.dataTransfer.dropEffect = 'copy';
+                return;
+            }
+            
             // Only process if there's a dragged object
             if (!this.draggedObject) return;
             
@@ -207,6 +222,7 @@ class HierarchyManager {
             // Only remove highlight if we're actually leaving the container
             if (!this.listContainer.contains(e.relatedTarget)) {
                 this.listContainer.classList.remove('drag-over-root');
+                this.listContainer.classList.remove('drag-over-prefab');
                 this.hideDropIndicator();
             }
         });
@@ -216,7 +232,15 @@ class HierarchyManager {
             e.stopPropagation();
             
             this.listContainer.classList.remove('drag-over-root');
+            this.listContainer.classList.remove('drag-over-prefab');
             this.hideDropIndicator();
+            
+            // Handle prefab drops
+            if (e.dataTransfer.types.includes('application/prefab-file')) {
+                const prefabPath = e.dataTransfer.getData('application/prefab-file');
+                this.instantiatePrefabAtCenter(prefabPath);
+                return;
+            }
             
             // Get the dragged object
             let draggedObj = this.draggedObject;
@@ -292,6 +316,11 @@ class HierarchyManager {
             { 
                 label: 'Delete',
                 action: () => this.confirmDeleteGameObject(gameObject)
+            },
+            { label: '──────────', disabled: true },
+            { 
+                label: 'Create Prefab',
+                action: () => this.createPrefabFromSelected()
             },
             { label: '──────────', disabled: true },
             { 
@@ -890,6 +919,23 @@ class HierarchyManager {
             window.autoSaveManager.autoSave();
         }
     }
+
+    /**
+     * Create a prefab from the selected GameObject
+     */
+    async createPrefabFromSelected() {
+        if (!this.selectedObject) {
+            this.showNotification('No GameObject selected', 'warning');
+            return;
+        }
+
+        try {
+            await this.prefabManager.createPrefab(this.selectedObject);
+        } catch (error) {
+            console.error('Error creating prefab:', error);
+            this.showNotification(`Error creating prefab: ${error.message}`, 'error');
+        }
+    }
     
     /**
      * Add a new GameObject to the scene
@@ -1122,5 +1168,109 @@ class HierarchyManager {
         if (window.autoSaveManager) {
             window.autoSaveManager.autoSave();
         }
+    }
+
+    /**
+     * Instantiate a prefab at the center of the editor viewport
+     * @param {string} prefabPath - Path to the prefab file
+     */
+    async instantiatePrefabAtCenter(prefabPath) {
+        try {
+            if (!this.editor.fileBrowser) {
+                console.error('File browser not available');
+                return;
+            }
+
+            // Read prefab file
+            const content = await this.editor.fileBrowser.readFile(prefabPath);
+            if (!content) {
+                console.error('Could not read prefab file:', prefabPath);
+                return;
+            }
+
+            const prefabData = JSON.parse(content);
+            
+            // Instantiate at center of viewport
+            const centerPosition = this.editor.getWorldCenterOfView();
+            const instantiated = this.prefabManager.instantiatePrefab(prefabData, centerPosition);
+            
+            // Refresh hierarchy and select the new object
+            this.refreshHierarchy();
+            this.selectGameObject(instantiated);
+            this.editor.refreshCanvas();
+
+            // Mark scene as dirty
+            this.editor.activeScene.markDirty();
+
+            // Trigger auto-save if available
+            if (window.autoSaveManager) {
+                window.autoSaveManager.autoSave();
+            }
+
+            this.showNotification(`Instantiated prefab: ${prefabData.metadata?.name || prefabData.name}`, 'success');
+
+        } catch (error) {
+            console.error('Error instantiating prefab:', error);
+            this.showNotification(`Error instantiating prefab: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Show a notification message
+     */
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        
+        // Style the notification
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 4px;
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+        `;
+
+        // Set background color based on type
+        switch (type) {
+            case 'success':
+                notification.style.backgroundColor = '#4CAF50';
+                break;
+            case 'warning':
+                notification.style.backgroundColor = '#FF9800';
+                break;
+            case 'error':
+                notification.style.backgroundColor = '#F44336';
+                break;
+            default:
+                notification.style.backgroundColor = '#2196F3';
+        }
+
+        document.body.appendChild(notification);
+
+        // Animate in
+        setTimeout(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateX(0)';
+        }, 10);
+
+        // Animate out and remove
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
     }
 }

@@ -40,6 +40,8 @@ class CameraController extends Module {
         this.followOwner = true;
         this.followOwnerAngle = false; // Angle to follow the owner at
         this.followAngleOffset = 0; // Angle offset when following owner
+        this.currentAngle = 0; // Current camera angle for smooth lerping
+        this.targetAngle = 0; // Target angle for smooth lerping
 
         // Expose properties
         this.exposeProperty("followOwner", "boolean", true, {
@@ -47,10 +49,10 @@ class CameraController extends Module {
             onChange: (val) => { this.followOwner = val; }
         });
 
-        this.exposeProperty("followOwnerAngle", "boolean", false, {
+        /*this.exposeProperty("followOwnerAngle", "boolean", false, {
             description: "Whether camera follows the owner's angle",
             onChange: (val) => { this.followOwnerAngle = val; }
-        });
+        });*/
 
         this.exposeProperty("followAngleOffset", "number", 0, {
             description: "Angle offset when following owner",
@@ -252,27 +254,18 @@ class CameraController extends Module {
         let halfWidth = viewportWidth / 2 / this.zoom;
         let halfHeight = viewportHeight / 2 / this.zoom;
 
-        let angle = 0;
-        if (this.followOwnerAngle) {
-            const owner = this.gameObject;
-            if (owner) {
-                angle = owner.getWorldRotation() + this.followAngleOffset;
-                engine.viewport.angle = angle;
-            } else {
-                engine.viewport.angle = 0;
-            }
-        } else {
-            engine.viewport.angle = 0;
-        }
+        // Use the smoothly lerped angle
+        engine.viewport.angle = this.currentAngle;
 
         if (this.shakeTimer > 0) {
             shakeOffsetX = (Math.random() * 2 - 1) * this.shakeIntensity;
             shakeOffsetY = (Math.random() * 2 - 1) * this.shakeIntensity;
         }
 
-        // Center viewport on camera position (no rotation offset)
+        // Always use the camera's interpolated position, regardless of angle following
         engine.viewport.x = (centerX - halfWidth + shakeOffsetX);
         engine.viewport.y = (centerY - halfHeight + shakeOffsetY);
+
         engine.viewport.width = viewportWidth;
         engine.viewport.height = viewportHeight;
         engine.viewport.zoom = this.zoom;
@@ -290,13 +283,51 @@ class CameraController extends Module {
         // Handle following with smooth lerp
         const targetPos = this.followOwner ? this.getTargetPosition() : (this._targetPosition || this.position);
 
-        // Smoothly move towards target
+        // Update target angle if following owner angle
+        if (this.followOwnerAngle && this.gameObject) {
+            // Get the owner's angle directly - it should already be in the correct format
+            this.targetAngle = this.gameObject.angle + this.followAngleOffset;
+        } else {
+            this.targetAngle = 0;
+        }
+
+        // Smoothly move towards target position
         if (!this.position.equals(targetPos)) {
             // Calculate how far to move this frame using follow speed
             const lerpFactor = 1.0 - Math.pow(this.positionDamping, deltaTime * this.followSpeed);
 
             this.position.x = this.position.x + (targetPos.x - this.position.x) * lerpFactor;
             this.position.y = this.position.y + (targetPos.y - this.position.y) * lerpFactor;
+        }
+
+        // Smooth angle changes when following owner angle
+        if (this.followOwnerAngle && this.gameObject) {
+            // Use the same lerp factor as position for consistent feel
+            const angleLerpFactor = 1.0 - Math.pow(this.positionDamping, deltaTime * this.followSpeed);
+
+            // Handle angle wrapping for shortest rotation path
+            let angleDiff = this.targetAngle - this.currentAngle;
+
+            // Normalize angle difference to [-π, π] for shortest rotation
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+            this.currentAngle += angleDiff * angleLerpFactor;
+        } else if (!this.followOwnerAngle) {
+            // Reset to 0 when not following angle
+            if (Math.abs(this.currentAngle) > 0.001) {
+                const angleLerpFactor = 1.0 - Math.pow(this.positionDamping, deltaTime * this.followSpeed);
+                
+                let angleDiff = -this.currentAngle;
+                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+                
+                this.currentAngle += angleDiff * angleLerpFactor;
+                
+                if (Math.abs(this.currentAngle) < 0.001) {
+                    this.currentAngle = 0;
+                }
+            }
         }
 
         // Smooth zoom changes
@@ -414,6 +445,10 @@ class CameraController extends Module {
         json.positionDamping = this.positionDamping;
         json.zoomDamping = this.zoomDamping;
         json.offset = { x: this.offset.x, y: this.offset.y };
+        json.followOwnerAngle = this.followOwnerAngle;
+        json.followAngleOffset = this.followAngleOffset;
+        json.currentAngle = this.currentAngle;
+        json.targetAngle = this.targetAngle;
 
         // Store bounds if set
         if (this.bounds) {
@@ -443,6 +478,10 @@ class CameraController extends Module {
         if (json.zoomSpeed !== undefined) this.zoomSpeed = json.zoomSpeed;
         if (json.positionDamping !== undefined) this.positionDamping = json.positionDamping;
         if (json.zoomDamping !== undefined) this.zoomDamping = json.zoomDamping;
+        if (json.followOwnerAngle !== undefined) this.followOwnerAngle = json.followOwnerAngle;
+        if (json.followAngleOffset !== undefined) this.followAngleOffset = json.followAngleOffset;
+        if (json.currentAngle !== undefined) this.currentAngle = json.currentAngle;
+        if (json.targetAngle !== undefined) this.targetAngle = json.targetAngle;
 
         if (json.offset) {
             this.offset = new Vector2(json.offset.x, json.offset.y);

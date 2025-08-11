@@ -715,6 +715,68 @@ class Engine {
         this.resizeCanvas();
     }
 
+    /**
+     * Instantiate a prefab by name at a specific position
+     * @param {string} prefabName - Name of the prefab to instantiate
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {GameObject} parent - Optional parent GameObject
+     * @returns {GameObject|null} The instantiated GameObject or null if prefab not found
+     */
+    instantiatePrefab(prefabName, x = 0, y = 0, parent = null) {
+        // Check if we're in the editor
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            const position = new Vector2(x, y);
+            return window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position, parent);
+        }
+        
+        // Check if we're in an exported game
+        if (window.prefabManager) {
+            const position = { x: x, y: y };
+            return window.prefabManager.instantiatePrefabByName(prefabName, position, parent);
+        }
+        
+        console.error('No prefab manager available');
+        return null;
+    }
+
+    /**
+     * Check if a prefab exists by name
+     * @param {string} prefabName - Name of the prefab to check
+     * @returns {boolean} True if the prefab exists
+     */
+    hasPrefab(prefabName) {
+        // Check if we're in the editor
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            return window.editor.hierarchy.prefabManager.hasPrefab(prefabName);
+        }
+        
+        // Check if we're in an exported game
+        if (window.prefabManager) {
+            return window.prefabManager.hasPrefab(prefabName);
+        }
+        
+        return false;
+    }
+
+    /**
+     * Get all available prefab names
+     * @returns {Array<string>} Array of prefab names
+     */
+    getAvailablePrefabs() {
+        // Check if we're in the editor
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            return window.editor.hierarchy.prefabManager.getAvailablePrefabs();
+        }
+        
+        // Check if we're in an exported game
+        if (window.prefabManager) {
+            return window.prefabManager.getAllPrefabNames();
+        }
+        
+        return [];
+    }
+
     findGameObjectByName(name) {
         // Use a simple recursive search to find the first matching game object by name
         const findInObjects = (objects) => {

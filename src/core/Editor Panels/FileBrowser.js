@@ -302,6 +302,32 @@ class FileBrowser {
                 }, 100);
             }
 
+            // For prefab files, add specific data
+            if (item.dataset.type === 'file' && item.dataset.name.endsWith('.prefab')) {
+                // Add a special data type for prefab files
+                e.dataTransfer.setData('application/prefab-file', item.dataset.path);
+
+                // Create a custom ghost image for dragging
+                const ghostImage = document.createElement('div');
+                ghostImage.className = 'drag-ghost-prefab';
+                ghostImage.innerHTML = `<i class="fas fa-cube"></i> ${item.dataset.name}`;
+                ghostImage.style.backgroundColor = '#9C27B0';
+                ghostImage.style.color = '#fff';
+                ghostImage.style.padding = '8px 12px';
+                ghostImage.style.borderRadius = '4px';
+                ghostImage.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+                ghostImage.style.position = 'absolute';
+                ghostImage.style.top = '-1000px';
+                document.body.appendChild(ghostImage);
+
+                e.dataTransfer.setDragImage(ghostImage, 15, 15);
+
+                // Clean up the ghost image after drag
+                setTimeout(() => {
+                    document.body.removeChild(ghostImage);
+                }, 100);
+            }
+
             e.dataTransfer.effectAllowed = 'copyMove';
         });
 
@@ -1809,6 +1835,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                 }
             } else if (extension === 'js') {
                 icon = 'fa-file-code';
+            } else if (extension === 'prefab') {
+                icon = 'fa-cube';
+                element.classList.add('prefab-file');
+            } else if (extension === 'scene') {
+                icon = 'fa-gamepad';
             } else if (extension === 'json') {
                 icon = 'fa-file-code'; // Or a different icon if you prefer
             } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
@@ -2784,5 +2815,80 @@ window.${pascalCaseName} = ${pascalCaseName};
         });
 
         this.breadcrumb.innerHTML = html;
+    }
+
+    handleMouseDown(e) {
+        if (e.button === 0) { // Left click// Use the adjusted mouse position
+            const screenPos = this.getAdjustedMousePosition(e);
+            const worldPos = this.screenToWorldPosition(screenPos);
+
+            // Check for prefab drop from file browser
+            if (e.dataTransfer && e.dataTransfer.getData('application/prefab-file')) {
+                const prefabPath = e.dataTransfer.getData('application/prefab-file');
+                this.instantiatePrefabAtPosition(prefabPath, worldPos);
+                return;
+            }
+
+            // First check if we're interacting with the viewport
+            if (this.isOnViewportMoveHandle(worldPos)) {
+                this.viewportInteraction.dragging = true;
+                this.viewportInteraction.startPos = worldPos.clone();
+                this.viewportInteraction.initialViewport = {
+                    x: this.activeScene.settings.viewportX || 0,
+                    y: this.activeScene.settings.viewportY || 0
+                };
+
+                // Add global document event listeners for smoother dragging
+                document.addEventListener('mousemove', this.handleDocumentMouseMove);
+                document.addEventListener('mouseup', this.handleDocumentMouseUp);
+
+                return;
+            }
+
+        }
+    }
+
+    /**
+     * Instantiate a prefab at the specified world position
+     * @param {string} prefabPath - Path to the prefab file
+     * @param {Vector2} worldPos - World position to instantiate at
+     */
+    async instantiatePrefabAtPosition(prefabPath, worldPos) {
+        try {
+            if (!this.fileBrowser) {
+                console.error('File browser not available');
+                return;
+            }
+
+            // Read prefab file
+            const content = await this.fileBrowser.readFile(prefabPath);
+            if (!content) {
+                console.error('Could not read prefab file:', prefabPath);
+                return;
+            }
+
+            const prefabData = JSON.parse(content);
+            
+            // Use hierarchy's prefab manager to instantiate
+            if (this.hierarchy && this.hierarchy.prefabManager) {
+                const instantiated = this.hierarchy.prefabManager.instantiatePrefab(prefabData, worldPos);
+                
+                // Refresh hierarchy and select the new object
+                this.hierarchy.refreshHierarchy();
+                this.hierarchy.selectGameObject(instantiated);
+                this.refreshCanvas();
+
+                // Mark scene as dirty
+                this.activeScene.markDirty();
+
+                // Trigger auto-save if available
+                if (window.autoSaveManager) {
+                    window.autoSaveManager.autoSave();
+                }
+            }
+
+        } catch (error) {
+            console.error('Error instantiating prefab:', error);
+        }
     }
 }

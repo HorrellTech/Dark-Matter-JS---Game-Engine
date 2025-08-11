@@ -2006,37 +2006,89 @@ class Inspector {
      * @returns {string} HTML for the property UI
      */
     generatePropertyUI(prop, module) {
-        if (prop.type === '_header') {
-            // Render header with optional color
-            const color = prop.options?.color || prop.options?.textColor || '';
-            return `<div class="property-header" style="${color ? `color:${color};` : ''}">${prop.text}</div>`;
-        }
-        if (prop.type === '_divider') {
-            return `<hr class="property-divider">`;
-        }
-        if (prop.type === '_helpText') {
-            return `<div class="property-help" style="${prop.options?.color ? `color:${prop.options.color};` : ''}">${prop.text}</div>`;
-        }
-        if (prop.type === '_groupStart') {
-            const style = prop.group.options?.color ? `border-left:4px solid ${prop.group.options.color};padding-left:8px;` : '';
-            return `<div class="property-group" style="${style}"><div class="group-label">${prop.group.name}</div>`;
-        }
-        if (prop.type === '_groupEnd') {
-            return `</div>`;
-        }
-        if (prop.type === '_space') {
-            return `<div style="height:${prop.height};"></div>`;
-        }
-        if (prop.type === '_colorBlock') {
-            const color = prop.options?.color || '#3498db';
-            return `<div class="property-color-block" style="background:${color};height:20px;border-radius:4px;margin:4px 0;"></div>`;
-        }
-        if (prop.type === '_button') {
-            // Button will be wired up after insertion
-            return `<button id="${prop.name}" class="property-btn">${prop.label}</button>`;
-        }
+    if (prop.type === '_header') {
+        // Render header with optional color and custom styles
+        const color = prop.options?.color || prop.options?.textColor || '';
+        const customStyle = prop.options?.style || '';
+        const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
+        return `<div class="property-header" style="${combinedStyle}">${prop.text}</div>`;
+    }
+    if (prop.type === '_divider') {
+        const customStyle = prop.options?.style || '';
+        return `<hr class="property-divider" style="${customStyle}">`;
+    }
+    if (prop.type === '_helpText') {
+        const color = prop.options?.color || '';
+        const customStyle = prop.options?.style || '';
+        const combinedStyle = `${color ? `color:${color};` : ''}${customStyle}`;
+        return `<div class="property-help" style="${combinedStyle}">${prop.text}</div>`;
+    }
+    if (prop.type === '_groupStart') {
+        const groupColor = prop.group.options?.color ? `border-left:4px solid ${prop.group.options.color};padding-left:8px;` : '';
+        const customStyle = prop.group.options?.style || '';
+        const combinedStyle = `${groupColor}${customStyle}`;
+        return `<div class="property-group" style="${combinedStyle}"><div class="group-label">${prop.group.name}</div>`;
+    }
+    if (prop.type === '_groupEnd') {
+        return `</div>`;
+    }
+    if (prop.type === '_space') {
+        const customStyle = prop.options?.style || '';
+        return `<div style="height:${prop.height};${customStyle}"></div>`;
+    }
+    if (prop.type === '_colorBlock') {
+        const color = prop.options?.color || '#3498db';
+        const customStyle = prop.options?.style || '';
+        const combinedStyle = `background:${color};height:20px;border-radius:4px;margin:4px 0;${customStyle}`;
+        return `<div class="property-color-block" style="${combinedStyle}"></div>`;
+    }
+    if (prop.type === '_button') {
+        // Button will be wired up after insertion
+        const customStyle = prop.options?.style || '';
+        return `<button id="${prop.name}" class="property-btn" style="${customStyle}">${prop.label}</button>`;
+    }
 
-        // Get the property value, trying different access methods
+    // Get the property value, trying different access methods
+    let value;
+    if (typeof module.getProperty === 'function') {
+        value = module.getProperty(prop.name, prop.value);
+    } else if (prop.name in module) {
+        value = module[prop.name];
+    } else if (module.properties && prop.name in module.properties) {
+        value = module.properties[prop.name];
+    } else {
+        value = prop.value;
+    }
+
+    // Add drag and drop styles on first call
+    this.addDragAndDropStyles();
+
+    const inputId = `prop-${module.id}-${prop.name}`;
+
+    // Get description for tooltip from options if available
+    const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+
+    // Get custom styles for the property row and input
+    const rowStyle = prop.options?.rowStyle || '';
+    const inputStyle = prop.options?.inputStyle || prop.options?.style || '';
+    const labelStyle = prop.options?.labelStyle || '';
+
+    // Check if the property is a Vector2 or Vector3
+    if (value instanceof Vector2 || value instanceof Vector3 ||
+        (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
+        // Generate collapsible vector fields
+        return this.generateVectorUI(prop, module, value);
+    }
+
+    // Handle image assets specially
+    if (
+        prop.type === 'image' ||
+        (prop.type === 'asset' && prop.options?.assetType === 'image')
+    ) {
+        const inputId = `prop-${module.id}-${prop.name}`;
+        const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+
+        // Get current value
         let value;
         if (typeof module.getProperty === 'function') {
             value = module.getProperty(prop.name, prop.value);
@@ -2048,79 +2100,48 @@ class Inspector {
             value = prop.value;
         }
 
-        // Add drag and drop styles on first call
-        this.addDragAndDropStyles();
-
-        const inputId = `prop-${module.id}-${prop.name}`;
-
-        // Get description for tooltip from options if available
-        const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-        // Check if the property is a Vector2 or Vector3
-        if (value instanceof Vector2 || value instanceof Vector3 ||
-            (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
-            // Generate collapsible vector fields
-            return this.generateVectorUI(prop, module, value);
+        // Safely extract path
+        let path = '';
+        if (typeof value === 'string') {
+            path = value;
+        } else if (value && typeof value === 'object' && 'path' in value) {
+            path = value.path;
         }
 
-        // Handle image assets specially
-        if (
-            prop.type === 'image' ||
-            (prop.type === 'asset' && prop.options?.assetType === 'image')
-        ) {
-            const inputId = `prop-${module.id}-${prop.name}`;
-            const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-            // Get current value
-            let value;
-            if (typeof module.getProperty === 'function') {
-                value = module.getProperty(prop.name, prop.value);
-            } else if (prop.name in module) {
-                value = module[prop.name];
-            } else if (module.properties && prop.name in module.properties) {
-                value = module.properties[prop.name];
-            } else {
-                value = prop.value;
-            }
-
-            // Safely extract path
-            let path = '';
-            if (typeof value === 'string') {
-                path = value;
-            } else if (value && typeof value === 'object' && 'path' in value) {
-                path = value.path;
-            }
-
-            return `
-        <div class="property-row">
-            <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
+        return `
+        <div class="property-row" style="${rowStyle}">
+            <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
             <div class="image-drop-target" 
                 data-prop-name="${prop.name}"
                 ${prop.options?.assetType ? `data-asset-type="${prop.options.assetType}"` : 'data-property-type="image"'}
-                title="Drag an image here or click to select">
+                title="Drag an image here or click to select"
+                style="${inputStyle}">
                 ${path ? `<div class="image-path">${this.formatImagePath(path)}</div>` : ''}
             </div>
         </div>
     `;
-        }
+    }
 
-        // Add slider if requested
-        let sliderHtml = '';
-        if (prop.options?.slider) {
-            sliderHtml = `
+    // Add slider if requested
+    let sliderHtml = '';
+    if (prop.options?.slider) {
+        const sliderStyle = prop.options?.sliderStyle || '';
+        sliderHtml = `
             <input type="range" id="${inputId}-slider" class="property-slider"
                 data-prop-name="${prop.name}"
                 min="${prop.options.min ?? 0}" max="${prop.options.max ?? 100}"
-                step="${prop.options.step ?? 0.01}" value="${value}">
+                step="${prop.options.step ?? 0.01}" value="${value}"
+                style="${sliderStyle}">
             `;
-        }
+    }
 
-        // Add dropdown for enum or custom options
-        let dropdownHtml = '';
-        if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
-            const options = prop.options?.options || [];
-            dropdownHtml = `
-            <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" title="${tooltip}">
+    // Add dropdown for enum or custom options
+    let dropdownHtml = '';
+    if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
+        const options = prop.options?.options || [];
+        dropdownHtml = `
+            <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" 
+                title="${tooltip}" style="${inputStyle}">
                 ${options.map(option => `
                     <option value="${option}" ${value === option ? 'selected' : ''}>
                         ${this.formatPropertyName(option)}
@@ -2128,24 +2149,26 @@ class Inspector {
                 `).join('')}
             </select>
             `;
-        }
+    }
 
-        let helpHtml = '';
-        if (prop.options?.helpText) {
-            helpHtml = `<div class="property-help">${prop.options.helpText}</div>`;
-        }
+    let helpHtml = '';
+    if (prop.options?.helpText) {
+        const helpStyle = prop.options?.helpStyle || '';
+        helpHtml = `<div class="property-help" style="${helpStyle}">${prop.options.helpText}</div>`;
+    }
 
-        let labelHtml = `<label for="${inputId}" title="${tooltip}"${prop.options?.textColor ? ` style="color:${prop.options.textColor};"` : ''}>${prop.options?.label || this.formatPropertyName(prop.name)}</label>`;
+    let labelHtml = `<label for="${inputId}" title="${tooltip}" style="${prop.options?.textColor ? `color:${prop.options.textColor};` : ''}${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>`;
 
-        switch (prop.type) {
-            case 'number':
-                return `
-                <div class="property-row">
+    switch (prop.type) {
+        case 'number':
+            return `
+                <div class="property-row" style="${rowStyle}">
                     ${labelHtml}
                     <input type="number" id="${inputId}" class="property-input"
                         data-prop-name="${prop.name}"
                         value="${value}"
                         title="${tooltip}"
+                        style="${inputStyle}"
                         ${prop.options?.min !== undefined ? `min="${prop.options.min}"` : ''}
                         ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
                         ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}
@@ -2154,55 +2177,322 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
+        case 'boolean':
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+                    <input type="checkbox" id="${inputId}" class="property-input" 
+                        data-prop-name="${prop.name}" ${value ? 'checked' : ''}
+                        title="${tooltip}" style="${inputStyle}">
+                    ${helpHtml}
+                </div>
+            `;
+        case 'color':
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+                    <input type="color" id="${inputId}" class="property-input" 
+                        data-prop-name="${prop.name}" value="${value || '#ffffff'}"
+                        title="${tooltip}" style="${inputStyle}">
+                    ${helpHtml}
+                </div>
+            `;
+        case 'enum':
+        case 'dropdown':
+        case 'select':
+            const options = prop.options?.options || [];
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+                    <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
+                        title="${tooltip}" style="${inputStyle}">
+                        ${options.map(option => `
+                            <option value="${option}" ${value === option ? 'selected' : ''}>
+                                ${this.formatPropertyName(option)}
+                            </option>
+                        `).join('')}
+                    </select>
+                    ${helpHtml}
+                </div>
+            `;
+        case 'vector2':
+            return this.generateVectorUI(prop, module, value);
+        case 'vector3':
+            return this.generateVectorUI(prop, module, value);
+        case 'polygon':
+            return this.generatePolygonUI(prop, module);
+
+        case 'gameobject':
+            const objName = value ? (value.name || 'Unnamed GameObject') : 'None';
+            const objId = value ? value.id : null;
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    ${labelHtml}
+                    <div class="gameobject-field" data-prop-name="${prop.name}" data-object-id="${objId || ''}" style="${inputStyle}">
+                        <div class="gameobject-preview" 
+                            title="Drag a GameObject here or click to select">
+                            <i class="fas fa-cube gameobject-icon"></i>
+                            <span class="gameobject-name">${objName}</span>
+                        </div>
+                        <div class="gameobject-actions">
+                            <button class="asset-btn select-btn" title="Select GameObject">
+                                <i class="fas fa-search"></i>
+                            </button>
+                            <button class="asset-btn clear-btn" title="Clear Reference" ${!value ? 'disabled' : ''}>
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
+                </div>
+            `;
+
+        case 'button':
+            const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
+            const btnClass = prop.options?.style || 'primary';
+            const btnIcon = prop.options?.icon ? `<i class="${prop.options.icon}"></i> ` : '';
+            const buttonStyle = prop.options?.buttonStyle || inputStyle;
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    <div class="property-button-container">
+                        <button id="${btnId}" class="property-button ${btnClass}" 
+                            data-prop-name="${prop.name}" data-btn-id="${btnId}"
+                            title="${tooltip}" style="${buttonStyle}">
+                            ${btnIcon}${prop.options?.label || prop.name}
+                        </button>
+                    </div>
+                    ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
+                </div>
+            `;
+
+        case 'range':
+        case 'slider':
+            const min = prop.options?.min ?? 0;
+            const max = prop.options?.max ?? 100;
+            const step = prop.options?.step ?? 1;
+            const rangeStyle = prop.options?.rangeStyle || inputStyle;
+            const valueStyle = prop.options?.valueStyle || '';
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    ${labelHtml}
+                    <div class="range-container">
+                        <input type="range" id="${inputId}" class="property-range" 
+                            data-prop-name="${prop.name}"
+                            min="${min}" max="${max}" step="${step}" value="${value}"
+                            title="${tooltip}" style="${rangeStyle}">
+                        <div class="range-value" style="${valueStyle}">${value}</div>
+                    </div>
+                    ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
+                </div>
+            `;
+
+        case 'file':
+            const fileName = value ? (typeof value === 'string' ? value.split('/').pop() : 'File selected') : 'No file selected';
+            const fileTypes = prop.options?.accept || '*';
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    ${labelHtml}
+                    <div class="file-input-container" data-prop-name="${prop.name}" style="${inputStyle}">
+                        <div class="file-preview" title="Drag a file here or click to select">
+                            <i class="fas fa-file"></i>
+                            <span class="file-name">${fileName}</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="asset-btn select-btn" title="Select File">
+                                <i class="fas fa-folder-open"></i>
+                            </button>
+                            <button class="asset-btn clear-btn" title="Clear File" ${!value ? 'disabled' : ''}>
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <input type="file" class="hidden-file-input" accept="${fileTypes}" style="display: none;">
+                    </div>
+                    ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
+                </div>
+            `;
+
+        case 'array':
+            return this.generateArrayUI(prop, module, value);
+
+        case 'object':
+            return this.generateObjectUI(prop, module, value);
+
+        case 'curve':
+            return this.generateCurveUI(prop, module, value);
+
+        case 'gradient':
+            return this.generateGradientUI(prop, module, value);
+
+        default:
+            return `
+                <div class="property-row" style="${rowStyle}">
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+                    <input type="text" id="${inputId}" class="property-input" 
+                        data-prop-name="${prop.name}" value="${value}"
+                        title="${tooltip}" style="${inputStyle}">
+                    ${helpHtml}
+                </div>
+            `;
+    }
+}
+
+    /**
+ * Generate UI for array properties
+ */
+    generateArrayUI(prop, module, value) {
+        const arrayId = `array-${module.id}-${prop.name}`;
+        const items = Array.isArray(value) ? value : [];
+        const itemType = prop.options?.itemType || 'string';
+        const minItems = prop.options?.minItems || 0;
+        const maxItems = prop.options?.maxItems || 999;
+
+        let itemsHtml = '';
+        items.forEach((item, index) => {
+            itemsHtml += `
+            <div class="array-item" data-index="${index}">
+                <div class="array-item-content">
+                    <span class="array-index">${index}</span>
+                    ${this.generateArrayItemInput(prop, module, item, index, itemType)}
+                    <button class="remove-array-item" data-index="${index}" ${items.length <= minItems ? 'disabled' : ''}>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        });
+
+        return `
+        <div class="property-row array-property">
+            <div class="array-header">
+                <label>${this.formatPropertyName(prop.name)} (${items.length})</label>
+                <button class="add-array-item" data-prop-name="${prop.name}" ${items.length >= maxItems ? 'disabled' : ''}>
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+            <div class="array-items" id="${arrayId}">
+                ${itemsHtml}
+            </div>
+        </div>
+    `;
+    }
+
+    /**
+     * Generate input for array item
+     */
+    generateArrayItemInput(prop, module, item, index, itemType) {
+        const inputId = `array-item-${module.id}-${prop.name}-${index}`;
+
+        switch (itemType) {
+            case 'number':
+                return `<input type="number" class="array-item-input" data-prop-name="${prop.name}" data-index="${index}" value="${item || 0}">`;
             case 'boolean':
-                return `
-                    <div class="property-row">
-                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                        <input type="checkbox" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" ${value ? 'checked' : ''}
-                            title="${tooltip}">
-                    </div>
-                `;
+                return `<input type="checkbox" class="array-item-input" data-prop-name="${prop.name}" data-index="${index}" ${item ? 'checked' : ''}>`;
             case 'color':
-                return `
-                    <div class="property-row">
-                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                        <input type="color" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" value="${value || '#ffffff'}"
-                            title="${tooltip}">
-                    </div>
-                `;
-            case 'enum':
-                const options = prop.options?.options || [];
-                return `
-                    <div class="property-row">
-                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                        <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
-                            title="${tooltip}">
-                            ${options.map(option => `
-                                <option value="${option}" ${value === option ? 'selected' : ''}>
-                                    ${this.formatPropertyName(option)}
-                                </option>
-                            `).join('')}
-                        </select>
-                    </div>
-                `;
-            case 'vector2':
-                return this.generateVectorUI(prop, module, value);
-            case 'vector3':
-                return this.generateVectorUI(prop, module, value);
-            case 'polygon':
-                return this.generatePolygonUI(prop, module);
+                return `<input type="color" class="array-item-input" data-prop-name="${prop.name}" data-index="${index}" value="${item || '#ffffff'}">`;
             default:
-                return `
-                    <div class="property-row">
-                        <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
-                        <input type="text" id="${inputId}" class="property-input" 
-                            data-prop-name="${prop.name}" value="${value}"
-                            title="${tooltip}">
-                    </div>
-                `;
+                return `<input type="text" class="array-item-input" data-prop-name="${prop.name}" data-index="${index}" value="${item || ''}">`;
         }
+    }
+
+    /**
+     * Generate UI for object properties
+     */
+    generateObjectUI(prop, module, value) {
+        const objId = `object-${module.id}-${prop.name}`;
+        const obj = value || {};
+        const schema = prop.options?.schema || {};
+
+        let fieldsHtml = '';
+        for (const [key, fieldDef] of Object.entries(schema)) {
+            const fieldValue = obj[key];
+            const fieldType = fieldDef.type || 'string';
+
+            fieldsHtml += `
+            <div class="object-field">
+                <label>${this.formatPropertyName(key)}</label>
+                ${this.generateObjectFieldInput(prop, module, key, fieldValue, fieldType)}
+            </div>
+        `;
+        }
+
+        return `
+        <div class="property-row object-property">
+            <div class="object-header">
+                <label>${this.formatPropertyName(prop.name)}</label>
+            </div>
+            <div class="object-fields" id="${objId}">
+                ${fieldsHtml}
+            </div>
+        </div>
+    `;
+    }
+
+    /**
+     * Generate input for object field
+     */
+    generateObjectFieldInput(prop, module, key, value, fieldType) {
+        const inputId = `object-field-${module.id}-${prop.name}-${key}`;
+
+        switch (fieldType) {
+            case 'number':
+                return `<input type="number" class="object-field-input" data-prop-name="${prop.name}" data-field="${key}" value="${value || 0}">`;
+            case 'boolean':
+                return `<input type="checkbox" class="object-field-input" data-prop-name="${prop.name}" data-field="${key}" ${value ? 'checked' : ''}>`;
+            case 'color':
+                return `<input type="color" class="object-field-input" data-prop-name="${prop.name}" data-field="${key}" value="${value || '#ffffff'}">`;
+            default:
+                return `<input type="text" class="object-field-input" data-prop-name="${prop.name}" data-field="${key}" value="${value || ''}">`;
+        }
+    }
+
+    /**
+     * Generate UI for curve properties (simplified curve editor)
+     */
+    generateCurveUI(prop, module, value) {
+        const curveId = `curve-${module.id}-${prop.name}`;
+
+        return `
+        <div class="property-row curve-property">
+            <label>${this.formatPropertyName(prop.name)}</label>
+            <div class="curve-editor" id="${curveId}" data-prop-name="${prop.name}">
+                <canvas class="curve-canvas" width="200" height="100"></canvas>
+                <div class="curve-controls">
+                    <button class="curve-preset" data-preset="linear">Linear</button>
+                    <button class="curve-preset" data-preset="ease">Ease</button>
+                    <button class="curve-preset" data-preset="bounce">Bounce</button>
+                </div>
+            </div>
+        </div>
+    `;
+    }
+
+    /**
+     * Generate UI for gradient properties
+     */
+    generateGradientUI(prop, module, value) {
+        const gradientId = `gradient-${module.id}-${prop.name}`;
+
+        return `
+        <div class="property-row gradient-property">
+            <label>${this.formatPropertyName(prop.name)}</label>
+            <div class="gradient-editor" id="${gradientId}" data-prop-name="${prop.name}">
+                <div class="gradient-preview"></div>
+                <div class="gradient-stops">
+                    <div class="gradient-stop" data-position="0">
+                        <input type="color" value="#000000">
+                        <span>0%</span>
+                    </div>
+                    <div class="gradient-stop" data-position="100">
+                        <input type="color" value="#ffffff">
+                        <span>100%</span>
+                    </div>
+                </div>
+                <button class="add-gradient-stop">
+                    <i class="fas fa-plus"></i> Add Stop
+                </button>
+            </div>
+        </div>
+    `;
     }
 
     /**
@@ -2405,18 +2695,24 @@ class Inspector {
      * @returns {string} HTML for the vector UI
      */
     generateVectorUI(prop, module, vector) {
-        const propName = prop.name;
-        const collapsibleId = `vector-${module.id}-${propName}`;
-        const isCollapsed = this.getVectorCollapseState(collapsibleId);
-        const isVector3 = vector.z !== undefined;
+    const propName = prop.name;
+    const collapsibleId = `vector-${module.id}-${propName}`;
+    const isCollapsed = this.getVectorCollapseState(collapsibleId);
+    const isVector3 = vector.z !== undefined;
 
-        // Get tooltip from options if available
-        const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
+    // Get tooltip from options if available
+    const tooltip = prop.options?.description || `${this.formatPropertyName(propName)}`;
 
-        return `
-        <div class="property-row vector-property">
-            <div class="vector-header">
-                <label title="${tooltip}">${this.formatPropertyName(propName)}</label>
+    // Get custom styles
+    const rowStyle = prop.options?.rowStyle || '';
+    const headerStyle = prop.options?.headerStyle || '';
+    const componentStyle = prop.options?.componentStyle || prop.options?.inputStyle || prop.options?.style || '';
+    const labelStyle = prop.options?.labelStyle || '';
+
+    return `
+        <div class="property-row vector-property" style="${rowStyle}">
+            <div class="vector-header" style="${headerStyle}">
+                <label title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(propName)}</label>
                 <div class="vector-preview">
                     (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
                 </div>
@@ -2435,7 +2731,8 @@ class Inspector {
                         data-prop-name="${propName}"
                         data-component="x"
                         value="${vector.x}" step="1"
-                        title="${tooltip} (X coordinate)">
+                        title="${tooltip} (X coordinate)"
+                        style="${componentStyle}">
                 </div>
                 <div class="vector-component">
                     <label title="Y coordinate">Y</label>
@@ -2443,7 +2740,8 @@ class Inspector {
                         data-prop-name="${propName}"
                         data-component="y"
                         value="${vector.y}" step="1"
-                        title="${tooltip} (Y coordinate)">
+                        title="${tooltip} (Y coordinate)"
+                        style="${componentStyle}">
                 </div>
                 ${isVector3 ? `
                 <div class="vector-component">
@@ -2452,12 +2750,13 @@ class Inspector {
                         data-prop-name="${propName}"
                         data-component="z"
                         value="${vector.z}" step="1"
-                        title="${tooltip} (Z coordinate)">
+                        title="${tooltip} (Z coordinate)"
+                        style="${componentStyle}">
                 </div>` : ''}
             </div>
         </div>
         `;
-    }
+}
 
     /**
      * Format a property name for display (camelCase to Title Case)
@@ -2544,9 +2843,14 @@ class Inspector {
             }
         };
 
-        // First, set up image drag and drop for any property that expects an image
+        // Image drop targets
         container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"]').forEach(element => {
             this.setupImageDropTarget(element, module);
+        });
+
+        // GameObject drop targets
+        container.querySelectorAll('.gameobject-field').forEach(element => {
+            this.setupGameObjectDropTarget(element, module);
         });
 
         // SpriteRenderer special handlers
@@ -2744,6 +3048,27 @@ class Inspector {
             });
         });
 
+        // Range/Slider inputs
+        container.querySelectorAll('.property-range').forEach(range => {
+            const valueDisplay = range.parentElement.querySelector('.range-value');
+
+            range.addEventListener('input', () => {
+                if (valueDisplay) {
+                    valueDisplay.textContent = range.value;
+                }
+                this.updateModuleProperty(module, range.dataset.propName, parseFloat(range.value));
+                updateGameObject();
+            });
+        });
+
+        // Toggle switches
+        container.querySelectorAll('.toggle-switch input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.updateModuleProperty(module, checkbox.dataset.propName, checkbox.checked);
+                updateGameObject();
+            });
+        });
+
         // Handle color inputs
         container.querySelectorAll('.property-input[type="color"]').forEach(colorInput => {
             colorInput.addEventListener('input', () => {
@@ -2768,6 +3093,30 @@ class Inspector {
             colorInput.addEventListener('change', () => {
                 updateGameObject();
             });
+        });
+
+        // Color inputs (enhanced)
+        container.querySelectorAll('.color-input-group').forEach(group => {
+            const colorPicker = group.querySelector('.color-picker');
+            const textInput = group.querySelector('.color-text-input');
+
+            if (colorPicker && textInput) {
+                colorPicker.addEventListener('input', () => {
+                    textInput.value = colorPicker.value;
+                    this.updateModuleProperty(module, colorPicker.dataset.propName, colorPicker.value);
+                    updateGameObject();
+                });
+
+                textInput.addEventListener('change', () => {
+                    if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) {
+                        colorPicker.value = textInput.value;
+                        this.updateModuleProperty(module, colorPicker.dataset.propName, textInput.value);
+                        updateGameObject();
+                    } else {
+                        textInput.value = colorPicker.value; // Reset to valid value
+                    }
+                });
+            }
         });
 
         // Generic number/text/select inputs
@@ -2797,6 +3146,268 @@ class Inspector {
                 updateGameObject();
             });
         });
+
+        container.querySelectorAll('.property-button, .property-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const propName = button.dataset.propName;
+                const btnId = button.dataset.btnId;
+
+                // Call the module's button handler if it exists
+                if (typeof module.onButtonClick === 'function') {
+                    module.onButtonClick(propName, btnId);
+                }
+
+                // Look for specific handler method
+                const handlerName = `on${propName.charAt(0).toUpperCase()}${propName.slice(1)}Click`;
+                if (typeof module[handlerName] === 'function') {
+                    module[handlerName]();
+                }
+
+                updateGameObject();
+            });
+        });
+
+        // File inputs
+        container.querySelectorAll('.file-input-container').forEach(fileContainer => {
+            const fileInput = fileContainer.querySelector('.hidden-file-input');
+            const selectBtn = fileContainer.querySelector('.select-btn');
+            const clearBtn = fileContainer.querySelector('.clear-btn');
+            const preview = fileContainer.querySelector('.file-preview');
+
+            selectBtn?.addEventListener('click', () => {
+                fileInput?.click();
+            });
+
+            fileInput?.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    this.handleFileSelection(fileContainer, module, file);
+                }
+            });
+
+            clearBtn?.addEventListener('click', () => {
+                this.clearFileSelection(fileContainer, module);
+            });
+
+            // File drop support
+            this.setupFileDropTarget(preview, fileContainer, module);
+        });
+
+        // Array controls
+        container.querySelectorAll('.add-array-item').forEach(button => {
+            button.addEventListener('click', () => {
+                this.addArrayItem(button.dataset.propName, module, container);
+            });
+        });
+
+        container.querySelectorAll('.remove-array-item').forEach(button => {
+            button.addEventListener('click', () => {
+                this.removeArrayItem(button.dataset.propName, button.dataset.index, module, container);
+            });
+        });
+
+        // Array item inputs
+        container.querySelectorAll('.array-item-input').forEach(input => {
+            input.addEventListener('change', () => {
+                this.updateArrayItem(input.dataset.propName, input.dataset.index, input, module);
+                updateGameObject();
+            });
+        });
+
+        // Object field inputs
+        container.querySelectorAll('.object-field-input').forEach(input => {
+            input.addEventListener('change', () => {
+                this.updateObjectField(input.dataset.propName, input.dataset.field, input, module);
+                updateGameObject();
+            });
+        });
+    }
+
+    /**
+ * Setup GameObject drop target
+ */
+    setupGameObjectDropTarget(element, module) {
+        const propName = element.dataset.propName;
+
+        element.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.types.includes('application/gameobject-id')) {
+                element.classList.add('drag-over');
+                e.dataTransfer.dropEffect = 'link';
+            }
+        });
+
+        element.addEventListener('dragleave', () => {
+            element.classList.remove('drag-over');
+        });
+
+        element.addEventListener('drop', (e) => {
+            e.preventDefault();
+            element.classList.remove('drag-over');
+
+            const gameObjectId = e.dataTransfer.getData('application/gameobject-id');
+            if (gameObjectId && this.editor.activeScene) {
+                const gameObject = this.editor.activeScene.findGameObjectById(gameObjectId);
+                if (gameObject) {
+                    this.updateModuleProperty(module, propName, gameObject);
+                    this.refreshModuleUI(module);
+                    this.editor.refreshCanvas();
+                }
+            }
+        });
+
+        // Clear button
+        const clearBtn = element.querySelector('.clear-btn');
+        clearBtn?.addEventListener('click', () => {
+            this.updateModuleProperty(module, propName, null);
+            this.refreshModuleUI(module);
+            this.editor.refreshCanvas();
+        });
+    }
+
+    /**
+     * Setup file drop target
+     */
+    setupFileDropTarget(dropArea, container, module) {
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('drag-over');
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.classList.remove('drag-over');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('drag-over');
+
+            if (e.dataTransfer.files.length > 0) {
+                this.handleFileSelection(container, module, e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    /**
+     * Handle file selection
+     */
+    async handleFileSelection(container, module, file) {
+        const propName = container.dataset.propName;
+        const fileName = container.querySelector('.file-name');
+        const clearBtn = container.querySelector('.clear-btn');
+
+        try {
+            // Upload file if FileBrowser is available
+            if (this.editor?.fileBrowser) {
+                await this.editor.fileBrowser.handleFileUpload(file);
+                const filePath = `${this.editor.fileBrowser.currentPath}/${file.name}`;
+
+                this.updateModuleProperty(module, propName, filePath);
+                if (fileName) fileName.textContent = file.name;
+                if (clearBtn) clearBtn.disabled = false;
+            } else {
+                // Fallback to just the file name
+                this.updateModuleProperty(module, propName, file.name);
+                if (fileName) fileName.textContent = file.name;
+                if (clearBtn) clearBtn.disabled = false;
+            }
+
+            this.editor?.refreshCanvas();
+        } catch (error) {
+            console.error('Error handling file:', error);
+        }
+    }
+
+    /**
+     * Clear file selection
+     */
+    clearFileSelection(container, module) {
+        const propName = container.dataset.propName;
+        const fileName = container.querySelector('.file-name');
+        const clearBtn = container.querySelector('.clear-btn');
+
+        this.updateModuleProperty(module, propName, null);
+        if (fileName) fileName.textContent = 'No file selected';
+        if (clearBtn) clearBtn.disabled = true;
+
+        this.editor?.refreshCanvas();
+    }
+
+    /**
+     * Add array item
+     */
+    addArrayItem(propName, module, container) {
+        const currentArray = this.getModuleProperty(module, propName) || [];
+        currentArray.push(''); // Add empty item
+
+        this.updateModuleProperty(module, propName, currentArray);
+        this.refreshModuleUI(module);
+    }
+
+    /**
+     * Remove array item
+     */
+    removeArrayItem(propName, index, module, container) {
+        const currentArray = this.getModuleProperty(module, propName) || [];
+        currentArray.splice(parseInt(index), 1);
+
+        this.updateModuleProperty(module, propName, currentArray);
+        this.refreshModuleUI(module);
+    }
+
+    /**
+     * Update array item
+     */
+    updateArrayItem(propName, index, input, module) {
+        const currentArray = this.getModuleProperty(module, propName) || [];
+        let value = input.value;
+
+        if (input.type === 'number') {
+            value = parseFloat(value) || 0;
+        } else if (input.type === 'checkbox') {
+            value = input.checked;
+        }
+
+        currentArray[parseInt(index)] = value;
+        this.updateModuleProperty(module, propName, currentArray);
+    }
+
+    /**
+     * Update object field
+     */
+    updateObjectField(propName, fieldName, input, module) {
+        const currentObj = this.getModuleProperty(module, propName) || {};
+        let value = input.value;
+
+        if (input.type === 'number') {
+            value = parseFloat(value) || 0;
+        } else if (input.type === 'checkbox') {
+            value = input.checked;
+        }
+
+        currentObj[fieldName] = value;
+        this.updateModuleProperty(module, propName, currentObj);
+    }
+
+    /**
+     * Helper to update module property
+     */
+    updateModuleProperty(module, propName, value) {
+        if (typeof module.setProperty === 'function') {
+            module.setProperty(propName, value);
+        } else {
+            module[propName] = value;
+        }
+    }
+
+    /**
+     * Helper to get module property
+     */
+    getModuleProperty(module, propName) {
+        if (typeof module.getProperty === 'function') {
+            return module.getProperty(propName);
+        }
+        return module[propName];
     }
 
     /**
@@ -3212,6 +3823,543 @@ class Inspector {
             .property-color-block {
                 border: 1px solid var(--module-input-border, #3a3f4b);
             }
+
+            /* Enhanced Property Styling */
+        .property-row {
+            margin-bottom: 12px;
+            padding: 8px 0;
+        }
+
+        .property-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        /* Toggle Switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #0078D7;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        /* Color Input Group */
+        .color-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .color-picker {
+            width: 40px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .color-text-input {
+            width: 80px;
+            font-family: monospace;
+            text-transform: uppercase;
+        }
+
+        /* Image Asset Container */
+        .image-asset-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px;
+            background: #2a2a2a;
+        }
+
+        .image-preview-area {
+            flex: 1;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #555;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .image-preview-area:hover {
+            border-color: #0078D7;
+        }
+
+        .image-preview-area.drag-over {
+            border-color: #0078D7;
+            background-color: rgba(0, 120, 215, 0.1);
+        }
+
+        .image-preview-area.has-image {
+            border-style: solid;
+            border-color: #666;
+        }
+
+        .asset-thumbnail {
+            max-width: 50px;
+            max-height: 50px;
+            object-fit: contain;
+        }
+
+        .image-path-display {
+            font-size: 10px;
+            color: #aaa;
+            text-align: center;
+            margin-top: 2px;
+        }
+
+        .image-asset-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .asset-btn {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #444;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .asset-btn:hover:not(:disabled) {
+            background: #555;
+        }
+
+        .asset-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* GameObject Field */
+        .gameobject-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px;
+            background: #2a2a2a;
+        }
+
+        .gameobject-preview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border: 2px dashed #555;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .gameobject-preview:hover {
+            border-color: #0078D7;
+        }
+
+        .gameobject-field.drag-over .gameobject-preview {
+            border-color: #0078D7;
+            background-color: rgba(0, 120, 215, 0.1);
+        }
+
+        .gameobject-icon {
+            color: #888;
+        }
+
+        .gameobject-name {
+            color: #ccc;
+            font-style: italic;
+        }
+
+        .gameobject-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        /* Button Styles */
+        .property-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .property-button.primary {
+            background: #0078D7;
+            color: white;
+        }
+
+        .property-button.primary:hover {
+            background: #106ebe;
+        }
+
+        .property-button.secondary {
+            background: #666;
+            color: white;
+        }
+
+        .property-button.secondary:hover {
+            background: #777;
+        }
+
+        .property-button.danger {
+            background: #d73502;
+            color: white;
+        }
+
+        .property-button.danger:hover {
+            background: #c42d02;
+        }
+
+        /* Range/Slider */
+        .range-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .property-range {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #444;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .property-range::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #0078D7;
+            cursor: pointer;
+        }
+
+        .range-value {
+            min-width: 40px;
+            text-align: right;
+            color: #ccc;
+            font-family: monospace;
+        }
+
+        /* File Input */
+        .file-input-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 4px;
+            background: #2a2a2a;
+        }
+
+        .file-preview {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            border: 2px dashed #555;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .file-preview:hover {
+            border-color: #0078D7;
+        }
+
+        .file-preview.drag-over {
+            border-color: #0078D7;
+            background-color: rgba(0, 120, 215, 0.1);
+        }
+
+        .file-name {
+            color: #ccc;
+            font-size: 12px;
+        }
+
+        .file-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        /* Array Properties */
+        .array-property {
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .array-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #555;
+        }
+
+        .add-array-item {
+            background: #0078D7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .add-array-item:hover:not(:disabled) {
+            background: #106ebe;
+        }
+
+        .array-item {
+            margin-bottom: 4px;
+        }
+
+        .array-item-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .array-index {
+            min-width: 20px;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .array-item-input {
+            flex: 1;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px 8px;
+            color: #fff;
+        }
+
+        .remove-array-item {
+            background: #d73502;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .remove-array-item:hover:not(:disabled) {
+            background: #c42d02;
+        }
+
+        /* Object Properties */
+        .object-property {
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .object-header {
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #555;
+        }
+
+        .object-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .object-field label {
+            min-width: 80px;
+            color: #ccc;
+        }
+
+        .object-field-input {
+            flex: 1;
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 4px 8px;
+            color: #fff;
+        }
+
+        /* Textarea */
+        .property-textarea {
+            resize: vertical;
+            min-height: 60px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        /* Select dropdown */
+        .property-select {
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 6px 10px;
+            color: #fff;
+        }
+
+        /* Curve Editor (placeholder) */
+        .curve-editor {
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .curve-canvas {
+            width: 100%;
+            background: #1a1a1a;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+
+        .curve-controls {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .curve-preset {
+            background: #444;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .curve-preset:hover {
+            background: #555;
+        }
+
+        /* Gradient Editor (placeholder) */
+        .gradient-editor {
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .gradient-preview {
+            height: 20px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #000000, #ffffff);
+            margin-bottom: 8px;
+        }
+
+        .gradient-stops {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .gradient-stop {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .gradient-stop input[type="color"] {
+            width: 30px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+        }
+
+        .gradient-stop span {
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .add-gradient-stop {
+            background: #0078D7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
         `;
 
         document.head.appendChild(styleElement);

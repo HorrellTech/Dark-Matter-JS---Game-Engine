@@ -64,7 +64,8 @@ class ExportManager {
             assets: {},
             modules: [],
             engineFiles: [],
-            customScripts: []
+            customScripts: [],
+            prefabs: {} // Add prefabs to export data
         };
 
         // Collect scenes
@@ -72,6 +73,12 @@ class ExportManager {
             data.scenes = project.scenes.map(scene => this.serializeScene(scene));
         } else if (window.editor && window.editor.scenes) {
             data.scenes = window.editor.scenes.map(scene => this.serializeScene(scene));
+        }
+
+        // Collect prefabs
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            data.prefabs = window.editor.hierarchy.prefabManager.exportPrefabs();
+            console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export`);
         }
 
         // Collect custom modules (after scenes are serialized)
@@ -715,12 +722,13 @@ html {
  * Generate game initialization code
  */
     generateGameInitialization(data, settings) {
-    // Use safer JSON embedding approach
-    const scenesData = this.safeStringify(data.scenes);
-    const assetsData = settings.standalone && settings.includeAssets ?
-        this.safeStringify(data.assets) : 'null';
+        // Use safer JSON embedding approach
+        const scenesData = this.safeStringify(data.scenes);
+        const prefabsData = this.safeStringify(data.prefabs); // Add prefabs data
+        const assetsData = settings.standalone && settings.includeAssets ?
+            this.safeStringify(data.assets) : 'null';
 
-    return `
+        return `
 // Game Initialization
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Initializing exported game...');
@@ -786,17 +794,157 @@ document.addEventListener('DOMContentLoaded', async () => {
         return normalized;
     };
     
+    // Initialize Global Prefab Manager
+    window.prefabManager = {
+        prefabs: new Map(),
+        
+        // Load prefabs into the manager
+        loadPrefabs: function(prefabsData) {
+            if (!prefabsData) return;
+            
+            for (const [name, prefabData] of Object.entries(prefabsData)) {
+                this.prefabs.set(name, prefabData);
+                console.log('Loaded prefab:', name);
+            }
+            
+            console.log('Total prefabs loaded:', this.prefabs.size);
+        },
+        
+        // Find a prefab by name
+        findPrefabByName: function(name) {
+            if (!name) return null;
+            
+            // Try exact match first
+            if (this.prefabs.has(name)) {
+                return this.prefabs.get(name);
+            }
+            
+            // Try case-insensitive search
+            const lowerName = name.toLowerCase();
+            for (const [key, value] of this.prefabs) {
+                if (key.toLowerCase() === lowerName) {
+                    return value;
+                }
+            }
+            
+            return null;
+        },
+        
+        // Check if a prefab exists
+        hasPrefab: function(name) {
+            return this.findPrefabByName(name) !== null;
+        },
+        
+        // Get all prefab names
+        getAllPrefabNames: function() {
+            return Array.from(this.prefabs.keys());
+        },
+        
+        // Instantiate a prefab by name
+        instantiatePrefabByName: function(name, position = null, parent = null) {
+            const prefabData = this.findPrefabByName(name);
+            if (!prefabData) {
+                console.error('Prefab not found:', name);
+                return null;
+            }
+            
+            return this.instantiatePrefab(prefabData, position, parent);
+        },
+        
+        // Instantiate a prefab from data
+        instantiatePrefab: function(prefabData, position = null, parent = null) {
+            try {
+                // Create the main GameObject
+                const gameObject = new GameObject(prefabData.name);
+                
+                // Set position (use provided position or prefab's stored position)
+                if (position) {
+                    gameObject.position.x = position.x;
+                    gameObject.position.y = position.y;
+                } else {
+                    gameObject.position.x = prefabData.position.x;
+                    gameObject.position.y = prefabData.position.y;
+                }
+
+                // Set other properties
+                gameObject.angle = prefabData.angle || 0;
+                gameObject.scale.x = prefabData.scale?.x || 1;
+                gameObject.scale.y = prefabData.scale?.y || 1;
+                gameObject.active = prefabData.active !== false;
+
+                // Add modules
+                if (prefabData.modules && prefabData.modules.length > 0) {
+                    prefabData.modules.forEach(moduleData => {
+                        try {
+                            // Get the module class
+                            const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.className);
+                            if (!ModuleClass) {
+                                console.warn('Module class not found:', moduleData.className);
+                                return;
+                            }
+
+                            // Create module instance
+                            const moduleInstance = new ModuleClass();
+                            
+                            // Set properties
+                            if (moduleData.properties) {
+                                Object.keys(moduleData.properties).forEach(propName => {
+                                    if (moduleInstance.hasOwnProperty(propName)) {
+                                        moduleInstance[propName] = moduleData.properties[propName];
+                                    }
+                                });
+                            }
+
+                            // Add to GameObject
+                            gameObject.addModule(moduleInstance);
+                            
+                        } catch (error) {
+                            console.error('Error adding module ' + moduleData.className + ':', error);
+                        }
+                    });
+                }
+
+                // Recursively instantiate children
+                if (prefabData.children && prefabData.children.length > 0) {
+                    prefabData.children.forEach(childData => {
+                        const childGameObject = this.instantiatePrefab(childData, null, gameObject);
+                        gameObject.addChild(childGameObject);
+                    });
+                }
+
+                // Add to scene or parent
+                if (parent) {
+                    parent.addChild(gameObject);
+                } else if (window.engine && window.engine.gameObjects) {
+                    window.engine.gameObjects.push(gameObject);
+                }
+
+                return gameObject;
+
+            } catch (error) {
+                console.error('Error instantiating prefab:', error);
+                throw error;
+            }
+        }
+    };
+    
     // Load game data safely
     let gameData;
     try {
         gameData = {
             scenes: ${scenesData},
-            assets: ${assetsData}
+            assets: ${assetsData},
+            prefabs: ${prefabsData}
         };
     } catch (error) {
         console.error('Error parsing game data:', error);
         loadingScreen.innerHTML = '<div>Error loading game data: ' + error.message + '</div>';
         return;
+    }
+    
+    // Load prefabs into the global prefab manager
+    if (gameData.prefabs) {
+        window.prefabManager.loadPrefabs(gameData.prefabs);
     }
     
     // Pre-load assets for standalone mode
@@ -915,6 +1063,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize engine
     const canvas = document.getElementById('gameCanvas');
     const engine = new Engine(canvas);
+    
+    // Make engine globally available for prefab instantiation
+    window.engine = engine;
     
     // Setup canvas scaling
     function resizeCanvas() {
@@ -1064,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 `;
-}
+    }
 
     /**
      * Safely stringify JSON data for embedding in JavaScript code

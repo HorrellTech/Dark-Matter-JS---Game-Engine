@@ -1,0 +1,55 @@
+/* Prefab-related styles */
+.fb-item.prefab-file {
+    border-left: 3px solid #9C27B0;
+}
+
+.fb-item.prefab-file .fas {
+    color: #9C27B0;
+}
+
+.hierarchy-container .drag-over-prefab {
+    background-color: rgba(156, 39, 176, 0.1);
+    border: 2px dashed #9C27B0;
+}
+
+.drag-ghost-prefab {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.prefab-name-modal {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.notification {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.notification.success {
+    background-color: #4CAF50 !important;
+}
+
+.notification.warning {
+    background-color: #FF9800 !important;
+}
+
+.notification.error {
+    background-color: #F44336 !important;
+}
+
+.notification.info {
+    background-color: #2196F3 !important;
+}
+
+/* Button styling for create prefab */
+#createPrefab {
+    background-color: #9C27B0;
+}
+
+#createPrefab:hover {
+    background-color: #7B1FA2;
+}

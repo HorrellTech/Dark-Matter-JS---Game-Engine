@@ -56,13 +56,13 @@ class Module {
 
         /** @type {string} Name of the module */
         this.name = name;
-        
+
         /** @type {GameObject} GameObject this module is attached to */
         this.gameObject = null;
-        
+
         /** @type {boolean} Whether this module is active */
         this.enabled = true;
-        
+
         /** @type {Object} Custom properties for this module */
         this.properties = {};
 
@@ -156,7 +156,7 @@ class Module {
         this._requirements.push(...moduleNames);
         return this;
     }
-    
+
     /**
      * Get all required modules for this module
      * @returns {Array<string>} Array of required module names
@@ -193,16 +193,16 @@ class Module {
 
     set gameObject(go) {
         this._gameObject = go;
-        
+
         // When a module's gameObject reference changes, we need to update
         // all internal properties that might reference the old gameObject
         if (go && this._previousGameObject && this._previousGameObject !== go) {
             this._updateInternalReferences(this._previousGameObject, go);
         }
-        
+
         this._previousGameObject = go;
     }
-    
+
     get gameObject() {
         return this._gameObject;
     }
@@ -214,51 +214,51 @@ class Module {
     clone(newGameObject = null) {
         // 1) create a fresh instance
         const cloned = new this.constructor(this.name);
-    
+
         // 2) copy all your own data except any gameObject pointers
         const keys = new Set([
-          ...Object.getOwnPropertyNames(this),
-          ...Object.keys(this)
+            ...Object.getOwnPropertyNames(this),
+            ...Object.keys(this)
         ]);
         keys.delete('gameObject');
         keys.delete('_gameObject');
         keys.delete('_previousGameObject');
         keys.delete('constructor');
-    
+
         for (const key of keys) {
-          const v = this[key];
-          if (v == null || typeof v === 'function') {
-            cloned[key] = v;
-          }
-          else if (Array.isArray(v)) {
-            cloned[key] = v.map(item =>
-              (item && typeof item.clone === 'function')
-                ? item.clone()
-                : item
-            );
-          }
-          else if (typeof v.clone === 'function') {
-            cloned[key] = v.clone();
-          }
-          else if (typeof v === 'object') {
-            cloned[key] = JSON.parse(JSON.stringify(v));
-          }
-          else {
-            cloned[key] = v;
-          }
+            const v = this[key];
+            if (v == null || typeof v === 'function') {
+                cloned[key] = v;
+            }
+            else if (Array.isArray(v)) {
+                cloned[key] = v.map(item =>
+                    (item && typeof item.clone === 'function')
+                        ? item.clone()
+                        : item
+                );
+            }
+            else if (typeof v.clone === 'function') {
+                cloned[key] = v.clone();
+            }
+            else if (typeof v === 'object') {
+                cloned[key] = JSON.parse(JSON.stringify(v));
+            }
+            else {
+                cloned[key] = v;
+            }
         }
-    
+
         // 3) reset any stale pointers
         cloned._gameObject = null;
         cloned._previousGameObject = null;
-    
+
         // 4) if caller supplied an owner, bind now
         if (newGameObject) {
-          cloned.attachTo(newGameObject);
+            cloned.attachTo(newGameObject);
         }
-    
+
         return cloned;
-      }
+    }
 
     /**
      * Helper: Deep clone an array
@@ -266,7 +266,7 @@ class Module {
      */
     deepCloneArray(arr) {
         if (!arr) return arr;
-        
+
         return arr.map(item => {
             if (item === null || item === undefined || typeof item !== 'object') {
                 return item;
@@ -292,14 +292,14 @@ class Module {
         if (!obj) return obj;
         if (typeof obj.clone === 'function') return obj.clone();
         if (obj instanceof HTMLElement) return obj;
-        
+
         const clone = Object.create(Object.getPrototypeOf(obj));
-        
+
         for (const key in obj) {
             if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-            
+
             const value = obj[key];
-            
+
             if (value === null || value === undefined || typeof value !== 'object') {
                 clone[key] = value;
             }
@@ -316,7 +316,7 @@ class Module {
                 clone[key] = value;
             }
         }
-        
+
         return clone;
     }
 
@@ -329,17 +329,17 @@ class Module {
             console.error('Not a valid module class:', moduleClass);
             return;
         }
-        
+
         // Check if already registered
-        const alreadyRegistered = this.availableModules.some(mod => 
+        const alreadyRegistered = this.availableModules.some(mod =>
             mod.name === moduleClass.name || mod === moduleClass);
-        
+
         if (!alreadyRegistered) {
             this.availableModules.push(moduleClass);
             console.log(`Registered module: ${moduleClass.name}`);
-            
+
             // Update the dropdown if it's open
-            if (this.moduleDropdown && 
+            if (this.moduleDropdown &&
                 this.moduleDropdown.style.display !== 'none') {
                 this.populateModuleDropdown();
             }
@@ -353,7 +353,7 @@ class Module {
     getExposedProperties() {
         // Start with properties explicitly marked as exposed
         let exposed = this.exposedProperties || [];
-        
+
         // Also include any properties in this.properties object
         for (const key in this.properties) {
             if (!exposed.some(prop => prop.name === key)) {
@@ -364,7 +364,7 @@ class Module {
                 });
             }
         }
-        
+
         return exposed;
     }
 
@@ -379,33 +379,33 @@ class Module {
         if (!this.exposedProperties) {
             this.exposedProperties = [];
         }
-        
+
         this.exposedProperties.push({
             name,
             type,
             value: defaultValue,
             options
         });
-        
+
         // Store the value in a private property with a different name
         // to avoid conflicts with getters/setters
         const privatePropName = `_${name}`;
-        
+
         // Initialize the private property with the default value or current value
         if (this[privatePropName] === undefined) {
             this[privatePropName] = this[name] !== undefined ? this[name] : defaultValue;
         }
-        
+
         // Create property accessor that uses the private property
         if (!Object.getOwnPropertyDescriptor(this, name)) {
             Object.defineProperty(this, name, {
-                get: function() {
+                get: function () {
                     return this[privatePropName];
                 },
-                set: function(value) {
+                set: function (value) {
                     const oldValue = this[privatePropName];
                     this[privatePropName] = value;
-                    
+
                     // Call onChange handler if specified
                     const propDef = this.exposedProperties?.find(p => p.name === name);
                     if (propDef?.options?.onChange && oldValue !== value) {
@@ -416,7 +416,7 @@ class Module {
                 configurable: true
             });
         }
-        
+
         // Ensure the initial value is set properly
         if (this[name] !== this[privatePropName]) {
             this[name] = this[privatePropName];
@@ -451,7 +451,7 @@ class Module {
      */
     getModule(moduleType) {
         if (!this.gameObject) return null;
-        
+
         return this.gameObject.modules.find(module => module instanceof moduleType);
     }
 
@@ -462,7 +462,7 @@ class Module {
      */
     setProperty(name, value) {
         const privatePropName = `_${name}`;
-        
+
         if (this.hasOwnProperty(privatePropName)) {
             // If we have a private property, use it
             this[privatePropName] = value;
@@ -470,7 +470,7 @@ class Module {
             // Otherwise set directly
             this[name] = value;
         }
-        
+
         // Call onChange handler if specified in property options
         const propDef = this.exposedProperties?.find(p => p.name === name);
         if (propDef?.options?.onChange) {
@@ -486,16 +486,16 @@ class Module {
      */
     getProperty(name, defaultValue) {
         const privatePropName = `_${name}`;
-        
+
         if (this.hasOwnProperty(privatePropName)) {
             // If we have a private property, use it
             return this[privatePropName];
         }
-        
+
         // Otherwise get directly
         return this[name] !== undefined ? this[name] : defaultValue;
     }
-    
+
     /**
      * Reassign this module to a new GameObject,
      * update internal refs and call onAttach.
@@ -513,7 +513,7 @@ class Module {
             this.onAttach(newGameObject);
         }
     }
-    
+
     /**
      * Serialize this module to JSON
      * @returns {Object} Serialized module data
@@ -526,20 +526,20 @@ class Module {
             enabled: this.enabled,
             requirements: this._requirements
         };
-    
+
         // Serialize regular properties object
         data.properties = { ...this.properties };
-        
+
         // Serialize exposed properties (both from exposedProperties and custom getters/setters)
         data.exposedValues = {};
-        
+
         // Handle properties registered via exposeProperty
         if (Array.isArray(this.exposedProperties)) {
             for (const prop of this.exposedProperties) {
                 const propName = prop.name;
                 // Get the current value using our getter
                 const value = this[propName];
-                
+
                 // Only serialize non-undefined values
                 if (value !== undefined) {
                     // Special handling for objects that have their own toJSON method
@@ -563,43 +563,43 @@ class Module {
                 data.customData = customData;
             }
         }
-        
+
         return data;
     }
-    
+
     /**
      * Deserialize from JSON data
      * @param {Object} json - Serialized module data 
      */
     fromJSON(json) {
         if (!json) return this;
-        
+
         // Restore basic properties
         this.name = json.name || this.name;
         this.enabled = json.enabled !== undefined ? json.enabled : this.enabled;
         this._requirements = json.requirements || this._requirements || [];
-        
+
         // Restore regular properties object
         this.properties = json.properties || {};
-        
+
         // Restore exposed property values
         if (json.exposedValues) {
             for (const propName in json.exposedValues) {
                 const value = json.exposedValues[propName];
-                
+
                 // Handle Vector2 values
-                if (value && typeof value === 'object' && 
-                    'x' in value && 'y' in value && 
-                    typeof this[propName] === 'object' && 
+                if (value && typeof value === 'object' &&
+                    'x' in value && 'y' in value &&
+                    typeof this[propName] === 'object' &&
                     this[propName] instanceof Vector2) {
                     this[propName].x = value.x;
                     this[propName].y = value.y;
                 }
                 // Handle objects with fromJSON method
-                else if (this[propName] && 
-                         typeof this[propName] === 'object' && 
-                         typeof this[propName].fromJSON === 'function' &&
-                         value) {
+                else if (this[propName] &&
+                    typeof this[propName] === 'object' &&
+                    typeof this[propName].fromJSON === 'function' &&
+                    value) {
                     this[propName].fromJSON(value);
                 }
                 // Regular values
@@ -618,7 +618,7 @@ class Module {
         if (json.customData && typeof this._deserializeCustomData === 'function') {
             this._deserializeCustomData(json.customData);
         }
-        
+
         return this;
     }
 
@@ -629,32 +629,32 @@ class Module {
      */
     _updateInternalReferences(oldGO, newGO) {
         if (!oldGO || !newGO || oldGO === newGO) return;
-        
+
         // Recursively scan all properties
         const scanObject = (obj) => {
             if (!obj || typeof obj !== 'object') return;
-            
+
             // Skip DOM elements and functions
             if (obj instanceof HTMLElement) return;
-            
+
             // Use a WeakSet to track visited objects to avoid circular references
             const visited = new WeakSet();
-            
+
             const traverse = (o) => {
                 if (!o || typeof o !== 'object' || visited.has(o)) return;
                 visited.add(o);
-                
+
                 // Check all enumerable properties of the object
                 for (const key in o) {
                     try {
                         const value = o[key];
-                        
+
                         // If the value is the old GameObject, replace it with the new one
                         if (value === oldGO) {
                             o[key] = newGO;
                             continue;
                         }
-                        
+
                         // Recursively traverse objects and arrays
                         if (value && typeof value === 'object' && !visited.has(value)) {
                             traverse(value);
@@ -663,7 +663,7 @@ class Module {
                         // Some properties may not be accessible, just skip them
                     }
                 }
-                
+
                 // Check non-enumerable properties as well (for properties defined with Object.defineProperty)
                 const propNames = Object.getOwnPropertyNames(o);
                 for (const propName of propNames) {
@@ -671,19 +671,19 @@ class Module {
                         if (propName === 'constructor' || propName === 'prototype' || propName === '__proto__') {
                             continue;
                         }
-                        
+
                         const desc = Object.getOwnPropertyDescriptor(o, propName);
                         if (desc && desc.get && !desc.configurable) {
                             // We can't modify non-configurable getters/setters
                             continue;
                         }
-                        
+
                         const value = o[propName];
                         if (value === oldGO) {
                             o[propName] = newGO;
                             continue;
                         }
-                        
+
                         if (value && typeof value === 'object' && !visited.has(value)) {
                             traverse(value);
                         }
@@ -692,10 +692,10 @@ class Module {
                     }
                 }
             };
-            
+
             traverse(obj);
         };
-        
+
         // Check own properties first
         for (const key in this) {
             if (key !== 'gameObject' && key !== '_gameObject' && key !== '_previousGameObject') {
