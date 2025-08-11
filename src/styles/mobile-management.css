@@ -140,7 +140,7 @@ body.mobile-mode .resizer-v {
 }
 
 /* Mobile detection overlay */
-.mobile-detection-overlay {
+/*.mobile-detection-overlay {
   display: none;
   position: fixed;
   top: 0;
@@ -176,7 +176,7 @@ body.mobile-mode .resizer-v {
   font-size: 16px;
   margin: 10px;
   cursor: pointer;
-}
+}*/
 
 /* MOBILE SPECIFIC CANVAS HANDLING - All prefixed with body.mobile-mode to avoid conflicts */
 body.mobile-mode .inspector-container {

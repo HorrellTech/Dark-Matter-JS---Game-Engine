@@ -649,6 +649,7 @@ class ExportManager {
             'Rigidbody': 'src/core/Modules/Rigidbody.js',
             'Collider': 'src/core/Modules/Collider.js',
             'PlatformCharacterAuto': 'src/core/Modules/Platform Game/PlatformCharacterAuto.js',
+            'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
 
             // Other Modules
             'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
