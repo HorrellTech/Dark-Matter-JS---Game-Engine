@@ -243,6 +243,73 @@ class AssetManager {
     }
 
     /**
+ * Add embedded asset data for exported games
+ * @param {Object} assetsData - Object containing all asset data
+ */
+    addEmbeddedAssets(assetsData) {
+    console.log('Adding embedded assets:', Object.keys(assetsData));
+
+    for (const [path, assetInfo] of Object.entries(assetsData)) {
+        const normalizedPath = this.normalizePath(path);
+
+        // For images, ensure we load them as Image objects, not just data URLs
+        if (assetInfo.type && assetInfo.type.startsWith('image/')) {
+            // Load the image immediately
+            this.loadImage(assetInfo.content).then(img => {
+                // Store the loaded Image object in all path variations
+                const pathVariations = [
+                    path,
+                    normalizedPath,
+                    path.replace(/^[\/\\]+/, ''),
+                    normalizedPath.replace(/^[\/\\]+/, ''),
+                    '/' + path.replace(/^[\/\\]+/, ''),
+                    '/' + normalizedPath.replace(/^[\/\\]+/, ''),
+                    decodeURIComponent(path),
+                    decodeURIComponent(normalizedPath),
+                    path.split('/').pop(),
+                    normalizedPath.split('/').pop()
+                ];
+
+                pathVariations.forEach(variation => {
+                    if (variation) {
+                        this.cache[variation] = img;
+                    }
+                });
+
+                console.log(`Cached image asset: ${path} with ${pathVariations.length} path variations`);
+            }).catch(error => {
+                console.error(`Failed to load embedded image ${path}:`, error);
+            });
+        } else {
+            // Store the asset content directly in cache for non-images
+            this.cache[normalizedPath] = assetInfo.content;
+
+            // Also store under various path variations for better lookup
+            const pathVariations = [
+                path,
+                normalizedPath,
+                path.replace(/^[\/\\]+/, ''),
+                normalizedPath.replace(/^[\/\\]+/, ''),
+                '/' + path.replace(/^[\/\\]+/, ''),
+                '/' + normalizedPath.replace(/^[\/\\]+/, ''),
+                decodeURIComponent(path),
+                decodeURIComponent(normalizedPath),
+                path.split('/').pop(),
+                normalizedPath.split('/').pop()
+            ];
+
+            pathVariations.forEach(variation => {
+                if (variation && variation !== normalizedPath) {
+                    this.cache[variation] = assetInfo.content;
+                }
+            });
+
+            console.log(`Cached asset: ${path} with ${pathVariations.length} path variations`);
+        }
+    }
+}
+
+    /**
      * Manually adds a pre-loaded asset (like a base64 data URL) to the cache.
      * This is used for standalone HTML exports.
      * @param {string} path - The asset's intended path (e.g., 'images/player.png').
@@ -251,40 +318,79 @@ class AssetManager {
      * @returns {Promise<any>} A promise that resolves when the asset is processed and cached.
      */
     addAssetToCache(path, content, type) {
-        path = this.normalizePath(path);
+        const normalizedPath = this.normalizePath(path);
+
         try {
-            if (this.cache[path]) {
-                return Promise.resolve(this.cache[path]);
+            if (this.cache[normalizedPath]) {
+                return Promise.resolve(this.cache[normalizedPath]);
             }
 
+            // Store multiple path variations for better lookup
+            const pathVariations = [
+                path,                                           // Original path
+                normalizedPath,                                // Normalized path
+                path.replace(/^[\/\\]+/, ''),                  // Remove leading slashes
+                normalizedPath.replace(/^[\/\\]+/, ''),        // Remove leading slashes from normalized
+                '/' + path.replace(/^[\/\\]+/, ''),            // Add leading slash
+                '/' + normalizedPath.replace(/^[\/\\]+/, ''),  // Add leading slash to normalized
+                decodeURIComponent(path),                      // URL decoded
+                decodeURIComponent(normalizedPath),            // URL decoded normalized
+                path.split('/').pop(),                         // Just filename
+                normalizedPath.split('/').pop()                // Just filename from normalized
+            ];
+
+            // Remove duplicates
+            const uniquePaths = [...new Set(pathVariations.filter(p => p && p.length > 0))];
+
             let promise;
-            if (type.startsWith('image/')) {
+            if (type && type.startsWith('image/')) {
                 // If content is not a data URL, construct one
                 if (typeof content === 'string' && !content.startsWith('data:')) {
                     content = `data:${type};base64,${content}`;
                 }
                 promise = this.loadImage(content);
-            } else if (type.startsWith('audio/')) {
+            } else if (type && type.startsWith('audio/')) {
                 if (typeof content === 'string' && !content.startsWith('data:')) {
                     content = `data:${type};base64,${content}`;
                 }
                 promise = this.loadAudio(content);
-            } else if (type.startsWith('application/json') || path.endsWith('.json')) {
-                const jsonObject = JSON.parse(content);
-                this.cache[path] = jsonObject;
+            } else if (type && (type.startsWith('application/json') || path.endsWith('.json'))) {
+                let jsonObject;
+                if (typeof content === 'string') {
+                    jsonObject = JSON.parse(content);
+                } else {
+                    jsonObject = content;
+                }
+
+                // Cache under all path variations
+                uniquePaths.forEach(variation => {
+                    this.cache[variation] = jsonObject;
+                });
+
                 return Promise.resolve(jsonObject);
             } else {
-                this.cache[path] = content;
+                // Cache text content under all path variations
+                uniquePaths.forEach(variation => {
+                    this.cache[variation] = content;
+                });
+
                 return Promise.resolve(content);
             }
 
-            this.loadingPromises[path] = promise;
+            this.loadingPromises[normalizedPath] = promise;
 
             promise.then(asset => {
-                this.cache[path] = asset;
-                delete this.loadingPromises[path];
-            }).catch(() => {
-                delete this.loadingPromises[path];
+                // Cache under all path variations
+                uniquePaths.forEach(variation => {
+                    this.cache[variation] = asset;
+                    console.log('Cached asset under path:', variation);
+                });
+
+                delete this.loadingPromises[normalizedPath];
+                console.log('Successfully cached asset with', uniquePaths.length, 'path variations');
+            }).catch(error => {
+                console.error(`Error caching asset ${normalizedPath}:`, error);
+                delete this.loadingPromises[normalizedPath];
             });
 
             return promise;
@@ -293,4 +399,171 @@ class AssetManager {
             return Promise.reject(error);
         }
     }
+
+    /**
+ * Load an asset
+ * @param {string} path - Path to the asset
+ * @returns {Promise<any>} The loaded asset
+ */
+    loadAsset(path) {
+        const normalizedPath = this.normalizePath(path);
+
+        // Check cache first with all possible path variations
+        const pathVariations = [
+            path,
+            normalizedPath,
+            path.replace(/^[\/\\]+/, ''),
+            normalizedPath.replace(/^[\/\\]+/, ''),
+            '/' + path.replace(/^[\/\\]+/, ''),
+            '/' + normalizedPath.replace(/^[\/\\]+/, ''),
+            decodeURIComponent(path),
+            decodeURIComponent(normalizedPath),
+            path.split('/').pop(),
+            normalizedPath.split('/').pop()
+        ];
+
+        for (const variation of pathVariations) {
+            if (this.cache[variation]) {
+                console.log('Found asset in cache with path variation:', variation);
+                return Promise.resolve(this.cache[variation]);
+            }
+        }
+
+        // Check if already loading
+        if (this.loadingPromises[normalizedPath]) {
+            return this.loadingPromises[normalizedPath];
+        }
+
+        // If not in cache and not loading, try to load from file system or URL
+        let promise;
+
+        if (this.fileBrowser && typeof this.fileBrowser.readFile === 'function') {
+            // Try to load from file browser first
+            promise = this.loadFromFileBrowser(normalizedPath);
+        } else {
+            // Fallback to URL loading
+            promise = this.loadFromUrl(normalizedPath);
+        }
+
+        this.loadingPromises[normalizedPath] = promise;
+
+        promise.then(asset => {
+            // Cache under all path variations
+            pathVariations.forEach(variation => {
+                this.cache[variation] = asset;
+            });
+            delete this.loadingPromises[normalizedPath];
+        }).catch(error => {
+            console.error(`Failed to load asset ${normalizedPath}:`, error);
+            delete this.loadingPromises[normalizedPath];
+        });
+
+        return promise;
+    }
+
+    /**
+     * Load asset from file browser
+     * @param {string} path - Asset path
+     * @returns {Promise<any>} The loaded asset
+     */
+    async loadFromFileBrowser(path) {
+        try {
+            const content = await this.fileBrowser.readFile(path);
+            if (!content) {
+                throw new Error(`Asset not found in file browser: ${path}`);
+            }
+
+            // Determine type and process accordingly
+            const extension = path.split('.').pop().toLowerCase();
+
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                return this.loadImage(content);
+            } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
+                return this.loadAudio(content);
+            } else if (extension === 'json') {
+                return JSON.parse(content);
+            } else {
+                return content;
+            }
+        } catch (error) {
+            throw new Error(`Failed to load asset from file browser: ${path} - ${error.message}`);
+        }
+    }
+
+    /**
+     * Load asset from URL (fallback method)
+     * @param {string} path - Asset path
+     * @returns {Promise<any>} The loaded asset
+     */
+    async loadFromUrl(path) {
+        try {
+            // Construct full URL
+            const fullPath = this.basePath ? `${this.basePath}${path}` : path;
+
+            const response = await fetch(fullPath);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const extension = path.split('.').pop().toLowerCase();
+
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                const blob = await response.blob();
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadImage(dataUrl);
+            } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
+                const blob = await response.blob();
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadAudio(dataUrl);
+            } else if (extension === 'json') {
+                return response.json();
+            } else {
+                return response.text();
+            }
+        } catch (error) {
+            throw new Error(`Failed to load asset from URL: ${path} - ${error.message}`);
+        }
+    }
+
+    /**
+     * Convert Blob to data URL
+     */
+    async blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    /**
+     * Load an image
+     * @param {string} src - Image source (URL or data URL)
+     * @returns {Promise<Image>} The loaded image
+     */
+    loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            img.src = src;
+        });
+    }
+
+    /**
+     * Load an audio file
+     * @param {string} src - Audio source (URL or data URL)
+     * @returns {Promise<Audio>} The loaded audio
+     */
+    loadAudio(src) {
+        return new Promise((resolve, reject) => {
+            const audio = new Audio();
+            audio.oncanplaythrough = () => resolve(audio);
+            audio.onerror = () => reject(new Error(`Failed to load audio: ${src}`));
+            audio.src = src;
+        });
+    }
 }
+
+window.AssetManager = AssetManager;

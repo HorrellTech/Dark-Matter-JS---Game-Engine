@@ -153,13 +153,39 @@ class ExportManager {
         if (typeof module.toJSON === 'function') {
             try {
                 serialized.data = module.toJSON();
+
+                // For SpriteRenderer, ensure we capture image data for export
+                if (module.constructor.name === 'SpriteRenderer' && module._image && module._isLoaded) {
+                    // Convert the loaded image to a data URL for embedding
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = module._image.naturalWidth;
+                        canvas.height = module._image.naturalHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(module._image, 0, 0);
+
+                        // Set the embedded data and flag
+                        serialized.data.imageData = canvas.toDataURL('image/png');
+                        serialized.data.useEmbeddedData = true;
+
+                        // IMPORTANT: Completely remove the imageAsset to prevent any path loading
+                        delete serialized.data.imageAsset;
+
+                        console.log('Embedded image data for SpriteRenderer and removed imageAsset completely');
+                    } catch (error) {
+                        console.warn('Could not embed image data:', error);
+                        // If embedding fails, keep the original imageAsset but mark as non-embedded
+                        serialized.data.useEmbeddedData = false;
+                    }
+                } else if (module.constructor.name === 'SpriteRenderer') {
+                    // No loaded image, ensure useEmbeddedData is false
+                    serialized.data.useEmbeddedData = false;
+                }
             } catch (error) {
                 console.warn(`Error serializing module ${module.constructor.name}:`, error);
-                // Fallback to basic serialization
                 serialized.data = this.fallbackSerializeModule(module);
             }
         } else {
-            // Fallback serialization for modules without toJSON
             serialized.data = this.fallbackSerializeModule(module);
         }
 
@@ -221,14 +247,16 @@ class ExportManager {
         if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
             const files = await window.fileBrowser.getAllFiles();
             for (const file of files) {
-                if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css')) {
+                // Skip code files - they're handled separately
+                if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css') || file.name.endsWith('.scene') || file.name.endsWith('.prefab')) {
                     continue;
                 }
 
-                let content = file.content;
                 const path = file.path || file.name;
-                // Improved path normalization
+                // Use AssetManager's normalization to ensure consistency
                 const normalizedPath = this.normalizePath(path);
+
+                let content = file.content;
 
                 if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
                     // For binary files, ensure we have a proper data URL
@@ -296,6 +324,131 @@ class ExportManager {
     }
 
     /**
+     * Load an asset (enhanced version for export compatibility)
+     * @param {string} path - Path to the asset
+     * @returns {Promise<any>} The loaded asset
+     */
+    loadAsset(path) {
+        const normalizedPath = this.normalizePath(path);
+
+        // Check cache first with all possible path variations
+        const pathVariations = [
+            path,
+            normalizedPath,
+            path.replace(/^[\/\\]+/, ''),
+            normalizedPath.replace(/^[\/\\]+/, ''),
+            '/' + path.replace(/^[\/\\]+/, ''),
+            '/' + normalizedPath.replace(/^[\/\\]+/, ''),
+            decodeURIComponent(path),
+            decodeURIComponent(normalizedPath),
+            path.split('/').pop(),
+            normalizedPath.split('/').pop()
+        ];
+
+        for (const variation of pathVariations) {
+            if (this.cache[variation]) {
+                console.log('Found asset in cache with path variation:', variation);
+                return Promise.resolve(this.cache[variation]);
+            }
+        }
+
+        // Check if already loading
+        if (this.loadingPromises[normalizedPath]) {
+            return this.loadingPromises[normalizedPath];
+        }
+
+        // If not in cache and not loading, try to load from file system or URL
+        let promise;
+
+        if (this.fileBrowser && typeof this.fileBrowser.readFile === 'function') {
+            // Try to load from file browser first
+            promise = this.loadFromFileBrowser(normalizedPath);
+        } else {
+            // Fallback to URL loading
+            promise = this.loadFromUrl(normalizedPath);
+        }
+
+        this.loadingPromises[normalizedPath] = promise;
+
+        promise.then(asset => {
+            // Cache under all path variations
+            pathVariations.forEach(variation => {
+                this.cache[variation] = asset;
+            });
+            delete this.loadingPromises[normalizedPath];
+        }).catch(error => {
+            console.error(`Failed to load asset ${normalizedPath}:`, error);
+            delete this.loadingPromises[normalizedPath];
+        });
+
+        return promise;
+    }
+
+    /**
+     * Load asset from file browser
+     * @param {string} path - Asset path
+     * @returns {Promise<any>} The loaded asset
+     */
+    async loadFromFileBrowser(path) {
+        try {
+            const content = await this.fileBrowser.readFile(path);
+            if (!content) {
+                throw new Error(`Asset not found in file browser: ${path}`);
+            }
+
+            // Determine type and process accordingly
+            const extension = path.split('.').pop().toLowerCase();
+
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                return this.loadImage(content);
+            } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
+                return this.loadAudio(content);
+            } else if (extension === 'json') {
+                return JSON.parse(content);
+            } else {
+                return content;
+            }
+        } catch (error) {
+            throw new Error(`Failed to load asset from file browser: ${path} - ${error.message}`);
+        }
+    }
+
+    /**
+     * Load asset from URL (fallback method)
+     * @param {string} path - Asset path
+     * @returns {Promise<any>} The loaded asset
+     */
+    async loadFromUrl(path) {
+        try {
+            // Construct full URL
+            const fullPath = this.basePath ? `${this.basePath}${path}` : path;
+
+            const response = await fetch(fullPath);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const extension = path.split('.').pop().toLowerCase();
+
+            if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                const blob = await response.blob();
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadImage(dataUrl);
+            } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
+                const blob = await response.blob();
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadAudio(dataUrl);
+            } else if (extension === 'json') {
+                return response.json();
+            } else {
+                return response.text();
+            }
+        } catch (error) {
+            throw new Error(`Failed to load asset from URL: ${path} - ${error.message}`);
+        }
+    }
+
+    /**
      * Convert Blob to data URL
      */
     async blobToDataURL(blob) {
@@ -304,6 +457,34 @@ class ExportManager {
             reader.onload = () => resolve(reader.result);
             reader.onerror = reject;
             reader.readAsDataURL(blob);
+        });
+    }
+
+    /**
+     * Load an image
+     * @param {string} src - Image source (URL or data URL)
+     * @returns {Promise<Image>} The loaded image
+     */
+    loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+            img.src = src;
+        });
+    }
+
+    /**
+     * Load an audio file
+     * @param {string} src - Audio source (URL or data URL)
+     * @returns {Promise<Audio>} The loaded audio
+     */
+    loadAudio(src) {
+        return new Promise((resolve, reject) => {
+            const audio = new Audio();
+            audio.oncanplaythrough = () => resolve(audio);
+            audio.onerror = () => reject(new Error(`Failed to load audio: ${src}`));
+            audio.src = src;
         });
     }
 
@@ -441,6 +622,11 @@ class ExportManager {
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
             'DrawPlatformerHills': 'src/core/Modules/Platform Game/DrawPlatformerHills.js',
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Drawing/DrawInfiniteStarFieldParallax.js',
+
+            // Asteroid Modules
+            'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
+            'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
+            'AsteroidsBullet': 'src/core/Modules/Asteroids/AsteroidsBullet.js',
 
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',
@@ -724,7 +910,7 @@ html {
     generateGameInitialization(data, settings) {
         // Use safer JSON embedding approach
         const scenesData = this.safeStringify(data.scenes);
-        const prefabsData = this.safeStringify(data.prefabs); // Add prefabs data
+        const prefabsData = this.safeStringify(data.prefabs);
         const assetsData = settings.standalone && settings.includeAssets ?
             this.safeStringify(data.assets) : 'null';
 
@@ -774,12 +960,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.physicsManager = new PhysicsManager();
     }
 
-    // Initialize AssetManager
-    ${settings.standalone ?
-            `window.assetManager = new AssetManager('');` :
-            `window.assetManager = new AssetManager('assets/');`
-        }
-    
+    // Initialize AssetManager with proper export mode handling
+    if (!window.assetManager) {
+        window.assetManager = new AssetManager();
+    }
+
     // Enhanced path normalization function
     window.assetManager.normalizePath = function(path) {
         if (!path) return '';
@@ -793,6 +978,111 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         return normalized;
     };
+
+    ${settings.standalone ?
+                `// Standalone mode - override asset loading to use embedded assets
+        window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
+        window.assetManager.loadAsset = function(path) {
+            const normalizedPath = this.normalizePath(path);
+            
+            // Check cache first with all possible path variations
+            const pathVariations = [
+                path,
+                normalizedPath,
+                path.replace(/^[\/\\\\]+/, ''),
+                normalizedPath.replace(/^[\/\\\\]+/, ''),
+                '/' + path.replace(/^[\/\\\\]+/, ''),
+                '/' + normalizedPath.replace(/^[\/\\\\]+/, ''),
+                decodeURIComponent(path),
+                decodeURIComponent(normalizedPath),
+                path.split('/').pop(),
+                normalizedPath.split('/').pop()
+            ];
+            
+            for (const variation of pathVariations) {
+                if (this.cache[variation]) {
+                    console.log('Found asset in cache with path variation:', variation);
+                    return Promise.resolve(this.cache[variation]);
+                }
+            }
+            
+            console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
+            console.warn('Available cached assets:', Object.keys(this.cache));
+            return Promise.reject(new Error('Asset not found: ' + path));
+        };
+
+        // Override loadImage method to use cached assets
+        window.assetManager.originalLoadImage = window.assetManager.loadImage;
+        window.assetManager.loadImage = function(src) {
+            // If src is already a data URL or blob URL, use it directly
+            if (src.startsWith('data:') || src.startsWith('blob:')) {
+                return this.originalLoadImage(src);
+            }
+            
+            // Otherwise, try to find it in cache first
+            const normalizedSrc = this.normalizePath(src);
+            const pathVariations = [
+                src,
+                normalizedSrc,
+                src.replace(/^[\/\\\\]+/, ''),
+                normalizedSrc.replace(/^[\/\\\\]+/, ''),
+                '/' + src.replace(/^[\/\\\\]+/, ''),
+                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''),
+                decodeURIComponent(src),
+                decodeURIComponent(normalizedSrc),
+                src.split('/').pop(),
+                normalizedSrc.split('/').pop()
+            ];
+            
+            for (const variation of pathVariations) {
+                if (this.cache[variation]) {
+                    console.log('Loading cached image for:', src, 'found as:', variation);
+                    return Promise.resolve(this.cache[variation]);
+                }
+            }
+            
+            // If not in cache, fall back to original method
+            console.warn('Image not found in cache, attempting direct load:', src);
+            return this.originalLoadImage(src);
+        };
+
+        // Override loadAudio method to use cached assets  
+        window.assetManager.originalLoadAudio = window.assetManager.loadAudio;
+        window.assetManager.loadAudio = function(src) {
+            // If src is already a data URL or blob URL, use it directly
+            if (src.startsWith('data:') || src.startsWith('blob:')) {
+                return this.originalLoadAudio(src);
+            }
+            
+            // Otherwise, try to find it in cache first
+            const normalizedSrc = this.normalizePath(src);
+            const pathVariations = [
+                src,
+                normalizedSrc,
+                src.replace(/^[\/\\\\]+/, ''),
+                normalizedSrc.replace(/^[\/\\\\]+/, ''),
+                '/' + src.replace(/^[\/\\\\]+/, ''),
+                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''),
+                decodeURIComponent(src),
+                decodeURIComponent(normalizedSrc),
+                src.split('/').pop(),
+                normalizedSrc.split('/').pop()
+            ];
+            
+            for (const variation of pathVariations) {
+                if (this.cache[variation]) {
+                    console.log('Loading cached audio for:', src, 'found as:', variation);
+                    return Promise.resolve(this.cache[variation]);
+                }
+            }
+            
+            // If not in cache, fall back to original method
+            console.warn('Audio not found in cache, attempting direct load:', src);
+            return this.originalLoadAudio(src);
+        };` :
+                `// ZIP mode - set base path for assets
+        window.assetManager.basePath = 'assets/';`
+            }
     
     // Initialize Global Prefab Manager
     window.prefabManager = {
@@ -953,111 +1243,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('Pre-caching embedded assets...');
         console.log('Assets to cache:', Object.keys(gameData.assets));
         
-        // Enhanced asset caching with better path handling and data URL support
-        window.assetManager.addAssetToCache = function(path, content, type) {
-            const normalizedPath = this.normalizePath(path);
-            
-            console.log('Caching asset:', { originalPath: path, normalizedPath, type });
-            
-            if (type && type.startsWith('image/')) {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        // Create comprehensive path variations for better lookup
-                        const pathVariations = [
-                            path,                                    // Original path
-                            normalizedPath,                         // Normalized path
-                            path.replace(/^[\/\\\\]+/, ''),         // Remove leading slashes
-                            path.replace(/\\\\/g, '/'),             // Backslashes to forward slashes
-                            path.replace(/\\\\/g, '/').replace(/^[\/\\\\]+/, ''), // Both normalizations
-                            decodeURIComponent(path),               // URL decoded
-                            decodeURIComponent(normalizedPath),     // URL decoded normalized
-                            encodeURIComponent(path.split('/').pop()), // Just filename encoded
-                            path.split('/').pop(),                  // Just filename
-                            path.split('\\\\').pop(),               // Just filename (backslash)
-                            '/' + path,                             // With leading slash
-                            '/' + normalizedPath,                   // Normalized with leading slash
-                        ];
-                        
-                        // Remove duplicates and empty strings
-                        const uniquePaths = [...new Set(pathVariations.filter(p => p && p.length > 0))];
-                        
-                        // Cache under all variations
-                        uniquePaths.forEach(variation => {
-                            this.cache[variation] = img;
-                            console.log('Cached image under path:', variation);
-                        });
-                        
-                        console.log('Successfully cached image with', uniquePaths.length, 'path variations');
-                        console.log('Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-                        resolve(img);
-                    };
-                    img.onerror = (error) => {
-                        console.error('Failed to cache image:', normalizedPath, error);
-                        console.error('Content preview:', content.substring(0, 100));
-                        reject(error);
-                    };
-                    
-                    // Validate data URL format
-                    if (!content || !content.startsWith('data:')) {
-                        console.error('Invalid data URL for image:', normalizedPath);
-                        console.error('Content type:', typeof content, 'Length:', content ? content.length : 'null');
-                        reject(new Error('Invalid data URL format'));
-                        return;
-                    }
-                    
-                    img.src = content;
-                });
-            } else {
-                // For non-image assets, cache with path variations
-                const pathVariations = [
-                    path,
-                    normalizedPath,
-                    path.replace(/^[\/\\\\]+/, ''),
-                    decodeURIComponent(path),
-                    decodeURIComponent(normalizedPath),
-                    '/' + path,
-                    '/' + normalizedPath
-                ];
-                
-                const uniquePaths = [...new Set(pathVariations.filter(p => p && p.length > 0))];
-                uniquePaths.forEach(variation => {
-                    this.cache[variation] = content;
-                    console.log('Cached non-image asset under path:', variation);
-                });
-                
-                return Promise.resolve(content);
-            }
-        };
+        // Use the enhanced embedded assets method
+        window.assetManager.addEmbeddedAssets(gameData.assets);
         
-        const assetPromises = [];
-        for (const path in gameData.assets) {
-            const assetInfo = gameData.assets[path];
-            
-            // Validate asset content
-            if (!assetInfo.content) {
-                console.warn('Asset has no content:', path);
-                continue;
-            }
-            
-            console.log('Processing asset:', path, 'Type:', assetInfo.type, 'Binary:', assetInfo.binary);
-            
-            const promise = window.assetManager.addAssetToCache(path, assetInfo.content, assetInfo.type)
-                .catch(error => {
-                    console.error('Failed to cache asset:', path, error);
-                    // Don't fail the entire export for one bad asset
-                    return null;
-                });
-            assetPromises.push(promise);
-        }
-        
-        try {
-            await Promise.all(assetPromises);
-            console.log('Asset caching completed.');
-            console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
-        } catch (error) {
-            console.error('Error during asset caching:', error);
-        }
+        console.log('Asset caching completed.');
+        console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
     }` : ''}
     
     // Initialize engine
@@ -1153,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 module.enabled = moduleData.enabled;
                 module.id = moduleData.id;
                 
-                // Restore module data - IMPROVED FOR SPRITERENDERER
+                // Restore module data
                 if (moduleData.data) {
                     if (typeof module.fromJSON === 'function') {
                         try {

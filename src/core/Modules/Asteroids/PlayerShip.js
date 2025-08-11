@@ -17,12 +17,20 @@ class PlayerShip extends Module {
         this.thrustKey = "arrowup";
         this.leftKey = "arrowleft";
         this.rightKey = "arrowright";
-        this.fireKey = "space";
+        this.fireKey = " ";
+
+        // Weapon properties
+        this.bulletPrefabName = "PlayerBullet";
+        this.fireRate = 5; // bullets per second
+        this.bulletSpeed = 600;
+        this.bulletLifetime = 3.0;
+        this.bulletOffset = 15; // distance from ship center to spawn bullet
 
         // Internal state
         this.velocity = { x: 0, y: 0 };
         this.angularVelocity = 0;
         this.isThrusting = false;
+        this.lastFireTime = 0;
 
         // Visual properties
         this.shipColor = "#00ff00";
@@ -87,10 +95,45 @@ class PlayerShip extends Module {
             }
         });
 
-        this.exposeProperty("fireKey", "string", "space", {
+        this.exposeProperty("fireKey", "string", " ", {
             description: "Key for firing weapons",
             onChange: (val) => {
                 this.fireKey = val;
+            }
+        });
+
+        this.exposeProperty("bulletPrefabName", "string", "PlayerBullet", {
+            description: "Name of the prefab to use for bullets",
+            onChange: (val) => {
+                this.bulletPrefabName = val;
+            }
+        });
+
+        this.exposeProperty("fireRate", "number", 5, {
+            description: "Bullets fired per second",
+            onChange: (val) => {
+                this.fireRate = Math.max(0.1, val);
+            }
+        });
+
+        this.exposeProperty("bulletSpeed", "number", 600, {
+            description: "Speed of fired bullets",
+            onChange: (val) => {
+                this.bulletSpeed = Math.max(1, val);
+            }
+        });
+
+        this.exposeProperty("bulletLifetime", "number", 3.0, {
+            description: "How long bullets last in seconds",
+            onChange: (val) => {
+                this.bulletLifetime = Math.max(0.1, val);
+            }
+        });
+
+        this.exposeProperty("bulletOffset", "number", 15, {
+            description: "Distance from ship center to spawn bullets",
+            onChange: (val) => {
+                this.bulletOffset = Math.max(0, val);
             }
         });
 
@@ -128,6 +171,7 @@ class PlayerShip extends Module {
         this.velocity = { x: 0, y: 0 };
         this.angularVelocity = 0;
         this.isThrusting = false;
+        this.lastFireTime = 0;
     }
 
     loop(deltaTime) {
@@ -150,19 +194,141 @@ class PlayerShip extends Module {
         // Thrust input
         if (window.input.keyDown(this.thrustKey)) {
             this.isThrusting = true;
-            
+
             // Convert angle to radians and apply thrust in facing direction
             const angleRad = (this.gameObject.angle * Math.PI) / 180;
             const thrustX = Math.cos(angleRad - Math.PI / 2) * this.thrustPower * deltaTime;
             const thrustY = Math.sin(angleRad - Math.PI / 2) * this.thrustPower * deltaTime;
-            
+
             this.velocity.x += thrustX;
             this.velocity.y += thrustY;
         }
 
-        // Fire input (for potential weapon systems)
-        if (window.input.keyPressed(this.fireKey)) {
-            this.onFire();
+        // Fire input - handle both single shot and continuous fire
+        if (window.input.keyDown(this.fireKey)) {
+            this.handleFiring(deltaTime);
+        }
+    }
+
+    handleFiring(deltaTime) {
+        const currentTime = Date.now() / 1000; // Convert to seconds
+        const timeBetweenShots = 1 / this.fireRate;
+
+        if (currentTime - this.lastFireTime >= timeBetweenShots) {
+            this.fireBullet();
+            this.lastFireTime = currentTime;
+        }
+    }
+
+    fireBullet() {
+        // Debug logging
+        console.log("fireBullet() called");
+        console.log("bulletPrefabName:", this.bulletPrefabName);
+
+        // Check if we have an engine reference
+        if (!window.engine) {
+            console.warn("Cannot fire bullet: No engine reference available");
+            return;
+        }
+
+        // Try multiple prefab name variations
+        const prefabVariations = [
+            this.bulletPrefabName,
+            `Prefabs/${this.bulletPrefabName}`,
+            `${this.bulletPrefabName}.prefab`,
+            `Prefabs/${this.bulletPrefabName}.prefab`,
+            this.bulletPrefabName.toLowerCase(),
+            this.bulletPrefabName.toUpperCase()
+        ];
+
+        let bullet = null;
+        let usedPrefabName = null;
+
+        // Method 1: Try using the engine's prefab system with different name variations
+        for (const prefabName of prefabVariations) {
+            try {
+                console.log(`Trying prefab name: "${prefabName}"`);
+                if (window.engine.hasPrefab && window.engine.hasPrefab(prefabName)) {
+                    console.log(`Found prefab with name: "${prefabName}"`);
+                    // Calculate bullet spawn position with offset
+                    const angleRad = (this.gameObject.angle * Math.PI) / 180;
+                    const spawnX = this.gameObject.position.x + Math.cos(angleRad - Math.PI / 2) * this.bulletOffset;
+                    const spawnY = this.gameObject.position.y + Math.sin(angleRad - Math.PI / 2) * this.bulletOffset;
+                    bullet = window.engine.instantiatePrefab(prefabName, spawnX, spawnY);
+                    usedPrefabName = prefabName;
+                    break;
+                }
+            } catch (error) {
+                console.warn(`Failed to use prefab "${prefabName}":`, error);
+            }
+        }
+
+        // Method 2: Create bullet manually if prefab system isn't available
+        if (!bullet) {
+            console.log("Creating bullet manually");
+            bullet = this.createBulletManually();
+        }
+
+        if (bullet) {
+            // Calculate bullet spawn position with offset (if not already done)
+            const angleRad = (this.gameObject.angle * Math.PI) / 180;
+            const spawnX = this.gameObject.position.x + Math.cos(angleRad - Math.PI / 2) * this.bulletOffset;
+            const spawnY = this.gameObject.position.y + Math.sin(angleRad - Math.PI / 2) * this.bulletOffset;
+
+            // Position the bullet
+            bullet.position.x = spawnX;
+            bullet.position.y = spawnY;
+
+            // Configure the bullet
+            const bulletModule = bullet.getModule("AsteroidsBullet");
+            if (bulletModule) {
+                // Set bullet properties BEFORE setting direction
+                bulletModule.speed = this.bulletSpeed;
+                bulletModule.lifetime = this.bulletLifetime;
+
+                // Set direction from angle
+                bulletModule.setDirectionFromAngle(this.gameObject.angle);
+
+                // Add ship's velocity to bullet (inherit momentum)
+                // This needs to be done AFTER updateVelocity() is called by setDirectionFromAngle
+                const momentumFactor = 0.5; // Increased from 0.3 for better momentum inheritance
+                bulletModule.velocity.x += this.velocity.x * momentumFactor;
+                bulletModule.velocity.y += this.velocity.y * momentumFactor;
+
+                console.log(`Bullet configured: speed=${bulletModule.speed}, lifetime=${bulletModule.lifetime}, direction=${bulletModule.direction.x.toFixed(2)},${bulletModule.direction.y.toFixed(2)}`);
+                console.log(`Ship velocity: ${this.velocity.x.toFixed(2)}, ${this.velocity.y.toFixed(2)}`);
+                console.log(`Final bullet velocity: ${bulletModule.velocity.x.toFixed(2)}, ${bulletModule.velocity.y.toFixed(2)}`);
+            } else {
+                console.warn(`Bullet does not have an AsteroidsBullet module`);
+            }
+
+            // Add bullet to scene
+            if (window.engine.gameObjects) {
+                window.engine.gameObjects.push(bullet);
+                console.log(`Bullet added to scene. Total objects: ${window.engine.gameObjects.length}`);
+            } else {
+                console.warn("Could not add bullet to scene: no gameObjects array");
+            }
+        } else {
+            console.error("Failed to create bullet");
+        }
+    }
+
+    createBulletManually() {
+        console.log("Creating bullet GameObject manually");
+
+        // Create a new GameObject for the bullet
+        const bullet = new GameObject("PlayerBullet");
+
+        // Add the AsteroidsBullet module
+        if (window.AsteroidsBullet) {
+            const bulletModule = new window.AsteroidsBullet();
+            bullet.addModule(bulletModule);
+            console.log("Added AsteroidsBullet module to bullet");
+            return bullet;
+        } else {
+            console.error("AsteroidsBullet class not found. Make sure the module is loaded.");
+            return null;
         }
     }
 
@@ -221,17 +387,12 @@ class PlayerShip extends Module {
     }
 
     onFire() {
-        // Override this method or emit events for weapon systems
-        // For now, just log for debugging
-        console.log("Ship fired!");
+        // Legacy method - now handled by fireBullet()
+        this.fireBullet();
     }
 
     draw(ctx) {
         ctx.save();
-
-        // Move to ship position
-        //ctx.translate(this.gameObject.position.x, this.gameObject.position.y);
-        //ctx.rotate((this.gameObject.angle * Math.PI) / 180);
 
         // Draw thrust flame first (behind ship)
         if (this.showThrust && this.isThrusting) {
@@ -279,7 +440,7 @@ class PlayerShip extends Module {
     }
 
     drawGizmos(ctx) {
-        if (window.engine.debug) {
+        if (window.engine && window.engine.debug) {
             // Draw velocity vector
             ctx.strokeStyle = "yellow";
             ctx.lineWidth = 2;
@@ -298,6 +459,12 @@ class PlayerShip extends Module {
             ctx.fillText(`Speed: ${Math.round(speed)}`, this.gameObject.position.x + 20, this.gameObject.position.y - 20);
             ctx.fillText(`Angle: ${Math.round(this.gameObject.angle)}°`, this.gameObject.position.x + 20, this.gameObject.position.y - 5);
             ctx.fillText(`Angular Vel: ${Math.round(this.angularVelocity)}°/s`, this.gameObject.position.x + 20, this.gameObject.position.y + 10);
+
+            // Draw bullet prefab info
+            ctx.fillText(`Bullet Prefab: ${this.bulletPrefabName}`, this.gameObject.position.x + 20, this.gameObject.position.y + 25);
+            const prefabExists = window.engine.hasPrefab(this.bulletPrefabName);
+            ctx.fillStyle = prefabExists ? "green" : "red";
+            ctx.fillText(`Prefab ${prefabExists ? "Found" : "Missing"}`, this.gameObject.position.x + 20, this.gameObject.position.y + 40);
         }
     }
 
@@ -328,6 +495,10 @@ class PlayerShip extends Module {
         };
     }
 
+    setBulletPrefab(prefabName) {
+        this.bulletPrefabName = prefabName;
+    }
+
     toJSON() {
         return {
             thrustPower: this.thrustPower,
@@ -339,12 +510,18 @@ class PlayerShip extends Module {
             leftKey: this.leftKey,
             rightKey: this.rightKey,
             fireKey: this.fireKey,
+            bulletPrefabName: this.bulletPrefabName,
+            fireRate: this.fireRate,
+            bulletSpeed: this.bulletSpeed,
+            bulletLifetime: this.bulletLifetime,
+            bulletOffset: this.bulletOffset,
             shipColor: this.shipColor,
             thrustColor: this.thrustColor,
             shipSize: this.shipSize,
             showThrust: this.showThrust,
             velocity: this.velocity,
-            angularVelocity: this.angularVelocity
+            angularVelocity: this.angularVelocity,
+            lastFireTime: this.lastFireTime
         };
     }
 
@@ -354,19 +531,25 @@ class PlayerShip extends Module {
         this.maxSpeed = data.maxSpeed || 400;
         this.friction = data.friction || 0.98;
         this.angularFriction = data.angularFriction || 0.95;
-        this.thrustKey = data.thrustKey || "w";
-        this.leftKey = data.leftKey || "a";
-        this.rightKey = data.rightKey || "d";
-        this.fireKey = data.fireKey || "space";
+        this.thrustKey = data.thrustKey || "arrowup";
+        this.leftKey = data.leftKey || "arrowleft";
+        this.rightKey = data.rightKey || "arrowright";
+        this.fireKey = data.fireKey || " "; // Changed default to space character
+        this.bulletPrefabName = data.bulletPrefabName || "PlayerBullet";
+        this.fireRate = data.fireRate || 5;
+        this.bulletSpeed = data.bulletSpeed || 600;
+        this.bulletLifetime = data.bulletLifetime || 3.0;
+        this.bulletOffset = data.bulletOffset || 15;
         this.shipColor = data.shipColor || "#00ff00";
         this.thrustColor = data.thrustColor || "#ff4400";
         this.shipSize = data.shipSize || 12;
-        this.showThrust = data.showThrust !== undefined ? data.showThrust : true;
-        
+        this.showThrust = data.showThift !== undefined ? data.showThrust : true;
+
         if (data.velocity) {
             this.velocity = { x: data.velocity.x || 0, y: data.velocity.y || 0 };
         }
         this.angularVelocity = data.angularVelocity || 0;
+        this.lastFireTime = data.lastFireTime || 0;
     }
 }
 

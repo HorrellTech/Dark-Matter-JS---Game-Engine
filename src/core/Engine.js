@@ -705,8 +705,13 @@ class Engine {
         // Mark viewport as dirty to force update
         this.viewport.dirty = true;
         
-        // Deep clone the game objects to avoid modifying editor objects
-        this.gameObjects = this.cloneGameObjects(scene.gameObjects);
+        // Deep clone only in editor. In exported/runtime builds, use objects as-built
+        // so embedded assets (like SpriteRenderer.imageData) are preserved.
+        if (window.editor) {
+            this.gameObjects = this.cloneGameObjects(scene.gameObjects);
+        } else {
+            this.gameObjects = scene.gameObjects;
+        }
         
         this.preloaded = false;
         this.canvasResized = true;
