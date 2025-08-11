@@ -885,6 +885,68 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /**
+ * Global touch compatibility
+ * - Allow UI to receive taps as clicks
+ * - Prevent default only on canvases to avoid page scroll
+ * - Add touch-action hints
+ */
+    function enableGlobalTouchCompat() {
+        // Inject minimal CSS hints
+        const style = document.createElement('style');
+        style.textContent = `
+        /* Speed up taps on UI controls */
+        button, a, input, select, textarea, [role="button"],
+        .toolbar-button, .tab-button, .canvas-tab {
+            touch-action: manipulation;
+        }
+        /* Canvases handle gestures internally */
+        #editorCanvas, #gameCanvas {
+            touch-action: none;
+        }
+        /* Hidden mobile overlay must not block input */
+        .mobile-detection-overlay[style*="display: none"] {
+            pointer-events: none !important;
+        }
+    `;
+        document.head.appendChild(style);
+
+        // Only prevent default on touches that start on our canvases
+        const isCanvas = (el) => !!el && (el.id === 'editorCanvas' || el.id === 'gameCanvas');
+
+        // Track simple taps to synthesize click on UI elements
+        let touchStartPos = null;
+        document.addEventListener('touchstart', (e) => {
+            const target = e.target;
+            if (isCanvas(target) && e.cancelable) {
+                e.preventDefault(); // keep canvas gestures smooth; don’t block UI elsewhere
+            }
+            const t = e.touches[0];
+            touchStartPos = t ? { x: t.clientX, y: t.clientY, time: performance.now() } : null;
+        }, { passive: false, capture: true });
+
+        document.addEventListener('touchend', (e) => {
+            const target = e.target.closest('button, a, input, select, textarea, [role="button"], .toolbar-button, .tab-button, .canvas-tab');
+            if (!target || !touchStartPos) return;
+
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t) return;
+
+            const moved = Math.hypot(t.clientX - touchStartPos.x, t.clientY - touchStartPos.y);
+            const elapsed = performance.now() - touchStartPos.time;
+
+            // Treat as a tap if short and not moved far
+            if (moved < 10 && elapsed < 500) {
+                if (e.cancelable) e.preventDefault();
+                // Don’t duplicate default behavior for inputs focusing themselves
+                if (!(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                    target.click();
+                }
+            }
+            touchStartPos = null;
+        }, { passive: false });
+    }
+
     function setupMobileTouchHandling() {
         // Add touch events for canvas interaction
         const editorCanvas = document.getElementById('editorCanvas');
@@ -1057,6 +1119,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Call this after engine initialization
     setupGameViewControls();
+
+    // Enable global touch compatibility
+    enableGlobalTouchCompat();
 
     // Add canvas tab handlers
     document.querySelectorAll('.canvas-tab').forEach(tab => {
