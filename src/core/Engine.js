@@ -24,7 +24,7 @@ class Engine {
         this.lastTime = 0;
         this.running = false;
         this.preloaded = false;
-        
+
         // Track viewport settings
         this.viewport = {
             width: 800,
@@ -60,13 +60,13 @@ class Engine {
             // Add DPI awareness
             pixelRatio: window.devicePixelRatio || 1
         };
-        
+
         // Add reference to the editor
         this.editor = null;
-        
+
         // Track if canvas was resized
         this.canvasResized = true;
-        
+
         // Add viewport change callbacks
         this.viewportCallbacks = [];
 
@@ -75,27 +75,27 @@ class Engine {
             window.input.setEngine(this);
         }
 
-        if(!window.viewport) {
+        if (!window.viewport) {
             window.viewport = this.viewport;
         }
 
         window.engine = this; // Global reference for easy access
 
-         // Set up resize observer to continuously monitor container size
-         this.setupResizeObserver();
-        
-         // Also listen for window resize events
-         window.addEventListener('resize', () => {
-             this.resizeCanvas();
-         });
-         
-         // Listen for panel resize events
-         window.addEventListener('panel-resized', () => {
-             this.resizeCanvas();
-         });
-         
-         // Initialize viewport properly
-         this.initializeViewport();
+        // Set up resize observer to continuously monitor container size
+        this.setupResizeObserver();
+
+        // Also listen for window resize events
+        window.addEventListener('resize', () => {
+            this.resizeCanvas();
+        });
+
+        // Listen for panel resize events
+        window.addEventListener('panel-resized', () => {
+            this.resizeCanvas();
+        });
+
+        // Initialize viewport properly
+        this.initializeViewport();
     }
 
     // Add viewport management methods
@@ -110,14 +110,14 @@ class Engine {
         if (!this.viewport.shake) {
             this.viewport.shake = { x: 0, y: 0, intensity: 0, duration: 0 };
         }
-        
+
         // Clamp zoom within bounds
-        this.viewport.zoom = Math.max(this.viewport.minZoom, 
-                                    Math.min(this.viewport.maxZoom, this.viewport.zoom));
-        
+        this.viewport.zoom = Math.max(this.viewport.minZoom,
+            Math.min(this.viewport.maxZoom, this.viewport.zoom));
+
         // Normalize angle to 0-360 range
         this.viewport.angle = ((this.viewport.angle % 360) + 360) % 360;
-        
+
         // Update viewport shake
         if (this.viewport.shake.duration > 0) {
             this.viewport.shake.duration -= 16; // Assuming 60fps
@@ -131,10 +131,10 @@ class Engine {
                 this.viewport.shake.y = (Math.random() - 0.5) * intensity;
             }
         }
-        
+
         // Mark as clean
         this.viewport.dirty = false;
-        
+
         // Notify callbacks
         this.viewportCallbacks.forEach(callback => {
             try {
@@ -152,7 +152,7 @@ class Engine {
                 // Resize the canvas whenever the container size changes
                 this.resizeCanvas();
             });
-            
+
             // Start observing the canvas container
             this.resizeObserver.observe(this.canvas.parentElement);
         } else {
@@ -172,12 +172,12 @@ class Engine {
 
     getMainCanvas() {
         return this.canvas.getContext('2d');
-    }   
+    }
 
     updateRenderConfig(settings) {
         // Update settings
         Object.assign(this.renderConfig, settings);
-        
+
         // Force canvas resize to apply new settings
         this.resizeCanvas();
     }
@@ -195,14 +195,14 @@ class Engine {
                 }
             }
             return null;
-        };  
+        };
         return findInObjects(this.gameObjects);
     }
 
     async preload() {
         console.log("Preloading game objects...");
         const preloadPromises = [];
-        
+
         // Traverse all game objects and collect preload promises
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.preload) {
@@ -217,7 +217,7 @@ class Engine {
             }
             obj.engine = this; // Set engine reference for each object
         });
-        
+
         // Wait for all resources to load
         await Promise.all(preloadPromises);
         this.preloaded = true;
@@ -246,8 +246,8 @@ class Engine {
     }
 
     setViewportZoom(zoom) {
-        this.viewport.zoom = Math.max(this.viewport.minZoom, 
-                                    Math.min(this.viewport.maxZoom, zoom));
+        this.viewport.zoom = Math.max(this.viewport.minZoom,
+            Math.min(this.viewport.maxZoom, zoom));
         this.viewport.dirty = true;
     }
 
@@ -273,59 +273,59 @@ class Engine {
     worldToScreen(worldX, worldY) {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
-        
+
         // Apply viewport transformations in reverse order
         let screenX = worldX - this.viewport.x + this.viewport.shake.x;
         let screenY = worldY - this.viewport.y + this.viewport.shake.y;
-        
+
         // Apply zoom
         screenX = (screenX - centerX) * this.viewport.zoom + centerX;
         screenY = (screenY - centerY) * this.viewport.zoom + centerY;
-        
+
         // Apply rotation if needed
         if (this.viewport.angle !== 0) {
             const radians = this.viewport.angle * Math.PI / 180;
             const cos = Math.cos(radians);
             const sin = Math.sin(radians);
-            
+
             const relX = screenX - centerX;
             const relY = screenY - centerY;
-            
+
             screenX = centerX + (relX * cos - relY * sin);
             screenY = centerY + (relX * sin + relY * cos);
         }
-        
+
         return { x: screenX, y: screenY };
     }
 
     screenToWorld(screenX, screenY) {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
-        
+
         let worldX = screenX;
         let worldY = screenY;
-        
+
         // Reverse rotation
         if (this.viewport.angle !== 0) {
             const radians = -this.viewport.angle * Math.PI / 180;
             const cos = Math.cos(radians);
             const sin = Math.sin(radians);
-            
+
             const relX = worldX - centerX;
             const relY = worldY - centerY;
-            
+
             worldX = centerX + (relX * cos - relY * sin);
             worldY = centerY + (relX * sin + relY * cos);
         }
-        
+
         // Reverse zoom
         worldX = (worldX - centerX) / this.viewport.zoom + centerX;
         worldY = (worldY - centerY) / this.viewport.zoom + centerY;
-        
+
         // Reverse position offset and shake
         worldX = worldX + this.viewport.x - this.viewport.shake.x;
         worldY = worldY + this.viewport.y - this.viewport.shake.y;
-        
+
         return { x: worldX, y: worldY };
     }
 
@@ -345,7 +345,7 @@ class Engine {
             console.error('No scene loaded');
             return;
         }
-    
+
         console.log("Starting game...");
 
         this.viewportOriginalPosition = {
@@ -359,11 +359,11 @@ class Engine {
 
         // Perform any pre-start setup
         this.refreshModules();
-    
+
         if (!this.preloaded) {
             await this.preload();
         }
-        
+
         // Call start on all game objects
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.active) {
@@ -371,7 +371,7 @@ class Engine {
                 if (obj.start) {
                     obj.start();
                 }
-                
+
                 // Call each module's start method
                 obj.modules.forEach(module => {
                     if (module.enabled && module.start) {
@@ -384,10 +384,10 @@ class Engine {
                 });
             }
         });
-        
+
         // Initialize touch controls
         this.initTouchControls();
-        
+
         this.running = true;
         this.lastTime = performance.now();
         this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
@@ -401,7 +401,7 @@ class Engine {
             console.log("Game paused");
         }
     }
-    
+
     resume() {
         if (this.wasRunning && !this.running) {
             this.running = true;
@@ -432,7 +432,7 @@ class Engine {
             dirty: this.viewport.dirty,
             shake: { x: 0, y: 0, intensity: 0, duration: 0 }
         };
-        
+
         // Call onDestroy on all game objects
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.modules) {
@@ -447,6 +447,17 @@ class Engine {
                 });
             }
         });
+
+        // Reset physics after calling onDestroy to properly restore positions
+        if (window.physicsManager) {
+            window.physicsManager.reset();
+        }
+
+        // Sync positions back to editor if available
+        if (window.editor && window.editor.activeScene) {
+            // Refresh the editor canvas to show restored positions
+            window.editor.refreshCanvas();
+        }
     }
 
     refreshModules() {
@@ -454,65 +465,65 @@ class Engine {
             console.warn("Cannot refresh modules: ModuleReloader or ModuleRegistry not available");
             return false;
         }
-        
+
         console.log("Refreshing all module instances before game start...");
-        
+
         let totalUpdated = 0;
-        
+
         // Get all registered module types
         const moduleTypes = Array.from(window.moduleRegistry.modules.keys());
-        
+
         // Update instances of each module type
         moduleTypes.forEach(className => {
             const updated = window.moduleReloader.updateModuleInstances(
                 className,
                 this.gameObjects
             );
-            
+
             if (updated > 0) {
                 totalUpdated += updated;
                 console.log(`Updated ${updated} instances of ${className}`);
             }
         });
-        
+
         console.log(`Total module instances refreshed: ${totalUpdated}`);
         return totalUpdated > 0;
     }
 
     gameLoop(timestamp) {
         if (!this.running) return;
-        
+
         const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1); // Cap at 100ms to prevent large jumps
         this.lastTime = timestamp;
-    
+
         // Update input manager at the start of the frame
         if (window.input) {
             window.input.beginFrame();
         }
-        
+
         // Update viewport if dirty
         if (this.viewport.dirty) {
             this.updateViewport();
         }
-    
+
         this.update(deltaTime);
         this.draw();
-    
+
         // Update input manager at the end of the frame
         if (window.input) {
             window.input.endFrame();
         }
-    
+
         this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
     }
-    
+
     update(deltaTime) {
         // Begin loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.active) {
                 // Call object's beginLoop method
                 if (obj.beginLoop) obj.beginLoop(deltaTime);
-                
+
                 // Call modules' beginLoop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.beginLoop) {
@@ -531,17 +542,17 @@ class Engine {
         if (window.collisionSystem) {
             // Get all active objects
             const allObjects = this.getAllObjects(this.gameObjects).filter(obj => obj.active);
-            
+
             // Update collision detection
             window.collisionSystem.update(allObjects);
         }
-        
+
         // Main loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.active) {
                 // Call object's loop method
                 if (obj.loop) obj.loop(deltaTime);
-                
+
                 // Call modules' loop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.loop) {
@@ -555,13 +566,13 @@ class Engine {
                 });
             }
         });
-        
+
         // End loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
             if (obj.active) {
                 // Call object's endLoop method
                 if (obj.endLoop) obj.endLoop(deltaTime);
-                
+
                 // Call modules' endLoop methods
                 obj.modules.forEach(module => {
                     if (module.enabled && module.endLoop) {
@@ -579,19 +590,19 @@ class Engine {
 
     draw() {
         if (!this.canvas || !this.ctx || !this.running) return;
-    
+
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        
+
         // Fill with scene background color
         if (this.scene && this.scene.settings && this.scene.settings.backgroundColor) {
             this.ctx.fillStyle = this.scene.settings.backgroundColor;
             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         }
-        
+
         // Apply viewport transformation
         this.ctx.save();
-        
+
         // Apply any camera transformations
         this.applyViewportTransform();
 
@@ -603,10 +614,10 @@ class Engine {
             this.ctx.drawImage(this.backgroundCanvas, 0, 0);
             this.ctx.restore();
         }
-        
+
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
-        
+
         // Make sure we actually have objects to draw
         if (allObjects.length === 0) {
             // If no objects, draw a placeholder message
@@ -638,34 +649,34 @@ class Engine {
             this.ctx.restore();
         }
     }
-    
+
     applyViewportTransform() {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
         // Apply viewport transformations in the correct order
-        
+
         // 1. Translate to center for zoom and rotation
         this.ctx.translate(centerX, centerY);
-        
+
         // 2. Apply rotation
         if (this.viewport.angle && this.viewport.angle !== 0) {
             const radians = this.viewport.angle * Math.PI / 180;
             this.ctx.rotate(radians);
         }
-        
+
         // 3. Apply zoom
         if (this.viewport.zoom && this.viewport.zoom !== 1) {
             this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
         }
-        
+
         // 4. Translate back and apply position offset + shake
         this.ctx.translate(
             -centerX - this.viewport.x + this.viewport.shake.x,
             -centerY - this.viewport.y + this.viewport.shake.y
         );
     }
-    
+
     getAllObjects(objects) {
         let result = [];
         objects.forEach(obj => {
@@ -685,13 +696,13 @@ class Engine {
             // Ensure physics is reset even if not currently running
             window.physicsManager.reset();
         }
-    
+
         console.log(`Loading scene: ${scene.name}`);
         console.log(`Scene has ${scene.gameObjects.length} game objects`);
 
         // Clone the scene to avoid modifying the editor version
         this.scene = scene;
-        
+
         // Copy viewport settings and validate them
         if (scene.settings) {
             this.viewport.width = Math.max(1, scene.settings.viewportWidth || 800);
@@ -701,10 +712,10 @@ class Engine {
             this.viewport.zoom = Math.max(0.1, scene.settings.viewportZoom || 1);
             this.viewport.angle = scene.settings.viewportAngle || 0;
         }
-        
+
         // Mark viewport as dirty to force update
         this.viewport.dirty = true;
-        
+
         // Deep clone only in editor. In exported/runtime builds, use objects as-built
         // so embedded assets (like SpriteRenderer.imageData) are preserved.
         if (window.editor) {
@@ -712,10 +723,10 @@ class Engine {
         } else {
             this.gameObjects = scene.gameObjects;
         }
-        
+
         this.preloaded = false;
         this.canvasResized = true;
-        
+
         // Force canvas resize with new viewport settings
         this.resizeCanvas();
     }
@@ -734,13 +745,13 @@ class Engine {
             const position = new Vector2(x, y);
             return window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position, parent);
         }
-        
+
         // Check if we're in an exported game
         if (window.prefabManager) {
             const position = { x: x, y: y };
             return window.prefabManager.instantiatePrefabByName(prefabName, position, parent);
         }
-        
+
         console.error('No prefab manager available');
         return null;
     }
@@ -755,12 +766,12 @@ class Engine {
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             return window.editor.hierarchy.prefabManager.hasPrefab(prefabName);
         }
-        
+
         // Check if we're in an exported game
         if (window.prefabManager) {
             return window.prefabManager.hasPrefab(prefabName);
         }
-        
+
         return false;
     }
 
@@ -773,12 +784,12 @@ class Engine {
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             return window.editor.hierarchy.prefabManager.getAvailablePrefabs();
         }
-        
+
         // Check if we're in an exported game
         if (window.prefabManager) {
             return window.prefabManager.getAllPrefabNames();
         }
-        
+
         return [];
     }
 
@@ -803,37 +814,37 @@ class Engine {
         return objects.map(obj => {
             // Use the GameObject's built-in clone method
             const clonedObj = obj.clone();
-            
+
             // Handle the cloning of children separately to maintain proper hierarchy
             if (obj.children && obj.children.length > 0) {
                 // Remove any existing children that were cloned
                 clonedObj.children = [];
-                
+
                 // Clone all children recursively and add them properly
                 const clonedChildren = this.cloneGameObjects(obj.children);
                 clonedChildren.forEach(child => {
                     clonedObj.addChild(child);
                 });
             }
-            
+
             return clonedObj;
         });
     }
 
     initTouchControls() {
         if (!this.canvas) return;
-        
+
         // Prevent default touch actions on the canvas
         this.canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            
+
             // Convert touch to mouse events for simplicity
             if (window.input) {
                 const touch = e.touches[0];
                 const rect = this.canvas.getBoundingClientRect();
                 const x = touch.clientX - rect.left;
                 const y = touch.clientY - rect.top;
-                
+
                 window.input.handleMouseDown({
                     clientX: touch.clientX,
                     clientY: touch.clientY,
@@ -843,17 +854,17 @@ class Engine {
                 });
             }
         }, { passive: false });
-        
+
         this.canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            
+
             // Convert touch to mouse events
             if (window.input) {
                 const touch = e.touches[0];
                 const rect = this.canvas.getBoundingClientRect();
                 const x = touch.clientX - rect.left;
                 const y = touch.clientY - rect.top;
-                
+
                 window.input.handleMouseMove({
                     clientX: touch.clientX,
                     clientY: touch.clientY,
@@ -862,10 +873,10 @@ class Engine {
                 });
             }
         }, { passive: false });
-        
+
         this.canvas.addEventListener('touchend', (e) => {
             e.preventDefault();
-            
+
             // Convert touch to mouse events
             if (window.input) {
                 window.input.handleMouseUp({
@@ -877,33 +888,33 @@ class Engine {
 
     resizeCanvas() {
         if (!this.canvas) return;
-        
+
         const container = this.canvas.parentElement;
         if (!container) return;
-        
+
         // Get container dimensions - force a reflow to get the latest size
         container.offsetHeight; // Trigger reflow
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
-        
+
         // Ensure we have positive dimensions to work with
         if (containerWidth <= 0 || containerHeight <= 0) {
             return;
         }
-        
+
         // Get the desired viewport dimensions from scene settings
         const viewportWidth = this.viewport.width || 800;
         const viewportHeight = this.viewport.height || 600;
         const aspectRatio = viewportWidth / viewportHeight;
-        
+
         // Set physical dimensions based on scaling mode
         let physicalWidth, physicalHeight;
-        
+
         if (this.renderConfig.fullscreen) {
             if (this.renderConfig.maintainAspectRatio) {
                 // Calculate dimensions to maintain aspect ratio within the container
                 const containerRatio = containerWidth / containerHeight;
-                
+
                 if (containerRatio > aspectRatio) {
                     // Container is wider than needed - height is the limiting factor
                     physicalHeight = containerHeight;
@@ -924,35 +935,35 @@ class Engine {
                 containerWidth / viewportWidth,
                 containerHeight / viewportHeight
             );
-            
+
             physicalWidth = viewportWidth * scale;
             physicalHeight = viewportHeight * scale;
         }
-        
+
         // Apply pixel ratio for high-DPI displays
         const pixelRatio = this.renderConfig.pixelRatio;
-        
+
         // Ensure we don't have zero dimensions
         physicalWidth = Math.max(1, Math.floor(physicalWidth));
         physicalHeight = Math.max(1, Math.floor(physicalHeight));
-        
+
         // Calculate centering position
         const left = Math.floor((containerWidth - physicalWidth) / 2);
         const top = Math.floor((containerHeight - physicalHeight) / 2);
-        
+
         // Set canvas styles for proper display
         this.canvas.style.width = `${physicalWidth}px`;
         this.canvas.style.height = `${physicalHeight}px`;
         this.canvas.style.position = 'absolute';
         this.canvas.style.left = `${left}px`;
         this.canvas.style.top = `${top}px`;
-        
+
         // Remove size constraints that might prevent proper scaling
         this.canvas.style.minWidth = '0';
         this.canvas.style.minHeight = '0';
         this.canvas.style.maxWidth = 'none';
         this.canvas.style.maxHeight = 'none';
-        
+
         // Set the drawing surface size (use viewport dimensions)
         this.canvas.width = viewportWidth * pixelRatio;
         this.canvas.height = viewportHeight * pixelRatio;
@@ -979,33 +990,33 @@ class Engine {
                 bgCtx.scale(pixelRatio, pixelRatio);
             }
         }
-        
+
         // Remove transform scaling which can cause positioning issues
         this.canvas.style.transform = 'none';
-        
+
         // Configure image smoothing
         this.ctx.imageSmoothingEnabled = this.renderConfig.smoothing;
-        
+
         // Apply appropriate CSS image rendering mode based on scale mode
         if (this.renderConfig.scaleMode === 'nearest-neighbor') {
             this.canvas.style.imageRendering = 'pixelated';
         } else {
             this.canvas.style.imageRendering = this.renderConfig.smoothing ? 'auto' : 'crisp-edges';
         }
-        
+
         this.canvasResized = true;
         this.viewport.dirty = true; // Mark viewport as dirty after resize
     }
-    
+
     cleanup() {
         // Clean up resources when engine is destroyed
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
-        
+
         window.removeEventListener('resize', this.resizeCanvas);
         window.removeEventListener('panel-resized', this.resizeCanvas);
-        
+
         // Clear viewport callbacks
         this.viewportCallbacks = [];
     }

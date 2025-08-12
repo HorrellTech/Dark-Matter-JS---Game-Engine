@@ -319,6 +319,15 @@ class ProjectManager {
     }
 
     async loadProject() {
+        // Disable AutoSaveManager during loading
+        if (window.autoSaveManager) {
+            window.autoSaveManager.stopAutoSave();
+        }
+
+        if (window.autoSaveManager) {
+            window.autoSaveManager.clearSavedState();
+        }
+
         // First ensure core classes are available
         if (!await this.ensureCoreDependencies()) {
             this.isSavingOrLoading = false;

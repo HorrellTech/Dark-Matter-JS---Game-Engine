@@ -107,19 +107,29 @@ class BasicPhysics extends Module {
         this.exposeProperty("mass", "number", this.mass, {
             min: 0.1, max: 100, step: 0.1,
             description: "Object mass (affects force response)",
-            onChange: (val) => { this.mass = val; }
+            onChange: (val) => {
+                this.mass = val;
+                // Update material properties if they depend on mass
+                this.updateMaterialProperties();
+            }
         });
 
         this.exposeProperty("friction", "number", this.friction, {
             min: 0, max: 1, step: 0.01,
             description: "Velocity friction (0-1)",
-            onChange: (val) => { this.friction = val; }
+            onChange: (val) => {
+                this.friction = val;
+                this.dynamicFriction = val; // Update dynamic friction too
+            }
         });
 
         this.exposeProperty("bounciness", "number", this.bounciness, {
             min: 0, max: 2, step: 0.1,
             description: "Collision bounciness",
-            onChange: (val) => { this.bounciness = val; }
+            onChange: (val) => {
+                this.bounciness = val;
+                this.elasticity = val; // Keep elasticity in sync
+            }
         });
 
         this.exposeProperty("materialType", "enum", this.materialType, {
@@ -160,6 +170,30 @@ class BasicPhysics extends Module {
             min: 5, max: 200, step: 1,
             description: "Collision radius for circles",
             onChange: (val) => { this.collisionRadius = val; }
+        });
+
+        this.exposeProperty("collisionWidth", "number", this.collisionWidth, {
+            min: 5, max: 400, step: 1,
+            description: "Collision width for rectangles",
+            onChange: (val) => { this.collisionWidth = val; }
+        });
+
+        this.exposeProperty("collisionHeight", "number", this.collisionHeight, {
+            min: 5, max: 400, step: 1,
+            description: "Collision height for rectangles",
+            onChange: (val) => { this.collisionHeight = val; }
+        });
+
+        this.exposeProperty("drag", "number", this.drag, {
+            min: 0, max: 1, step: 0.01,
+            description: "Linear drag (0-1)",
+            onChange: (val) => { this.drag = val; }
+        });
+
+        this.exposeProperty("angularDrag", "number", this.angularDrag, {
+            min: 0, max: 1, step: 0.01,
+            description: "Angular drag (0-1)",
+            onChange: (val) => { this.angularDrag = val; }
         });
 
         // Chain Properties
@@ -450,10 +484,16 @@ class BasicPhysics extends Module {
     updateMaterialProperties() {
         const props = this.materialProperties[this.materialType];
         if (props) {
+            // Update friction properties
             this.dynamicFriction = props.friction;
             this.staticFriction = props.friction * 1.5;
+
+            // Update bounciness/elasticity
             this.bounciness = props.restitution;
             this.elasticity = props.restitution;
+
+            // Also update the main friction property to keep UI in sync
+            this.friction = Math.max(this.friction, props.friction * 0.98); // Keep some base friction
         }
     }
 
@@ -462,18 +502,15 @@ class BasicPhysics extends Module {
 
         const allObjects = window.engine?.scene?.gameObjects || [];
 
-        // Run collision detection multiple times for stability
-        for (let iteration = 0; iteration < 3; iteration++) {
-            for (let obj of allObjects) {
-                if (obj === this.gameObject) continue;
+        for (let obj of allObjects) {
+            if (obj === this.gameObject) continue;
 
-                const otherPhysics = obj.getModule("BasicPhysics");
-                if (!otherPhysics || !otherPhysics.enableCollisions) continue;
+            const otherPhysics = obj.getModule("BasicPhysics");
+            if (!otherPhysics || !otherPhysics.enableCollisions) continue;
 
-                const collision = this.getCollisionInfo(obj, otherPhysics);
-                if (collision.isColliding) {
-                    this.resolveCollision(obj, otherPhysics, collision, deltaTime);
-                }
+            const collision = this.getCollisionInfo(obj, otherPhysics);
+            if (collision.isColliding) {
+                this.resolveCollision(obj, otherPhysics, collision, deltaTime);
             }
         }
     }
@@ -484,8 +521,8 @@ class BasicPhysics extends Module {
         } else if (this.collisionShape === "rectangle" && otherPhysics.collisionShape === "rectangle") {
             return this.getRectangleRectangleCollision(otherObject, otherPhysics);
         } else {
-            // Mixed shapes - use circle approximation
-            return this.getCircleCircleCollision(otherObject, otherPhysics);
+            // Mixed shapes - handle circle-rectangle collision properly
+            return this.getCircleRectangleCollision(otherObject, otherPhysics);
         }
     }
 
@@ -517,6 +554,75 @@ class BasicPhysics extends Module {
             bounds1.right > bounds2.left &&
             bounds1.top < bounds2.bottom &&
             bounds1.bottom > bounds2.top;
+    }
+
+    getCircleRectangleCollision(otherObject, otherPhysics) {
+        let circleObj, rectObj, circlePhysics, rectPhysics;
+
+        // Determine which is circle and which is rectangle
+        if (this.collisionShape === "circle") {
+            circleObj = this.gameObject;
+            rectObj = otherObject;
+            circlePhysics = this;
+            rectPhysics = otherPhysics;
+        } else {
+            circleObj = otherObject;
+            rectObj = this.gameObject;
+            circlePhysics = otherPhysics;
+            rectPhysics = this;
+        }
+
+        const rectBounds = rectPhysics.getCollisionBounds();
+        const circleX = circleObj.position.x;
+        const circleY = circleObj.position.y;
+        const radius = circlePhysics.collisionRadius;
+
+        // Find closest point on rectangle to circle center
+        const closestX = Math.max(rectBounds.left, Math.min(circleX, rectBounds.right));
+        const closestY = Math.max(rectBounds.top, Math.min(circleY, rectBounds.bottom));
+
+        // Calculate distance from circle center to closest point
+        const dx = circleX - closestX;
+        const dy = circleY - closestY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance >= radius) {
+            return { isColliding: false };
+        }
+
+        // Calculate collision normal
+        let normal;
+        if (distance === 0) {
+            // Circle center is inside rectangle - use direction from rect center
+            const rectCenterX = (rectBounds.left + rectBounds.right) / 2;
+            const rectCenterY = (rectBounds.top + rectBounds.bottom) / 2;
+            const dirX = circleX - rectCenterX;
+            const dirY = circleY - rectCenterY;
+            const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
+            normal = dirLength > 0 ? { x: dirX / dirLength, y: dirY / dirLength } : { x: 1, y: 0 };
+        } else {
+            normal = { x: dx / distance, y: dy / distance };
+        }
+
+        // Ensure normal points from rectangle to circle
+        if (this.collisionShape === "rectangle") {
+            normal.x = -normal.x;
+            normal.y = -normal.y;
+        }
+
+        const penetration = radius - distance;
+        const contactPoint = {
+            x: closestX,
+            y: closestY
+        };
+
+        return {
+            isColliding: true,
+            normal: normal,
+            penetration: penetration,
+            contactPoint: contactPoint,
+            distance: distance
+        };
     }
 
     getCircleCircleCollision(otherObject, otherPhysics) {
@@ -611,14 +717,47 @@ class BasicPhysics extends Module {
 
         const { normal, penetration } = collision;
 
-        // Step 1: Immediate position correction (more aggressive)
+        // Step 1: Position correction (more aggressive for better separation)
         this.correctPositions(otherObject, otherPhysics, normal, penetration);
 
         // Step 2: Velocity resolution
         this.resolveVelocities(otherObject, otherPhysics, normal, deltaTime);
 
-        // Step 3: Prevent interpenetration by adjusting positions again
-        this.separateObjects(otherObject, otherPhysics, normal, penetration);
+        // Step 3: Additional separation for static objects to prevent sinking
+        if (this.isStatic || otherPhysics.isStatic) {
+            this.ensureMinimumSeparation(otherObject, otherPhysics, collision);
+        }
+    }
+
+    ensureMinimumSeparation(otherObject, otherPhysics, collision) {
+        const { normal, penetration } = collision;
+
+        if (penetration <= 0) return;
+
+        // For static collisions, be more aggressive about separation
+        if (this.isStatic && !otherPhysics.isStatic) {
+            // Move the dynamic object away from the static one
+            otherObject.position.x += normal.x * penetration;
+            otherObject.position.y += normal.y * penetration;
+
+            // Also reduce velocity if moving into the static object
+            const velocityAlongNormal = otherPhysics.velocity.x * normal.x + otherPhysics.velocity.y * normal.y;
+            if (velocityAlongNormal < 0) {
+                otherPhysics.velocity.x -= normal.x * velocityAlongNormal;
+                otherPhysics.velocity.y -= normal.y * velocityAlongNormal;
+            }
+        } else if (!this.isStatic && otherPhysics.isStatic) {
+            // Move this object away from the static one
+            this.gameObject.position.x -= normal.x * penetration;
+            this.gameObject.position.y -= normal.y * penetration;
+
+            // Also reduce velocity if moving into the static object
+            const velocityAlongNormal = this.velocity.x * (-normal.x) + this.velocity.y * (-normal.y);
+            if (velocityAlongNormal < 0) {
+                this.velocity.x -= (-normal.x) * velocityAlongNormal;
+                this.velocity.y -= (-normal.y) * velocityAlongNormal;
+            }
+        }
     }
 
     separateObjects(otherObject, otherPhysics, normal, penetration) {
@@ -649,9 +788,9 @@ class BasicPhysics extends Module {
 
         if (totalInverseMass === 0) return;
 
-        // More aggressive position correction
-        const correctionPercent = 1.0; // Full correction
-        const slop = 0.01; // Minimal penetration allowance
+        // More aggressive correction for static objects to prevent sinking
+        const correctionPercent = 0.8; // Increased from 0.4
+        const slop = 0.01; // Reduced from 0.05 for tighter separation
 
         const correctionMagnitude = Math.max(penetration - slop, 0) / totalInverseMass * correctionPercent;
 
@@ -676,6 +815,7 @@ class BasicPhysics extends Module {
 
         const velocityAlongNormal = relativeVelocity.x * normal.x + relativeVelocity.y * normal.y;
 
+        // Only resolve if objects are moving toward each other
         if (velocityAlongNormal > 0) return;
 
         // Calculate combined material properties
@@ -793,11 +933,32 @@ class BasicPhysics extends Module {
     updateSleep() {
         const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
 
+        // More restrictive sleep conditions to prevent objects from sleeping while in contact
         if (speed < this.sleepThreshold && Math.abs(this.angularVelocity) < this.sleepThreshold) {
-            this.isSleeping = true;
-            this.velocity.x = 0;
-            this.velocity.y = 0;
-            this.angularVelocity = 0;
+            // Check if we're in contact with any other object before sleeping
+            const allObjects = window.engine?.scene?.gameObjects || [];
+            let inContact = false;
+
+            for (let obj of allObjects) {
+                if (obj === this.gameObject) continue;
+
+                const otherPhysics = obj.getModule("BasicPhysics");
+                if (!otherPhysics || !otherPhysics.enableCollisions) continue;
+
+                const collision = this.getCollisionInfo(obj, otherPhysics);
+                if (collision.isColliding) {
+                    inContact = true;
+                    break;
+                }
+            }
+
+            // Only sleep if not in contact or if the contact is stable (with static objects)
+            if (!inContact) {
+                this.isSleeping = true;
+                this.velocity.x = 0;
+                this.velocity.y = 0;
+                this.angularVelocity = 0;
+            }
         } else {
             this.isSleeping = false;
         }

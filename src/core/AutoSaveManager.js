@@ -18,10 +18,10 @@ class AutoSaveManager {
         this.loadState = this.loadState.bind(this);
         
         // Setup handlers for window close/unload events
-       // window.addEventListener('beforeunload', this.saveState);
+        window.addEventListener('beforeunload', this.saveState);
         
         // Setup periodic auto-save
-       // this.startAutoSave();
+       this.startAutoSave();
 
        // Create a new project instead of restoring auto-saved state
        this.createNewProject();

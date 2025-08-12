@@ -2882,9 +2882,9 @@ window.${pascalCaseName} = ${pascalCaseName};
                 this.activeScene.markDirty();
 
                 // Trigger auto-save if available
-                if (window.autoSaveManager) {
-                    window.autoSaveManager.autoSave();
-                }
+                //if (window.autoSaveManager) {
+                    //window.autoSaveManager.autoSave();
+               // }
             }
 
         } catch (error) {

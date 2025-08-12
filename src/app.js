@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Initialize AutoSaveManager after editor is initialized
-    if (!window.autoSaveManager) {
+    /*if (!window.autoSaveManager) {
         window.autoSaveManager = new AutoSaveManager(window.editor);
 
         // Automatically restore previous session when starting
@@ -310,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.editor.hierarchy.refreshHierarchy();
             }
         });
-    }
+    }*/
 
     // Add this near the beginning of your main initialization code
     function initializeMobileSupport() {
