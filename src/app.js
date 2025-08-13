@@ -916,16 +916,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Track simple taps to synthesize click on UI elements
         let touchStartPos = null;
-        document.addEventListener('touchstart', (e) => {
+        /*document.addEventListener('touchstart', (e) => {
             const target = e.target;
             if (isCanvas(target) && e.cancelable) {
                 e.preventDefault(); // keep canvas gestures smooth; don’t block UI elsewhere
             }
             const t = e.touches[0];
             touchStartPos = t ? { x: t.clientX, y: t.clientY, time: performance.now() } : null;
-        }, { passive: false, capture: true });
+        }, { passive: false, capture: true });*/
 
-        document.addEventListener('touchend', (e) => {
+        /*document.addEventListener('touchend', (e) => {
             const target = e.target.closest('button, a, input, select, textarea, [role="button"], .toolbar-button, .tab-button, .canvas-tab');
             if (!target || !touchStartPos) return;
 
@@ -944,7 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             touchStartPos = null;
-        }, { passive: false });
+        }, { passive: false });*/
     }
 
     function setupMobileTouchHandling() {
@@ -955,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let touchStartPos = null;
             let touchStartTime = 0;
 
-            editorCanvas.addEventListener('touchstart', (e) => {
+            /*editorCanvas.addEventListener('touchstart', (e) => {
                 // Prevent default to avoid scrolling
                 e.preventDefault();
 
@@ -993,9 +993,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         initialZoom: window.editor.camera.zoom
                     };
                 }
-            });
+            });*/
 
-            editorCanvas.addEventListener('touchmove', (e) => {
+            /*editorCanvas.addEventListener('touchmove', (e) => {
                 e.preventDefault();
 
                 // Handle single finger panning
@@ -1042,9 +1042,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.editor.updateZoomLevelDisplay();
                     window.editor.refreshCanvas();
                 }
-            });
+            });*/
 
-            editorCanvas.addEventListener('touchend', (e) => {
+            /*editorCanvas.addEventListener('touchend', (e) => {
                 // Handle touch ending
                 if (e.touches.length === 0) {
                     // Check if this was a tap (quick touch)
@@ -1066,11 +1066,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     touchStartTime = 0;
                     window.editor._pinchZoomData = null;
                 }
-            });
+            });*/
         }
 
         // Make toolbar and buttons more touch-friendly
-        document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
+        /*document.querySelectorAll('.toolbar-button, .tab-button, .canvas-tab').forEach(button => {
             button.style.minHeight = '32px';
             button.style.minWidth = '32px';
 
@@ -1078,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault(); // Prevent double-activation
                 button.click();     // Manually trigger click
             });
-        });
+        });*/
     }
 
     // Add event listeners for modal buttons here
