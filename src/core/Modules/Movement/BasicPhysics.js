@@ -11,7 +11,7 @@ class BasicPhysics extends Module {
     constructor() {
         super("BasicPhysics");
 
-        this.materialType = "default"; // default, bouncy, ice, rubber, metal
+        this.materialType = "default";
         this.materialProperties = {
             default: { friction: 0.4, restitution: 0.6 },
             bouncy: { friction: 0.2, restitution: 1.2 },
@@ -31,7 +31,7 @@ class BasicPhysics extends Module {
         // Collision properties
         this.isStatic = false;
         this.isTrigger = false;
-        this.collisionShape = "circle"; // circle, rectangle, polygon
+        this.collisionShape = "circle";
         this.collisionRadius = 25;
         this.collisionWidth = 50;
         this.collisionHeight = 50;
@@ -42,8 +42,8 @@ class BasicPhysics extends Module {
         this.staticFriction = 0.6;
         this.dynamicFriction = 0.4;
 
-        // Force and velocity
-        this.velocity = new Vector2(0, 0);
+        // Safe Vector2 initialization
+        this.velocity = this.createSafeVector2(0, 0);
         this.angularVelocity = 0;
         this.forces = [];
         this.impulses = [];
@@ -61,27 +61,27 @@ class BasicPhysics extends Module {
         this.chainThickness = 4;
         this.chainColor = "#8B4513";
         this.connectedObject = null;
-        this.connectionPoint = new Vector2(0, 0);
+        this.connectionPoint = this.createSafeVector2(0, 0);
 
         // Wormhole properties
         this.isWormhole = false;
         this.wormholeRadius = 100;
         this.wormholePull = 500;
-        this.wormholeDestination = null; // GameObject name or Vector2
+        this.wormholeDestination = null;
         this.wormholeActivationRadius = 20;
         this.wormholeVisualRadius = 80;
-        this.wormholeRotationSpeed = 90; // degrees per second
+        this.wormholeRotationSpeed = 90;
         this.wormholeParticles = [];
 
         // World physics settings
-        this.worldGravity = new Vector2(0, 300);
+        this.worldGravity = this.createSafeVector2(0, 300);
         this.enableGravity = true;
         this.enableCollisions = true;
         this.enableWarmStarting = true;
 
         // Performance settings
         this.maxVelocity = 1000;
-        this.maxAngularVelocity = 360; // degrees per second
+        this.maxAngularVelocity = 360;
         this.sleepThreshold = 0.1;
         this.isSleeping = false;
 
@@ -93,13 +93,30 @@ class BasicPhysics extends Module {
         this.debugColor = "#FF0000";
 
         // Internal state
-        this.lastPosition = new Vector2(0, 0);
-        this.acceleration = new Vector2(0, 0);
-        this.totalForce = new Vector2(0, 0);
+        this.lastPosition = this.createSafeVector2(0, 0);
+        this.acceleration = this.createSafeVector2(0, 0);
+        this.totalForce = this.createSafeVector2(0, 0);
         this.chainPoints = [];
         this.wormholeAngle = 0;
 
         this.setupProperties();
+    }
+
+    createSafeVector2(x, y) {
+        if (window.Vector2) {
+            return new Vector2(x, y);
+        } else {
+            // Fallback: simple object with Vector2-like interface
+            return {
+                x: x,
+                y: y,
+                set: function (newX, newY) {
+                    this.x = newX;
+                    this.y = newY;
+                    return this;
+                }
+            };
+        }
     }
 
     setupProperties() {
@@ -296,6 +313,13 @@ class BasicPhysics extends Module {
     start() {
         this.lastPosition.x = this.gameObject.position.x;
         this.lastPosition.y = this.gameObject.position.y;
+
+        this.worldGravity = new Vector2(0, 300);
+        this.lastPosition = new Vector2(0, 0);
+        this.acceleration = new Vector2(0, 0);
+        this.totalForce = new Vector2(0, 0);
+        this.connectionPoint = new Vector2(0, 0);
+        this.velocity = new Vector2(0, 0);
 
         if (this.isChainLink) {
             this.initializeChain();
@@ -1374,48 +1398,62 @@ class BasicPhysics extends Module {
     }
 
     fromJSON(json) {
-        super.fromJSON(json);
+        try {
+            super.fromJSON(json);
 
-        // Basic physics
-        if (json.mass !== undefined) this.mass = json.mass;
-        if (json.friction !== undefined) this.friction = json.friction;
-        if (json.bounciness !== undefined) this.bounciness = json.bounciness;
-        if (json.gravityScale !== undefined) this.gravityScale = json.gravityScale;
-        if (json.drag !== undefined) this.drag = json.drag;
-        if (json.angularDrag !== undefined) this.angularDrag = json.angularDrag;
+            // Basic physics
+            if (json.mass !== undefined) this.mass = json.mass;
+            if (json.friction !== undefined) this.friction = json.friction;
+            if (json.bounciness !== undefined) this.bounciness = json.bounciness;
+            if (json.gravityScale !== undefined) this.gravityScale = json.gravityScale;
+            if (json.drag !== undefined) this.drag = json.drag;
+            if (json.angularDrag !== undefined) this.angularDrag = json.angularDrag;
 
-        // Collision
-        if (json.isStatic !== undefined) this.isStatic = json.isStatic;
-        if (json.isTrigger !== undefined) this.isTrigger = json.isTrigger;
-        if (json.collisionShape !== undefined) this.collisionShape = json.collisionShape;
-        if (json.collisionRadius !== undefined) this.collisionRadius = json.collisionRadius;
-        if (json.collisionWidth !== undefined) this.collisionWidth = json.collisionWidth;
-        if (json.collisionHeight !== undefined) this.collisionHeight = json.collisionHeight;
+            // Collision
+            if (json.isStatic !== undefined) this.isStatic = json.isStatic;
+            if (json.isTrigger !== undefined) this.isTrigger = json.isTrigger;
+            if (json.collisionShape !== undefined) this.collisionShape = json.collisionShape;
+            if (json.collisionRadius !== undefined) this.collisionRadius = json.collisionRadius;
+            if (json.collisionWidth !== undefined) this.collisionWidth = json.collisionWidth;
+            if (json.collisionHeight !== undefined) this.collisionHeight = json.collisionHeight;
 
-        // Chain
-        if (json.isChainLink !== undefined) this.isChainLink = json.isChainLink;
-        if (json.chainLength !== undefined) this.chainLength = json.chainLength;
-        if (json.chainSegments !== undefined) this.chainSegments = json.chainSegments;
-        if (json.chainStiffness !== undefined) this.chainStiffness = json.chainStiffness;
-        if (json.chainColor !== undefined) this.chainColor = json.chainColor;
+            // Chain
+            if (json.isChainLink !== undefined) this.isChainLink = json.isChainLink;
+            if (json.chainLength !== undefined) this.chainLength = json.chainLength;
+            if (json.chainSegments !== undefined) this.chainSegments = json.chainSegments;
+            if (json.chainStiffness !== undefined) this.chainStiffness = json.chainStiffness;
+            if (json.chainColor !== undefined) this.chainColor = json.chainColor;
 
-        // Wormhole
-        if (json.isWormhole !== undefined) this.isWormhole = json.isWormhole;
-        if (json.wormholeRadius !== undefined) this.wormholeRadius = json.wormholeRadius;
-        if (json.wormholePull !== undefined) this.wormholePull = json.wormholePull;
-        if (json.wormholeActivationRadius !== undefined) this.wormholeActivationRadius = json.wormholeActivationRadius;
+            // Wormhole
+            if (json.isWormhole !== undefined) this.isWormhole = json.isWormhole;
+            if (json.wormholeRadius !== undefined) this.wormholeRadius = json.wormholeRadius;
+            if (json.wormholePull !== undefined) this.wormholePull = json.wormholePull;
+            if (json.wormholeActivationRadius !== undefined) this.wormholeActivationRadius = json.wormholeActivationRadius;
 
-        // Settings
-        if (json.enableGravity !== undefined) this.enableGravity = json.enableGravity;
-        if (json.enableCollisions !== undefined) this.enableCollisions = json.enableCollisions;
-        if (json.showDebugInfo !== undefined) this.showDebugInfo = json.showDebugInfo;
+            // Settings
+            if (json.enableGravity !== undefined) this.enableGravity = json.enableGravity;
+            if (json.enableCollisions !== undefined) this.enableCollisions = json.enableCollisions;
+            if (json.showDebugInfo !== undefined) this.showDebugInfo = json.showDebugInfo;
 
-        // Reinitialize systems if needed
-        if (this.isChainLink) {
-            setTimeout(() => this.initializeChain(), 100);
-        }
-        if (this.isWormhole) {
-            setTimeout(() => this.initializeWormhole(), 100);
+            // Safely reinitialize systems - remove setTimeout to prevent interference
+            if (this.isChainLink) {
+                try {
+                    this.initializeChain();
+                } catch (e) {
+                    console.warn("Failed to initialize chain on load:", e);
+                }
+            }
+            if (this.isWormhole) {
+                try {
+                    this.initializeWormhole();
+                } catch (e) {
+                    console.warn("Failed to initialize wormhole on load:", e);
+                }
+            }
+        } catch (error) {
+            console.error("Error deserializing BasicPhysics:", error, json);
+            // Reset to safe defaults if deserialization fails
+            this.setupProperties();
         }
     }
 }
