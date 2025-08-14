@@ -24,7 +24,7 @@ class Editor {
             size: 40,        // Size of the transform handles
             arrowSize: 8,    // Size of arrow heads
             rotationRadius: 60, // Radius of rotation circle
-            centerBoxSize: 12,
+            centerBoxSize: 16,
             xColor: '#E57373',
             yColor: '#81C784',
             rotationColor: '#64B5F6',

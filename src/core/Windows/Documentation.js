@@ -1150,7 +1150,7 @@ stopSound() {
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
 - Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
-- Viewport x and y is viewport center, and width and height is overall width/height
+- Viewport x and y is viewport top left, and width and height is overall width/height
 
 **Module Template:**
 \`\`\`javascript

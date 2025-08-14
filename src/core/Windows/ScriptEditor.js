@@ -1138,14 +1138,14 @@ Ask me to create, fix, or improve modules for your game!
 - Use this.gameObject to access the GameObject
 - Access other modules: this.gameObject.getModule("ModuleName")
 - Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
-- Viewport x and y is viewport center, and width and height is overall width/height
+- Viewport x and y is viewport top left, and width and height is overall width/height
 
 **Module Template:**
 \`\`\`javascript
 class MyModule extends Module {
     static namespace = "Category";
     static description = "Brief description";
-    static allowMultiple = false; // or true
+    static allowMultiple = false; // or true to allow multiple
 
     constructor() {
         super("MyModule");

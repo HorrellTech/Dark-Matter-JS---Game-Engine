@@ -35,25 +35,25 @@ class PrefabManager {
         try {
             const files = await this.editor.fileBrowser.getAllFiles();
             const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
-            
+
             for (const file of prefabFiles) {
                 try {
                     const content = file.content || await this.editor.fileBrowser.readFile(file.path);
                     const prefabData = JSON.parse(content);
-                    
+
                     // Store by both filename and metadata name
                     const fileName = file.name.replace('.prefab', '');
                     const prefabName = prefabData.metadata?.name || fileName;
-                    
+
                     this.prefabs.set(prefabName, prefabData);
                     this.prefabs.set(fileName, prefabData); // Also store by filename for redundancy
-                    
+
                     console.log(`Loaded prefab: ${prefabName}`);
                 } catch (error) {
                     console.error(`Error loading prefab ${file.name}:`, error);
                 }
             }
-            
+
             console.log(`Loaded ${this.prefabs.size} prefabs into memory`);
         } catch (error) {
             console.error('Error loading existing prefabs:', error);
@@ -67,12 +67,12 @@ class PrefabManager {
      */
     findPrefabByName(name) {
         if (!name) return null;
-        
+
         // Try exact match first
         if (this.prefabs.has(name)) {
             return this.prefabs.get(name);
         }
-        
+
         // Try case-insensitive search
         const lowerName = name.toLowerCase();
         for (const [key, value] of this.prefabs) {
@@ -80,7 +80,7 @@ class PrefabManager {
                 return value;
             }
         }
-        
+
         return null;
     }
 
@@ -112,9 +112,11 @@ class PrefabManager {
         const prefabData = this.findPrefabByName(name);
         if (!prefabData) {
             console.error(`Prefab not found: ${name}`);
+            //console.log('Available prefabs:', this.getAllPrefabNames());
             return null;
         }
-        
+
+        console.log(`Instantiating prefab: ${name}`, prefabData);
         return this.instantiatePrefab(prefabData, position, parent);
     }
 
@@ -130,7 +132,7 @@ class PrefabManager {
 
             // Serialize the GameObject and all its children
             const prefabData = this.serializeGameObjectForPrefab(gameObject);
-            
+
             // Add metadata
             prefabData.metadata = {
                 name: prefabName,
@@ -144,7 +146,7 @@ class PrefabManager {
                 const fileName = `${prefabName}.prefab`;
                 const filePath = `/Prefabs/${fileName}`;
                 const success = await this.editor.fileBrowser.createFile(
-                    filePath, 
+                    filePath,
                     JSON.stringify(prefabData, null, 2)
                 );
 
@@ -166,7 +168,7 @@ class PrefabManager {
             this.prefabs.set(prefabName, prefabData);
 
             console.log(`Prefab "${prefabName}" created:`, prefabData);
-            
+
         } catch (error) {
             console.error('Error creating prefab:', error);
             throw error;
@@ -235,14 +237,14 @@ class PrefabManager {
         try {
             // Create the main GameObject
             const gameObject = new GameObject(prefabData.name);
-            
+
             // Set position (use provided position or prefab's stored position)
             if (position) {
                 gameObject.position.x = position.x;
                 gameObject.position.y = position.y;
             } else {
-                gameObject.position.x = prefabData.position.x;
-                gameObject.position.y = prefabData.position.y;
+                gameObject.position.x = prefabData.position?.x || 0;
+                gameObject.position.y = prefabData.position?.y || 0;
             }
 
             // Set other properties
@@ -255,30 +257,47 @@ class PrefabManager {
             if (prefabData.modules && prefabData.modules.length > 0) {
                 prefabData.modules.forEach(moduleData => {
                     try {
-                        // Get the module class
-                        const ModuleClass = window[moduleData.className];
+                        // Get the module class - try different ways
+                        let ModuleClass = window[moduleData.className];
+
+                        // If not found, try the type field
+                        if (!ModuleClass && moduleData.type) {
+                            ModuleClass = window[moduleData.type];
+                        }
+
                         if (!ModuleClass) {
-                            console.warn(`Module class not found: ${moduleData.className}`);
+                            console.warn(`Module class not found: ${moduleData.className || moduleData.type}`);
                             return;
                         }
 
                         // Create module instance
                         const moduleInstance = new ModuleClass();
-                        
-                        // Set properties
+
+                        // Set properties using different methods
                         if (moduleData.properties) {
                             Object.keys(moduleData.properties).forEach(propName => {
-                                if (moduleInstance.hasOwnProperty(propName)) {
-                                    moduleInstance[propName] = moduleData.properties[propName];
+                                try {
+                                    if (typeof moduleInstance.setProperty === 'function') {
+                                        moduleInstance.setProperty(propName, moduleData.properties[propName]);
+                                    } else if (moduleInstance.hasOwnProperty(propName)) {
+                                        moduleInstance[propName] = moduleData.properties[propName];
+                                    }
+                                } catch (error) {
+                                    console.warn(`Error setting property ${propName}:`, error);
                                 }
                             });
                         }
 
+                        // If there's a data field (from newer prefab format), use fromJSON
+                        if (moduleData.data && typeof moduleInstance.fromJSON === 'function') {
+                            moduleInstance.fromJSON(moduleData.data);
+                        }
+
                         // Add to GameObject
                         gameObject.addModule(moduleInstance);
-                        
+
                     } catch (error) {
-                        console.error(`Error adding module ${moduleData.className}:`, error);
+                        console.error(`Error adding module ${moduleData.className || moduleData.type}:`, error);
                     }
                 });
             }
@@ -287,22 +306,26 @@ class PrefabManager {
             if (prefabData.children && prefabData.children.length > 0) {
                 prefabData.children.forEach(childData => {
                     const childGameObject = this.instantiatePrefab(childData, null, gameObject);
-                    gameObject.addChild(childGameObject);
+                    if (childGameObject) {
+                        gameObject.addChild(childGameObject);
+                    }
                 });
             }
 
             // Add to scene or parent
             if (parent) {
                 parent.addChild(gameObject);
-            } else {
-                this.editor.scene.gameObjects.push(gameObject);
+            } else if (this.editor && this.editor.activeScene) {
+                // Add to the active scene
+                this.editor.activeScene.gameObjects.push(gameObject);
             }
 
+            console.log(`Successfully instantiated prefab: ${prefabData.metadata?.name || prefabData.name}`);
             return gameObject;
 
         } catch (error) {
             console.error('Error instantiating prefab:', error);
-            throw error;
+            return null;
         }
     }
 
@@ -313,7 +336,7 @@ class PrefabManager {
     async instantiatePrefabFromFile(file) {
         try {
             let prefabData;
-            
+
             if (typeof file.content === 'string') {
                 prefabData = JSON.parse(file.content);
             } else {
@@ -448,7 +471,7 @@ class PrefabManager {
             // Event listeners
             cancelBtn.addEventListener('click', handleCancel);
             createBtn.addEventListener('click', handleCreate);
-            
+
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     handleCreate();

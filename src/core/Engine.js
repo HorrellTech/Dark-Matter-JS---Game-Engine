@@ -732,28 +732,186 @@ class Engine {
     }
 
     /**
-     * Instantiate a prefab by name at a specific position
-     * @param {string} prefabName - Name of the prefab to instantiate
-     * @param {number} x - X position
-     * @param {number} y - Y position
-     * @param {GameObject} parent - Optional parent GameObject
-     * @returns {GameObject|null} The instantiated GameObject or null if prefab not found
-     */
-    instantiatePrefab(prefabName, x = 0, y = 0, parent = null) {
-        // Check if we're in the editor
+ * Check if a prefab exists by name
+ * @param {string} prefabName - Name of the prefab to check
+ * @returns {boolean} True if the prefab exists
+ */
+    hasPrefab(prefabName) {
+        if (!prefabName) return false;
+
+        // Check if we're in the editor - use the hierarchy's prefab manager
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            return window.editor.hierarchy.prefabManager.hasPrefab(prefabName);
+        }
+
+        // Check if we're in an exported game with embedded prefabs
+        if (window.prefabManager) {
+            return window.prefabManager.hasPrefab(prefabName);
+        }
+
+        // Fallback: check for embedded prefabs in engine
+        if (this.prefabs && this.prefabs.has) {
+            const variations = [
+                prefabName,
+                `Prefabs/${prefabName}`,
+                `${prefabName}.prefab`,
+                `Prefabs/${prefabName}.prefab`
+            ];
+
+            for (const variation of variations) {
+                if (this.prefabs.has(variation)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+ * Enhanced prefab instantiation
+ */
+    async instantiatePrefab(prefabName, x = 0, y = 0) {
+        console.log(`Attempting to instantiate prefab: ${prefabName}`);
+
+        // Check if we're in the editor - use the hierarchy's prefab manager
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             const position = new Vector2(x, y);
-            return window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position, parent);
+            const instantiated = window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position);
+
+            if (instantiated) {
+                // Add to the current scene's gameObjects if not already added
+                if (!this.gameObjects.includes(instantiated)) {
+                    this.gameObjects.push(instantiated);
+                }
+                return instantiated;
+            }
+            return null;
         }
 
-        // Check if we're in an exported game
-        if (window.prefabManager) {
-            const position = { x: x, y: y };
-            return window.prefabManager.instantiatePrefabByName(prefabName, position, parent);
+        // Check if we're in an exported game with embedded prefabs
+        if (window.prefabManager && typeof window.prefabManager.instantiatePrefabByName === 'function') {
+            const position = new Vector2(x, y);
+            const instantiated = window.prefabManager.instantiatePrefabByName(prefabName, position);
+
+            if (instantiated) {
+                // Add to the current scene's gameObjects if not already added
+                if (!this.gameObjects.includes(instantiated)) {
+                    this.gameObjects.push(instantiated);
+                }
+                return instantiated;
+            }
+            return null;
         }
 
-        console.error('No prefab manager available');
+        // Fallback: try the old method with engine's prefab cache
+        const variations = [
+            prefabName,
+            `Prefabs/${prefabName}`,
+            `${prefabName}.prefab`,
+            `Prefabs/${prefabName}.prefab`
+        ];
+
+        for (const variation of variations) {
+            try {
+                // Try memory cache first
+                if (this.prefabs && this.prefabs.has && this.prefabs.has(variation)) {
+                    console.log(`Found prefab in engine cache: ${variation}`);
+                    const prefabData = this.prefabs.get(variation);
+                    const instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
+
+                    if (instantiated) {
+                        // Add to the current scene's gameObjects
+                        if (!this.gameObjects.includes(instantiated)) {
+                            this.gameObjects.push(instantiated);
+                        }
+                        return instantiated;
+                    }
+                }
+
+                // Try loading from file browser
+                if (window.fileBrowser && window.fileBrowser.readFile) {
+                    const content = await window.fileBrowser.readFile(variation);
+                    if (content) {
+                        console.log(`Loaded prefab from file: ${variation}`);
+                        const prefabData = JSON.parse(content);
+
+                        // Cache for future use
+                        if (!this.prefabs) this.prefabs = new Map();
+                        this.prefabs.set(variation, prefabData);
+
+                        const instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
+
+                        if (instantiated) {
+                            // Add to the current scene's gameObjects
+                            if (!this.gameObjects.includes(instantiated)) {
+                                this.gameObjects.push(instantiated);
+                            }
+                            return instantiated;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn(`Failed to load prefab variation "${variation}":`, error);
+            }
+        }
+
+        console.error(`Prefab not found: ${prefabName}`);
         return null;
+    }
+
+    /**
+     * Create GameObject from prefab data
+     */
+    createGameObjectFromPrefab(prefabData, x = 0, y = 0) {
+        if (!prefabData) return null;
+
+        try {
+            // Create GameObject
+            const gameObject = new GameObject(prefabData.name || "PrefabInstance");
+
+            // Set position
+            gameObject.position.x = x;
+            gameObject.position.y = y;
+
+            // Apply prefab properties
+            if (prefabData.position) {
+                gameObject.position.x += prefabData.position.x || 0;
+                gameObject.position.y += prefabData.position.y || 0;
+            }
+
+            if (prefabData.scale) {
+                gameObject.scale.x = prefabData.scale.x || 1;
+                gameObject.scale.y = prefabData.scale.y || 1;
+            }
+
+            if (prefabData.angle !== undefined) {
+                gameObject.angle = prefabData.angle;
+            }
+
+            // Add modules
+            if (prefabData.modules && Array.isArray(prefabData.modules)) {
+                for (const moduleData of prefabData.modules) {
+                    const ModuleClass = window[moduleData.type];
+                    if (ModuleClass) {
+                        const module = new ModuleClass();
+                        if (module.fromJSON && moduleData.data) {
+                            module.fromJSON(moduleData.data);
+                        }
+                        gameObject.addModule(module);
+                    } else {
+                        console.warn(`Module class not found: ${moduleData.type}`);
+                    }
+                }
+            }
+
+            console.log(`Successfully created GameObject from prefab`);
+            return gameObject;
+
+        } catch (error) {
+            console.error(`Error creating GameObject from prefab:`, error);
+            return null;
+        }
     }
 
     /**
@@ -762,23 +920,41 @@ class Engine {
      * @returns {boolean} True if the prefab exists
      */
     hasPrefab(prefabName) {
-        // Check if we're in the editor
+        if (!prefabName) return false;
+
+        // Check if we're in the editor - use the hierarchy's prefab manager
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             return window.editor.hierarchy.prefabManager.hasPrefab(prefabName);
         }
 
-        // Check if we're in an exported game
-        if (window.prefabManager) {
+        // Check if we're in an exported game with embedded prefabs
+        if (window.prefabManager && typeof window.prefabManager.hasPrefab === 'function') {
             return window.prefabManager.hasPrefab(prefabName);
+        }
+
+        // Fallback: check for embedded prefabs in engine
+        if (this.prefabs && this.prefabs.has) {
+            const variations = [
+                prefabName,
+                `Prefabs/${prefabName}`,
+                `${prefabName}.prefab`,
+                `Prefabs/${prefabName}.prefab`
+            ];
+
+            for (const variation of variations) {
+                if (this.prefabs.has(variation)) {
+                    return true;
+                }
+            }
         }
 
         return false;
     }
 
     /**
-     * Get all available prefab names
-     * @returns {Array<string>} Array of prefab names
-     */
+ * Get all available prefab names
+ * @returns {Array<string>} Array of prefab names
+ */
     getAvailablePrefabs() {
         // Check if we're in the editor
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
@@ -786,8 +962,13 @@ class Engine {
         }
 
         // Check if we're in an exported game
-        if (window.prefabManager) {
+        if (window.prefabManager && typeof window.prefabManager.getAllPrefabNames === 'function') {
             return window.prefabManager.getAllPrefabNames();
+        }
+
+        // Fallback to engine's prefab cache
+        if (this.prefabs && this.prefabs.keys) {
+            return Array.from(this.prefabs.keys());
         }
 
         return [];

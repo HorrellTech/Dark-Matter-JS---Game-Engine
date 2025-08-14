@@ -2940,25 +2940,18 @@ class Inspector {
 
         // Define the update function outside the event handlers for consistent use
         const updateGameObject = () => {
-            // Mark the scene as dirty for auto-save
-            if (this.editor && this.editor.activeScene) {
-                this.editor.activeScene.dirty = true;
-            }
-
-            // Force a proper sync by directly calling the engine's sync method
-            if (window.engine && window.engine.running) {
-                if (window.gameEditorSync) {
-                    window.gameEditorSync.syncEditorToGame();
-                } else if (window.engine.syncFromEditor) {
-                    window.engine.syncFromEditor();
-                }
-            }
-
-            // Refresh the editor canvas to show changes
-            if (this.editor) {
+            if (this.editor && this.editor.refreshCanvas) {
                 this.editor.refreshCanvas();
             }
         };
+
+        // Prefab drop targets - NEW FUNCTIONALITY
+        container.querySelectorAll('input[type="text"]').forEach(input => {
+            const propName = input.dataset.propName;
+            if (propName && (propName.toLowerCase().includes('prefab') || propName.toLowerCase().includes('asset'))) {
+                this.setupPrefabDropTarget(input, module, propName);
+            }
+        });
 
         // Image drop targets - Updated to handle both data attributes
         container.querySelectorAll('[data-property-type="image"], [data-asset-type="image"], .image-drop-target').forEach(element => {
@@ -3371,6 +3364,147 @@ class Inspector {
                 updateGameObject();
             });
         });
+    }
+
+    /**
+ * Setup prefab drop target for text inputs
+ */
+    setupPrefabDropTarget(input, module, propName) {
+        // Visual feedback for drop targets
+        input.style.position = 'relative';
+
+        input.addEventListener('dragover', (e) => {
+            if (this.isPrefabDragEvent(e.dataTransfer)) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                input.style.backgroundColor = 'rgba(0, 120, 215, 0.2)';
+                input.style.borderColor = '#0078D7';
+            }
+        });
+
+        input.addEventListener('dragleave', () => {
+            input.style.backgroundColor = '';
+            input.style.borderColor = '';
+        });
+
+        input.addEventListener('drop', async (e) => {
+            if (this.isPrefabDragEvent(e.dataTransfer)) {
+                e.preventDefault();
+                input.style.backgroundColor = '';
+                input.style.borderColor = '';
+
+                try {
+                    const prefabName = await this.getPrefabPathFromDropEvent(e.dataTransfer);
+                    if (prefabName) {
+                        // Validate the prefab exists using the engine's method
+                        if (window.engine && window.engine.hasPrefab(prefabName)) {
+                            input.value = prefabName;
+                            this.updateModuleProperty(module, propName, prefabName);
+                            this.editor?.refreshCanvas();
+
+                            console.log(`Set prefab "${prefabName}" for property "${propName}"`);
+                        } else {
+                            console.error(`Prefab "${prefabName}" not found in available prefabs`);
+                            input.style.backgroundColor = 'rgba(220, 53, 69, 0.2)';
+                            setTimeout(() => {
+                                input.style.backgroundColor = '';
+                            }, 1000);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error handling prefab drop:', error);
+                }
+            }
+        });
+    }
+
+    /**
+     * Check if the drag event contains a prefab file
+     */
+    isPrefabDragEvent(dataTransfer) {
+        // Check for files (from OS)
+        if (dataTransfer.items && dataTransfer.items.length > 0) {
+            for (let item of dataTransfer.items) {
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    if (file && file.name.toLowerCase().endsWith('.prefab')) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check for JSON data (from internal file browser)
+        if (dataTransfer.types.includes('application/json')) {
+            try {
+                const jsonData = dataTransfer.getData('application/json');
+                const data = JSON.parse(jsonData);
+                // Check if it's a prefab file
+                if (data.path && data.path.toLowerCase().endsWith('.prefab')) {
+                    return true;
+                }
+                // Check if it has prefab metadata
+                if (data.metadata && data.modules) {
+                    return true;
+                }
+            } catch (e) {
+                // Not valid JSON
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extract prefab path from drop event
+     */
+    async getPrefabPathFromDropEvent(dataTransfer) {
+        // Check for files directly dropped
+        if (dataTransfer.files && dataTransfer.files.length > 0) {
+            const file = dataTransfer.files[0];
+            if (file.name.toLowerCase().endsWith('.prefab')) {
+                return file.name.replace('.prefab', '');
+            }
+        }
+
+        // Check for JSON data (from internal drag & drop from file browser)
+        const jsonData = dataTransfer.getData('application/json');
+        if (jsonData) {
+            try {
+                const data = JSON.parse(jsonData);
+
+                // If it's a file object with a prefab path
+                if (data.path && data.path.toLowerCase().endsWith('.prefab')) {
+                    return this.extractPrefabName(data.path);
+                }
+
+                // If it's direct prefab data
+                if (data.metadata && data.metadata.name) {
+                    return data.metadata.name;
+                }
+            } catch (e) {
+                console.warn('Error parsing dropped JSON data:', e);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract prefab name from path (remove path and extension)
+     */
+    extractPrefabName(path) {
+        if (!path) return '';
+
+        // Get filename from path
+        let filename = path.split('/').pop().split('\\').pop();
+
+        // Remove .prefab extension if present
+        if (filename.toLowerCase().endsWith('.prefab')) {
+            filename = filename.slice(0, -7);
+        }
+
+        return filename;
     }
 
     /**

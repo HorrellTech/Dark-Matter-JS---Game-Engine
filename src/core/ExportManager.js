@@ -627,6 +627,8 @@ class ExportManager {
             'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
             'AsteroidsBullet': 'src/core/Modules/Asteroids/AsteroidsBullet.js',
+            'Asteroid': 'src/core/Modules/Asteroids/Asteroid.js',
+            'AsteroidManager': 'src/core/Modules/Asteroids/AsteroidManager.js',
 
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',
