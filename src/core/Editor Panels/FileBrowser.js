@@ -378,6 +378,18 @@ class FileBrowser {
                 }
             }
         });
+
+        // TOUCH EVENTS
+
+        // Add touch event listeners for item selection
+        this.content.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.content.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.content.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+
+        // Add touch support for tree panel resizer
+        this.treePanelResizer.addEventListener('touchstart', (e) => this.handleTreePanelTouchStart(e));
+        document.addEventListener('touchmove', (e) => this.handleTreePanelTouchMove(e));
+        document.addEventListener('touchend', (e) => this.handleTreePanelTouchEnd(e));
     }
 
     setupTreePanelResizer() {
@@ -2868,11 +2880,11 @@ window.${pascalCaseName} = ${pascalCaseName};
             }
 
             const prefabData = JSON.parse(content);
-            
+
             // Use hierarchy's prefab manager to instantiate
             if (this.hierarchy && this.hierarchy.prefabManager) {
                 const instantiated = this.hierarchy.prefabManager.instantiatePrefab(prefabData, worldPos);
-                
+
                 // Refresh hierarchy and select the new object
                 this.hierarchy.refreshHierarchy();
                 this.hierarchy.selectGameObject(instantiated);
@@ -2883,12 +2895,76 @@ window.${pascalCaseName} = ${pascalCaseName};
 
                 // Trigger auto-save if available
                 //if (window.autoSaveManager) {
-                    //window.autoSaveManager.autoSave();
-               // }
+                //window.autoSaveManager.autoSave();
+                // }
             }
 
         } catch (error) {
             console.error('Error instantiating prefab:', error);
+        }
+    }
+
+    // TOUCH METHODS
+    handleTouchStart(e) {
+        const touch = e.touches[0];
+        const item = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.fb-item');
+        if (!item) return;
+
+        this.selectItem(item, true);
+    }
+
+    handleTouchMove(e) {
+        // Prevent default scrolling behavior during touch interactions
+        e.preventDefault();
+    }
+
+    handleTouchEnd(e) {
+        const touch = e.changedTouches[0];
+        const item = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.fb-item');
+        if (item && this.selectedItems.has(item)) {
+            // Handle double-tap to open files or folders
+            const now = Date.now();
+            if (this.lastTouchItem === item && now - this.lastTouchTime < 300) {
+                if (item.dataset.type === 'folder') {
+                    this.navigateTo(item.dataset.path);
+                } else {
+                    this.openFile(item.dataset.path);
+                }
+            }
+            this.lastTouchItem = item;
+            this.lastTouchTime = now;
+        }
+    }
+
+    handleTreePanelTouchStart(e) {
+        const touch = e.touches[0];
+        this.isResizing = true;
+        this.startX = touch.clientX;
+        this.startWidth = this.treePanel.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        e.preventDefault();
+    }
+
+    handleTreePanelTouchMove(e) {
+        if (!this.isResizing) return;
+
+        const touch = e.touches[0];
+        const containerWidth = this.splitContainer.offsetWidth;
+        const newWidth = this.startWidth + (touch.clientX - this.startX);
+
+        // Limit width to a reasonable range (10% to 50% of container)
+        const minWidth = containerWidth * 0.1;
+        const maxWidth = containerWidth * 0.5;
+        const clampedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+
+        this.treePanel.style.width = `${clampedWidth}px`;
+        e.preventDefault();
+    }
+
+    handleTreePanelTouchEnd(e) {
+        if (this.isResizing) {
+            this.isResizing = false;
+            document.body.style.cursor = '';
         }
     }
 }
