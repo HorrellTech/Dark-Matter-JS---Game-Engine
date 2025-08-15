@@ -768,3 +768,48 @@
     padding: 6px 8px;
     margin: 2px 0;
 }
+
+/* Add to your existing CSS file */
+.file-browser-content.drag-over-background {
+    background-color: rgba(76, 175, 80, 0.1);
+    border: 2px dashed #4CAF50;
+}
+
+.fb-item.drag-over {
+    background-color: rgba(76, 175, 80, 0.2);
+    border-left: 3px solid #4CAF50;
+}
+
+/* Visual feedback for dragging GameObjects */
+.hierarchy-item.dragging {
+    opacity: 0.6;
+}
+
+/* Notification styles if not already present */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 4px;
+    color: white;
+    font-weight: 500;
+    z-index: 10000;
+    transition: all 0.3s ease;
+}
+
+.notification.success {
+    background-color: #4CAF50;
+}
+
+.notification.error {
+    background-color: #F44336;
+}
+
+.notification.warning {
+    background-color: #FF9800;
+}
+
+.notification.info {
+    background-color: #2196F3;
+}

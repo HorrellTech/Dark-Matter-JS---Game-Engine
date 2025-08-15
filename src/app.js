@@ -1,5 +1,5 @@
 // Initialize editor components
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     try {
         console.log('Initializing documentation system...');
         if (!window.docModal && window.DocumentationModal) {
@@ -48,6 +48,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize editor
     const editor = new Editor('editorCanvas');
 
+    if(!window.editor) {
+        window.editor = editor;
+    }
+
     // Add this after initializing the editor but before other game-related code
 
     // Initialize physics manager
@@ -90,14 +94,34 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Add some test objects
-    const scene = new Scene("Default Scene");
+    //const scene = new Scene("Default Scene");
 
     //const rootObj = new GameObject("Root Object");
     //rootObj.position = new Vector2(400, 300);
     //scene.gameObjects.push(rootObj);
 
-    editor.scenes.push(scene);
-    editor.setActiveScene(scene);
+    //editor.scenes.push(scene);
+    //editor.setActiveScene(scene);
+
+    // Ensure default scene is created and saved
+    if (window.editor.scenes.length === 0) {
+        console.log('Creating default scene on startup...');
+        try {
+            const defaultScene = await window.editor.sceneManager.createNewScene();
+            
+            // Make sure it gets saved
+            if (defaultScene && window.editor.fileBrowser) {
+                try {
+                    await window.editor.sceneManager.saveCurrentScene();
+                    console.log('Default scene saved successfully');
+                } catch (error) {
+                    console.warn('Could not save default scene:', error);
+                }
+            }
+        } catch (error) {
+            console.error('Error creating default scene:', error);
+        }
+    }
 
     // Refresh hierarchy
     editor.hierarchy.refreshHierarchy();

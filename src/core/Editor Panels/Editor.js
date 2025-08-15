@@ -124,6 +124,9 @@ class Editor {
             }
         });
 
+        // Initialize scenes asynchronously (remove await from here)
+        this.initializeScenes();
+
         // Set up the hierarchy manager
         this.hierarchy = new HierarchyManager('gameObjectHierarchy', this);
 
@@ -214,6 +217,26 @@ class Editor {
         window.addEventListener('panelsResized', () => {
             this.refreshCanvas();
         });
+    }
+
+    /**
+ * Initialize scenes asynchronously
+ */
+    async initializeScenes() {
+        try {
+            // Ensure we have at least one scene and it's saved
+            if (this.scenes.length === 0) {
+                console.log('No scenes found, creating default scene...');
+                await this.createDefaultScene();
+            } else {
+                // Ensure the active scene is properly loaded and saved
+                await this.ensureActiveSceneIsSaved();
+            }
+        } catch (error) {
+            console.error('Error initializing scenes:', error);
+            // Create a fallback scene if there's an error
+            this.createDefaultScene().catch(console.error);
+        }
     }
 
     animationLoop() {
@@ -544,11 +567,45 @@ class Editor {
         }
     }
 
-    createDefaultScene() {
-        // Create a new buffered scene
-        const scene = this.sceneBuffer.createNewScene();
-        this.scenes.push(scene);
-        this.setActiveScene(scene);
+    /**
+     * Create and save a default scene
+     */
+    async createDefaultScene() {
+        try {
+            // Create a default scene
+            const defaultScene = new Scene("Main Scene");
+            defaultScene.dirty = true;
+            defaultScene.isBuffered = true;
+
+            this.scenes.push(defaultScene);
+            this.setActiveScene(defaultScene);
+
+            // Auto-save the default scene
+            if (this.sceneManager) {
+                await this.sceneManager.autoSaveSceneIfNeeded(defaultScene);
+            }
+
+            console.log('Created and saved default scene');
+        } catch (error) {
+            console.error('Error creating default scene:', error);
+        }
+    }
+
+    /**
+ * Ensure the active scene is saved to file browser
+ */
+    async ensureActiveSceneIsSaved() {
+        if (!this.activeScene || !this.activeScene.isBuffered) {
+            return; // Scene is already saved or doesn't exist
+        }
+
+        try {
+            if (this.sceneManager) {
+                await this.sceneManager.autoSaveSceneIfNeeded(this.activeScene);
+            }
+        } catch (error) {
+            console.error('Error ensuring active scene is saved:', error);
+        }
     }
 
     handleDocumentMouseMove = (e) => {

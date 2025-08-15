@@ -1393,13 +1393,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return obj;
     }
     
-    // Start the game
+    // Start the game with the selected starting scene
     if (loadedScenes.length > 0) {
         try {
-            engine.loadScene(loadedScenes[0]);
+            const startingSceneIndex = ${startingSceneIndex};
+            const sceneToLoad = loadedScenes[startingSceneIndex] || loadedScenes[0];
+            console.log('Loading starting scene:', sceneToLoad.name, 'at index:', startingSceneIndex);
+            
+            engine.loadScene(sceneToLoad);
             await engine.start();
             loadingScreen.style.display = 'none';
-            console.log('Game started successfully!');
+            console.log('Game started successfully with scene:', sceneToLoad.name);
         } catch (error) {
             console.error('Failed to start game:', error);
             loadingScreen.innerHTML = '<div>Error loading game: ' + error.message + '</div>';
@@ -1586,47 +1590,60 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const modal = document.createElement('div');
         modal.className = 'export-modal';
+
+        // Get available scenes for the dropdown
+        const availableScenes = window.editor ? window.editor.scenes : [];
+        const sceneOptions = availableScenes.map((scene, index) =>
+            `<option value="${index}">${scene.name}</option>`
+        ).join('');
+
         modal.innerHTML = `
-            <div class="export-modal-content">
-                <div class="export-modal-header">
-                    <h2>Export Game</h2>
-                    <button class="export-close-button">&times;</button>
+        <div class="export-modal-content">
+            <div class="export-modal-header">
+                <h2>Export Game</h2>
+                <button class="export-close-button">&times;</button>
+            </div>
+            <div class="export-modal-body">
+                <div class="export-group">
+                    <label>Game Title:</label>
+                    <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
                 </div>
-                <div class="export-modal-body">
-                    <div class="export-group">
-                        <label>Game Title:</label>
-                        <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
-                    </div>
-                    <div class="export-group">
-                        <label>Description:</label>
-                        <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
-                    </div>
-                    <div class="export-group">
-                        <label>Export Format:</label>
-                        <select id="export-format">
-                            <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
-                            <option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option>
-                        </select>
-                    </div>
-                    <div class="export-group">
-                        <label>
-                            <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
-                            Include Assets
-                        </label>
-                    </div>
-                    <div class="export-group">
-                        <label>
-                            <input type="checkbox" id="export-minify" ${this.exportSettings.minifyCode ? 'checked' : ''}>
-                            Minify Code
-                        </label>
-                    </div>
+                <div class="export-group">
+                    <label>Description:</label>
+                    <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
                 </div>
-                <div class="export-modal-footer">
-                    <button id="export-cancel">Cancel</button>
-                    <button id="export-start" class="primary">Export Game</button>
+                <div class="export-group">
+                    <label>Starting Scene:</label>
+                    <select id="export-starting-scene">
+                        ${sceneOptions || '<option value="0">No scenes available</option>'}
+                    </select>
+                </div>
+                <div class="export-group">
+                    <label>Export Format:</label>
+                    <select id="export-format">
+                        <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
+                        <option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option>
+                    </select>
+                </div>
+                <div class="export-group">
+                    <label>
+                        <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
+                        Include Assets
+                    </label>
+                </div>
+                <div class="export-group">
+                    <label>
+                        <input type="checkbox" id="export-minify" ${this.exportSettings.minifyCode ? 'checked' : ''}>
+                        Minify Code
+                    </label>
                 </div>
             </div>
-        `;
+            <div class="export-modal-footer">
+                <button id="export-cancel">Cancel</button>
+                <button id="export-start" class="primary">Export Game</button>
+            </div>
+        </div>
+    `;
 
         document.body.appendChild(modal);
 
@@ -1643,6 +1660,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const settings = {
                 customTitle: modal.querySelector('#export-title').value,
                 customDescription: modal.querySelector('#export-description').value,
+                startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
                 minifyCode: modal.querySelector('#export-minify').checked
@@ -1655,11 +1673,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const loadingDiv = document.createElement('div');
                 loadingDiv.className = 'export-loading';
                 loadingDiv.innerHTML = `
-                    <div class="export-loading-content">
-                        <div class="export-loading-spinner"></div>
-                        <div>Exporting game... Please wait.</div>
-                    </div>
-                `;
+                <div class="export-loading-content">
+                    <div class="export-loading-spinner"></div>
+                    <div>Exporting game... Please wait.</div>
+                </div>
+            `;
                 document.body.appendChild(loadingDiv);
 
                 // Get current project data
@@ -1691,7 +1709,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             } catch (error) {
                 // Remove loading indicator if it exists
-                const loadingDiv = document.querySelector('div[style*="position: fixed"][style*="z-index: 10001"]');
+                const loadingDiv = document.querySelector('.export-loading');
                 if (loadingDiv && loadingDiv.parentNode) {
                     document.body.removeChild(loadingDiv);
                 }

@@ -866,6 +866,20 @@ class Engine {
         this.resizeCanvas();
     }
 
+        /**
+     * Load scene by index (useful for exported games)
+     */
+    loadSceneByIndex(scenes, index) {
+        if (!scenes || !Array.isArray(scenes) || index < 0 || index >= scenes.length) {
+            console.error('Invalid scene index or scenes array');
+            return false;
+        }
+
+        const scene = scenes[index];
+        this.loadScene(scene);
+        return true;
+    }
+
     /**
      * Enhanced prefab instantiation
      */

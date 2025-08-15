@@ -252,6 +252,83 @@ class FileBrowser {
             }
         });
 
+        this.content.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const target = e.target.closest('.fb-item');
+
+            // Clear previous drag-over styling
+            this.content.querySelectorAll('.drag-over').forEach(el =>
+                el.classList.remove('drag-over'));
+
+            // Check if we're dragging a GameObject from hierarchy
+            if (e.dataTransfer.types.includes('application/hierarchy-object')) {
+                // Only allow dropping into folders or the file browser background
+                if (target && target.dataset.type === 'folder') {
+                    target.classList.add('drag-over');
+                    e.dataTransfer.dropEffect = 'copy';
+                } else if (!target) {
+                    // Dropping onto the file browser background
+                    this.content.classList.add('drag-over-background');
+                    e.dataTransfer.dropEffect = 'copy';
+                }
+                return;
+            }
+
+            // Only allow dropping into folders for regular file operations
+            if (target && target.dataset.type === 'folder') {
+                target.classList.add('drag-over');
+                e.dataTransfer.dropEffect = 'move';
+            }
+        });
+
+        this.content.addEventListener('dragleave', (e) => {
+            const target = e.target.closest('.fb-item');
+            if (target) {
+                target.classList.remove('drag-over');
+            }
+            this.content.classList.remove('drag-over-background');
+        });
+
+        this.content.addEventListener('drop', (e) => {
+            e.preventDefault();
+
+            // Clear drag-over styling
+            this.content.querySelectorAll('.drag-over').forEach(el =>
+                el.classList.remove('drag-over'));
+            this.content.classList.remove('drag-over-background');
+
+            const target = e.target.closest('.fb-item');
+
+            // Handle GameObject drops from hierarchy
+            if (e.dataTransfer.types.includes('application/hierarchy-object')) {
+                try {
+                    const hierarchyData = JSON.parse(e.dataTransfer.getData('application/hierarchy-object'));
+                    if (hierarchyData.type === 'gameObject') {
+                        this.handleGameObjectDrop(hierarchyData, target);
+                    }
+                } catch (err) {
+                    console.error('Error processing hierarchy drag data:', err);
+                }
+                return;
+            }
+
+            // Handle file uploads from OS
+            if (e.dataTransfer.files.length > 0) {
+                this.handleFileDrop(e.dataTransfer.files);
+                return;
+            }
+
+            // Handle internal drag-drop
+            if (target && target.dataset.type === 'folder') {
+                try {
+                    const items = JSON.parse(e.dataTransfer.getData('application/json'));
+                    this.moveItems(items, target.dataset.path);
+                } catch (err) {
+                    console.error('Error processing drag data:', err);
+                }
+            }
+        });
+
         // Make the content div focusable to receive keyboard events
         this.content.setAttribute('tabindex', '0');
 
@@ -390,6 +467,67 @@ class FileBrowser {
         this.treePanelResizer.addEventListener('touchstart', (e) => this.handleTreePanelTouchStart(e));
         document.addEventListener('touchmove', (e) => this.handleTreePanelTouchMove(e));
         document.addEventListener('touchend', (e) => this.handleTreePanelTouchEnd(e));
+    }
+
+    /**
+     * Handle dropping a GameObject from the hierarchy to create a prefab
+     * @param {Object} hierarchyData - Data about the dragged GameObject
+     * @param {Element} target - The drop target element (folder or null for background)
+     */
+    async handleGameObjectDrop(hierarchyData, target) {
+        try {
+            // Get the editor and hierarchy manager
+            const editor = window.editor;
+            if (!editor || !editor.hierarchy) {
+                throw new Error('Editor or hierarchy manager not available');
+            }
+
+            // Find the GameObject by ID
+            const gameObject = editor.hierarchy.findGameObjectById(hierarchyData.id);
+            if (!gameObject) {
+                throw new Error(`GameObject with ID ${hierarchyData.id} not found`);
+            }
+
+            // Determine target directory
+            let targetPath;
+            if (target && target.dataset.type === 'folder') {
+                // Dropped onto a specific folder
+                targetPath = target.dataset.path;
+            } else {
+                // Dropped onto file browser background - use current directory or create Prefabs folder
+                if (this.currentPath === '/') {
+                    targetPath = '/Prefabs';
+                } else {
+                    targetPath = `${this.currentPath}/Prefabs`;
+                }
+            }
+
+            // Create the prefab
+            const prefabPath = await editor.hierarchy.createPrefabFromGameObject(gameObject, targetPath);
+
+            if (prefabPath) {
+                // Show success notification
+                this.showNotification(`Prefab created from ${gameObject.name}`, 'success');
+
+                // Refresh the file browser to show the new prefab
+                await this.refreshFiles();
+
+                // If we're in the target directory, select the new prefab file
+                if (this.currentPath === targetPath) {
+                    setTimeout(() => {
+                        const prefabFileName = prefabPath.split('/').pop();
+                        const prefabElement = this.content.querySelector(`[data-name="${prefabFileName}"]`);
+                        if (prefabElement) {
+                            this.selectItem(prefabElement, true);
+                        }
+                    }, 100);
+                }
+            }
+
+        } catch (error) {
+            console.error('Error handling GameObject drop:', error);
+            this.showNotification(`Error creating prefab: ${error.message}`, 'error');
+        }
     }
 
     setupTreePanelResizer() {

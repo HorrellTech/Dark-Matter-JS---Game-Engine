@@ -587,11 +587,58 @@ class SceneManager {
         this.editor.scenes.push(scene);
         this.editor.setActiveScene(scene);
 
+        // Auto-save the scene if it's the first scene created or if the project is new
+        await this.autoSaveSceneIfNeeded(scene);
+
         // Update UI
         this.updateSceneList();
         document.title = `Dark Matter JS - ${scene.name}`;
 
         return scene;
+    }
+
+    /**
+ * Auto-save scene to file browser if needed
+ */
+    async autoSaveSceneIfNeeded(scene) {
+        // Check if this is the first scene or if we should auto-save
+        const shouldAutoSave = this.editor.scenes.length === 1 || // First scene
+            scene.name.includes('Untitled Scene 1'); // Default first scene
+
+        if (shouldAutoSave && this.editor.fileBrowser) {
+            try {
+                // Ensure Scenes folder exists
+                const scenesPath = await this.ensureScenesFolderExists();
+                if (scenesPath) {
+                    // Generate a proper file name
+                    const fileName = scene.name.replace(/\s+/g, '_') + '.scene';
+                    const filePath = `${scenesPath}/${fileName}`;
+
+                    // Save the scene data
+                    const sceneData = JSON.stringify(scene.toJSON(), null, 2);
+                    const success = await this.editor.fileBrowser.writeFile(filePath, sceneData);
+
+                    if (success) {
+                        // Update scene properties
+                        scene.path = filePath;
+                        scene.dirty = false;
+                        scene.isBuffered = false;
+                        scene.isLocal = false;
+
+                        console.log(`Auto-saved default scene: ${fileName}`);
+
+                        // Show notification
+                        if (this.editor.fileBrowser.showNotification) {
+                            this.editor.fileBrowser.showNotification(`Auto-saved scene: ${fileName}`, 'info');
+                        }
+                    } else {
+                        console.warn('Failed to auto-save default scene');
+                    }
+                }
+            } catch (error) {
+                console.error('Error auto-saving scene:', error);
+            }
+        }
     }
 
     getNextBufferName() {
