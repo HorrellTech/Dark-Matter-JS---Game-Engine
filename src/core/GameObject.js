@@ -1285,11 +1285,11 @@ class GameObject {
      * Clone this GameObject, including all modules and children
      * @returns {GameObject} A deep copy of this GameObject
      */
-    clone() {
+    clone(addNameCopySuffix = true) {
         const originalGameObject = this; 
         
         // Create new GameObject
-        const cloned = new GameObject(this.name + " (Copy)");
+        const cloned = new GameObject(this.name + (addNameCopySuffix ? " (Copy)" : ""));
         
         // Copy basic properties
         cloned.position = this.position.clone();

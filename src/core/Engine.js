@@ -96,6 +96,10 @@ class Engine {
 
         // Initialize viewport properly
         this.initializeViewport();
+
+        // Track dynamically created objects for cleanup
+        this.dynamicObjects = new Set();
+        this.originalGameObjects = [];
     }
 
     // Add viewport management methods
@@ -448,6 +452,9 @@ class Engine {
             }
         });
 
+        // Clean up dynamically created prefab instances
+        this.cleanupDynamicObjects();
+
         // Reset physics after calling onDestroy to properly restore positions
         if (window.physicsManager) {
             window.physicsManager.reset();
@@ -458,6 +465,130 @@ class Engine {
             // Refresh the editor canvas to show restored positions
             window.editor.refreshCanvas();
         }
+    }
+
+    /**
+     * Remove a dynamically created object
+     * @param {GameObject} gameObject - The object to remove
+     */
+    removeDynamicObject(gameObject) {
+        if (!gameObject) return false;
+
+        // Remove from dynamic objects tracking
+        this.dynamicObjects.delete(gameObject);
+
+        // Remove from game objects array
+        const index = this.gameObjects.indexOf(gameObject);
+        if (index > -1) {
+            this.gameObjects.splice(index, 1);
+        }
+
+        // Also remove from parent if it has one
+        if (gameObject.parent) {
+            gameObject.parent.removeChild(gameObject);
+        }
+
+        // Remove from editor's scene if available
+        if (window.editor && window.editor.activeScene) {
+            const editorIndex = window.editor.activeScene.gameObjects.indexOf(gameObject);
+            if (editorIndex > -1) {
+                window.editor.activeScene.gameObjects.splice(editorIndex, 1);
+            }
+
+            // Also remove from editor's scene reference
+            const sceneIndex = window.editor.scene.gameObjects.indexOf(gameObject);
+            if (sceneIndex > -1) {
+                window.editor.scene.gameObjects.splice(sceneIndex, 1);
+            }
+        }
+
+        // Check if this object is currently selected in the editor
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.selectedObject === gameObject) {
+            gameObject.setSelected(false);
+            window.editor.hierarchy.selectedObject = null;
+
+            // Update hierarchy UI
+            document.querySelectorAll('.hierarchy-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Show "no object selected" in inspector
+            if (window.editor.inspector) {
+                window.editor.inspector.showNoObjectMessage();
+            }
+        }
+
+        // Call onDestroy on the object and its modules
+        if (gameObject.modules) {
+            gameObject.modules.forEach(module => {
+                if (module.onDestroy) {
+                    try {
+                        module.onDestroy();
+                    } catch (error) {
+                        console.error(`Error in onDestroy for module ${module.type || module.constructor.name}:`, error);
+                    }
+                }
+            });
+        }
+
+        console.log(`Removed dynamic object: ${gameObject.name || 'Unnamed'}`);
+        return true;
+    }
+
+    /**
+     * Clean up all dynamically created objects
+     */
+    cleanupDynamicObjects() {
+        console.log(`Cleaning up ${this.dynamicObjects.size} dynamic objects...`);
+
+        // Convert to array to avoid modification during iteration
+        const objectsToRemove = Array.from(this.dynamicObjects);
+
+        objectsToRemove.forEach(obj => {
+            this.removeDynamicObject(obj);
+        });
+
+        // Restore original game objects
+        this.gameObjects = [...this.originalGameObjects];
+        this.dynamicObjects.clear();
+
+        // Update the editor if available
+        if (window.editor) {
+            // Update the editor's scene gameObjects reference
+            if (window.editor.activeScene) {
+                window.editor.activeScene.gameObjects = [...this.originalGameObjects];
+                window.editor.scene.gameObjects = [...this.originalGameObjects];
+            }
+
+            // Clear any selected object if it was dynamic
+            if (window.editor.hierarchy && window.editor.hierarchy.selectedObject) {
+                const selectedObj = window.editor.hierarchy.selectedObject;
+                if (selectedObj._isDynamic) {
+                    selectedObj.setSelected(false);
+                    window.editor.hierarchy.selectedObject = null;
+
+                    // Update hierarchy UI
+                    document.querySelectorAll('.hierarchy-item').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+
+                    // Show "no object selected" in inspector
+                    if (window.editor.inspector) {
+                        window.editor.inspector.showNoObjectMessage();
+                    }
+                }
+            }
+
+            // Refresh the hierarchy to remove dynamic objects from the UI
+            if (window.editor.hierarchy) {
+                window.editor.hierarchy.refreshHierarchy();
+            }
+
+            // Refresh the editor canvas
+            window.editor.refreshCanvas();
+        }
+
+        console.log('Dynamic object cleanup complete');
     }
 
     refreshModules() {
@@ -719,10 +850,14 @@ class Engine {
         // Deep clone only in editor. In exported/runtime builds, use objects as-built
         // so embedded assets (like SpriteRenderer.imageData) are preserved.
         if (window.editor) {
-            this.gameObjects = this.cloneGameObjects(scene.gameObjects);
+            this.gameObjects = this.cloneGameObjects(scene.gameObjects, false);
         } else {
             this.gameObjects = scene.gameObjects;
         }
+
+        // Store original objects for cleanup purposes
+        this.originalGameObjects = [...this.gameObjects];
+        this.dynamicObjects.clear();
 
         this.preloaded = false;
         this.canvasResized = true;
@@ -732,132 +867,101 @@ class Engine {
     }
 
     /**
- * Check if a prefab exists by name
- * @param {string} prefabName - Name of the prefab to check
- * @returns {boolean} True if the prefab exists
- */
-    hasPrefab(prefabName) {
-        if (!prefabName) return false;
-
-        // Check if we're in the editor - use the hierarchy's prefab manager
-        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
-            return window.editor.hierarchy.prefabManager.hasPrefab(prefabName);
-        }
-
-        // Check if we're in an exported game with embedded prefabs
-        if (window.prefabManager) {
-            return window.prefabManager.hasPrefab(prefabName);
-        }
-
-        // Fallback: check for embedded prefabs in engine
-        if (this.prefabs && this.prefabs.has) {
-            const variations = [
-                prefabName,
-                `Prefabs/${prefabName}`,
-                `${prefabName}.prefab`,
-                `Prefabs/${prefabName}.prefab`
-            ];
-
-            for (const variation of variations) {
-                if (this.prefabs.has(variation)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
- * Enhanced prefab instantiation
- */
+     * Enhanced prefab instantiation
+     */
     async instantiatePrefab(prefabName, x = 0, y = 0) {
         console.log(`Attempting to instantiate prefab: ${prefabName}`);
 
+        let instantiated = null;
+
         // Check if we're in the editor - use the hierarchy's prefab manager
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             const position = new Vector2(x, y);
-            const instantiated = window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position);
+            instantiated = window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position);
 
             if (instantiated) {
                 // Add to the current scene's gameObjects if not already added
                 if (!this.gameObjects.includes(instantiated)) {
                     this.gameObjects.push(instantiated);
                 }
-                return instantiated;
             }
-            return null;
         }
 
-        // Check if we're in an exported game with embedded prefabs
-        if (window.prefabManager && typeof window.prefabManager.instantiatePrefabByName === 'function') {
-            const position = new Vector2(x, y);
-            const instantiated = window.prefabManager.instantiatePrefabByName(prefabName, position);
+        // If the hierarchy prefab manager failed, try loading from file browser
+        if (!instantiated && window.editor && window.editor.fileBrowser) {
+            const variations = [
+                `${prefabName}.prefab`,
+                `Prefabs/${prefabName}.prefab`,
+                `/Prefabs/${prefabName}.prefab`
+            ];
 
-            if (instantiated) {
-                // Add to the current scene's gameObjects if not already added
-                if (!this.gameObjects.includes(instantiated)) {
-                    this.gameObjects.push(instantiated);
-                }
-                return instantiated;
-            }
-            return null;
-        }
-
-        // Fallback: try the old method with engine's prefab cache
-        const variations = [
-            prefabName,
-            `Prefabs/${prefabName}`,
-            `${prefabName}.prefab`,
-            `Prefabs/${prefabName}.prefab`
-        ];
-
-        for (const variation of variations) {
-            try {
-                // Try memory cache first
-                if (this.prefabs && this.prefabs.has && this.prefabs.has(variation)) {
-                    console.log(`Found prefab in engine cache: ${variation}`);
-                    const prefabData = this.prefabs.get(variation);
-                    const instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
-
-                    if (instantiated) {
-                        // Add to the current scene's gameObjects
-                        if (!this.gameObjects.includes(instantiated)) {
-                            this.gameObjects.push(instantiated);
-                        }
-                        return instantiated;
-                    }
-                }
-
-                // Try loading from file browser
-                if (window.fileBrowser && window.fileBrowser.readFile) {
-                    const content = await window.fileBrowser.readFile(variation);
+            for (const variation of variations) {
+                try {
+                    const content = await window.editor.fileBrowser.readFile(variation);
                     if (content) {
-                        console.log(`Loaded prefab from file: ${variation}`);
                         const prefabData = JSON.parse(content);
-
-                        // Cache for future use
-                        if (!this.prefabs) this.prefabs = new Map();
-                        this.prefabs.set(variation, prefabData);
-
-                        const instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
+                        instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
 
                         if (instantiated) {
-                            // Add to the current scene's gameObjects
                             if (!this.gameObjects.includes(instantiated)) {
                                 this.gameObjects.push(instantiated);
                             }
-                            return instantiated;
+                            console.log(`Successfully instantiated prefab from file: ${variation}`);
+                            break;
                         }
                     }
+                } catch (error) {
+                    console.warn(`Failed to load prefab from ${variation}:`, error);
                 }
-            } catch (error) {
-                console.warn(`Failed to load prefab variation "${variation}":`, error);
             }
         }
 
-        console.error(`Prefab not found: ${prefabName}`);
-        return null;
+        // Check if we're in an exported game with embedded prefabs
+        if (!instantiated && window.prefabManager) {
+            console.log('Using global prefab manager for instantiation');
+
+            // Use the prefab manager's instantiation method
+            if (typeof window.prefabManager.instantiatePrefabByName === 'function') {
+                const position = new Vector2(x, y);
+                instantiated = window.prefabManager.instantiatePrefabByName(prefabName, position);
+
+                if (instantiated) {
+                    // Add to the current scene's gameObjects if not already added
+                    if (!this.gameObjects.includes(instantiated)) {
+                        this.gameObjects.push(instantiated);
+                    }
+                    console.log(`Successfully instantiated prefab: ${prefabName}`);
+                }
+            }
+
+            // Fallback: try direct prefab data access
+            if (!instantiated && typeof window.prefabManager.findPrefabByName === 'function') {
+                const prefabData = window.prefabManager.findPrefabByName(prefabName);
+                if (prefabData) {
+                    console.log(`Found prefab data, creating instance: ${prefabName}`);
+                    instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
+
+                    if (instantiated) {
+                        if (!this.gameObjects.includes(instantiated)) {
+                            this.gameObjects.push(instantiated);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Track the instantiated object for cleanup
+        if (instantiated) {
+            this.dynamicObjects.add(instantiated);
+            // Mark it as dynamically created for identification
+            instantiated._isDynamic = true;
+            console.log(`Tracked dynamic object: ${instantiated.name || 'Unnamed'}`);
+        } else {
+            console.error(`Prefab not found: ${prefabName}`);
+            console.log('Available prefabs:', this.getAvailablePrefabs());
+        }
+
+        return instantiated;
     }
 
     /**
@@ -932,17 +1036,17 @@ class Engine {
             return window.prefabManager.hasPrefab(prefabName);
         }
 
-        // Fallback: check for embedded prefabs in engine
-        if (this.prefabs && this.prefabs.has) {
+        // Also check if prefabs are available through the file browser
+        if (window.editor && window.editor.fileBrowser) {
+            // Try to find a prefab file that matches
             const variations = [
-                prefabName,
-                `Prefabs/${prefabName}`,
                 `${prefabName}.prefab`,
-                `Prefabs/${prefabName}.prefab`
+                `Prefabs/${prefabName}.prefab`,
+                `/Prefabs/${prefabName}.prefab`
             ];
 
             for (const variation of variations) {
-                if (this.prefabs.has(variation)) {
+                if (window.editor.fileBrowser.exists && window.editor.fileBrowser.exists(variation)) {
                     return true;
                 }
             }
@@ -952,9 +1056,9 @@ class Engine {
     }
 
     /**
- * Get all available prefab names
- * @returns {Array<string>} Array of prefab names
- */
+     * Get all available prefab names
+     * @returns {Array<string>} Array of prefab names
+     */
     getAvailablePrefabs() {
         // Check if we're in the editor
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
@@ -991,10 +1095,10 @@ class Engine {
         return findInObjects(this.gameObjects);
     }
 
-    cloneGameObjects(objects) {
+    cloneGameObjects(objects, addNameCopySuffix = true) {
         return objects.map(obj => {
             // Use the GameObject's built-in clone method
-            const clonedObj = obj.clone();
+            const clonedObj = obj.clone(addNameCopySuffix);
 
             // Handle the cloning of children separately to maintain proper hierarchy
             if (obj.children && obj.children.length > 0) {
@@ -1002,7 +1106,7 @@ class Engine {
                 clonedObj.children = [];
 
                 // Clone all children recursively and add them properly
-                const clonedChildren = this.cloneGameObjects(obj.children);
+                const clonedChildren = this.cloneGameObjects(obj.children, addNameCopySuffix);
                 clonedChildren.forEach(child => {
                     clonedObj.addChild(child);
                 });

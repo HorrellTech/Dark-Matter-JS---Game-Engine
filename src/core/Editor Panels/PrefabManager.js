@@ -257,6 +257,8 @@ class PrefabManager {
             if (prefabData.modules && prefabData.modules.length > 0) {
                 prefabData.modules.forEach(moduleData => {
                     try {
+                        console.log(`Creating module: ${moduleData.className}`);
+
                         // Get the module class - try different ways
                         let ModuleClass = window[moduleData.className];
 
@@ -270,8 +272,15 @@ class PrefabManager {
                             return;
                         }
 
-                        // Create module instance
-                        const moduleInstance = new ModuleClass();
+                        // Create module instance with error handling
+                        let moduleInstance;
+                        try {
+                            moduleInstance = new ModuleClass();
+                            console.log(`Successfully created ${moduleData.className} instance`);
+                        } catch (constructorError) {
+                            console.error(`Error in ${moduleData.className} constructor:`, constructorError);
+                            return;
+                        }
 
                         // Set properties using different methods
                         if (moduleData.properties) {
@@ -282,19 +291,26 @@ class PrefabManager {
                                     } else if (moduleInstance.hasOwnProperty(propName)) {
                                         moduleInstance[propName] = moduleData.properties[propName];
                                     }
-                                } catch (error) {
-                                    console.warn(`Error setting property ${propName}:`, error);
+                                    console.log(`Set property ${propName} = ${moduleData.properties[propName]}`);
+                                } catch (propError) {
+                                    console.warn(`Error setting property ${propName}:`, propError);
                                 }
                             });
                         }
 
                         // If there's a data field (from newer prefab format), use fromJSON
                         if (moduleData.data && typeof moduleInstance.fromJSON === 'function') {
-                            moduleInstance.fromJSON(moduleData.data);
+                            try {
+                                moduleInstance.fromJSON(moduleData.data);
+                                console.log(`Applied JSON data to ${moduleData.className}`);
+                            } catch (jsonError) {
+                                console.error(`Error applying JSON data to ${moduleData.className}:`, jsonError);
+                            }
                         }
 
-                        // Add to GameObject
+                        // Add to GameObject using the proper method
                         gameObject.addModule(moduleInstance);
+                        console.log(`Successfully added ${moduleData.className} to ${gameObject.name}`);
 
                     } catch (error) {
                         console.error(`Error adding module ${moduleData.className || moduleData.type}:`, error);
@@ -312,12 +328,27 @@ class PrefabManager {
                 });
             }
 
-            // Add to scene or parent
+            // IMPORTANT: Add to scene or parent AFTER all modules and children are set up
             if (parent) {
                 parent.addChild(gameObject);
-            } else if (this.editor && this.editor.activeScene) {
-                // Add to the active scene
-                this.editor.activeScene.gameObjects.push(gameObject);
+            } else {
+                // Check if we're in the editor
+                if (this.editor && this.editor.activeScene) {
+                    // Add to the active scene
+                    this.editor.activeScene.gameObjects.push(gameObject);
+                    
+                    // IMPORTANT: Also refresh the hierarchy to show the new object
+                    if (this.hierarchy) {
+                        this.hierarchy.refreshHierarchy();
+                    }
+                    
+                    // Refresh the canvas to show the object
+                    this.editor.refreshCanvas();
+                    
+                } else if (window.engine && window.engine.gameObjects) {
+                    // Add to the engine's gameObjects array for runtime
+                    window.engine.gameObjects.push(gameObject);
+                }
             }
 
             console.log(`Successfully instantiated prefab: ${prefabData.metadata?.name || prefabData.name}`);

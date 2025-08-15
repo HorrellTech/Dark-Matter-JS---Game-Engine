@@ -197,7 +197,10 @@ class AsteroidManager extends Module {
 
         // Check if we need to spawn more asteroids
         if (currentTime - this.lastCheckTime >= this.checkInterval) {
-            this.checkAndSpawnAsteroids();
+            // Don't await here to avoid blocking the game loop
+            this.checkAndSpawnAsteroids().catch(error => {
+                console.error('Error spawning asteroids:', error);
+            });
             this.lastCheckTime = currentTime;
         }
 
@@ -223,7 +226,7 @@ class AsteroidManager extends Module {
         }
     }
 
-    checkAndSpawnAsteroids() {
+    async checkAndSpawnAsteroids() {
         // Only count our managed asteroids for spawning limit, not split chunks
         const currentCount = this.managedAsteroids.length;
 
@@ -233,19 +236,19 @@ class AsteroidManager extends Module {
             const timePerSpawn = 1 / this.spawnRate;
 
             if (timeSinceLastSpawn >= timePerSpawn) {
-                this.spawnAsteroid();
+                await this.spawnAsteroid();
                 this.lastSpawnTime = currentTime;
             }
         }
     }
 
-    spawnAsteroid() {
+    async spawnAsteroid() {
         if (!window.engine || !window.engine.viewport) return;
 
         const spawnPos = this.getRandomSpawnPosition();
 
         // Try to instantiate from prefab first
-        let asteroid = this.tryInstantiatePrefab(spawnPos.x, spawnPos.y);
+        let asteroid = await this.tryInstantiatePrefab(spawnPos.x, spawnPos.y);
 
         // If prefab instantiation failed, create manually
         if (!asteroid) {
@@ -264,16 +267,33 @@ class AsteroidManager extends Module {
         }
     }
 
-    tryInstantiatePrefab(x, y) {
+    async tryInstantiatePrefab(x, y) {
         if (!this.asteroidPrefabName) return null;
 
-        // Debug: Check what prefabs are available
-        if (window.engine && typeof window.engine.getAvailablePrefabs === 'function') {
-            const available = window.engine.getAvailablePrefabs();
-            console.log('Available prefabs:', available);
+        // First check if we're in the editor and can access the prefab manager directly
+        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            const prefabManager = window.editor.hierarchy.prefabManager;
+
+            console.log(`Available prefabs:`, prefabManager.getAvailablePrefabs());
+
+            if (prefabManager.hasPrefab(this.asteroidPrefabName)) {
+                console.log(`Found prefab: ${this.asteroidPrefabName}, attempting to instantiate...`);
+                const asteroid = prefabManager.instantiatePrefabByName(this.asteroidPrefabName, new Vector2(x, y));
+                if (asteroid) {
+                    console.log(`Successfully instantiated prefab: ${this.asteroidPrefabName}`);
+
+                    // Verify that the returned object is a proper GameObject
+                    if (typeof asteroid.getModule !== 'function') {
+                        console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
+                        return null;
+                    }
+
+                    return asteroid;
+                }
+            }
         }
 
-        // Try different prefab name variations
+        // Try different prefab name variations with the engine
         const prefabVariations = [
             this.asteroidPrefabName,
             `Prefabs/${this.asteroidPrefabName}`,
@@ -286,9 +306,16 @@ class AsteroidManager extends Module {
                 console.log(`Checking prefab: ${prefabName}`);
                 if (window.engine && window.engine.hasPrefab && window.engine.hasPrefab(prefabName)) {
                     console.log(`Found prefab: ${prefabName}, attempting to instantiate...`);
-                    const asteroid = window.engine.instantiatePrefab(prefabName, x, y);
+                    const asteroid = await window.engine.instantiatePrefab(prefabName, x, y);
                     if (asteroid) {
                         console.log(`Successfully instantiated prefab: ${prefabName}`);
+
+                        // Verify that the returned object is a proper GameObject
+                        if (typeof asteroid.getModule !== 'function') {
+                            console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
+                            return null;
+                        }
+
                         return asteroid;
                     } else {
                         console.warn(`Prefab instantiation returned null for: ${prefabName}`);
@@ -329,8 +356,24 @@ class AsteroidManager extends Module {
     }
 
     configureAsteroid(asteroid, spawnPos) {
+        // Verify asteroid is a valid GameObject
+        if (!asteroid || typeof asteroid.getModule !== 'function') {
+            console.error('Invalid asteroid object passed to configureAsteroid:', asteroid);
+            return;
+        }
+
+        console.log(`Configuring asteroid at position: (${spawnPos.x}, ${spawnPos.y})`);
+        console.log(`Asteroid visibility: ${asteroid.visible}, active: ${asteroid.active}`);
+
         const asteroidModule = asteroid.getModule("Asteroid");
-        if (!asteroidModule) return;
+        if (!asteroidModule) {
+            console.error('Asteroid module not found on instantiated prefab:', asteroid);
+            return;
+        }
+
+        // Ensure the asteroid is visible and active
+        asteroid.visible = true;
+        asteroid.active = true;
 
         // Set random size
         const sizeRange = this.maxStartSize - this.minStartSize;

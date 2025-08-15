@@ -419,6 +419,14 @@ class ProjectManager {
                 await this.fileBrowser.navigateTo('/'); // Refresh file browser view
                 console.log("Assets restored.");
 
+                // ADD THIS: Reload prefabs into memory
+                if (this.editor.hierarchy && this.editor.hierarchy.prefabManager) {
+                    await this.editor.hierarchy.prefabManager.loadExistingPrefabs();
+                    console.log("Prefabs reloaded into memory.");
+                }
+
+                console.log("Scanning for module scripts...");
+
                 console.log("Scanning for module scripts...");
                 await this.fileBrowser.scanForModuleScripts();
                 console.log("Module scripts scanned and registered.");

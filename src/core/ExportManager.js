@@ -1238,6 +1238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load prefabs into the global prefab manager
     if (gameData.prefabs) {
         window.prefabManager.loadPrefabs(gameData.prefabs);
+        console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
     }
     
     // Pre-load assets for standalone mode
