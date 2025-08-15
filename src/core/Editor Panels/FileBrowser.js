@@ -496,9 +496,9 @@ class FileBrowser {
             } else {
                 // Dropped onto file browser background - use current directory or create Prefabs folder
                 if (this.currentPath === '/') {
-                    targetPath = '/Prefabs';
-                } else {
                     targetPath = `${this.currentPath}/Prefabs`;
+                } else {
+                    targetPath = `${this.currentPath}`;
                 }
             }
 

@@ -83,6 +83,36 @@ class Editor {
         this.canvas.addEventListener('wheel', this.handleMouseWheel.bind(this));
         this.canvas.addEventListener('contextmenu', this.handleContextMenu.bind(this));
 
+        // Add canvas drop handling for prefabs
+        this.canvas.addEventListener('dragover', (e) => {
+            // Check if it's a prefab file being dragged
+            if (e.dataTransfer.types.includes('application/prefab-file')) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                this.canvas.classList.add('prefab-drop-target');
+            }
+        });
+
+        this.canvas.addEventListener('dragleave', (e) => {
+            this.canvas.classList.remove('prefab-drop-target');
+        });
+
+        this.canvas.addEventListener('drop', (e) => {
+            e.preventDefault();
+            this.canvas.classList.remove('prefab-drop-target');
+
+            // Handle prefab drops
+            if (e.dataTransfer.types.includes('application/prefab-file')) {
+                const prefabPath = e.dataTransfer.getData('application/prefab-file');
+
+                // Get the drop position in world coordinates
+                const screenPos = this.getAdjustedMousePosition(e);
+                const worldPos = this.screenToWorldPosition(screenPos);
+
+                this.instantiatePrefabAtPosition(prefabPath, worldPos);
+            }
+        });
+
         // Add touch event handlers for panning
         this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this));
         this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this));
@@ -907,6 +937,50 @@ class Editor {
         this.refreshCanvas();
     }
 
+    /**
+ * Instantiate a prefab at the specified world position
+ * @param {string} prefabPath - Path to the prefab file
+ * @param {Vector2} worldPos - World position to instantiate at
+ */
+    async instantiatePrefabAtPosition(prefabPath, worldPos) {
+        try {
+            if (!this.fileBrowser) {
+                console.error('File browser not available');
+                return;
+            }
+
+            // Read prefab file
+            const content = await this.fileBrowser.readFile(prefabPath);
+            if (!content) {
+                console.error('Could not read prefab file:', prefabPath);
+                return;
+            }
+
+            const prefabData = JSON.parse(content);
+
+            // Use hierarchy's prefab instantiation
+            if (this.hierarchy) {
+                const instantiated = this.hierarchy.instantiatePrefabFromData(prefabData, worldPos);
+
+                // Refresh hierarchy and select the new object
+                this.hierarchy.refreshHierarchy();
+                this.hierarchy.selectGameObject(instantiated);
+                this.refreshCanvas();
+
+                // Mark scene as dirty
+                this.activeScene.dirty = true;
+
+                // Show success notification
+                const prefabName = prefabData.metadata?.name || prefabData.name || prefabPath.split('/').pop().replace('.prefab', '');
+                this.showNotification(`Instantiated prefab: ${prefabName}`, 'success');
+            }
+
+        } catch (error) {
+            console.error('Error instantiating prefab:', error);
+            this.showNotification(`Error instantiating prefab: ${error.message}`, 'error');
+        }
+    }
+
     setActiveScene(scene) {
         this.activeScene = scene;
         this.scene = scene; // Keep these in sync
@@ -1331,7 +1405,8 @@ class Editor {
     }
 
     handleMouseDown(e) {
-        if (e.button === 0) { // Left click// Use the adjusted mouse position
+        if (e.button === 0) { // Left click
+            // Use the adjusted mouse position
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
 
@@ -2091,5 +2166,64 @@ class Editor {
         };
 
         requestAnimationFrame(animateReset);
+    }
+
+    /**
+ * Show a notification message
+ */
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+
+        // Style the notification
+        notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 4px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease;
+    `;
+
+        // Set background color based on type
+        switch (type) {
+            case 'success':
+                notification.style.backgroundColor = '#4CAF50';
+                break;
+            case 'warning':
+                notification.style.backgroundColor = '#FF9800';
+                break;
+            case 'error':
+                notification.style.backgroundColor = '#F44336';
+                break;
+            default:
+                notification.style.backgroundColor = '#2196F3';
+        }
+
+        document.body.appendChild(notification);
+
+        // Animate in
+        setTimeout(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateX(0)';
+        }, 10);
+
+        // Animate out and remove
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
     }
 }

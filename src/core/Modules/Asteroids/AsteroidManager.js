@@ -155,7 +155,7 @@ class AsteroidManager extends Module {
         this.totalCount = 0;
         this.updateSpawnZones();
 
-        console.log(`AsteroidManager started - Max asteroids: ${this.maxAsteroids}`);
+        // console.log(`AsteroidManager started - Max asteroids: ${this.maxAsteroids}`);
     }
 
     updateSpawnZones() {
@@ -199,7 +199,7 @@ class AsteroidManager extends Module {
         if (currentTime - this.lastCheckTime >= this.checkInterval) {
             // Don't await here to avoid blocking the game loop
             this.checkAndSpawnAsteroids().catch(error => {
-                console.error('Error spawning asteroids:', error);
+                // console.error('Error spawning asteroids:', error);
             });
             this.lastCheckTime = currentTime;
         }
@@ -263,7 +263,7 @@ class AsteroidManager extends Module {
             this.managedAsteroids.push(asteroid);
             this.totalSpawned++;
 
-            //console.log(`Spawned asteroid ${this.totalSpawned} at (${Math.round(spawnPos.x)}, ${Math.round(spawnPos.y)}) - Managed: ${this.managedAsteroids.length}/${this.maxAsteroids}`);
+            //// console.log(`Spawned asteroid ${this.totalSpawned} at (${Math.round(spawnPos.x)}, ${Math.round(spawnPos.y)}) - Managed: ${this.managedAsteroids.length}/${this.maxAsteroids}`);
         }
     }
 
@@ -274,17 +274,17 @@ class AsteroidManager extends Module {
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             const prefabManager = window.editor.hierarchy.prefabManager;
 
-            console.log(`Available prefabs:`, prefabManager.getAvailablePrefabs());
+            // console.log(`Available prefabs:`, prefabManager.getAvailablePrefabs());
 
             if (prefabManager.hasPrefab(this.asteroidPrefabName)) {
-                console.log(`Found prefab: ${this.asteroidPrefabName}, attempting to instantiate...`);
+                // console.log(`Found prefab: ${this.asteroidPrefabName}, attempting to instantiate...`);
                 const asteroid = prefabManager.instantiatePrefabByName(this.asteroidPrefabName, new Vector2(x, y));
                 if (asteroid) {
-                    console.log(`Successfully instantiated prefab: ${this.asteroidPrefabName}`);
+                    // console.log(`Successfully instantiated prefab: ${this.asteroidPrefabName}`);
 
                     // Verify that the returned object is a proper GameObject
                     if (typeof asteroid.getModule !== 'function') {
-                        console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
+                        // console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
                         return null;
                     }
 
@@ -303,32 +303,32 @@ class AsteroidManager extends Module {
 
         for (const prefabName of prefabVariations) {
             try {
-                console.log(`Checking prefab: ${prefabName}`);
+                // console.log(`Checking prefab: ${prefabName}`);
                 if (window.engine && window.engine.hasPrefab && window.engine.hasPrefab(prefabName)) {
-                    console.log(`Found prefab: ${prefabName}, attempting to instantiate...`);
+                    // console.log(`Found prefab: ${prefabName}, attempting to instantiate...`);
                     const asteroid = await window.engine.instantiatePrefab(prefabName, x, y);
                     if (asteroid) {
-                        console.log(`Successfully instantiated prefab: ${prefabName}`);
+                        // console.log(`Successfully instantiated prefab: ${prefabName}`);
 
                         // Verify that the returned object is a proper GameObject
                         if (typeof asteroid.getModule !== 'function') {
-                            console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
+                            // console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
                             return null;
                         }
 
                         return asteroid;
                     } else {
-                        console.warn(`Prefab instantiation returned null for: ${prefabName}`);
+                        // console.warn(`Prefab instantiation returned null for: ${prefabName}`);
                     }
                 } else {
-                    console.log(`Prefab not found: ${prefabName}`);
+                    // console.log(`Prefab not found: ${prefabName}`);
                 }
             } catch (error) {
-                console.warn(`Failed to instantiate prefab "${prefabName}":`, error);
+                // console.warn(`Failed to instantiate prefab "${prefabName}":`, error);
             }
         }
 
-        console.log(`No prefab found for "${this.asteroidPrefabName}", creating manually`);
+        // console.log(`No prefab found for "${this.asteroidPrefabName}", creating manually`);
         return null;
     }
 
@@ -350,7 +350,7 @@ class AsteroidManager extends Module {
 
             return asteroid;
         } else {
-            console.error("Asteroid class not found. Make sure the Asteroid module is loaded.");
+            // console.error("Asteroid class not found. Make sure the Asteroid module is loaded.");
             return null;
         }
     }
@@ -358,16 +358,16 @@ class AsteroidManager extends Module {
     configureAsteroid(asteroid, spawnPos) {
         // Verify asteroid is a valid GameObject
         if (!asteroid || typeof asteroid.getModule !== 'function') {
-            console.error('Invalid asteroid object passed to configureAsteroid:', asteroid);
+            // console.error('Invalid asteroid object passed to configureAsteroid:', asteroid);
             return;
         }
 
-        console.log(`Configuring asteroid at position: (${spawnPos.x}, ${spawnPos.y})`);
-        console.log(`Asteroid visibility: ${asteroid.visible}, active: ${asteroid.active}`);
+        // console.log(`Configuring asteroid at position: (${spawnPos.x}, ${spawnPos.y})`);
+        // console.log(`Asteroid visibility: ${asteroid.visible}, active: ${asteroid.active}`);
 
         const asteroidModule = asteroid.getModule("Asteroid");
         if (!asteroidModule) {
-            console.error('Asteroid module not found on instantiated prefab:', asteroid);
+            // console.error('Asteroid module not found on instantiated prefab:', asteroid);
             return;
         }
 
@@ -463,8 +463,8 @@ class AsteroidManager extends Module {
                 y = viewportTop + Math.random() * viewport.height;
         }
 
-        console.log(`Spawn position: (${Math.round(x)}, ${Math.round(y)}) in zone: ${zone}`);
-        console.log(`Viewport bounds: Left=${Math.round(viewportLeft)}, Right=${Math.round(viewportRight)}, Top=${Math.round(viewportTop)}, Bottom=${Math.round(viewportBottom)}`);
+        // console.log(`Spawn position: (${Math.round(x)}, ${Math.round(y)}) in zone: ${zone}`);
+        // console.log(`Viewport bounds: Left=${Math.round(viewportLeft)}, Right=${Math.round(viewportRight)}, Top=${Math.round(viewportTop)}, Bottom=${Math.round(viewportBottom)}`);
         return { x, y };
     }
 
@@ -496,7 +496,7 @@ class AsteroidManager extends Module {
 
                 // Remove from our tracking
                 this.managedAsteroids.splice(i, 1);
-                console.log(`Despawned distant asteroid at (${Math.round(pos.x)}, ${Math.round(pos.y)}). Managed remaining: ${this.managedAsteroids.length}, Total in scene: ${this.totalCount}`);
+                // console.log(`Despawned distant asteroid at (${Math.round(pos.x)}, ${Math.round(pos.y)}). Managed remaining: ${this.managedAsteroids.length}, Total in scene: ${this.totalCount}`);
             }
         }
     }
@@ -522,7 +522,7 @@ class AsteroidManager extends Module {
         }
         this.managedAsteroids = [];
         this.totalCount = 0;
-        console.log("Cleared all asteroids from scene");
+        // console.log("Cleared all asteroids from scene");
     }
 
     spawnBurst(count = 5) {

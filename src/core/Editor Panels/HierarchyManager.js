@@ -1428,7 +1428,7 @@ class HierarchyManager {
 
         const instantiated = this.deserializeGameObject(gameObjectData);
 
-        // Set position
+        // Set position - this is the key part for canvas drops
         if (position) {
             instantiated.position.x = position.x;
             instantiated.position.y = position.y;

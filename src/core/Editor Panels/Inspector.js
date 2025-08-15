@@ -2252,18 +2252,27 @@ class Inspector {
             `;
         }
 
-        // Add dropdown for enum or custom options
         let dropdownHtml = '';
         if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
             const options = prop.options?.options || [];
             dropdownHtml = `
             <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" 
                 title="${tooltip}" style="${inputStyle}">
-                ${options.map(option => `
-                    <option value="${option}" ${value === option ? 'selected' : ''}>
-                        ${this.formatPropertyName(option)}
-                    </option>
-                `).join('')}
+                ${options.map(option => {
+                    // Handle both simple strings and objects with value/label
+                    let optionValue, optionLabel;
+                    if (typeof option === 'object' && option !== null) {
+                        optionValue = option.value !== undefined ? option.value : option;
+                        optionLabel = option.label || this.formatPropertyName(String(optionValue));
+                    } else {
+                        optionValue = option;
+                        optionLabel = this.formatPropertyName(String(option));
+                    }
+                    
+                    return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
+                        ${optionLabel}
+                    </option>`;
+                }).join('')}
             </select>
             `;
         }
@@ -2323,11 +2332,21 @@ class Inspector {
                     <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
                     <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
                         title="${tooltip}" style="${inputStyle}">
-                        ${options.map(option => `
-                            <option value="${option}" ${value === option ? 'selected' : ''}>
-                                ${this.formatPropertyName(option)}
-                            </option>
-                        `).join('')}
+                        ${options.map(option => {
+                            // Handle both simple strings and objects with value/label
+                            let optionValue, optionLabel;
+                            if (typeof option === 'object' && option !== null) {
+                                optionValue = option.value !== undefined ? option.value : option;
+                                optionLabel = option.label || this.formatPropertyName(String(optionValue));
+                            } else {
+                                optionValue = option;
+                                optionLabel = this.formatPropertyName(String(option));
+                            }
+                            
+                            return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
+                                ${optionLabel}
+                            </option>`;
+                        }).join('')}
                     </select>
                     ${helpHtml}
                 </div>
@@ -2881,6 +2900,17 @@ class Inspector {
      * @returns {string} Formatted name
      */
     formatPropertyName(name) {
+        // Handle non-string inputs
+        if (typeof name !== 'string') {
+            if (name && typeof name === 'object' && name.label) {
+                return name.label; // Use label from object
+            }
+            if (name && typeof name === 'object' && name.value !== undefined) {
+                return String(name.value); // Use value from object
+            }
+            return String(name); // Convert to string as fallback
+        }
+        
         return name
             .replace(/([A-Z])/g, ' $1') // Add space before capital letters
             .replace(/^./, str => str.toUpperCase()); // Capitalize first letter

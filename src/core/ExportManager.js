@@ -25,7 +25,7 @@ class ExportManager {
         // Merge settings
         const exportSettings = { ...this.exportSettings, ...settings };
 
-        console.log('Starting HTML5 export...');
+        // console.log('Starting HTML5 export...');
 
         try {
             // Collect all necessary files and data
@@ -46,11 +46,11 @@ class ExportManager {
                 await this.createZipPackage(htmlContent, jsContent, cssContent, exportData, exportSettings, project.name || 'game');
             }
 
-            console.log('Export completed successfully!');
+            // console.log('Export completed successfully!');
             return true;
 
         } catch (error) {
-            console.error('Export failed:', error);
+            // console.error('Export failed:', error);
             throw error;
         }
     }
@@ -78,7 +78,7 @@ class ExportManager {
         // Collect prefabs
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             data.prefabs = window.editor.hierarchy.prefabManager.exportPrefabs();
-            console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export`);
+            // console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export`);
         }
 
         // Collect custom modules (after scenes are serialized)
@@ -171,9 +171,9 @@ class ExportManager {
                         // IMPORTANT: Completely remove the imageAsset to prevent any path loading
                         delete serialized.data.imageAsset;
 
-                        console.log('Embedded image data for SpriteRenderer and removed imageAsset completely');
+                        // console.log('Embedded image data for SpriteRenderer and removed imageAsset completely');
                     } catch (error) {
-                        console.warn('Could not embed image data:', error);
+                        // console.warn('Could not embed image data:', error);
                         // If embedding fails, keep the original imageAsset but mark as non-embedded
                         serialized.data.useEmbeddedData = false;
                     }
@@ -182,7 +182,7 @@ class ExportManager {
                     serialized.data.useEmbeddedData = false;
                 }
             } catch (error) {
-                console.warn(`Error serializing module ${module.constructor.name}:`, error);
+                // console.warn(`Error serializing module ${module.constructor.name}:`, error);
                 serialized.data = this.fallbackSerializeModule(module);
             }
         } else {
@@ -232,7 +232,7 @@ class ExportManager {
             normalized = decodeURIComponent(normalized);
         } catch (e) {
             // If decoding fails, use the original normalized path
-            console.warn('Failed to decode path:', normalized);
+            // console.warn('Failed to decode path:', normalized);
         }
 
         return normalized;
@@ -297,7 +297,7 @@ class ExportManager {
                             rawContent: content
                         };
                     } else {
-                        console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
+                        // console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
                         continue;
                     }
                 } else {
@@ -319,7 +319,7 @@ class ExportManager {
             }
         }
 
-        console.log('Collected assets:', Object.keys(assets));
+        // console.log('Collected assets:', Object.keys(assets));
         return assets;
     }
 
@@ -347,7 +347,7 @@ class ExportManager {
 
         for (const variation of pathVariations) {
             if (this.cache[variation]) {
-                console.log('Found asset in cache with path variation:', variation);
+                // console.log('Found asset in cache with path variation:', variation);
                 return Promise.resolve(this.cache[variation]);
             }
         }
@@ -377,7 +377,7 @@ class ExportManager {
             });
             delete this.loadingPromises[normalizedPath];
         }).catch(error => {
-            console.error(`Failed to load asset ${normalizedPath}:`, error);
+            // console.error(`Failed to load asset ${normalizedPath}:`, error);
             delete this.loadingPromises[normalizedPath];
         });
 
@@ -565,7 +565,7 @@ class ExportManager {
 
         // Also include modules from registry as fallback
         if (window.moduleRegistry && modules.length === 0) {
-            console.warn('No modules found in scene data, falling back to registry');
+            // console.warn('No modules found in scene data, falling back to registry');
             for (const [className, moduleClass] of window.moduleRegistry.modules) {
                 modules.push({
                     className: className,
@@ -574,7 +574,7 @@ class ExportManager {
             }
         }
 
-        console.log('Collected modules for export:', modules.map(m => m.className));
+        // console.log('Collected modules for export:', modules.map(m => m.className));
         return modules;
     }
 
@@ -771,7 +771,7 @@ class ExportManager {
 
             // Verify the module class is defined after loading
             if (!moduleContent.includes(`class ${module.className}`)) {
-                console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
+                // console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
             }
         }
 
@@ -781,7 +781,7 @@ class ExportManager {
             js += script.content + '\n\n';
         }
 
-        // Add game initialization
+        // Add game initialization - pass settings to include startingSceneIndex
         js += this.generateGameInitialization(data, settings);
 
         return js;
@@ -917,10 +917,13 @@ html {
         const assetsData = settings.standalone && settings.includeAssets ?
             this.safeStringify(data.assets) : 'null';
 
+        // Get the starting scene index from settings, default to 0
+        const startingSceneIndex = settings.startingSceneIndex || 0;
+
         return `
 // Game Initialization
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Initializing exported game...');
+    // console.log('Initializing exported game...');
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
@@ -942,16 +945,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Register all available modules
-    console.log('Registering modules...');
+    // console.log('Registering modules...');
     ${data.modules.map(module => `
     if (typeof ${module.className} !== 'undefined') {
         window.moduleRegistry.register(${module.className});
-        console.log('Registered module: ${module.className}');
+        // console.log('Registered module: ${module.className}');
     } else {
-        console.error('Module class not found: ${module.className}');
+        // console.error('Module class not found: ${module.className}');
     }`).join('')}
     
-    console.log('Total registered modules:', window.moduleRegistry.modules.size);
+    // console.log('Total registered modules:', window.moduleRegistry.modules.size);
     
     // Initialize input manager
     if (!window.input) {
@@ -1004,13 +1007,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    console.log('Found asset in cache with path variation:', variation);
+                    // console.log('Found asset in cache with path variation:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
-            console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
-            console.warn('Available cached assets:', Object.keys(this.cache));
+            // console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
+            // console.warn('Available cached assets:', Object.keys(this.cache));
             return Promise.reject(new Error('Asset not found: ' + path));
         };
 
@@ -1039,13 +1042,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    console.log('Loading cached image for:', src, 'found as:', variation);
+                    // console.log('Loading cached image for:', src, 'found as:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
             // If not in cache, fall back to original method
-            console.warn('Image not found in cache, attempting direct load:', src);
+            // console.warn('Image not found in cache, attempting direct load:', src);
             return this.originalLoadImage(src);
         };
 
@@ -1074,13 +1077,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    console.log('Loading cached audio for:', src, 'found as:', variation);
+                    // console.log('Loading cached audio for:', src, 'found as:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
             // If not in cache, fall back to original method
-            console.warn('Audio not found in cache, attempting direct load:', src);
+            // console.warn('Audio not found in cache, attempting direct load:', src);
             return this.originalLoadAudio(src);
         };` :
                 `// ZIP mode - set base path for assets
@@ -1097,10 +1100,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             for (const [name, prefabData] of Object.entries(prefabsData)) {
                 this.prefabs.set(name, prefabData);
-                console.log('Loaded prefab:', name);
+                // console.log('Loaded prefab:', name);
             }
             
-            console.log('Total prefabs loaded:', this.prefabs.size);
+            // console.log('Total prefabs loaded:', this.prefabs.size);
         },
         
         // Find a prefab by name
@@ -1137,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         instantiatePrefabByName: function(name, position = null, parent = null) {
             const prefabData = this.findPrefabByName(name);
             if (!prefabData) {
-                console.error('Prefab not found:', name);
+                // console.error('Prefab not found:', name);
                 return null;
             }
             
@@ -1172,7 +1175,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             // Get the module class
                             const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.className);
                             if (!ModuleClass) {
-                                console.warn('Module class not found:', moduleData.className);
+                                // console.warn('Module class not found:', moduleData.className);
                                 return;
                             }
 
@@ -1192,7 +1195,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             gameObject.addModule(moduleInstance);
                             
                         } catch (error) {
-                            console.error('Error adding module ' + moduleData.className + ':', error);
+                            // console.error('Error adding module ' + moduleData.className + ':', error);
                         }
                     });
                 }
@@ -1215,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return gameObject;
 
             } catch (error) {
-                console.error('Error instantiating prefab:', error);
+                // console.error('Error instantiating prefab:', error);
                 throw error;
             }
         }
@@ -1230,7 +1233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             prefabs: ${prefabsData}
         };
     } catch (error) {
-        console.error('Error parsing game data:', error);
+        // console.error('Error parsing game data:', error);
         loadingScreen.innerHTML = '<div>Error loading game data: ' + error.message + '</div>';
         return;
     }
@@ -1238,20 +1241,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load prefabs into the global prefab manager
     if (gameData.prefabs) {
         window.prefabManager.loadPrefabs(gameData.prefabs);
-        console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
+        // console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
     }
     
     // Pre-load assets for standalone mode
     ${settings.standalone && settings.includeAssets ? `
     if (gameData.assets) {
-        console.log('Pre-caching embedded assets...');
-        console.log('Assets to cache:', Object.keys(gameData.assets));
+        // console.log('Pre-caching embedded assets...');
+        // console.log('Assets to cache:', Object.keys(gameData.assets));
         
         // Use the enhanced embedded assets method
         window.assetManager.addEmbeddedAssets(gameData.assets);
         
-        console.log('Asset caching completed.');
-        console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
+        // console.log('Asset caching completed.');
+        // console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
     }` : ''}
     
     // Initialize engine
@@ -1326,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Function to create game object from serialized data
     function createGameObjectFromData(data) {
-        console.log('Creating game object:', data.name, 'with', data.modules.length, 'modules');
+        // console.log('Creating game object:', data.name, 'with', data.modules.length, 'modules');
         
         const obj = new GameObject(data.name);
         obj.id = data.id;
@@ -1339,7 +1342,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Add modules
         data.modules.forEach(moduleData => {
-            console.log('Adding module:', moduleData.type, 'to', data.name);
+            // console.log('Adding module:', moduleData.type, 'to', data.name);
             
             const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.type);
             if (ModuleClass) {
@@ -1352,9 +1355,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (typeof module.fromJSON === 'function') {
                         try {
                             module.fromJSON(moduleData.data);
-                            console.log('Module data restored via fromJSON for:', moduleData.type);
+                            // console.log('Module data restored via fromJSON for:', moduleData.type);
                         } catch (error) {
-                            console.error('Error restoring module data via fromJSON:', error);
+                            // console.error('Error restoring module data via fromJSON:', error);
                             // Fallback to property restoration
                             if (moduleData.data.properties) {
                                 Object.keys(moduleData.data.properties).forEach(key => {
@@ -1376,9 +1379,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 
                 obj.addModule(module);
-                console.log('Successfully added module:', moduleData.type);
+                // console.log('Successfully added module:', moduleData.type);
             } else {
-                console.error('Module class not found:', moduleData.type);
+                // console.error('Module class not found:', moduleData.type);
             }
         });
         
@@ -1398,14 +1401,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const startingSceneIndex = ${startingSceneIndex};
             const sceneToLoad = loadedScenes[startingSceneIndex] || loadedScenes[0];
-            console.log('Loading starting scene:', sceneToLoad.name, 'at index:', startingSceneIndex);
+            // console.log('Loading starting scene:', sceneToLoad.name, 'at index:', startingSceneIndex);
             
             engine.loadScene(sceneToLoad);
             await engine.start();
             loadingScreen.style.display = 'none';
-            console.log('Game started successfully with scene:', sceneToLoad.name);
+            // console.log('Game started successfully with scene:', sceneToLoad.name);
         } catch (error) {
-            console.error('Failed to start game:', error);
+            // console.error('Failed to start game:', error);
             loadingScreen.innerHTML = '<div>Error loading game: ' + error.message + '</div>';
         }
     } else {
@@ -1451,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return JSON.stringify(data);
             //return `"${jsonString}"`;
         } catch (error) {
-            console.error('Error in safeStringify:', error);
+            // console.error('Error in safeStringify:', error);
             return 'null';
         }
     }
@@ -1546,7 +1549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const content = await response.text();
             return content;
         } catch (error) {
-            console.warn(`Could not load ${filePath}:`, error);
+            // console.warn(`Could not load ${filePath}:`, error);
             // Return a fallback comment if file can't be loaded
             return `// Could not load ${filePath}: ${error.message}`;
         }
@@ -1714,7 +1717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     document.body.removeChild(loadingDiv);
                 }
 
-                console.error('Export failed:', error);
+                // console.error('Export failed:', error);
 
                 // Show error message
                 const errorDiv = document.createElement('div');

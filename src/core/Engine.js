@@ -460,11 +460,105 @@ class Engine {
             window.physicsManager.reset();
         }
 
-        // Sync positions back to editor if available
+        // NEW: Restore the original objects to the editor and fix selection
         if (window.editor && window.editor.activeScene) {
-            // Refresh the editor canvas to show restored positions
+            // Restore original objects to the scene
+            window.editor.activeScene.gameObjects = [...this.originalGameObjects];
+            window.editor.scene.gameObjects = [...this.originalGameObjects];
+
+            // If there was a selected object, try to find its original counterpart
+            if (window.editor.hierarchy && window.editor.hierarchy.selectedObject) {
+                const selectedClone = window.editor.hierarchy.selectedObject;
+
+                // Find the original object by matching name and position
+                const originalObject = this.findOriginalObject(selectedClone, this.originalGameObjects);
+
+                if (originalObject) {
+                    // Deselect the clone
+                    selectedClone.setSelected(false);
+
+                    // Select the original object
+                    originalObject.setSelected(true);
+                    window.editor.hierarchy.selectedObject = originalObject;
+
+                    // Update the inspector to show the original object
+                    if (window.editor.inspector) {
+                        window.editor.inspector.inspectObject(originalObject);
+                    }
+
+                    // Update hierarchy UI to show proper selection
+                    window.editor.hierarchy.refreshHierarchy();
+
+                    // Make sure the hierarchy item is selected
+                    const hierarchyItem = document.querySelector(`.hierarchy-item[data-id="${originalObject.id}"]`);
+                    if (hierarchyItem) {
+                        // Remove selection from all items first
+                        document.querySelectorAll('.hierarchy-item').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                        // Add selection to the correct item
+                        hierarchyItem.classList.add('selected');
+                    }
+                } else {
+                    // If we can't find the original, just clear the selection
+                    selectedClone.setSelected(false);
+                    window.editor.hierarchy.selectedObject = null;
+
+                    // Update hierarchy UI
+                    document.querySelectorAll('.hierarchy-item').forEach(item => {
+                        item.classList.remove('selected');
+                    });
+
+                    // Show "no object selected" in inspector
+                    if (window.editor.inspector) {
+                        window.editor.inspector.showNoObjectMessage();
+                    }
+                }
+            }
+
+            // Refresh the hierarchy to show original objects
+            if (window.editor.hierarchy) {
+                window.editor.hierarchy.refreshHierarchy();
+            }
+
+            // Refresh the editor canvas to show restored objects
             window.editor.refreshCanvas();
         }
+    }
+
+    /**
+     * Find the original object that corresponds to a cloned object
+     * @param {GameObject} clonedObject - The cloned object to find the original for
+     * @param {Array} originalObjects - Array of original objects to search in
+     * @returns {GameObject|null} - The original object or null if not found
+     */
+    findOriginalObject(clonedObject, originalObjects) {
+        // Helper function to search recursively through objects and their children
+        const searchInObjects = (objects) => {
+            for (const obj of objects) {
+                // Match by name and original position (before any runtime changes)
+                if (obj.name === clonedObject.name &&
+                    obj._originalPosition && clonedObject._originalPosition &&
+                    Math.abs(obj._originalPosition.x - clonedObject._originalPosition.x) < 0.01 &&
+                    Math.abs(obj._originalPosition.y - clonedObject._originalPosition.y) < 0.01) {
+                    return obj;
+                }
+
+                // If no original position stored, fall back to ID matching if available
+                if (!obj._originalPosition && obj.id === clonedObject.id) {
+                    return obj;
+                }
+
+                // Search in children
+                if (obj.children && obj.children.length > 0) {
+                    const found = searchInObjects(obj.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        return searchInObjects(originalObjects);
     }
 
     /**
@@ -850,13 +944,15 @@ class Engine {
         // Deep clone only in editor. In exported/runtime builds, use objects as-built
         // so embedded assets (like SpriteRenderer.imageData) are preserved.
         if (window.editor) {
+            // Store original positions before cloning
+            this.storeOriginalPositions(scene.gameObjects);
             this.gameObjects = this.cloneGameObjects(scene.gameObjects, false);
         } else {
             this.gameObjects = scene.gameObjects;
         }
 
         // Store original objects for cleanup purposes
-        this.originalGameObjects = [...this.gameObjects];
+        this.originalGameObjects = [...scene.gameObjects]; // Use the original scene objects
         this.dynamicObjects.clear();
 
         this.preloaded = false;
@@ -866,9 +962,9 @@ class Engine {
         this.resizeCanvas();
     }
 
-        /**
-     * Load scene by index (useful for exported games)
-     */
+    /**
+ * Load scene by index (useful for exported games)
+ */
     loadSceneByIndex(scenes, index) {
         if (!scenes || !Array.isArray(scenes) || index < 0 || index >= scenes.length) {
             console.error('Invalid scene index or scenes array');
@@ -1109,10 +1205,33 @@ class Engine {
         return findInObjects(this.gameObjects);
     }
 
+    /**
+ * Store original positions on objects before cloning for runtime
+ * @param {Array} gameObjects - Array of game objects to process
+ */
+    storeOriginalPositions(gameObjects) {
+        const storeForObject = (obj) => {
+            // Store the original position
+            obj._originalPosition = { x: obj.position.x, y: obj.position.y };
+
+            // Store for children too
+            if (obj.children && obj.children.length > 0) {
+                obj.children.forEach(storeForObject);
+            }
+        };
+
+        gameObjects.forEach(storeForObject);
+    }
+
     cloneGameObjects(objects, addNameCopySuffix = true) {
         return objects.map(obj => {
             // Use the GameObject's built-in clone method
             const clonedObj = obj.clone(addNameCopySuffix);
+
+            // Copy the original position to the clone for tracking
+            if (obj._originalPosition) {
+                clonedObj._originalPosition = { x: obj._originalPosition.x, y: obj._originalPosition.y };
+            }
 
             // Handle the cloning of children separately to maintain proper hierarchy
             if (obj.children && obj.children.length > 0) {

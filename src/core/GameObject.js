@@ -1305,6 +1305,11 @@ class GameObject {
         cloned.collisionEnabled = this.collisionEnabled;
         cloned.collisionLayer = this.collisionLayer;
         cloned.collisionMask = this.collisionMask;
+    
+        // Copy original position if it exists
+        if (this._originalPosition) {
+            cloned._originalPosition = { x: this._originalPosition.x, y: this._originalPosition.y };
+        }
         
         // Clone modules with proper reference handling
         // Clone modules with proper reference handling
