@@ -1009,6 +1009,12 @@ class Editor {
             this.hierarchy.refreshHierarchy();
         }
 
+        // Ensure engine knows about the new active scene
+        if (window.engine) {
+            window.engine.activeScene = scene;
+            // Don't set engine.scene or engine.gameObjects here as that should happen in loadScene
+        }
+
         // Update window title to show current scene
         document.title = `Dark Matter JS - ${scene.name}${scene.dirty ? '*' : ''}`;
 

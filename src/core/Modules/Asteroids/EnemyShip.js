@@ -420,6 +420,12 @@ class EnemyShip extends Module {
             this.isThrusting = true;
             this.applyThrust(deltaTime);
             
+            // Add some rotation while thrusting for organic movement
+            if (Math.random() < 0.3) { // 30% chance per frame to adjust rotation
+                const rotationAdjustment = (Math.random() - 0.5) * this.rotationSpeed * 0.2 * deltaTime;
+                this.angularVelocity += rotationAdjustment;
+            }
+            
             // Stop thrusting after duration
             if (this.thrustTimer >= this.thrustDuration) {
                 this.aiState = "random";
@@ -427,9 +433,20 @@ class EnemyShip extends Module {
             }
         } else if (this.aiState === "idle") {
             this.isThrusting = false;
-            // Do nothing, just coast
+            
+            // Add gentle rotation while idle for organic feel
+            if (Math.random() < 0.1) { // 10% chance per frame to start rotating
+                const idleRotationSpeed = this.rotationSpeed * 0.3 * (Math.random() - 0.5);
+                this.angularVelocity += idleRotationSpeed * deltaTime;
+            }
         } else {
             this.isThrusting = false;
+            
+            // Add small random rotations in default state
+            if (Math.random() < 0.05) { // 5% chance per frame
+                const randomRotation = (Math.random() - 0.5) * this.rotationSpeed * 0.1 * deltaTime;
+                this.angularVelocity += randomRotation;
+            }
         }
     }
 

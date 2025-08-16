@@ -391,6 +391,42 @@ class ProjectManager {
                 }
                 console.log("Cleared current project state.");
 
+                // 1.1. Reset engine state if engine exists
+                if (window.engine) {
+                    // Stop the engine if it's running
+                    if (window.engine.running) {
+                        window.engine.stop();
+                    }
+                    
+                    // Clear engine's game objects and scene references
+                    window.engine.gameObjects = [];
+                    window.engine.scene = null;
+                    window.engine.activeScene = null;
+                    window.engine.originalGameObjects = [];
+                    window.engine.dynamicObjects.clear();
+                    
+                    // Reset viewport to default
+                    window.engine.viewport = {
+                        width: 800,
+                        height: 600,
+                        x: 0,
+                        y: 0,
+                        zoom: 1,
+                        angle: 0,
+                        minZoom: 0.1,
+                        maxZoom: 10,
+                        dirty: true,
+                        shake: { x: 0, y: 0, intensity: 0, duration: 0 }
+                    };
+                    
+                    // Reset physics if available
+                    if (window.physicsManager) {
+                        window.physicsManager.reset();
+                    }
+                    
+                    console.log("Engine state reset for new project.");
+                }
+
                 // 2. Load project.json
                 const projectJsonFile = zip.file("project.json");
                 if (!projectJsonFile) {
