@@ -116,7 +116,7 @@ class DrawRectangle extends Module {
         return {
             width: this.width,
             height: this.height,
-            offset: this.offset.toJSON(),
+            offset:  { x: this.offset.x, y: this.offset.y },
             color: this.color,
             fill: this.fill,
             outline: this.outline,

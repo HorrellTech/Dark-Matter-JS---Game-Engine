@@ -2259,20 +2259,20 @@ class Inspector {
             <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" 
                 title="${tooltip}" style="${inputStyle}">
                 ${options.map(option => {
-                    // Handle both simple strings and objects with value/label
-                    let optionValue, optionLabel;
-                    if (typeof option === 'object' && option !== null) {
-                        optionValue = option.value !== undefined ? option.value : option;
-                        optionLabel = option.label || this.formatPropertyName(String(optionValue));
-                    } else {
-                        optionValue = option;
-                        optionLabel = this.formatPropertyName(String(option));
-                    }
-                    
-                    return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
+                // Handle both simple strings and objects with value/label
+                let optionValue, optionLabel;
+                if (typeof option === 'object' && option !== null) {
+                    optionValue = option.value !== undefined ? option.value : option;
+                    optionLabel = option.label || this.formatPropertyName(String(optionValue));
+                } else {
+                    optionValue = option;
+                    optionLabel = this.formatPropertyName(String(option));
+                }
+
+                return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
                         ${optionLabel}
                     </option>`;
-                }).join('')}
+            }).join('')}
             </select>
             `;
         }
@@ -2333,20 +2333,20 @@ class Inspector {
                     <select id="${inputId}" class="property-input" data-prop-name="${prop.name}"
                         title="${tooltip}" style="${inputStyle}">
                         ${options.map(option => {
-                            // Handle both simple strings and objects with value/label
-                            let optionValue, optionLabel;
-                            if (typeof option === 'object' && option !== null) {
-                                optionValue = option.value !== undefined ? option.value : option;
-                                optionLabel = option.label || this.formatPropertyName(String(optionValue));
-                            } else {
-                                optionValue = option;
-                                optionLabel = this.formatPropertyName(String(option));
-                            }
-                            
-                            return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
+                    // Handle both simple strings and objects with value/label
+                    let optionValue, optionLabel;
+                    if (typeof option === 'object' && option !== null) {
+                        optionValue = option.value !== undefined ? option.value : option;
+                        optionLabel = option.label || this.formatPropertyName(String(optionValue));
+                    } else {
+                        optionValue = option;
+                        optionLabel = this.formatPropertyName(String(option));
+                    }
+
+                    return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
                                 ${optionLabel}
                             </option>`;
-                        }).join('')}
+                }).join('')}
                     </select>
                     ${helpHtml}
                 </div>
@@ -2846,52 +2846,51 @@ class Inspector {
         const labelStyle = prop.options?.labelStyle || '';
 
         return `
-        <div class="property-row vector-property" style="${rowStyle}">
-            <div class="vector-header" style="${headerStyle}">
-                <label title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(propName)}</label>
-                <div class="vector-preview">
-                    (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
-                </div>
-                <button class="vector-collapse"
-                        data-target="${collapsibleId}"
-                        data-vector-id="${collapsibleId}"
-                        title="${isCollapsed ? 'Expand' : 'Collapse'}">
-                    <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
-                </button>
+    <div class="property-row vector-property" style="${rowStyle}">
+        <div class="vector-header" style="${headerStyle}">
+            <label title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(propName)}</label>
+            <div class="vector-preview">
+                (${vector.x.toFixed(1)}, ${vector.y.toFixed(1)}${isVector3 ? `, ${vector.z.toFixed(1)}` : ''})
             </div>
-        
-            <div class="vector-components" id="${collapsibleId}" style="${isCollapsed ? 'display:none' : ''}">
-                <div class="vector-component">
-                    <label title="X coordinate">X</label>
-                    <input type="number" class="component-input"
-                        data-prop-name="${propName}"
-                        data-component="x"
-                        value="${vector.x}" step="1"
-                        title="${tooltip} (X coordinate)"
-                        style="${componentStyle}">
-                </div>
-                <div class="vector-component">
-                    <label title="Y coordinate">Y</label>
-                    <input type="number" class="component-input"
-                        data-prop-name="${propName}"
-                        data-component="y"
-                        value="${vector.y}" step="1"
-                        title="${tooltip} (Y coordinate)"
-                        style="${componentStyle}">
-                </div>
-                ${isVector3 ? `
-                <div class="vector-component">
-                    <label title="Z coordinate">Z</label>
-                    <input type="number" class="component-input"
-                        data-prop-name="${propName}"
-                        data-component="z"
-                        value="${vector.z}" step="1"
-                        title="${tooltip} (Z coordinate)"
-                        style="${componentStyle}">
-                </div>` : ''}
-            </div>
+            <button class="vector-collapse"
+                    data-target="${collapsibleId}"
+                    data-vector-id="${collapsibleId}"
+                    title="${isCollapsed ? 'Expand' : 'Collapse'}">
+                <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
+            </button>
         </div>
-        `;
+        <div class="vector-components" id="${collapsibleId}" style="display:${isCollapsed ? 'none' : 'flex'}; flex-direction:row;">
+            <div class="vector-component">
+                <label title="X coordinate">X</label>
+                <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="x"
+                    value="${vector.x}" step="1"
+                    title="${tooltip} (X coordinate)"
+                    style="${componentStyle}">
+            </div>
+            <div class="vector-component">
+                <label title="Y coordinate">Y</label>
+                <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="y"
+                    value="${vector.y}" step="1"
+                    title="${tooltip} (Y coordinate)"
+                    style="${componentStyle}">
+            </div>
+            ${isVector3 ? `
+            <div class="vector-component">
+                <label title="Z coordinate">Z</label>
+                <input type="number" class="component-input"
+                    data-prop-name="${propName}"
+                    data-component="z"
+                    value="${vector.z}" step="1"
+                    title="${tooltip} (Z coordinate)"
+                    style="${componentStyle}">
+            </div>` : ''}
+        </div>
+    </div>
+    `;
     }
 
     /**
@@ -2910,7 +2909,7 @@ class Inspector {
             }
             return String(name); // Convert to string as fallback
         }
-        
+
         return name
             .replace(/([A-Z])/g, ' $1') // Add space before capital letters
             .replace(/^./, str => str.toUpperCase()); // Capitalize first letter

@@ -4,7 +4,7 @@ class PrefabManager {
         this.editor = hierarchyManager.editor || null;
         this.prefabs = new Map(); // Store prefabs in memory
         this.initializePrefabStorage();
-        this.loadExistingPrefabs(); // Load prefabs on startup
+        //this.loadExistingPrefabs(); // Load prefabs on startup
     }
 
     /**
@@ -41,12 +41,9 @@ class PrefabManager {
                     const content = file.content || await this.editor.fileBrowser.readFile(file.path);
                     const prefabData = JSON.parse(content);
 
-                    // Store by both filename and metadata name
-                    const fileName = file.name.replace('.prefab', '');
-                    const prefabName = prefabData.metadata?.name || fileName;
-
+                    // Store by metadata name only
+                    const prefabName = prefabData.metadata?.name || file.name.replace('.prefab', '');
                     this.prefabs.set(prefabName, prefabData);
-                    this.prefabs.set(fileName, prefabData); // Also store by filename for redundancy
 
                     console.log(`Loaded prefab: ${prefabName}`);
                 } catch (error) {

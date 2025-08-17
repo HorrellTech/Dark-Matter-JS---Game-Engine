@@ -403,12 +403,6 @@ class PostScreenEffects extends Module {
         const guiCtx = window.engine?.getGuiCanvas();
         if (!guiCtx) return;
 
-        // First, let's test with a very obvious effect to make sure it's working
-        guiCtx.save();
-        guiCtx.fillStyle = 'rgba(255, 0, 0, 0.1)'; // Red tint for testing
-        guiCtx.fillRect(0, 0, guiCtx.canvas.width, guiCtx.canvas.height);
-        guiCtx.restore();
-
         // Apply effects as overlays directly to GUI canvas
         if (this.enableVignette) {
             this.drawVignetteOverlay(guiCtx);

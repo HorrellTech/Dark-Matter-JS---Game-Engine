@@ -1,1460 +1,654 @@
-/**
- * BasicPhysics - Advanced physics simulation module
- * Implements comprehensive physics including forces, collisions, constraints, and wormholes
- */
 class BasicPhysics extends Module {
     static namespace = "Movement";
-    static description = "Advanced physics simulation with forces, mass, friction, wormholes, and constraints";
+    static description = "General physics module with collision, forces, layers, gravity, and collider support";
     static allowMultiple = false;
-    static iconClass = "fas fa-atom";
 
     constructor() {
         super("BasicPhysics");
 
-        this.materialType = "default";
-        this.materialProperties = {
-            default: { friction: 0.4, restitution: 0.6 },
-            bouncy: { friction: 0.2, restitution: 1.2 },
-            ice: { friction: 0.05, restitution: 0.1 },
-            rubber: { friction: 0.8, restitution: 0.9 },
-            metal: { friction: 0.6, restitution: 0.3 }
-        };
-
-        // Basic physics properties
+        // Physics properties
         this.mass = 1.0;
-        this.friction = 0.98;
-        this.bounciness = 0.6;
-        this.gravityScale = 1.0;
-        this.drag = 0.99;
-        this.angularDrag = 0.98;
-
-        // Collision properties
-        this.isStatic = false;
-        this.isTrigger = false;
-        this.collisionShape = "circle";
-        this.collisionRadius = 25;
-        this.collisionWidth = 50;
-        this.collisionHeight = 50;
-
-        // Material properties
-        this.density = 1.0;
-        this.elasticity = 0.8;
-        this.staticFriction = 0.6;
-        this.dynamicFriction = 0.4;
-
-        // Safe Vector2 initialization
-        this.velocity = this.createSafeVector2(0, 0);
+        this.velocity = { x: 0, y: 0 };
+        this.gravity = { x: 0, y: 0 };
         this.angularVelocity = 0;
-        this.forces = [];
-        this.impulses = [];
+        this.friction = 0.98;
+        this.angularFriction = 0.95;
+        this.bounciness = 0.7;
+        this.contactFriction = 0.8;
+        this.fixedPosition = false; // If true, object does not move or rotate
+        this.physicsLayer = 0; // Only interacts with objects on same layer
+        this.colliderType = "circle"; // "circle" or "rectangle"
+        this.colliderRadius = 10; // For circle collider
+        this.colliderWidth = 20;  // For rectangle collider
+        this.colliderHeight = 20; // For rectangle collider
+        this.gravityEnabled = false;
+        this.gravityMassAffectsOthers = false;
+        this.gravityPullRadius = 0; // 0 disables gravity pull
 
-        // Constraints and joints
-        this.constraints = [];
-        this.enableConstraints = true;
-
-        // Chain properties
-        this.isChainLink = false;
-        this.chainLength = 100;
-        this.chainStiffness = 0.8;
-        this.chainDamping = 0.95;
-        this.chainSegments = 10;
-        this.chainThickness = 4;
-        this.chainColor = "#8B4513";
-        this.connectedObject = null;
-        this.connectionPoint = this.createSafeVector2(0, 0);
-
-        // Wormhole properties
-        this.isWormhole = false;
-        this.wormholeRadius = 100;
-        this.wormholePull = 500;
-        this.wormholeDestination = null;
-        this.wormholeActivationRadius = 20;
-        this.wormholeVisualRadius = 80;
-        this.wormholeRotationSpeed = 90;
-        this.wormholeParticles = [];
-
-        // World physics settings
-        this.worldGravity = this.createSafeVector2(0, 300);
-        this.enableGravity = true;
-        this.enableCollisions = true;
-        this.enableWarmStarting = true;
-
-        // Performance settings
-        this.maxVelocity = 1000;
-        this.maxAngularVelocity = 360;
-        this.sleepThreshold = 0.1;
-        this.isSleeping = false;
-
-        // Visual debug properties
-        this.showDebugInfo = false;
-        this.showVelocityVector = false;
-        this.showForceVectors = false;
-        this.showCollisionBounds = false;
-        this.debugColor = "#FF0000";
+        this.drawColliderGizmo = true; // Show collider in editor
+        this.drawColliderInGame = false; // Show collider shape in game
 
         // Internal state
-        this.lastPosition = this.createSafeVector2(0, 0);
-        this.acceleration = this.createSafeVector2(0, 0);
-        this.totalForce = this.createSafeVector2(0, 0);
-        this.chainPoints = [];
-        this.wormholeAngle = 0;
+        this.lastCollision = null;
+        this.forces = { x: 0, y: 0 }; // Accumulated forces for this frame
 
-        this.setupProperties();
-    }
-
-    createSafeVector2(x, y) {
-        if (window.Vector2) {
-            return new Vector2(x, y);
-        } else {
-            // Fallback: simple object with Vector2-like interface
-            return {
-                x: x,
-                y: y,
-                set: function (newX, newY) {
-                    this.x = newX;
-                    this.y = newY;
-                    return this;
-                }
-            };
-        }
-    }
-
-    setupProperties() {
-        // Basic Physics
-        this.exposeProperty("mass", "number", this.mass, {
+        // Expose properties for inspector
+        this.exposeProperty("mass", "number", 1.0, {
             min: 0.1, max: 100, step: 0.1,
-            description: "Object mass (affects force response)",
+            description: "Mass of the object",
+            onChange: (val) => { this.mass = Math.max(0.1, val); }
+        });
+        this.exposeProperty("gravity", "vector2", this.gravity, {
+            description: "Gravity force applied every frame (Vector2)",
             onChange: (val) => {
-                this.mass = val;
-                // Update material properties if they depend on mass
-                this.updateMaterialProperties();
+                this.gravity = val;
             }
         });
-
-        this.exposeProperty("friction", "number", this.friction, {
-            min: 0, max: 1, step: 0.01,
-            description: "Velocity friction (0-1)",
-            onChange: (val) => {
-                this.friction = val;
-                this.dynamicFriction = val; // Update dynamic friction too
-            }
+        this.exposeProperty("fixedPosition", "boolean", false, {
+            description: "If true, object does not move or rotate",
+            onChange: (val) => { this.fixedPosition = val; }
         });
-
-        this.exposeProperty("bounciness", "number", this.bounciness, {
-            min: 0, max: 2, step: 0.1,
-            description: "Collision bounciness",
-            onChange: (val) => {
-                this.bounciness = val;
-                this.elasticity = val; // Keep elasticity in sync
-            }
+        this.exposeProperty("physicsLayer", "number", 0, {
+            min: 0, max: 10, step: 1,
+            description: "Physics layer for collision filtering",
+            onChange: (val) => { this.physicsLayer = Math.max(0, val); }
         });
-
-        this.exposeProperty("materialType", "enum", this.materialType, {
-            options: ["default", "bouncy", "ice", "rubber", "metal"],
-            description: "Material type affecting friction and bounce",
-            onChange: (val) => {
-                this.materialType = val;
-                this.updateMaterialProperties();
-            }
-        });
-
-        this.exposeProperty("gravityScale", "number", this.gravityScale, {
-            min: 0, max: 5, step: 0.1,
-            description: "Gravity scale multiplier",
-            onChange: (val) => { this.gravityScale = val; }
-        });
-
-        // Collision Properties
-        this.exposeProperty("isStatic", "boolean", this.isStatic, {
-            description: "Static objects don't move",
-            onChange: (val) => {
-                this.isStatic = val;
-                if (val) {
-                    this.velocity.x = 0;
-                    this.velocity.y = 0;
-                    this.angularVelocity = 0;
-                }
-            }
-        });
-
-        this.exposeProperty("collisionShape", "enum", this.collisionShape, {
+        this.exposeProperty("colliderType", "select", "circle", {
             options: ["circle", "rectangle"],
-            description: "Collision detection shape",
-            onChange: (val) => { this.collisionShape = val; }
+            description: "Collider shape type",
+            onChange: (val) => { this.colliderType = val; }
         });
 
-        this.exposeProperty("collisionRadius", "number", this.collisionRadius, {
-            min: 5, max: 200, step: 1,
-            description: "Collision radius for circles",
-            onChange: (val) => { this.collisionRadius = val; }
+        this.exposeProperty("colliderRadius", "number", 10, {
+            min: 1, max: 1000, step: 1,
+            description: "Collider radius (for circle)",
+            onChange: (val) => { this.colliderRadius = Math.max(1, val); }
         });
-
-        this.exposeProperty("collisionWidth", "number", this.collisionWidth, {
-            min: 5, max: 400, step: 1,
-            description: "Collision width for rectangles",
-            onChange: (val) => { this.collisionWidth = val; }
+        this.exposeProperty("colliderWidth", "number", 20, {
+            min: 1, max: 1000, step: 1,
+            description: "Collider width (for rectangle)",
+            onChange: (val) => { this.colliderWidth = Math.max(1, val); }
         });
-
-        this.exposeProperty("collisionHeight", "number", this.collisionHeight, {
-            min: 5, max: 400, step: 1,
-            description: "Collision height for rectangles",
-            onChange: (val) => { this.collisionHeight = val; }
+        this.exposeProperty("colliderHeight", "number", 20, {
+            min: 1, max: 1000, step: 1,
+            description: "Collider height (for rectangle)",
+            onChange: (val) => { this.colliderHeight = Math.max(1, val); }
         });
-
-        this.exposeProperty("drag", "number", this.drag, {
+        this.exposeProperty("bounciness", "number", 0.7, {
             min: 0, max: 1, step: 0.01,
-            description: "Linear drag (0-1)",
-            onChange: (val) => { this.drag = val; }
+            description: "Bounciness (restitution) on collision",
+            onChange: (val) => { this.bounciness = Math.max(0, Math.min(1, val)); }
         });
-
-        this.exposeProperty("angularDrag", "number", this.angularDrag, {
+        this.exposeProperty("contactFriction", "number", 0.8, {
             min: 0, max: 1, step: 0.01,
-            description: "Angular drag (0-1)",
-            onChange: (val) => { this.angularDrag = val; }
+            description: "Friction applied on contact",
+            onChange: (val) => { this.contactFriction = Math.max(0, Math.min(1, val)); }
+        });
+        this.exposeProperty("gravityEnabled", "boolean", false, {
+            description: "Enable gravity for this object",
+            onChange: (val) => { this.gravityEnabled = val; }
+        });
+        this.exposeProperty("gravityMassAffectsOthers", "boolean", false, {
+            description: "If true, object's mass affects gravity pull on others",
+            onChange: (val) => { this.gravityMassAffectsOthers = val; }
+        });
+        this.exposeProperty("gravityPullRadius", "number", 0, {
+            min: 0, max: 1000, step: 1,
+            description: "Radius within which this object pulls others gravitationally",
+            onChange: (val) => { this.gravityPullRadius = Math.max(0, val); }
         });
 
-        // Chain Properties
-        this.exposeProperty("isChainLink", "boolean", this.isChainLink, {
-            description: "Enable chain physics",
-            onChange: (val) => {
-                this.isChainLink = val;
-                if (val) {
-                    this.initializeChain();
-                }
-            }
+        this.exposeProperty("drawColliderGizmo", "boolean", true, {
+            description: "Draw collider gizmo in editor",
+            onChange: (val) => { this.drawColliderGizmo = val; }
         });
-
-        this.exposeProperty("chainLength", "number", this.chainLength, {
-            min: 50, max: 500, step: 10,
-            description: "Chain length in pixels",
-            onChange: (val) => {
-                this.chainLength = val;
-                if (this.isChainLink) this.initializeChain();
-            }
-        });
-
-        this.exposeProperty("chainSegments", "number", this.chainSegments, {
-            min: 3, max: 50, step: 1,
-            description: "Number of chain segments",
-            onChange: (val) => {
-                this.chainSegments = val;
-                if (this.isChainLink) this.initializeChain();
-            }
-        });
-
-        this.exposeProperty("chainStiffness", "number", this.chainStiffness, {
-            min: 0.1, max: 1, step: 0.1,
-            description: "Chain constraint stiffness",
-            onChange: (val) => { this.chainStiffness = val; }
-        });
-
-        this.exposeProperty("chainColor", "color", this.chainColor, {
-            description: "Chain visual color",
-            onChange: (val) => { this.chainColor = val; }
-        });
-
-        // Wormhole Properties
-        this.exposeProperty("isWormhole", "boolean", this.isWormhole, {
-            description: "Enable wormhole physics",
-            onChange: (val) => {
-                this.isWormhole = val;
-                if (val) {
-                    this.initializeWormhole();
-                }
-            }
-        });
-
-        this.exposeProperty("wormholeRadius", "number", this.wormholeRadius, {
-            min: 50, max: 300, step: 10,
-            description: "Wormhole influence radius",
-            onChange: (val) => { this.wormholeRadius = val; }
-        });
-
-        this.exposeProperty("wormholePull", "number", this.wormholePull, {
-            min: 100, max: 2000, step: 50,
-            description: "Wormhole gravitational pull strength",
-            onChange: (val) => { this.wormholePull = val; }
-        });
-
-        this.exposeProperty("wormholeActivationRadius", "number", this.wormholeActivationRadius, {
-            min: 10, max: 100, step: 5,
-            description: "Radius for wormhole teleportation",
-            onChange: (val) => { this.wormholeActivationRadius = val; }
-        });
-
-        // World Physics
-        this.exposeProperty("enableGravity", "boolean", this.enableGravity, {
-            description: "Apply world gravity",
-            onChange: (val) => { this.enableGravity = val; }
-        });
-
-        this.exposeProperty("enableCollisions", "boolean", this.enableCollisions, {
-            description: "Enable collision detection",
-            onChange: (val) => { this.enableCollisions = val; }
-        });
-
-        // Debug Properties
-        this.exposeProperty("showDebugInfo", "boolean", this.showDebugInfo, {
-            description: "Show debug information",
-            onChange: (val) => { this.showDebugInfo = val; }
-        });
-
-        this.exposeProperty("showVelocityVector", "boolean", this.showVelocityVector, {
-            description: "Show velocity vector",
-            onChange: (val) => { this.showVelocityVector = val; }
-        });
-
-        this.exposeProperty("showCollisionBounds", "boolean", this.showCollisionBounds, {
-            description: "Show collision boundaries",
-            onChange: (val) => { this.showCollisionBounds = val; }
+        this.exposeProperty("drawColliderInGame", "boolean", false, {
+            description: "Draw collider shape in game",
+            onChange: (val) => { this.drawColliderInGame = val; }
         });
     }
 
-    start() {
-        this.lastPosition.x = this.gameObject.position.x;
-        this.lastPosition.y = this.gameObject.position.y;
+    // Public API
+    addForce(x, y) {
+        if (this.fixedPosition) return;
+        this.forces.x += x;
+        this.forces.y += y;
+    }
 
-        this.worldGravity = new Vector2(0, 300);
-        this.lastPosition = new Vector2(0, 0);
-        this.acceleration = new Vector2(0, 0);
-        this.totalForce = new Vector2(0, 0);
-        this.connectionPoint = new Vector2(0, 0);
-        this.velocity = new Vector2(0, 0);
+    setVelocity(x, y) {
+        if (this.fixedPosition) return;
+        this.velocity.x = x;
+        this.velocity.y = y;
+    }
 
-        if (this.isChainLink) {
-            this.initializeChain();
-        }
+    setAngularVelocity(angVel) {
+        if (this.fixedPosition) return;
+        this.angularVelocity = angVel;
+    }
 
-        if (this.isWormhole) {
-            this.initializeWormhole();
-        }
+    getSpeed() {
+        return Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
     }
 
     loop(deltaTime) {
-        if (this.isStatic) return;
+        if (this.fixedPosition) return;
 
-        // Update physics
-        this.updateForces(deltaTime);
-        this.updateWormholeEffects(deltaTime);
-        this.updateVelocity(deltaTime);
-        this.updatePosition(deltaTime);
-        this.updateConstraints(deltaTime);
-        this.updateChain(deltaTime);
-        this.checkCollisions(deltaTime);
-        this.updateSleep();
-
-        // Update wormhole visuals
-        if (this.isWormhole) {
-            this.wormholeAngle += this.wormholeRotationSpeed * deltaTime;
-            this.updateWormholeParticles(deltaTime);
-        }
-    }
-
-    updateForces(deltaTime) {
-        this.totalForce.x = 0;
-        this.totalForce.y = 0;
-
-        // Apply gravity
-        if (this.enableGravity) {
-            this.totalForce.x += this.worldGravity.x * this.mass * this.gravityScale;
-            this.totalForce.y += this.worldGravity.y * this.mass * this.gravityScale;
+        // Gravity accumulation (velocity += gravity * dt)
+        if (this.gravityEnabled && this.gravity) {
+            this.velocity.x += this.gravity.x * deltaTime;
+            this.velocity.y += this.gravity.y * deltaTime;
         }
 
-        // Apply accumulated forces
-        for (let force of this.forces) {
-            this.totalForce.x += force.x;
-            this.totalForce.y += force.y;
-        }
+        // Gravity pull (Newtonian, accumulates force)
+        if (this.gravityPullRadius > 0 && window.engine && window.engine.gameObjects) {
+            for (const obj of window.engine.gameObjects) {
+                if (obj === this.gameObject) continue;
+                const otherPhysics = obj.getModule("BasicPhysics");
+                if (!otherPhysics || !otherPhysics.gravityEnabled) continue;
+                if (otherPhysics.physicsLayer !== this.physicsLayer) continue;
 
-        // Calculate acceleration (F = ma, so a = F/m)
-        this.acceleration.x = this.totalForce.x / this.mass;
-        this.acceleration.y = this.totalForce.y / this.mass;
+                const dx = obj.position.x - this.gameObject.position.x;
+                const dy = obj.position.y - this.gameObject.position.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
 
-        // Clear forces for next frame
-        this.forces = [];
-    }
-
-    updateWormholeEffects(deltaTime) {
-        if (!this.isWormhole) return;
-
-        // Find all physics objects within range
-        const allObjects = window.engine?.scene?.gameObjects || [];
-
-        for (let obj of allObjects) {
-            if (obj === this.gameObject) continue;
-
-            const physicsModule = obj.getModule("BasicPhysics");
-            if (!physicsModule || physicsModule.isStatic) continue;
-
-            const distance = this.getDistance(this.gameObject.position, obj.position);
-
-            if (distance < this.wormholeRadius && distance > 0) {
-                // Calculate gravitational pull
-                const pullStrength = this.wormholePull / (distance * distance) * physicsModule.mass;
-                const direction = this.getDirection(obj.position, this.gameObject.position);
-
-                physicsModule.addForce(
-                    direction.x * pullStrength,
-                    direction.y * pullStrength
-                );
-
-                // Check for teleportation
-                if (distance < this.wormholeActivationRadius && this.wormholeDestination) {
-                    this.teleportObject(physicsModule);
+                if (dist > 0 && dist < this.gravityPullRadius) {
+                    const G = 0.1;
+                    const force = G * this.mass * otherPhysics.mass / (dist * dist);
+                    const fx = (dx / dist) * force;
+                    const fy = (dy / dist) * force;
+                    this.velocity.x += fx / this.mass * deltaTime;
+                    this.velocity.y += fy / this.mass * deltaTime;
+                    if (otherPhysics.gravityMassAffectsOthers) {
+                        otherPhysics.velocity.x -= fx / otherPhysics.mass * deltaTime;
+                        otherPhysics.velocity.y -= fy / otherPhysics.mass * deltaTime;
+                    }
                 }
             }
         }
-    }
 
-    updateVelocity(deltaTime) {
-        // Apply impulses
-        for (let impulse of this.impulses) {
-            this.velocity.x += impulse.x / this.mass;
-            this.velocity.y += impulse.y / this.mass;
-        }
-        this.impulses = [];
+        // Apply friction
+        this.velocity.x *= this.friction;
+        this.velocity.y *= this.friction;
+        this.angularVelocity *= this.angularFriction;
 
-        // Apply acceleration
-        this.velocity.x += this.acceleration.x * deltaTime;
-        this.velocity.y += this.acceleration.y * deltaTime;
-
-        // Apply drag
-        this.velocity.x *= this.drag;
-        this.velocity.y *= this.drag;
-
-        // Apply angular drag
-        this.angularVelocity *= this.angularDrag;
-
-        // Limit velocities
-        const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
-        if (speed > this.maxVelocity) {
-            this.velocity.x = (this.velocity.x / speed) * this.maxVelocity;
-            this.velocity.y = (this.velocity.y / speed) * this.maxVelocity;
-        }
-
-        if (Math.abs(this.angularVelocity) > this.maxAngularVelocity) {
-            this.angularVelocity = Math.sign(this.angularVelocity) * this.maxAngularVelocity;
-        }
-    }
-
-    updatePosition(deltaTime) {
-        // Store last position
-        this.lastPosition.x = this.gameObject.position.x;
-        this.lastPosition.y = this.gameObject.position.y;
-
-        // Update position using more stable integration
-        const newX = this.gameObject.position.x + this.velocity.x * deltaTime;
-        const newY = this.gameObject.position.y + this.velocity.y * deltaTime;
-
-        this.gameObject.position.x = newX;
-        this.gameObject.position.y = newY;
-
-        // Update rotation
+        // Update position and rotation
+        this.gameObject.position.x += this.velocity.x * deltaTime;
+        this.gameObject.position.y += this.velocity.y * deltaTime;
         this.gameObject.angle += this.angularVelocity * deltaTime;
+
+        // Keep angle in 0-360 range
+        while (this.gameObject.angle >= 360) this.gameObject.angle -= 360;
+        while (this.gameObject.angle < 0) this.gameObject.angle += 360;
+
+        // Collision detection and resolution
+        this.handleCollisions(deltaTime);
     }
 
-    updateConstraints(deltaTime) {
-        if (!this.enableConstraints) return;
-
-        for (let constraint of this.constraints) {
-            this.solveConstraint(constraint, deltaTime);
-        }
-    }
-
-    updateChain(deltaTime) {
-        if (!this.isChainLink || this.chainPoints.length === 0) return;
-
-        // Update chain physics using Verlet integration
-        for (let i = 1; i < this.chainPoints.length - 1; i++) {
-            const point = this.chainPoints[i];
-
-            // Calculate velocity
-            const velX = (point.x - point.oldX) * this.chainDamping;
-            const velY = (point.y - point.oldY) * this.chainDamping;
-
-            // Store old position
-            point.oldX = point.x;
-            point.oldY = point.y;
-
-            // Apply gravity
-            const gravityForce = this.worldGravity.y * deltaTime * deltaTime;
-
-            // Update position
-            point.x += velX + 0;
-            point.y += velY + gravityForce;
-        }
-
-        // Constraint solving for chain links
-        for (let iteration = 0; iteration < 3; iteration++) {
-            for (let i = 0; i < this.chainPoints.length - 1; i++) {
-                this.solveChainConstraint(i, i + 1);
+    drawGizmos(ctx) {
+        if (!this.drawColliderGizmo) return;
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = "#00aaff";
+        ctx.lineWidth = 2;
+        if (this.colliderType === "circle") {
+            ctx.beginPath();
+            ctx.arc(
+                this.gameObject.position.x,
+                this.gameObject.position.y,
+                this.colliderRadius,
+                0, Math.PI * 2
+            );
+            ctx.stroke();
+        } else if (this.colliderType === "rectangle") {
+            const corners = this.getRectangleCorners(
+                this.gameObject.position,
+                { width: this.colliderWidth, height: this.colliderHeight },
+                this.gameObject.angle
+            );
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            for (let i = 1; i < corners.length; i++) {
+                ctx.lineTo(corners[i].x, corners[i].y);
             }
+            ctx.closePath();
+            ctx.stroke();
         }
+        ctx.restore();
+    }
 
-        // Update first point to follow this object
-        if (this.chainPoints.length > 0) {
-            this.chainPoints[0].x = this.gameObject.position.x;
-            this.chainPoints[0].y = this.gameObject.position.y;
-        }
-
-        // Update connected object if exists
-        if (this.connectedObject && this.chainPoints.length > 0) {
-            const lastPoint = this.chainPoints[this.chainPoints.length - 1];
-            this.connectedObject.position.x = lastPoint.x;
-            this.connectedObject.position.y = lastPoint.y;
+    draw(ctx) {
+        if (this.drawColliderInGame) {
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.strokeStyle = "#ff8800";
+            ctx.lineWidth = 2;
+            if (this.colliderType === "circle") {
+                ctx.beginPath();
+                ctx.arc(
+                    this.gameObject.position.x,
+                    this.gameObject.position.y,
+                    this.colliderRadius,
+                    0, Math.PI * 2
+                );
+                ctx.stroke();
+            } else if (this.colliderType === "rectangle") {
+                const corners = this.getRectangleCorners(
+                    this.gameObject.position,
+                    { width: this.colliderWidth, height: this.colliderHeight },
+                    this.gameObject.angle
+                );
+                ctx.beginPath();
+                ctx.moveTo(corners[0].x, corners[0].y);
+                for (let i = 1; i < corners.length; i++) {
+                    ctx.lineTo(corners[i].x, corners[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            }
+            ctx.restore();
         }
     }
 
-    updateMaterialProperties() {
-        const props = this.materialProperties[this.materialType];
-        if (props) {
-            // Update friction properties
-            this.dynamicFriction = props.friction;
-            this.staticFriction = props.friction * 1.5;
+    handleCollisions(deltaTime) {
+        if (!window.engine || !window.engine.gameObjects) return;
 
-            // Update bounciness/elasticity
-            this.bounciness = props.restitution;
-            this.elasticity = props.restitution;
-
-            // Also update the main friction property to keep UI in sync
-            this.friction = Math.max(this.friction, props.friction * 0.98); // Keep some base friction
-        }
-    }
-
-    checkCollisions(deltaTime) {
-        if (!this.enableCollisions) return;
-
-        const allObjects = window.engine?.scene?.gameObjects || [];
-
-        for (let obj of allObjects) {
+        for (const obj of window.engine.gameObjects) {
             if (obj === this.gameObject) continue;
-
             const otherPhysics = obj.getModule("BasicPhysics");
-            if (!otherPhysics || !otherPhysics.enableCollisions) continue;
+            if (!otherPhysics) continue;
+            if (otherPhysics.physicsLayer !== this.physicsLayer) continue;
 
-            const collision = this.getCollisionInfo(obj, otherPhysics);
-            if (collision.isColliding) {
-                this.resolveCollision(obj, otherPhysics, collision, deltaTime);
+            if (this.colliderType === "circle" && otherPhysics.colliderType === "circle") {
+                this.handleCircleCollision(obj, otherPhysics, deltaTime);
+            } else if (this.colliderType === "rectangle" && otherPhysics.colliderType === "rectangle") {
+                this.handleRectangleCollision(obj, otherPhysics, deltaTime);
+            } else {
+                this.handleCircleRectangleCollision(obj, otherPhysics, deltaTime);
             }
         }
     }
 
-    getCollisionInfo(otherObject, otherPhysics) {
-        if (this.collisionShape === "circle" && otherPhysics.collisionShape === "circle") {
-            return this.getCircleCircleCollision(otherObject, otherPhysics);
-        } else if (this.collisionShape === "rectangle" && otherPhysics.collisionShape === "rectangle") {
-            return this.getRectangleRectangleCollision(otherObject, otherPhysics);
-        } else {
-            // Mixed shapes - handle circle-rectangle collision properly
-            return this.getCircleRectangleCollision(otherObject, otherPhysics);
-        }
-    }
-
-    isColliding(otherObject) {
-        const otherPhysics = otherObject.getModule("BasicPhysics");
-        if (!otherPhysics) return false;
-
-        if (this.collisionShape === "circle" && otherPhysics.collisionShape === "circle") {
-            return this.circleCircleCollision(otherObject, otherPhysics);
-        } else if (this.collisionShape === "rectangle" && otherPhysics.collisionShape === "rectangle") {
-            return this.rectangleRectangleCollision(otherObject, otherPhysics);
-        } else {
-            // Mixed shapes - use bounding circles as approximation
-            return this.circleCircleCollision(otherObject, otherPhysics);
-        }
-    }
-
-    circleCircleCollision(otherObject, otherPhysics) {
-        const distance = this.getDistance(this.gameObject.position, otherObject.position);
-        const combinedRadius = this.collisionRadius + otherPhysics.collisionRadius;
-        return distance < combinedRadius;
-    }
-
-    rectangleRectangleCollision(otherObject, otherPhysics) {
-        const bounds1 = this.getCollisionBounds();
-        const bounds2 = otherPhysics.getCollisionBounds();
-
-        return bounds1.left < bounds2.right &&
-            bounds1.right > bounds2.left &&
-            bounds1.top < bounds2.bottom &&
-            bounds1.bottom > bounds2.top;
-    }
-
-    getCircleRectangleCollision(otherObject, otherPhysics) {
-        let circleObj, rectObj, circlePhysics, rectPhysics;
-
+    handleCircleRectangleCollision(otherObj, otherPhysics, deltaTime) {
         // Determine which is circle and which is rectangle
-        if (this.collisionShape === "circle") {
-            circleObj = this.gameObject;
-            rectObj = otherObject;
+        let circle, circlePhysics, rect, rectPhysics, circleObj, rectObj;
+        if (this.colliderType === "circle") {
+            circle = this.gameObject.position;
             circlePhysics = this;
+            circleObj = this.gameObject;
+            rect = otherObj.position;
             rectPhysics = otherPhysics;
+            rectObj = otherObj;
+            var rectWidth = otherPhysics.colliderWidth;
+            var rectHeight = otherPhysics.colliderHeight;
+            var rectAngle = otherObj.angle;
+            var circleRadius = this.colliderRadius;
         } else {
-            circleObj = otherObject;
-            rectObj = this.gameObject;
+            circle = otherObj.position;
             circlePhysics = otherPhysics;
+            circleObj = otherObj;
+            rect = this.gameObject.position;
             rectPhysics = this;
+            rectObj = this.gameObject;
+            var rectWidth = this.colliderWidth;
+            var rectHeight = this.colliderHeight;
+            var rectAngle = this.gameObject.angle;
+            var circleRadius = otherPhysics.colliderRadius;
         }
 
-        const rectBounds = rectPhysics.getCollisionBounds();
-        const circleX = circleObj.position.x;
-        const circleY = circleObj.position.y;
-        const radius = circlePhysics.collisionRadius;
+        // Transform circle position into rectangle's local space
+        const rad = (rectAngle || 0) * Math.PI / 180;
+        const cos = Math.cos(-rad);
+        const sin = Math.sin(-rad);
+        const relX = cos * (circle.x - rect.x) - sin * (circle.y - rect.y);
+        const relY = sin * (circle.x - rect.x) + cos * (circle.y - rect.y);
 
-        // Find closest point on rectangle to circle center
-        const closestX = Math.max(rectBounds.left, Math.min(circleX, rectBounds.right));
-        const closestY = Math.max(rectBounds.top, Math.min(circleY, rectBounds.bottom));
+        // Clamp to rectangle bounds to find closest point
+        const hw = rectWidth / 2;
+        const hh = rectHeight / 2;
+        const closestX = Math.max(-hw, Math.min(relX, hw));
+        const closestY = Math.max(-hh, Math.min(relY, hh));
 
-        // Calculate distance from circle center to closest point
-        const dx = circleX - closestX;
-        const dy = circleY - closestY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        // Find distance from circle center to closest point
+        const distX = relX - closestX;
+        const distY = relY - closestY;
+        const dist = Math.sqrt(distX * distX + distY * distY);
 
-        if (distance >= radius) {
-            return { isColliding: false };
+        if (dist < circleRadius) {
+            // Calculate collision normal in local space
+            let normalX = distX;
+            let normalY = distY;
+            if (dist === 0) {
+                // Circle center is inside rectangle
+                // Use direction from rectangle center to circle center
+                normalX = relX;
+                normalY = relY;
+                const len = Math.sqrt(normalX * normalX + normalY * normalY) || 1;
+                normalX /= len;
+                normalY /= len;
+            } else {
+                normalX /= dist;
+                normalY /= dist;
+            }
+
+            // Transform normal back to world space
+            const worldNormalX = cos * normalX - sin * normalY;
+            const worldNormalY = sin * normalX + cos * normalY;
+
+            // Calculate contact point in world space
+            const contactLocalX = closestX;
+            const contactLocalY = closestY;
+            const contactX = rect.x + cos * contactLocalX - sin * contactLocalY;
+            const contactY = rect.y + sin * contactLocalX + cos * contactLocalY;
+
+            // Apply collision response (now both objects get angular impulse)
+            this.resolveCollision(
+                circlePhysics, rectPhysics, circleObj, rectObj,
+                worldNormalX, worldNormalY, contactX, contactY,
+                circleRadius - dist
+            );
         }
-
-        // Calculate collision normal
-        let normal;
-        if (distance === 0) {
-            // Circle center is inside rectangle - use direction from rect center
-            const rectCenterX = (rectBounds.left + rectBounds.right) / 2;
-            const rectCenterY = (rectBounds.top + rectBounds.bottom) / 2;
-            const dirX = circleX - rectCenterX;
-            const dirY = circleY - rectCenterY;
-            const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
-            normal = dirLength > 0 ? { x: dirX / dirLength, y: dirY / dirLength } : { x: 1, y: 0 };
-        } else {
-            normal = { x: dx / distance, y: dy / distance };
-        }
-
-        // Ensure normal points from rectangle to circle
-        if (this.collisionShape === "rectangle") {
-            normal.x = -normal.x;
-            normal.y = -normal.y;
-        }
-
-        const penetration = radius - distance;
-        const contactPoint = {
-            x: closestX,
-            y: closestY
-        };
-
-        return {
-            isColliding: true,
-            normal: normal,
-            penetration: penetration,
-            contactPoint: contactPoint,
-            distance: distance
-        };
     }
 
-    getCircleCircleCollision(otherObject, otherPhysics) {
-        const dx = otherObject.position.x - this.gameObject.position.x;
-        const dy = otherObject.position.y - this.gameObject.position.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const combinedRadius = this.collisionRadius + otherPhysics.collisionRadius;
+    handleCircleCollision(otherObj, otherPhysics, deltaTime) {
+        const dx = otherObj.position.x - this.gameObject.position.x;
+        const dy = otherObj.position.y - this.gameObject.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const r1 = this.colliderRadius;
+        const r2 = otherPhysics.colliderRadius;
+        const collisionDist = r1 + r2;
 
-        const isColliding = distance < combinedRadius && distance > 0;
+        if (dist > 0 && dist < collisionDist) {
+            // Calculate collision normal
+            const normalX = dx / dist;
+            const normalY = dy / dist;
 
-        if (!isColliding) {
-            return { isColliding: false };
+            // Contact point is on the line between centers
+            const contactX = this.gameObject.position.x + normalX * r1;
+            const contactY = this.gameObject.position.y + normalY * r1;
+
+            // Calculate penetration depth
+            const penetration = collisionDist - dist;
+
+            // Apply collision response
+            this.resolveCollision(
+                this, otherPhysics, this.gameObject, otherObj,
+                normalX, normalY, contactX, contactY, penetration
+            );
         }
-
-        // Calculate collision normal (from this object to other)
-        const normal = {
-            x: dx / distance,
-            y: dy / distance
-        };
-
-        // Calculate penetration depth
-        const penetration = combinedRadius - distance;
-
-        // Calculate contact point
-        const contactPoint = {
-            x: this.gameObject.position.x + normal.x * this.collisionRadius,
-            y: this.gameObject.position.y + normal.y * this.collisionRadius
-        };
-
-        return {
-            isColliding: true,
-            normal: normal,
-            penetration: penetration,
-            contactPoint: contactPoint,
-            distance: distance
-        };
     }
 
-    getRectangleRectangleCollision(otherObject, otherPhysics) {
-        const bounds1 = this.getCollisionBounds();
-        const bounds2 = otherPhysics.getCollisionBounds();
+    handleRectangleCollision(otherObj, otherPhysics, deltaTime) {
+        const rectA = this.getRectangleCorners(
+            this.gameObject.position,
+            { width: this.colliderWidth, height: this.colliderHeight },
+            this.gameObject.angle
+        );
+        const rectB = this.getRectangleCorners(
+            otherObj.position,
+            { width: otherPhysics.colliderWidth, height: otherPhysics.colliderHeight },
+            otherObj.angle
+        );
 
-        const isColliding = bounds1.left < bounds2.right &&
-            bounds1.right > bounds2.left &&
-            bounds1.top < bounds2.bottom &&
-            bounds1.bottom > bounds2.top;
+        // SAT collision detection with penetration info
+        const collision = this.getRectangleCollisionInfo(rectA, rectB);
+        if (collision.intersecting) {
+            // Apply collision response
+            this.resolveCollision(
+                this, otherPhysics, this.gameObject, otherObj,
+                collision.normal.x, collision.normal.y,
+                collision.contactPoint.x, collision.contactPoint.y,
+                collision.penetration
+            );
+        }
+    }
 
-        if (!isColliding) {
-            return { isColliding: false };
+    resolveCollision(physicsA, physicsB, objA, objB, normalX, normalY, contactX, contactY, penetration) {
+        // Relative velocity at contact
+        const relVelX = physicsB.velocity.x - physicsA.velocity.x;
+        const relVelY = physicsB.velocity.y - physicsA.velocity.y;
+        const relVelNormal = relVelX * normalX + relVelY * normalY;
+
+        // Only resolve if objects are moving toward each other
+        if (relVelNormal > 0) return;
+
+        // Restitution (bounciness)
+        const restitution = Math.min(physicsA.bounciness, physicsB.bounciness);
+
+        // Friction
+        const friction = Math.min(physicsA.contactFriction, physicsB.contactFriction);
+
+        // Impulse scalar
+        const impulseScalar = -(1 + restitution) * relVelNormal / (1 / physicsA.mass + 1 / physicsB.mass);
+
+        // Impulse vector
+        const impulseX = impulseScalar * normalX;
+        const impulseY = impulseScalar * normalY;
+
+        // Apply impulse
+        if (!physicsA.fixedPosition) {
+            physicsA.velocity.x -= impulseX / physicsA.mass;
+            physicsA.velocity.y -= impulseY / physicsA.mass;
+            physicsA.velocity.x *= friction;
+            physicsA.velocity.y *= friction;
+        }
+        if (!physicsB.fixedPosition) {
+            physicsB.velocity.x += impulseX / physicsB.mass;
+            physicsB.velocity.y += impulseY / physicsB.mass;
+            physicsB.velocity.x *= friction;
+            physicsB.velocity.y *= friction;
         }
 
-        // Calculate overlaps
-        const overlapX = Math.min(bounds1.right - bounds2.left, bounds2.right - bounds1.left);
-        const overlapY = Math.min(bounds1.bottom - bounds2.top, bounds2.bottom - bounds1.top);
+        // Angular impulse (torque) for both objects
+        if (!physicsA.fixedPosition) {
+            const rAx = contactX - objA.position.x;
+            const rAy = contactY - objA.position.y;
+            const torqueA = rAx * (-impulseY) - rAy * (-impulseX);
+            const IA = this.getMomentOfInertia(physicsA);
+            physicsA.angularVelocity += torqueA / IA;
+        }
+        if (!physicsB.fixedPosition) {
+            const rBx = contactX - objB.position.x;
+            const rBy = contactY - objB.position.y;
+            const torqueB = rBx * impulseY - rBy * impulseX;
+            const IB = this.getMomentOfInertia(physicsB);
+            physicsB.angularVelocity += torqueB / IB;
+        }
 
-        // Determine collision normal based on smallest overlap
-        let normal, penetration;
-        if (overlapX < overlapY) {
-            // Horizontal collision
-            normal = {
-                x: this.gameObject.position.x < otherObject.position.x ? -1 : 1,
-                y: 0
-            };
-            penetration = overlapX;
+        // Separate objects to prevent overlap
+        const separationAmount = Math.max(penetration * 0.5, 0.1);
+        if (!physicsA.fixedPosition) {
+            objA.position.x -= normalX * separationAmount;
+            objA.position.y -= normalY * separationAmount;
+        }
+        if (!physicsB.fixedPosition) {
+            objB.position.x += normalX * separationAmount;
+            objB.position.y += normalY * separationAmount;
+        }
+    }
+
+    getMomentOfInertia(physics) {
+        // Simplified moment of inertia calculation
+        if (physics.colliderType === "circle") {
+            return 0.5 * physics.mass * physics.colliderRadius * physics.colliderRadius;
         } else {
-            // Vertical collision
-            normal = {
-                x: 0,
-                y: this.gameObject.position.y < otherObject.position.y ? -1 : 1
-            };
-            penetration = overlapY;
+            const w = physics.colliderWidth;
+            const h = physics.colliderHeight;
+            return (physics.mass * (w * w + h * h)) / 12;
+        }
+    }
+
+    getRectangleCollisionInfo(rectA, rectB) {
+        // SAT with penetration depth and contact point calculation
+        const axes = [
+            this.getEdgeAxis(rectA, 0),
+            this.getEdgeAxis(rectA, 1),
+            this.getEdgeAxis(rectB, 0),
+            this.getEdgeAxis(rectB, 1)
+        ];
+
+        let minPenetration = Infinity;
+        let collisionAxis = null;
+
+        for (const axis of axes) {
+            const [minA, maxA] = this.projectPolygon(rectA, axis);
+            const [minB, maxB] = this.projectPolygon(rectB, axis);
+
+            if (maxA < minB || maxB < minA) {
+                return { intersecting: false };
+            }
+
+            const penetration = Math.min(maxA - minB, maxB - minA);
+            if (penetration < minPenetration) {
+                minPenetration = penetration;
+                collisionAxis = axis;
+            }
         }
 
-        const contactPoint = {
-            x: this.gameObject.position.x + normal.x * (this.collisionWidth / 2),
-            y: this.gameObject.position.y + normal.y * (this.collisionHeight / 2)
-        };
+        // Calculate contact point (average of overlapping corners)
+        const contactPoint = this.getContactPoint(rectA, rectB);
 
         return {
-            isColliding: true,
-            normal: normal,
-            penetration: penetration,
+            intersecting: true,
+            penetration: minPenetration,
+            normal: collisionAxis,
             contactPoint: contactPoint
         };
     }
 
-    resolveCollision(otherObject, otherPhysics, collision, deltaTime) {
-        if (this.isTrigger || otherPhysics.isTrigger) {
-            this.onTriggerEnter(otherObject);
-            return;
-        }
-
-        const { normal, penetration } = collision;
-
-        // Step 1: Position correction (more aggressive for better separation)
-        this.correctPositions(otherObject, otherPhysics, normal, penetration);
-
-        // Step 2: Velocity resolution
-        this.resolveVelocities(otherObject, otherPhysics, normal, deltaTime);
-
-        // Step 3: Additional separation for static objects to prevent sinking
-        if (this.isStatic || otherPhysics.isStatic) {
-            this.ensureMinimumSeparation(otherObject, otherPhysics, collision);
-        }
+    getRectangleCorners(pos, size, angle) {
+        // Returns array of 4 corners [{x, y}, ...] for rectangle at pos, rotated by angle
+        const hw = (size.width || 20) / 2;
+        const hh = (size.height || 20) / 2;
+        const rad = (angle || 0) * Math.PI / 180;
+        const corners = [
+            { x: -hw, y: -hh },
+            { x: hw, y: -hh },
+            { x: hw, y: hh },
+            { x: -hw, y: hh }
+        ];
+        return corners.map(pt => ({
+            x: pos.x + pt.x * Math.cos(rad) - pt.y * Math.sin(rad),
+            y: pos.y + pt.x * Math.sin(rad) + pt.y * Math.cos(rad)
+        }));
     }
 
-    ensureMinimumSeparation(otherObject, otherPhysics, collision) {
-        const { normal, penetration } = collision;
-
-        if (penetration <= 0) return;
-
-        // For static collisions, be more aggressive about separation
-        if (this.isStatic && !otherPhysics.isStatic) {
-            // Move the dynamic object away from the static one
-            otherObject.position.x += normal.x * penetration;
-            otherObject.position.y += normal.y * penetration;
-
-            // Also reduce velocity if moving into the static object
-            const velocityAlongNormal = otherPhysics.velocity.x * normal.x + otherPhysics.velocity.y * normal.y;
-            if (velocityAlongNormal < 0) {
-                otherPhysics.velocity.x -= normal.x * velocityAlongNormal;
-                otherPhysics.velocity.y -= normal.y * velocityAlongNormal;
-            }
-        } else if (!this.isStatic && otherPhysics.isStatic) {
-            // Move this object away from the static one
-            this.gameObject.position.x -= normal.x * penetration;
-            this.gameObject.position.y -= normal.y * penetration;
-
-            // Also reduce velocity if moving into the static object
-            const velocityAlongNormal = this.velocity.x * (-normal.x) + this.velocity.y * (-normal.y);
-            if (velocityAlongNormal < 0) {
-                this.velocity.x -= (-normal.x) * velocityAlongNormal;
-                this.velocity.y -= (-normal.y) * velocityAlongNormal;
-            }
-        }
+    getEdgeAxis(rect, i) {
+        // Returns normalized axis vector for edge i
+        const p1 = rect[i];
+        const p2 = rect[(i + 1) % rect.length];
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        return { x: -dy / len, y: dx / len }; // Perpendicular
     }
 
-    separateObjects(otherObject, otherPhysics, normal, penetration) {
-        if (penetration <= 0) return;
-
-        const totalInverseMass = (this.isStatic ? 0 : 1 / this.mass) +
-            (otherPhysics.isStatic ? 0 : 1 / otherPhysics.mass);
-
-        if (totalInverseMass === 0) return;
-
-        // Separate objects completely
-        if (!this.isStatic) {
-            const separation1 = penetration * (1 / this.mass) / totalInverseMass;
-            this.gameObject.position.x -= normal.x * separation1;
-            this.gameObject.position.y -= normal.y * separation1;
+    projectPolygon(points, axis) {
+        let min = points[0].x * axis.x + points[0].y * axis.y;
+        let max = min;
+        for (let i = 1; i < points.length; i++) {
+            const proj = points[i].x * axis.x + points[i].y * axis.y;
+            if (proj < min) min = proj;
+            if (proj > max) max = proj;
         }
-
-        if (!otherPhysics.isStatic) {
-            const separation2 = penetration * (1 / otherPhysics.mass) / totalInverseMass;
-            otherObject.position.x += normal.x * separation2;
-            otherObject.position.y += normal.y * separation2;
-        }
+        return [min, max];
     }
 
-    correctPositions(otherObject, otherPhysics, normal, penetration) {
-        const totalInverseMass = (this.isStatic ? 0 : 1 / this.mass) +
-            (otherPhysics.isStatic ? 0 : 1 / otherPhysics.mass);
-
-        if (totalInverseMass === 0) return;
-
-        // More aggressive correction for static objects to prevent sinking
-        const correctionPercent = 0.8; // Increased from 0.4
-        const slop = 0.01; // Reduced from 0.05 for tighter separation
-
-        const correctionMagnitude = Math.max(penetration - slop, 0) / totalInverseMass * correctionPercent;
-
-        if (!this.isStatic) {
-            const correction1 = correctionMagnitude / this.mass;
-            this.gameObject.position.x -= normal.x * correction1;
-            this.gameObject.position.y -= normal.y * correction1;
+    getContactPoint(rectA, rectB) {
+        // Find overlapping corners and calculate average
+        const overlap = [];
+        for (const pt of rectA) {
+            if (this.pointInPolygon(pt, rectB)) overlap.push(pt);
+        }
+        for (const pt of rectB) {
+            if (this.pointInPolygon(pt, rectA)) overlap.push(pt);
         }
 
-        if (!otherPhysics.isStatic) {
-            const correction2 = correctionMagnitude / otherPhysics.mass;
-            otherObject.position.x += normal.x * correction2;
-            otherObject.position.y += normal.y * correction2;
+        if (overlap.length === 0) {
+            // Fallback: midpoint between centers
+            return {
+                x: (this.getCentroid(rectA).x + this.getCentroid(rectB).x) / 2,
+                y: (this.getCentroid(rectA).y + this.getCentroid(rectB).y) / 2
+            };
         }
+
+        const sum = overlap.reduce((acc, pt) => ({ x: acc.x + pt.x, y: acc.y + pt.y }), { x: 0, y: 0 });
+        return { x: sum.x / overlap.length, y: sum.y / overlap.length };
     }
 
-    resolveVelocities(otherObject, otherPhysics, normal, deltaTime) {
-        const relativeVelocity = {
-            x: this.velocity.x - otherPhysics.velocity.x,
-            y: this.velocity.y - otherPhysics.velocity.y
-        };
-
-        const velocityAlongNormal = relativeVelocity.x * normal.x + relativeVelocity.y * normal.y;
-
-        // Only resolve if objects are moving toward each other
-        if (velocityAlongNormal > 0) return;
-
-        // Calculate combined material properties
-        const combinedRestitution = Math.sqrt(this.bounciness * otherPhysics.bounciness);
-
-        const totalInverseMass = (this.isStatic ? 0 : 1 / this.mass) +
-            (otherPhysics.isStatic ? 0 : 1 / otherPhysics.mass);
-
-        if (totalInverseMass === 0) return;
-
-        const impulseScalar = -(1 + combinedRestitution) * velocityAlongNormal / totalInverseMass;
-
-        const impulse = {
-            x: impulseScalar * normal.x,
-            y: impulseScalar * normal.y
-        };
-
-        if (!this.isStatic) {
-            this.velocity.x += impulse.x / this.mass;
-            this.velocity.y += impulse.y / this.mass;
-        }
-
-        if (!otherPhysics.isStatic) {
-            otherPhysics.velocity.x -= impulse.x / otherPhysics.mass;
-            otherPhysics.velocity.y -= impulse.y / otherPhysics.mass;
-        }
-
-        // Apply friction with combined materials
-        this.applyFrictionForce(otherPhysics, normal, relativeVelocity, Math.abs(impulseScalar));
+    getCentroid(rect) {
+        const sum = rect.reduce((acc, pt) => ({ x: acc.x + pt.x, y: acc.y + pt.y }), { x: 0, y: 0 });
+        return { x: sum.x / rect.length, y: sum.y / rect.length };
     }
 
-    applyFrictionForce(otherPhysics, normal, relativeVelocity, normalImpulse) {
-        // Calculate tangent vector (perpendicular to normal)
-        const tangent = {
-            x: relativeVelocity.x - (relativeVelocity.x * normal.x + relativeVelocity.y * normal.y) * normal.x,
-            y: relativeVelocity.y - (relativeVelocity.x * normal.x + relativeVelocity.y * normal.y) * normal.y
-        };
-
-        const tangentLength = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
-        if (tangentLength < 0.001) return; // No tangential velocity
-
-        // Normalize tangent
-        tangent.x /= tangentLength;
-        tangent.y /= tangentLength;
-
-        // Calculate tangential impulse
-        const totalInverseMass = (this.isStatic ? 0 : 1 / this.mass) +
-            (otherPhysics.isStatic ? 0 : 1 / otherPhysics.mass);
-
-        const tangentialVelocity = relativeVelocity.x * tangent.x + relativeVelocity.y * tangent.y;
-        let tangentImpulse = -tangentialVelocity / totalInverseMass;
-
-        // Apply Coulomb friction
-        const staticFriction = Math.sqrt(this.staticFriction * otherPhysics.staticFriction);
-        const dynamicFriction = Math.sqrt(this.dynamicFriction * otherPhysics.dynamicFriction);
-
-        if (Math.abs(tangentImpulse) < Math.abs(normalImpulse) * staticFriction) {
-            // Static friction
-            // Keep the tangent impulse as calculated
-        } else {
-            // Kinetic friction
-            tangentImpulse = -Math.sign(tangentImpulse) * Math.abs(normalImpulse) * dynamicFriction;
-        }
-
-        // Apply friction impulse
-        const frictionImpulse = {
-            x: tangentImpulse * tangent.x,
-            y: tangentImpulse * tangent.y
-        };
-
-        if (!this.isStatic) {
-            this.velocity.x += frictionImpulse.x / this.mass;
-            this.velocity.y += frictionImpulse.y / this.mass;
-        }
-
-        if (!otherPhysics.isStatic) {
-            otherPhysics.velocity.x -= frictionImpulse.x / otherPhysics.mass;
-            otherPhysics.velocity.y -= frictionImpulse.y / otherPhysics.mass;
-        }
-    }
-
-    applyFriction(otherPhysics, normal, relativeVelocity) {
-        // Calculate tangent vector
-        const tangent = {
-            x: relativeVelocity.x - (relativeVelocity.x * normal.x + relativeVelocity.y * normal.y) * normal.x,
-            y: relativeVelocity.y - (relativeVelocity.x * normal.x + relativeVelocity.y * normal.y) * normal.y
-        };
-
-        const tangentLength = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
-        if (tangentLength < 0.001) return;
-
-        tangent.x /= tangentLength;
-        tangent.y /= tangentLength;
-
-        // Calculate friction impulse
-        const frictionCoeff = Math.sqrt(this.dynamicFriction * otherPhysics.dynamicFriction);
-        const frictionImpulse = -(relativeVelocity.x * tangent.x + relativeVelocity.y * tangent.y) / (this.mass + otherPhysics.mass);
-        const maxFriction = Math.abs(frictionImpulse) * frictionCoeff;
-
-        // Apply friction
-        const frictionX = Math.sign(frictionImpulse) * Math.min(Math.abs(frictionImpulse), maxFriction) * tangent.x;
-        const frictionY = Math.sign(frictionImpulse) * Math.min(Math.abs(frictionImpulse), maxFriction) * tangent.y;
-
-        if (!this.isStatic) {
-            this.velocity.x += frictionX * otherPhysics.mass;
-            this.velocity.y += frictionY * otherPhysics.mass;
-        }
-
-        if (!otherPhysics.isStatic) {
-            otherPhysics.velocity.x -= frictionX * this.mass;
-            otherPhysics.velocity.y -= frictionY * this.mass;
-        }
-    }
-
-    updateSleep() {
-        const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
-
-        // More restrictive sleep conditions to prevent objects from sleeping while in contact
-        if (speed < this.sleepThreshold && Math.abs(this.angularVelocity) < this.sleepThreshold) {
-            // Check if we're in contact with any other object before sleeping
-            const allObjects = window.engine?.scene?.gameObjects || [];
-            let inContact = false;
-
-            for (let obj of allObjects) {
-                if (obj === this.gameObject) continue;
-
-                const otherPhysics = obj.getModule("BasicPhysics");
-                if (!otherPhysics || !otherPhysics.enableCollisions) continue;
-
-                const collision = this.getCollisionInfo(obj, otherPhysics);
-                if (collision.isColliding) {
-                    inContact = true;
-                    break;
-                }
-            }
-
-            // Only sleep if not in contact or if the contact is stable (with static objects)
-            if (!inContact) {
-                this.isSleeping = true;
-                this.velocity.x = 0;
-                this.velocity.y = 0;
-                this.angularVelocity = 0;
-            }
-        } else {
-            this.isSleeping = false;
-        }
-    }
-
-    // Chain methods
-    initializeChain() {
-        this.chainPoints = [];
-        const segmentLength = this.chainLength / this.chainSegments;
-
-        for (let i = 0; i < this.chainSegments + 1; i++) {
-            this.chainPoints.push({
-                x: this.gameObject.position.x,
-                y: this.gameObject.position.y + i * segmentLength,
-                oldX: this.gameObject.position.x,
-                oldY: this.gameObject.position.y + i * segmentLength
-            });
-        }
-    }
-
-    solveChainConstraint(index1, index2) {
-        const point1 = this.chainPoints[index1];
-        const point2 = this.chainPoints[index2];
-        const segmentLength = this.chainLength / this.chainSegments;
-
-        const dx = point2.x - point1.x;
-        const dy = point2.y - point1.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance === 0) return;
-
-        const difference = segmentLength - distance;
-        const percent = difference / distance / 2;
-        const offsetX = dx * percent * this.chainStiffness;
-        const offsetY = dy * percent * this.chainStiffness;
-
-        // Don't move the first point (it's attached to this object)
-        if (index1 !== 0) {
-            point1.x -= offsetX;
-            point1.y -= offsetY;
-        }
-
-        // Don't move the last point if it's connected to another object
-        if (index2 !== this.chainPoints.length - 1 || !this.connectedObject) {
-            point2.x += offsetX;
-            point2.y += offsetY;
-        }
-    }
-
-    // Wormhole methods
-    initializeWormhole() {
-        this.wormholeParticles = [];
-
-        // Create swirling particles
-        for (let i = 0; i < 20; i++) {
-            this.wormholeParticles.push({
-                angle: (i / 20) * Math.PI * 2,
-                radius: Math.random() * this.wormholeVisualRadius,
-                speed: 0.5 + Math.random() * 2,
-                life: Math.random()
-            });
-        }
-    }
-
-    updateWormholeParticles(deltaTime) {
-        for (let particle of this.wormholeParticles) {
-            particle.angle += particle.speed * deltaTime;
-            particle.radius -= 20 * deltaTime;
-
-            if (particle.radius <= 0) {
-                particle.radius = this.wormholeVisualRadius;
-                particle.angle = Math.random() * Math.PI * 2;
+    pointInPolygon(pt, poly) {
+        // Ray-casting algorithm
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i].x, yi = poly[i].y;
+            const xj = poly[j].x, yj = poly[j].y;
+            if ((yi > pt.y) !== (yj > pt.y) &&
+                pt.x < (xj - xi) * (pt.y - yi) / (yj - yi + 0.00001) + xi) {
+                inside = !inside;
             }
         }
-    }
-
-    teleportObject(physicsModule) {
-        if (!this.wormholeDestination) return;
-
-        let destX, destY;
-
-        if (typeof this.wormholeDestination === 'string') {
-            // Find destination object by name
-            const destObj = window.engine?.scene?.gameObjects?.find(obj => obj.name === this.wormholeDestination);
-            if (!destObj) return;
-
-            destX = destObj.position.x;
-            destY = destObj.position.y;
-        } else if (this.wormholeDestination.x !== undefined) {
-            // Direct position
-            destX = this.wormholeDestination.x;
-            destY = this.wormholeDestination.y;
-        } else {
-            return;
-        }
-
-        // Teleport the object
-        physicsModule.gameObject.position.x = destX;
-        physicsModule.gameObject.position.y = destY;
-
-        // Reduce velocity after teleportation
-        physicsModule.velocity.x *= 0.5;
-        physicsModule.velocity.y *= 0.5;
-    }
-
-    // Utility methods
-    getDistance(pos1, pos2) {
-        const dx = pos2.x - pos1.x;
-        const dy = pos2.y - pos1.y;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    getDirection(from, to) {
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
-        const length = Math.sqrt(dx * dx + dy * dy);
-
-        if (length === 0) return { x: 0, y: 0 };
-
-        return { x: dx / length, y: dy / length };
-    }
-
-    getCollisionBounds() {
-        // Account for rotation if needed - for now, axis-aligned bounds
-        const halfWidth = this.collisionWidth / 2;
-        const halfHeight = this.collisionHeight / 2;
-
-        return {
-            left: this.gameObject.position.x - halfWidth,
-            right: this.gameObject.position.x + halfWidth,
-            top: this.gameObject.position.y - halfHeight,
-            bottom: this.gameObject.position.y + halfHeight
-        };
-    }
-
-    getCollisionNormal(otherObject, otherPhysics) {
-        const dx = otherObject.position.x - this.gameObject.position.x;
-        const dy = otherObject.position.y - this.gameObject.position.y;
-        const length = Math.sqrt(dx * dx + dy * dy);
-
-        if (length === 0) return { x: 1, y: 0 };
-
-        return { x: dx / length, y: dy / length };
-    }
-
-    getCollisionPenetration(otherObject, otherPhysics) {
-        if (this.collisionShape === "circle" && otherPhysics.collisionShape === "circle") {
-            const distance = this.getDistance(this.gameObject.position, otherObject.position);
-            const combinedRadius = this.collisionRadius + otherPhysics.collisionRadius;
-            return Math.max(0, combinedRadius - distance);
-        }
-        return 10; // Default penetration for other shapes
-    }
-
-    // Public API methods
-    addForce(x, y) {
-        this.forces.push({ x, y });
-        this.isSleeping = false;
-    }
-
-    addImpulse(x, y) {
-        this.impulses.push({ x, y });
-        this.isSleeping = false;
-    }
-
-    setVelocity(x, y) {
-        this.velocity.x = x;
-        this.velocity.y = y;
-        this.isSleeping = false;
-    }
-
-    getVelocity() {
-        return { x: this.velocity.x, y: this.velocity.y };
-    }
-
-    addConstraint(type, targetObject, options = {}) {
-        this.constraints.push({
-            type,
-            targetObject,
-            ...options
-        });
-    }
-
-    solveConstraint(constraint, deltaTime) {
-        switch (constraint.type) {
-            case "distance":
-                this.solveDistanceConstraint(constraint);
-                break;
-            case "spring":
-                this.solveSpringConstraint(constraint, deltaTime);
-                break;
-        }
-    }
-
-    solveDistanceConstraint(constraint) {
-        const target = constraint.targetObject;
-        const distance = constraint.distance || 100;
-
-        const dx = target.position.x - this.gameObject.position.x;
-        const dy = target.position.y - this.gameObject.position.y;
-        const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-        if (currentDistance === 0) return;
-
-        const difference = distance - currentDistance;
-        const percent = difference / currentDistance / 2;
-        const offsetX = dx * percent;
-        const offsetY = dy * percent;
-
-        this.gameObject.position.x -= offsetX;
-        this.gameObject.position.y -= offsetY;
-        target.position.x += offsetX;
-        target.position.y += offsetY;
-    }
-
-    solveSpringConstraint(constraint, deltaTime) {
-        const target = constraint.targetObject;
-        const restLength = constraint.restLength || 100;
-        const stiffness = constraint.stiffness || 0.1;
-        const damping = constraint.damping || 0.9;
-
-        const dx = target.position.x - this.gameObject.position.x;
-        const dy = target.position.y - this.gameObject.position.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance === 0) return;
-
-        const force = (distance - restLength) * stiffness;
-        const forceX = (dx / distance) * force;
-        const forceY = (dy / distance) * force;
-
-        this.addForce(forceX, forceY);
-
-        const targetPhysics = target.getModule("BasicPhysics");
-        if (targetPhysics) {
-            targetPhysics.addForce(-forceX, -forceY);
-        }
-    }
-
-    onTriggerEnter(otherObject) {
-        // Override this method to handle trigger events
-        console.log(`Trigger entered: ${this.gameObject.name} - ${otherObject.name}`);
-    }
-
-    connectChainTo(targetObject) {
-        this.connectedObject = targetObject;
-    }
-
-    draw(ctx) {
-        // Draw chain
-        if (this.isChainLink && this.chainPoints.length > 1) {
-            this.drawChain(ctx);
-        }
-
-        // Draw wormhole
-        if (this.isWormhole) {
-            this.drawWormhole(ctx);
-        }
-
-        // Draw debug info
-        if (this.showDebugInfo) {
-            this.drawDebugInfo(ctx);
-        }
-    }
-
-    drawChain(ctx) {
-        ctx.save();
-        ctx.strokeStyle = this.chainColor;
-        ctx.lineWidth = this.chainThickness;
-        ctx.lineCap = "round";
-
-        ctx.beginPath();
-        ctx.moveTo(this.chainPoints[0].x, this.chainPoints[0].y);
-
-        for (let i = 1; i < this.chainPoints.length; i++) {
-            ctx.lineTo(this.chainPoints[i].x, this.chainPoints[i].y);
-        }
-
-        ctx.stroke();
-
-        // Draw chain links
-        ctx.fillStyle = this.chainColor;
-        for (let point of this.chainPoints) {
-            ctx.beginPath();
-            ctx.arc(point.x, point.y, this.chainThickness / 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.restore();
-    }
-
-    drawWormhole(ctx) {
-        ctx.save();
-        ctx.translate(this.gameObject.position.x, this.gameObject.position.y);
-
-        // Draw swirling effect
-        ctx.rotate(this.wormholeAngle * Math.PI / 180);
-
-        // Draw influence radius
-        ctx.strokeStyle = "rgba(138, 43, 226, 0.3)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, this.wormholeRadius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // Draw event horizon
-        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-        ctx.beginPath();
-        ctx.arc(0, 0, this.wormholeActivationRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Draw particles
-        ctx.fillStyle = "rgba(138, 43, 226, 0.8)";
-        for (let particle of this.wormholeParticles) {
-            const x = Math.cos(particle.angle) * particle.radius;
-            const y = Math.sin(particle.angle) * particle.radius;
-
-            ctx.beginPath();
-            ctx.arc(x, y, 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.restore();
-    }
-
-    drawDebugInfo(ctx) {
-        ctx.save();
-
-        // Draw collision bounds
-        if (this.showCollisionBounds) {
-            ctx.strokeStyle = this.debugColor;
-            ctx.lineWidth = 1;
-
-            if (this.collisionShape === "circle") {
-                ctx.beginPath();
-                ctx.arc(this.gameObject.position.x, this.gameObject.position.y, this.collisionRadius, 0, Math.PI * 2);
-                ctx.stroke();
-            } else {
-                const bounds = this.getCollisionBounds();
-                ctx.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
-            }
-        }
-
-        // Draw velocity vector
-        if (this.showVelocityVector) {
-            ctx.strokeStyle = "#00FF00";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(this.gameObject.position.x, this.gameObject.position.y);
-            ctx.lineTo(
-                this.gameObject.position.x + this.velocity.x * 0.1,
-                this.gameObject.position.y + this.velocity.y * 0.1
-            );
-            ctx.stroke();
-        }
-
-        // Draw force vectors
-        if (this.showForceVectors) {
-            ctx.strokeStyle = "#FF0000";
-            ctx.lineWidth = 2;
-            for (let force of this.forces) {
-                ctx.beginPath();
-                ctx.moveTo(this.gameObject.position.x, this.gameObject.position.y);
-                ctx.lineTo(
-                    this.gameObject.position.x + force.x * 0.01,
-                    this.gameObject.position.y + force.y * 0.01
-                );
-                ctx.stroke();
-            }
-        }
-
-        ctx.restore();
+        return inside;
     }
 
     toJSON() {
-        const json = super.toJSON();
-
-        // Basic physics
-        json.mass = this.mass;
-        json.friction = this.friction;
-        json.bounciness = this.bounciness;
-        json.gravityScale = this.gravityScale;
-        json.drag = this.drag;
-        json.angularDrag = this.angularDrag;
-
-        // Collision
-        json.isStatic = this.isStatic;
-        json.isTrigger = this.isTrigger;
-        json.collisionShape = this.collisionShape;
-        json.collisionRadius = this.collisionRadius;
-        json.collisionWidth = this.collisionWidth;
-        json.collisionHeight = this.collisionHeight;
-
-        // Chain
-        json.isChainLink = this.isChainLink;
-        json.chainLength = this.chainLength;
-        json.chainSegments = this.chainSegments;
-        json.chainStiffness = this.chainStiffness;
-        json.chainColor = this.chainColor;
-
-        // Wormhole
-        json.isWormhole = this.isWormhole;
-        json.wormholeRadius = this.wormholeRadius;
-        json.wormholePull = this.wormholePull;
-        json.wormholeActivationRadius = this.wormholeActivationRadius;
-
-        // Settings
-        json.enableGravity = this.enableGravity;
-        json.enableCollisions = this.enableCollisions;
-        json.showDebugInfo = this.showDebugInfo;
-
-        return json;
+        return {
+            ...super.toJSON(),
+            mass: this.mass,
+            velocity: this.velocity,
+            angularVelocity: this.angularVelocity,
+            friction: this.friction,
+            angularFriction: this.angularFriction,
+            bounciness: this.bounciness,
+            contactFriction: this.contactFriction,
+            fixedPosition: this.fixedPosition,
+            physicsLayer: this.physicsLayer,
+            colliderType: this.colliderType,
+            colliderRadius: this.colliderRadius,
+            colliderWidth: this.colliderWidth,
+            colliderHeight: this.colliderHeight,
+            gravityEnabled: this.gravityEnabled,
+            gravityMassAffectsOthers: this.gravityMassAffectsOthers,
+            gravityPullRadius: this.gravityPullRadius,
+            gravity: this.gravity
+        };
     }
 
-    fromJSON(json) {
-        try {
-            super.fromJSON(json);
+    fromJSON(data) {
+        super.fromJSON(data);
 
-            // Basic physics
-            if (json.mass !== undefined) this.mass = json.mass;
-            if (json.friction !== undefined) this.friction = json.friction;
-            if (json.bounciness !== undefined) this.bounciness = json.bounciness;
-            if (json.gravityScale !== undefined) this.gravityScale = json.gravityScale;
-            if (json.drag !== undefined) this.drag = json.drag;
-            if (json.angularDrag !== undefined) this.angularDrag = json.angularDrag;
+        if (!data) return;
+        
+        this.mass = data.mass ?? 1.0;
+        this.velocity = data.velocity
+            ? { x: data.velocity.x ?? 0, y: data.velocity.y ?? 0 }
+            : { x: 0, y: 0 };
+        this.gravity = data.gravity
+            ? { x: data.gravity.x ?? 0, y: data.gravity.y ?? 0 }
+            : { x: 0, y: 0 };
+        this.angularVelocity = data.angularVelocity ?? 0;
+        this.friction = data.friction ?? 0.98;
+        this.angularFriction = data.angularFriction ?? 0.95;
+        this.bounciness = data.bounciness ?? 0.7;
+        this.contactFriction = data.contactFriction ?? 0.8;
+        this.fixedPosition = data.fixedPosition ?? false;
+        this.physicsLayer = data.physicsLayer ?? 0;
+        this.colliderType = data.colliderType ?? "circle";
+        this.colliderRadius = data.colliderRadius ?? 10;
+        this.colliderWidth = data.colliderWidth ?? 20;
+        this.colliderHeight = data.colliderHeight ?? 20;
+        this.gravityEnabled = data.gravityEnabled ?? false;
+        this.gravityMassAffectsOthers = data.gravityMassAffectsOthers ?? false;
+        this.gravityPullRadius = data.gravityPullRadius ?? 0;
+        this.drawColliderGizmo = data.drawColliderGizmo !== undefined ? data.drawColliderGizmo : true;
+        this.drawColliderInGame = data.drawColliderInGame !== undefined ? data.drawColliderInGame : false;
 
-            // Collision
-            if (json.isStatic !== undefined) this.isStatic = json.isStatic;
-            if (json.isTrigger !== undefined) this.isTrigger = json.isTrigger;
-            if (json.collisionShape !== undefined) this.collisionShape = json.collisionShape;
-            if (json.collisionRadius !== undefined) this.collisionRadius = json.collisionRadius;
-            if (json.collisionWidth !== undefined) this.collisionWidth = json.collisionWidth;
-            if (json.collisionHeight !== undefined) this.collisionHeight = json.collisionHeight;
-
-            // Chain
-            if (json.isChainLink !== undefined) this.isChainLink = json.isChainLink;
-            if (json.chainLength !== undefined) this.chainLength = json.chainLength;
-            if (json.chainSegments !== undefined) this.chainSegments = json.chainSegments;
-            if (json.chainStiffness !== undefined) this.chainStiffness = json.chainStiffness;
-            if (json.chainColor !== undefined) this.chainColor = json.chainColor;
-
-            // Wormhole
-            if (json.isWormhole !== undefined) this.isWormhole = json.isWormhole;
-            if (json.wormholeRadius !== undefined) this.wormholeRadius = json.wormholeRadius;
-            if (json.wormholePull !== undefined) this.wormholePull = json.wormholePull;
-            if (json.wormholeActivationRadius !== undefined) this.wormholeActivationRadius = json.wormholeActivationRadius;
-
-            // Settings
-            if (json.enableGravity !== undefined) this.enableGravity = json.enableGravity;
-            if (json.enableCollisions !== undefined) this.enableCollisions = json.enableCollisions;
-            if (json.showDebugInfo !== undefined) this.showDebugInfo = json.showDebugInfo;
-
-            // Safely reinitialize systems - remove setTimeout to prevent interference
-            if (this.isChainLink) {
-                try {
-                    this.initializeChain();
-                } catch (e) {
-                    console.warn("Failed to initialize chain on load:", e);
-                }
-            }
-            if (this.isWormhole) {
-                try {
-                    this.initializeWormhole();
-                } catch (e) {
-                    console.warn("Failed to initialize wormhole on load:", e);
-                }
-            }
-        } catch (error) {
-            console.error("Error deserializing BasicPhysics:", error, json);
-            // Reset to safe defaults if deserialization fails
-            this.setupProperties();
-        }
+        // Internal state
+        this.lastCollision = null;
+        this.forces = { x: 0, y: 0 };
     }
 }
 

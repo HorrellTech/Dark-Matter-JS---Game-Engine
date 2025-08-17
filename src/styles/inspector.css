@@ -1192,3 +1192,14 @@ button.remove-vertex:disabled {
     display: flex;
     gap: 5px;
 }
+
+/*.vector-components {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: 8px;
+    gap: 8px;
+    margin-top: 4px;
+    background-color: rgba(40, 40, 40, 0.5);
+    border-radius: 4px;
+}*/

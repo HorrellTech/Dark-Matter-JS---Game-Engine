@@ -643,6 +643,10 @@ class ExportManager {
             // Effects Modules
             'ParticleSystem': 'src/core/Modules/Effects/ParticleSystem.js',
 
+            // Lighting Modules
+            'DarknessModule': 'src/core/Modules/Lighting/DarknessModule.js',
+            'PointLightModule': 'src/core/Modules/Lighting/PointLightModule.js',
+
             // Utility Modules
             'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',

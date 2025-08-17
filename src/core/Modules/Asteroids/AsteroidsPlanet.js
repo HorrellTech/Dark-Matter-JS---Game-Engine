@@ -29,12 +29,19 @@ class AsteroidsPlanet extends Module {
         this.rotationSpeed = 10; // degrees per second for surface rotation
         this.surfaceRotation = 0;
 
+        // Atmospheric glow properties
+        this.atmosphericGlowSize = 0.3; // Multiplier for planet radius
+        this.atmosphericGlowColor = "#87CEEB"; // Sky blue default
+        this.atmosphericGlowIntensity = 0.5; // 0-1 opacity
+        this.enableAtmosphericGlow = true;
+
         // Surface generation with seed
         this.seed = Math.floor(Math.random() * 1000000);
         this.continentCount = 3;
         this.continentSize = 0.3; // 0-1 scale
         this.continentScale = 1.0; // New: Direct scale multiplier for all land features
         this.coastlineRoughness = 0.4;
+        this.concaveStrength = 0.3; // New: Controls how concave some coastline points can be (0-1)
         this.waterLevel = 0.7; // How much of planet is water (affects visual rendering)
         this.use3DRotation = true;
         this.noiseScale = 0.1;
@@ -189,6 +196,48 @@ class AsteroidsPlanet extends Module {
             min: 0.1, max: 3.0, step: 0.1,
             onChange: (val) => {
                 this.continentScale = Math.max(0.1, val);
+                this.generateSurfaceFeatures();
+            }
+        });
+
+        // Add atmospheric glow properties
+        this.exposeProperty("enableAtmosphericGlow", "boolean", true, {
+            description: "Enable atmospheric glow effect around the planet",
+            onChange: (val) => { this.enableAtmosphericGlow = val; }
+        });
+
+        this.exposeProperty("atmosphericGlowSize", "number", 0.3, {
+            description: "Size of atmospheric glow relative to planet radius",
+            min: 0, max: 2.0, step: 0.1,
+            onChange: (val) => { this.atmosphericGlowSize = Math.max(0, val); }
+        });
+
+        this.exposeProperty("atmosphericGlowColor", "color", "#87CEEB", {
+            description: "Color of the atmospheric glow",
+            onChange: (val) => { this.atmosphericGlowColor = val; }
+        });
+
+        this.exposeProperty("atmosphericGlowIntensity", "number", 0.5, {
+            description: "Intensity/opacity of the atmospheric glow (0-1)",
+            min: 0, max: 1, step: 0.1,
+            onChange: (val) => { this.atmosphericGlowIntensity = Math.max(0, Math.min(1, val)); }
+        });
+
+        // Add coastline smoothness properties
+        this.exposeProperty("coastlineSmoothness", "number", 0.6, {
+            description: "How smooth the coastlines are (0=jagged, 1=very smooth)",
+            min: 0, max: 1, step: 0.1,
+            onChange: (val) => {
+                this.coastlineSmoothness = Math.max(0, Math.min(1, val));
+                this.generateSurfaceFeatures();
+            }
+        });
+
+        this.exposeProperty("concaveStrength", "number", 0.3, {
+            description: "Strength of concave coastline features (0=none, 1=very concave)",
+            min: 0, max: 1, step: 0.1,
+            onChange: (val) => {
+                this.concaveStrength = Math.max(0, Math.min(1, val));
                 this.generateSurfaceFeatures();
             }
         });
@@ -358,6 +407,49 @@ class AsteroidsPlanet extends Module {
 
         style.addDivider();
 
+        style.startGroup("Atmospheric Effects", false, {
+            backgroundColor: 'rgba(135,206,235,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("enableAtmosphericGlow", "boolean", this.enableAtmosphericGlow, {
+            description: "Enable atmospheric glow effect around the planet",
+            style: {
+                label: "Enable Glow"
+            }
+        });
+
+        style.exposeProperty("atmosphericGlowSize", "number", this.atmosphericGlowSize, {
+            description: "Size of atmospheric glow relative to planet radius",
+            min: 0, max: 2.0, step: 0.1,
+            style: {
+                label: "Glow Size",
+                slider: true
+            }
+        });
+
+        style.exposeProperty("atmosphericGlowColor", "color", this.atmosphericGlowColor, {
+            description: "Color of the atmospheric glow",
+            style: {
+                label: "Glow Color"
+            }
+        });
+
+        style.exposeProperty("atmosphericGlowIntensity", "number", this.atmosphericGlowIntensity, {
+            description: "Intensity/opacity of the atmospheric glow (0-1)",
+            min: 0, max: 1, step: 0.1,
+            style: {
+                label: "Glow Intensity",
+                slider: true
+            }
+        });
+
+        style.endGroup();
+
+        style.addDivider();
+
+        // Update Surface Generation group to include smoothness properties
         style.startGroup("Surface Generation", false, {
             backgroundColor: 'rgba(100,255,150,0.1)',
             borderRadius: '6px',
@@ -441,6 +533,24 @@ class AsteroidsPlanet extends Module {
             min: 0, max: 0.5, step: 0.05,
             style: {
                 label: "Edge Fade Margin",
+                slider: true
+            }
+        });
+
+        style.exposeProperty("coastlineSmoothness", "number", this.coastlineSmoothness, {
+            description: "How smooth the coastlines are (0=jagged, 1=very smooth)",
+            min: 0, max: 1, step: 0.1,
+            style: {
+                label: "Coastline Smoothness",
+                slider: true
+            }
+        });
+
+        style.exposeProperty("concaveStrength", "number", this.concaveStrength, {
+            description: "Strength of concave coastline features (0=none, 1=very concave)",
+            min: 0, max: 1, step: 0.1,
+            style: {
+                label: "Concave Coastlines",
                 slider: true
             }
         });
@@ -572,25 +682,40 @@ class AsteroidsPlanet extends Module {
                 latitude: (this.seededRandom() - 0.5) * 120,
                 size: (this.continentSize - waterSizeReduction) * this.continentScale * (0.7 + this.seededRandom() * 0.6),
                 points: [],
+                smoothPoints: [], // New: Smoothed bezier control points
                 islandClusters: []
             };
 
             // Ensure minimum size
             continent.size = Math.max(0.1, continent.size);
 
-            // Generate main continent outline points
+            // Generate main continent outline points with concave variations
             const pointCount = 8 + Math.floor(this.seededRandom() * 8);
             for (let j = 0; j < pointCount; j++) {
                 const pointAngle = (j / pointCount) * 360;
                 const baseRadius = this.radius * continent.size * 0.4 * this.continentScale;
                 const radiusVariation = baseRadius * this.coastlineRoughness * (this.seededRandom() - 0.5);
-                const radius = Math.max(baseRadius * 0.3, baseRadius + radiusVariation);
+
+                // Add concave potential - some points can be pulled inward
+                const concaveChance = this.seededRandom();
+                let radius = baseRadius + radiusVariation;
+
+                if (concaveChance < this.concaveStrength) {
+                    // Make this point concave (pulled inward)
+                    const concaveAmount = this.seededRandom() * 0.5 + 0.2; // 20-70% inward
+                    radius = radius * (1 - concaveAmount);
+                }
+
+                radius = Math.max(baseRadius * 0.2, radius); // Ensure minimum radius
 
                 continent.points.push({
                     angle: pointAngle,
                     radius: radius
                 });
             }
+
+            // Generate smooth bezier control points
+            continent.smoothPoints = this.generateSmoothPoints(continent.points);
 
             // Generate smaller island clusters (reduced by water level)
             const maxIslands = Math.max(1, Math.floor((2 + Math.floor(this.seededRandom() * 4)) * (1 - this.waterLevel + 0.2)));
@@ -599,7 +724,8 @@ class AsteroidsPlanet extends Module {
                     longitude: continent.longitude + (this.seededRandom() - 0.5) * 60,
                     latitude: continent.latitude + (this.seededRandom() - 0.5) * 40,
                     size: continent.size * (0.4 + this.seededRandom() * 0.5) * this.continentScale * (1 - waterSizeReduction),
-                    points: []
+                    points: [],
+                    smoothPoints: [] // New: Smoothed bezier control points
                 };
 
                 // Ensure minimum island size
@@ -610,7 +736,17 @@ class AsteroidsPlanet extends Module {
                     const pointAngle = (l / islandPoints) * 360;
                     const baseRadius = this.radius * island.size * 0.25 * this.continentScale;
                     const radiusVariation = baseRadius * 0.5 * (this.seededRandom() - 0.5);
-                    const radius = Math.max(baseRadius * 0.5, baseRadius + radiusVariation);
+
+                    // Add concave potential for islands too
+                    const concaveChance = this.seededRandom();
+                    let radius = baseRadius + radiusVariation;
+
+                    if (concaveChance < this.concaveStrength * 0.7) { // Islands have less concave chance
+                        const concaveAmount = this.seededRandom() * 0.4 + 0.1; // 10-50% inward for islands
+                        radius = radius * (1 - concaveAmount);
+                    }
+
+                    radius = Math.max(baseRadius * 0.3, radius);
 
                     island.points.push({
                         angle: pointAngle,
@@ -618,11 +754,80 @@ class AsteroidsPlanet extends Module {
                     });
                 }
 
+                // Generate smooth points for islands
+                island.smoothPoints = this.generateSmoothPoints(island.points);
+
                 continent.islandClusters.push(island);
             }
 
             this.surfaceFeatures.push(continent);
         }
+    }
+
+    /**
+     * Generate smooth bezier control points for natural coastlines
+     */
+    generateSmoothPoints(points) {
+        if (points.length < 3) return points;
+
+        const smoothPoints = [];
+        const smoothnessFactor = this.coastlineSmoothness;
+
+        for (let i = 0; i < points.length; i++) {
+            const prevPoint = points[(i - 1 + points.length) % points.length];
+            const currentPoint = points[i];
+            const nextPoint = points[(i + 1) % points.length];
+
+            // Convert to cartesian for easier calculation
+            const prevX = Math.cos(prevPoint.angle * Math.PI / 180) * prevPoint.radius;
+            const prevY = Math.sin(prevPoint.angle * Math.PI / 180) * prevPoint.radius;
+            const currX = Math.cos(currentPoint.angle * Math.PI / 180) * currentPoint.radius;
+            const currY = Math.sin(currentPoint.angle * Math.PI / 180) * currentPoint.radius;
+            const nextX = Math.cos(nextPoint.angle * Math.PI / 180) * nextPoint.radius;
+            const nextY = Math.sin(nextPoint.angle * Math.PI / 180) * nextPoint.radius;
+
+            // Calculate control points for bezier curves
+            const cp1Distance = smoothnessFactor * 0.3;
+            const cp2Distance = smoothnessFactor * 0.3;
+
+            // Direction vectors
+            const prevToCurr = { x: currX - prevX, y: currY - prevY };
+            const currToNext = { x: nextX - currX, y: nextY - currY };
+
+            // Normalize and scale
+            const len1 = Math.sqrt(prevToCurr.x * prevToCurr.x + prevToCurr.y * prevToCurr.y);
+            const len2 = Math.sqrt(currToNext.x * currToNext.x + currToNext.y * currToNext.y);
+
+            if (len1 > 0) {
+                prevToCurr.x /= len1;
+                prevToCurr.y /= len1;
+            }
+            if (len2 > 0) {
+                currToNext.x /= len2;
+                currToNext.y /= len2;
+            }
+
+            // Calculate control points
+            const controlPoint1 = {
+                x: currX - prevToCurr.x * cp1Distance * currentPoint.radius,
+                y: currY - prevToCurr.y * cp1Distance * currentPoint.radius
+            };
+
+            const controlPoint2 = {
+                x: currX + currToNext.x * cp2Distance * currentPoint.radius,
+                y: currY + currToNext.y * cp2Distance * currentPoint.radius
+            };
+
+            smoothPoints.push({
+                point: { x: currX, y: currY },
+                controlPoint1: controlPoint1,
+                controlPoint2: controlPoint2,
+                angle: currentPoint.angle,
+                radius: currentPoint.radius
+            });
+        }
+
+        return smoothPoints;
     }
 
     /**
@@ -716,7 +921,7 @@ class AsteroidsPlanet extends Module {
             const baseSpeed = Math.abs(this.orbitSpeed) * 10; // Base speed proportional to orbit speed
             const distanceBasedSpeed = Math.min(distance * 5, baseSpeed * 2); // Speed based on distance
             const moveSpeed = Math.max(baseSpeed, distanceBasedSpeed); // Use the higher of the two
-            
+
             const moveX = (dx / distance) * moveSpeed * deltaTime;
             const moveY = (dy / distance) * moveSpeed * deltaTime;
 
@@ -813,7 +1018,7 @@ class AsteroidsPlanet extends Module {
 
             if (distance > 0 && distance <= effectiveGravRange) {
                 // Check for collision with planet surface (using scaled radius)
-                if (distance <= effectiveRadius) {
+                if (distance <= effectiveRadius + this.getObjectRadius(obj)) {
                     this.handlePlanetCollision(obj, dx, dy, distance, effectiveRadius);
                     continue;
                 }
@@ -843,37 +1048,60 @@ class AsteroidsPlanet extends Module {
     }
 
     /**
+     * Get the collision radius of an object
+     */
+    getObjectRadius(obj) {
+        const shipModule = obj.getModule("PlayerShip") || obj.getModule("EnemyShip");
+        if (shipModule) {
+            return shipModule.shipSize || 10;
+        }
+
+        const bulletModule = obj.getModule("AsteroidsBullet");
+        if (bulletModule) {
+            return bulletModule.size || 2;
+        }
+
+        return 5; // Default radius
+    }
+
+    /**
      * Handle collision between an object and the planet surface
      */
     handlePlanetCollision(obj, dx, dy, distance, effectiveRadius = null) {
         const shipModule = obj.getModule("PlayerShip") || obj.getModule("EnemyShip");
         const bulletModule = obj.getModule("AsteroidsBullet");
-        
+
         // Use effective radius if provided, otherwise calculate it
         const gameObjectScale = this.gameObject.scale || 1;
         const planetRadius = effectiveRadius || (this.radius * gameObjectScale);
+        const objectRadius = this.getObjectRadius(obj);
 
         if (shipModule && shipModule.velocity) {
             // Calculate bounce direction (away from planet center)
             const normalX = dx / distance;
             const normalY = dy / distance;
 
-            // Calculate bounce strength based on approach velocity
-            const approachVelocity = -(shipModule.velocity.x * normalX + shipModule.velocity.y * normalY);
-            const bounceStrength = Math.max(100, approachVelocity * 1.5); // Minimum bounce + velocity-based
+            // Calculate approach velocity
+            const approachVelocityX = shipModule.velocity.x * normalX;
+            const approachVelocityY = shipModule.velocity.y * normalY;
+            const approachSpeed = Math.abs(approachVelocityX + approachVelocityY);
+
+            // Calculate bounce strength with restitution
+            const restitution = 0.6; // Bounce dampening factor
+            const bounceStrength = Math.max(50, approachSpeed * restitution);
 
             // Apply bounce velocity
             shipModule.velocity.x = normalX * bounceStrength;
             shipModule.velocity.y = normalY * bounceStrength;
 
-            // Push object outside planet radius (using scaled radius)
-            const pushDistance = planetRadius - distance + 5; // 5 pixel buffer
+            // Push object outside planet radius
+            const pushDistance = (planetRadius + objectRadius) - distance + 2;
             obj.position.x += normalX * pushDistance;
             obj.position.y += normalY * pushDistance;
 
             // Optional: Take damage from collision
             if (shipModule.takeDamage) {
-                const collisionDamage = Math.min(10, Math.max(1, approachVelocity * 0.1));
+                const collisionDamage = Math.min(15, Math.max(2, approachSpeed * 0.1));
                 shipModule.takeDamage(collisionDamage);
             }
 
@@ -882,20 +1110,24 @@ class AsteroidsPlanet extends Module {
             const normalX = dx / distance;
             const normalY = dy / distance;
 
-            const approachVelocity = -(bulletModule.velocity.x * normalX + bulletModule.velocity.y * normalY);
-            const bounceStrength = approachVelocity * 0.7; // Bullets lose energy on bounce
+            const approachVelocityX = bulletModule.velocity.x * normalX;
+            const approachVelocityY = bulletModule.velocity.y * normalY;
+            const approachSpeed = Math.abs(approachVelocityX + approachVelocityY);
+
+            const restitution = 0.4; // Less bouncy for bullets
+            const bounceStrength = approachSpeed * restitution;
 
             bulletModule.velocity.x = normalX * bounceStrength;
             bulletModule.velocity.y = normalY * bounceStrength;
 
-            // Push bullet outside planet radius (using scaled radius)
-            const pushDistance = planetRadius - distance + 2;
+            // Push bullet outside planet radius
+            const pushDistance = (planetRadius + objectRadius) - distance + 1;
             obj.position.x += normalX * pushDistance;
             obj.position.y += normalY * pushDistance;
 
-            // Optional: Damage bullet or destroy it
+            // Reduce bullet damage/lifetime on bounce
             if (bulletModule.damage) {
-                bulletModule.damage -= 1; // Reduce damage on bounce
+                bulletModule.damage -= 1;
                 if (bulletModule.damage <= 0 && obj.destroy) {
                     obj.destroy();
                 }
@@ -905,6 +1137,11 @@ class AsteroidsPlanet extends Module {
 
     draw(ctx) {
         ctx.save();
+
+        // Draw atmospheric glow first (behind planet)
+        if (this.enableAtmosphericGlow && this.atmosphericGlowSize > 0) {
+            this.drawAtmosphericGlow(ctx);
+        }
 
         // Draw planet base with water level affecting the base color
         const waterAlpha = 0.3 + (this.waterLevel * 0.7); // More water = more blue
@@ -959,6 +1196,66 @@ class AsteroidsPlanet extends Module {
         }
 
         ctx.restore();
+    }
+
+    /**
+     * Draw atmospheric glow effect
+     */
+    drawAtmosphericGlow(ctx) {
+        // Ensure we have valid values for scale and radius
+        const gameObjectScale = (this.gameObject && typeof this.gameObject.scale === 'number' && isFinite(this.gameObject.scale))
+            ? this.gameObject.scale
+            : 1;
+
+        const baseRadius = typeof this.radius === 'number' && isFinite(this.radius) ? this.radius : 50;
+        const glowSize = typeof this.atmosphericGlowSize === 'number' && isFinite(this.atmosphericGlowSize)
+            ? this.atmosphericGlowSize
+            : 0.3;
+
+        const innerRadius = baseRadius * gameObjectScale;
+        const glowRadius = innerRadius * (1 + glowSize);
+
+        // Additional safety check for finite values
+        if (!isFinite(innerRadius) || !isFinite(glowRadius) || innerRadius <= 0 || glowRadius <= 0) {
+            return; // Skip drawing if we have invalid values
+        }
+
+        // Create radial gradient for glow effect
+        const gradient = ctx.createRadialGradient(0, 0, innerRadius, 0, 0, glowRadius);
+
+        // Parse the glow color to add alpha
+        const glowColor = this.atmosphericGlowColor;
+        let r, g, b;
+
+        if (glowColor && glowColor.startsWith('#')) {
+            const hex = glowColor.slice(1);
+            if (hex.length >= 6) {
+                r = parseInt(hex.substr(0, 2), 16);
+                g = parseInt(hex.substr(2, 2), 16);
+                b = parseInt(hex.substr(4, 2), 16);
+            } else {
+                // Fallback for invalid hex
+                r = 135; g = 206; b = 235;
+            }
+        } else {
+            // Fallback to sky blue if color parsing fails
+            r = 135; g = 206; b = 235;
+        }
+
+        // Ensure intensity is valid
+        const intensity = typeof this.atmosphericGlowIntensity === 'number' && isFinite(this.atmosphericGlowIntensity)
+            ? Math.max(0, Math.min(1, this.atmosphericGlowIntensity))
+            : 0.5;
+
+        // Create gradient stops
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity * 0.1})`);
+        gradient.addColorStop(0.7, `rgba(${r}, ${g}, ${b}, ${intensity * 0.05})`);
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     /**
@@ -1019,22 +1316,26 @@ class AsteroidsPlanet extends Module {
         ctx.save();
         ctx.translate(finalX, finalY);
         ctx.scale(position.scale, position.scale);
-        ctx.globalAlpha = smoothVisibility * 0.85; // Slightly reduced max opacity
+        ctx.globalAlpha = smoothVisibility * 0.99; // Slightly reduced max opacity
 
-        // Draw continent shape
-        if (continent.points.length > 0) {
+        // Draw continent shape with smooth bezier curves
+        if (continent.smoothPoints && continent.smoothPoints.length > 0) {
             ctx.beginPath();
-            const firstPoint = continent.points[0];
-            const firstX = Math.cos(firstPoint.angle * Math.PI / 180) * firstPoint.radius;
-            const firstY = Math.sin(firstPoint.angle * Math.PI / 180) * firstPoint.radius;
-            ctx.moveTo(firstX, firstY);
+            const firstPoint = continent.smoothPoints[0];
+            ctx.moveTo(firstPoint.point.x, firstPoint.point.y);
 
-            for (let i = 1; i < continent.points.length; i++) {
-                const point = continent.points[i];
-                const x = Math.cos(point.angle * Math.PI / 180) * point.radius;
-                const y = Math.sin(point.angle * Math.PI / 180) * point.radius;
-                ctx.lineTo(x, y);
+            for (let i = 0; i < continent.smoothPoints.length; i++) {
+                const currentPoint = continent.smoothPoints[i];
+                const nextPoint = continent.smoothPoints[(i + 1) % continent.smoothPoints.length];
+
+                // Use bezier curve to next point
+                ctx.bezierCurveTo(
+                    currentPoint.controlPoint2.x, currentPoint.controlPoint2.y,
+                    nextPoint.controlPoint1.x, nextPoint.controlPoint1.y,
+                    nextPoint.point.x, nextPoint.point.y
+                );
             }
+
             ctx.closePath();
             ctx.fill();
         }
@@ -1053,7 +1354,7 @@ class AsteroidsPlanet extends Module {
 
         // Much smoother visibility transition with wider range
         const smoothVisibility = this.smoothStep(0.25, 0.9, position.visibility);
-        
+
         // Reduced noise frequency and amplitude to prevent jittery movement
         const noiseTime = currentTime * 0.005; // Much slower animation
         const noiseOffset = this.fractalNoise(
@@ -1067,20 +1368,24 @@ class AsteroidsPlanet extends Module {
         ctx.scale(position.scale * 0.8, position.scale * 0.8);
         ctx.globalAlpha = smoothVisibility * 0.7; // Reduced max opacity
 
-        // Draw island shape
-        if (island.points.length > 0) {
+        // Draw island shape with smooth bezier curves
+        if (island.smoothPoints && island.smoothPoints.length > 0) {
             ctx.beginPath();
-            const firstPoint = island.points[0];
-            const firstX = Math.cos(firstPoint.angle * Math.PI / 180) * firstPoint.radius;
-            const firstY = Math.sin(firstPoint.angle * Math.PI / 180) * firstPoint.radius;
-            ctx.moveTo(firstX, firstY);
+            const firstPoint = island.smoothPoints[0];
+            ctx.moveTo(firstPoint.point.x, firstPoint.point.y);
 
-            for (let i = 1; i < island.points.length; i++) {
-                const point = island.points[i];
-                const x = Math.cos(point.angle * Math.PI / 180) * point.radius;
-                const y = Math.sin(point.angle * Math.PI / 180) * point.radius;
-                ctx.lineTo(x, y);
+            for (let i = 0; i < island.smoothPoints.length; i++) {
+                const currentPoint = island.smoothPoints[i];
+                const nextPoint = island.smoothPoints[(i + 1) % island.smoothPoints.length];
+
+                // Use bezier curve to next point
+                ctx.bezierCurveTo(
+                    currentPoint.controlPoint2.x, currentPoint.controlPoint2.y,
+                    nextPoint.controlPoint1.x, nextPoint.controlPoint1.y,
+                    nextPoint.point.x, nextPoint.point.y
+                );
             }
+
             ctx.closePath();
             ctx.fill();
         }
@@ -1203,7 +1508,7 @@ class AsteroidsPlanet extends Module {
 
         // Reduced visibility threshold for smoother transitions
         const adjustedThreshold = this.visibilityThreshold * 0.5;
-        
+
         if (z3d > adjustedThreshold) {
             // Much smoother depth visibility curve
             const depthVisibility = (z3d - adjustedThreshold) / (1 - adjustedThreshold);
@@ -1281,6 +1586,7 @@ class AsteroidsPlanet extends Module {
 
     toJSON() {
         return {
+            ...super.toJSON(),
             mass: this.mass,
             radius: this.radius,
             originalRadius: this.originalRadius,
@@ -1300,11 +1606,17 @@ class AsteroidsPlanet extends Module {
             seed: this.seed,
             continentCount: this.continentCount,
             continentScale: this.continentScale,
+            coastlineSmoothness: this.coastlineSmoothness,
+            concaveStrength: this.concaveStrength,
             waterLevel: this.waterLevel,
             use3DRotation: this.use3DRotation,
             noiseScale: this.noiseScale,
             noiseStrength: this.noiseStrength,
             edgeFadeMargin: this.edgeFadeMargin,
+            enableAtmosphericGlow: this.enableAtmosphericGlow,
+            atmosphericGlowSize: this.atmosphericGlowSize,
+            atmosphericGlowColor: this.atmosphericGlowColor,
+            atmosphericGlowIntensity: this.atmosphericGlowIntensity,
             health: this.health,
             maxHealth: this.maxHealth,
             isDestroying: this.isDestroying,
@@ -1313,19 +1625,70 @@ class AsteroidsPlanet extends Module {
     }
 
     fromJSON(data) {
-        Object.assign(this, data);
+        super.fromJSON(data);
+
+        if (!data) return;
+
+        // Restore all properties with fallback defaults
+        this.mass = data.mass ?? 1000;
+        this.radius = data.radius ?? 50;
+        this.originalRadius = data.originalRadius ?? this.radius;
+        this.gravitationalConstant = data.gravitationalConstant ?? 100;
+        this.gravitationalRange = data.gravitationalRange ?? 200;
+        this.orbitTargetName = data.orbitTargetName ?? "";
+        this.orbitSpeed = data.orbitSpeed ?? 30;
+        this.orbitDistance = data.orbitDistance ?? 0;
+        this.orbitAngle = data.orbitAngle ?? 0;
+        this.planetDetectionRadius = data.planetDetectionRadius ?? 300;
+        this.planetInteractionStrength = data.planetInteractionStrength ?? 0.5;
+        this.planetColor = data.planetColor ?? "#4a90e2";
+        this.waterColor = data.waterColor ?? "#2171b5";
+        this.landColor = data.landColor ?? "#8fbc8f";
+        this.rotationSpeed = data.rotationSpeed ?? 10;
+        this.surfaceRotation = data.surfaceRotation ?? 0;
+        this.seed = data.seed ?? Math.floor(Math.random() * 1000000);
+        this.continentCount = data.continentCount ?? 3;
+        this.continentScale = data.continentScale ?? 1.0;
+        this.coastlineSmoothness = data.coastlineSmoothness ?? 0.6;
+        this.concaveStrength = data.concaveStrength ?? 0.3;
+        this.waterLevel = data.waterLevel ?? 0.7;
+        this.use3DRotation = data.use3DRotation ?? true;
+        this.noiseScale = data.noiseScale ?? 0.1;
+        this.noiseStrength = data.noiseStrength ?? 0.3;
+        this.edgeFadeMargin = data.edgeFadeMargin ?? 0.2;
+        this.visibilityThreshold = data.visibilityThreshold ?? 0.1;
+        this.enableAtmosphericGlow = data.enableAtmosphericGlow ?? true;
+        this.atmosphericGlowSize = data.atmosphericGlowSize ?? 0.3;
+        this.atmosphericGlowColor = data.atmosphericGlowColor ?? "#87CEEB";
+        this.atmosphericGlowIntensity = data.atmosphericGlowIntensity ?? 0.5;
+        this.health = data.health ?? 100;
+        this.maxHealth = data.maxHealth ?? 100;
+        this.isDestroying = data.isDestroying ?? false;
+
+        // Restore velocity as object
         if (data.velocity) {
-            this.velocity = { x: data.velocity.x || 0, y: data.velocity.y || 0 };
+            this.velocity = {
+                x: data.velocity.x ?? 0,
+                y: data.velocity.y ?? 0
+            };
+        } else {
+            this.velocity = { x: 0, y: 0 };
         }
+
+        // Internal state
         this.affectedObjects = new Set();
+        this.orbitTarget = null;
+        this.orbitCenter = { x: 0, y: 0 };
 
-        // Set defaults for new properties
-        this.continentScale = data.continentScale || 1.0;
-        this.edgeFadeMargin = data.edgeFadeMargin || 0.2;
-        this.visibilityThreshold = 0.1;
-
+        // Re-initialize random generator and surface features
         this.initializeRandomGenerator();
         this.generateSurfaceFeatures();
+
+        // Restore references after all game objects are loaded
+        setTimeout(() => {
+            this.findOrbitTarget();
+            if (this.orbitTarget) this.initializeOrbit();
+        }, 0);
     }
 }
 

@@ -43,126 +43,195 @@ class Text extends Module {
         
         // Expose properties
         this.exposeProperty("text", "string", this.text, {
-            description: "Text to display"
+            description: "Text to display",
+            onchange: (val) => {
+                this.setText(val);
+            }
         });
         
         this.exposeProperty("fontSize", "number", this.fontSize, {
             min: 8,
             max: 128,
             step: 1,
-            description: "Font size in pixels"
+            description: "Font size in pixels",
+            onchange: (val) => {
+                this.fontSize = val;
+            }
         });
         
         this.exposeProperty("fontFamily", "string", this.fontFamily, {
-            description: "Font family (e.g., Arial, Times New Roman)"
+            description: "Font family (e.g., Arial, Times New Roman)",
+            onchange: (val) => {
+                this.fontFamily = val;
+            }
         });
         
         this.exposeProperty("fontWeight", "enum", this.fontWeight, {
             options: ["normal", "bold", "lighter", "bolder"],
-            description: "Font weight"
+            description: "Font weight",
+            onchange: (val) => {
+                this.fontWeight = val;
+            }
         });
         
         this.exposeProperty("fontStyle", "enum", this.fontStyle, {
             options: ["normal", "italic", "oblique"],
-            description: "Font style"
+            description: "Font style",
+            onchange: (val) => {
+                this.fontStyle = val;
+            }
         });
         
         this.exposeProperty("color", "color", this.color, {
-            description: "Text color"
+            description: "Text color",
+            onchange: (val) => {
+                this.color = val;
+            }
         });
         
         this.exposeProperty("textAlign", "enum", this.textAlign, {
             options: ["left", "center", "right", "start", "end"],
-            description: "Text alignment"
+            description: "Text alignment",
+            onchange: (val) => {
+                this.textAlign = val;
+            }
         });
         
         this.exposeProperty("textBaseline", "enum", this.textBaseline, {
             options: ["top", "hanging", "middle", "alphabetic", "ideographic", "bottom"],
-            description: "Text baseline"
+            description: "Text baseline",
+            onchange: (val) => {
+                this.textBaseline = val;
+            }
         });
         
         this.exposeProperty("maxWidth", "number", this.maxWidth, {
             min: 0,
             max: 1000,
             step: 1,
-            description: "Maximum width (0 = no limit)"
+            description: "Maximum width (0 = no limit)",
+            onchange: (val) => {
+                this.maxWidth = val;
+            }
         });
         
         this.exposeProperty("lineHeight", "number", this.lineHeight, {
             min: 0.5,
             max: 3,
             step: 0.1,
-            description: "Line height multiplier"
+            description: "Line height multiplier",
+            onchange: (val) => {
+                this.lineHeight = val;
+            }
         });
         
         this.exposeProperty("wordWrap", "boolean", this.wordWrap, {
-            description: "Enable word wrapping"
+            description: "Enable word wrapping",
+            onchange: (val) => {
+                this.wordWrap = val;
+            }
         });
         
         this.exposeProperty("showBackground", "boolean", this.showBackground, {
-            description: "Show background behind text"
+            description: "Show background behind text",
+            onchange: (val) => {
+                this.showBackground = val;
+            }
         });
         
         this.exposeProperty("backgroundColor", "color", this.backgroundColor, {
-            description: "Background color"
+            description: "Background color",
+            onchange: (val) => {
+                this.backgroundColor = val;
+            }
         });
         
         this.exposeProperty("backgroundPadding", "number", this.backgroundPadding, {
             min: 0,
             max: 50,
             step: 1,
-            description: "Background padding in pixels"
+            description: "Background padding in pixels",
+            onchange: (val) => {
+                this.backgroundPadding = val;
+            }
         });
         
         this.exposeProperty("backgroundRadius", "number", this.backgroundRadius, {
             min: 0,
             max: 50,
             step: 1,
-            description: "Background border radius"
+            description: "Background border radius",
+            onchange: (val) => {
+                this.backgroundRadius = val;
+            }
         });
         
         this.exposeProperty("showOutline", "boolean", this.showOutline, {
-            description: "Show text outline"
+            description: "Show text outline",
+            onchange: (val) => {
+                this.showOutline = val;
+            }
         });
         
         this.exposeProperty("outlineColor", "color", this.outlineColor, {
-            description: "Outline color"
+            description: "Outline color",
+            onchange: (val) => {
+                this.outlineColor = val;
+            }
         });
         
         this.exposeProperty("outlineWidth", "number", this.outlineWidth, {
             min: 1,
             max: 10,
             step: 1,
-            description: "Outline width in pixels"
+            description: "Outline width in pixels",
+            onchange: (val) => {
+                this.outlineWidth = val;
+            }
         });
         
         this.exposeProperty("showShadow", "boolean", this.showShadow, {
-            description: "Show text shadow"
+            description: "Show text shadow",
+            onchange: (val) => {
+                this.showShadow = val;
+            }
         });
         
         this.exposeProperty("shadowColor", "color", this.shadowColor, {
-            description: "Shadow color"
+            description: "Shadow color",
+            onchange: (val) => {
+                this.shadowColor = val;
+            }
         });
         
         this.exposeProperty("shadowOffsetX", "number", this.shadowOffsetX, {
             min: -20,
             max: 20,
             step: 1,
-            description: "Shadow X offset"
+            description: "Shadow X offset",
+            onchange: (val) => {
+                this.shadowOffsetX = val;
+            }
         });
         
         this.exposeProperty("shadowOffsetY", "number", this.shadowOffsetY, {
             min: -20,
             max: 20,
             step: 1,
-            description: "Shadow Y offset"
+            description: "Shadow Y offset",
+            onchange: (val) => {
+                this.shadowOffsetY = val;
+            }
         });
         
         this.exposeProperty("shadowBlur", "number", this.shadowBlur, {
             min: 0,
             max: 20,
             step: 1,
-            description: "Shadow blur amount"
+            description: "Shadow blur amount",
+            onchange: (val) => {
+                this.shadowBlur = val;
+            }
         });
     }
     

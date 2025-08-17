@@ -12,6 +12,7 @@ class PlayerShip extends Module {
         this.maxSpeed = 400;
         this.friction = 0.98;
         this.angularFriction = 0.95;
+        this.mass = 1.0;
 
         // Controls
         this.thrustKey = "arrowup";
@@ -71,6 +72,14 @@ class PlayerShip extends Module {
             description: "Angular friction (0-1, closer to 1 = less friction)",
             onChange: (val) => {
                 this.angularFriction = Math.max(0, Math.min(1, val));
+            }
+        });
+
+        this.exposeProperty("mass", "number", 1.0, {
+            description: "Mass of the ship (affects gravity and collisions)",
+            min: 0.1, max: 10, step: 0.1,
+            onChange: (val) => {
+                this.mass = Math.max(0.1, val);
             }
         });
 
@@ -177,6 +186,7 @@ class PlayerShip extends Module {
     loop(deltaTime) {
         this.handleInput(deltaTime);
         this.updatePhysics(deltaTime);
+        this.checkShipCollisions(deltaTime);
         //this.applyScreenWrapping();
     }
 
@@ -499,13 +509,98 @@ class PlayerShip extends Module {
         this.bulletPrefabName = prefabName;
     }
 
+    
+
+    /**
+ * Check for collisions with other ships
+ */
+    checkShipCollisions(deltaTime) {
+        if (!window.engine || !window.engine.gameObjects) return;
+
+        for (const obj of window.engine.gameObjects) {
+            if (obj === this.gameObject) continue;
+
+            const otherShipModule = obj.getModule("PlayerShip") || obj.getModule("EnemyShip");
+            if (!otherShipModule) continue;
+
+            const dx = obj.position.x - this.gameObject.position.x;
+            const dy = obj.position.y - this.gameObject.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            const thisRadius = this.shipSize;
+            const otherRadius = otherShipModule.shipSize || 10;
+            const collisionDistance = thisRadius + otherRadius;
+
+            if (distance > 0 && distance < collisionDistance) {
+                this.handleShipCollision(obj, otherShipModule, dx, dy, distance);
+            }
+        }
+    }
+
+    /**
+     * Handle collision between this ship and another ship
+     */
+    handleShipCollision(otherShip, otherShipModule, dx, dy, distance) {
+        // Calculate collision normal
+        const normalX = dx / distance;
+        const normalY = dy / distance;
+
+        // Calculate relative velocity
+        const relativeVelX = otherShipModule.velocity.x - this.velocity.x;
+        const relativeVelY = otherShipModule.velocity.y - this.velocity.y;
+
+        // Calculate relative velocity along normal
+        const relativeVelNormal = relativeVelX * normalX + relativeVelY * normalY;
+
+        // Don't resolve if velocities are separating
+        if (relativeVelNormal > 0) return;
+
+        // Calculate restitution (bounciness)
+        const restitution = 0.7;
+
+        // Calculate impulse scalar
+        const impulseScalar = -(1 + restitution) * relativeVelNormal / (1 / this.mass + 1 / otherShipModule.mass);
+
+        // Apply impulse
+        const impulseX = impulseScalar * normalX;
+        const impulseY = impulseScalar * normalY;
+
+        this.velocity.x -= (impulseX / this.mass);
+        this.velocity.y -= (impulseY / this.mass);
+        otherShipModule.velocity.x += (impulseX / otherShipModule.mass);
+        otherShipModule.velocity.y += (impulseY / otherShipModule.mass);
+
+        // Separate overlapping ships
+        const overlap = (this.shipSize + otherShipModule.shipSize) - distance;
+        const separationX = normalX * (overlap * 0.5 + 1);
+        const separationY = normalY * (overlap * 0.5 + 1);
+
+        this.gameObject.position.x -= separationX;
+        this.gameObject.position.y -= separationY;
+        otherShip.position.x += separationX;
+        otherShip.position.y += separationY;
+
+        // Optional: Add some damage from collision
+        const collisionForce = Math.sqrt(impulseX * impulseX + impulseY * impulseY);
+        if (this.takeDamage && collisionForce > 10) {
+            const damage = Math.min(5, collisionForce * 0.1);
+            this.takeDamage(damage);
+        }
+        if (otherShipModule.takeDamage && collisionForce > 10) {
+            const damage = Math.min(5, collisionForce * 0.1);
+            otherShipModule.takeDamage(damage);
+        }
+    }
+
     toJSON() {
         return {
+            ...super.toJSON(),
             thrustPower: this.thrustPower,
             rotationSpeed: this.rotationSpeed,
             maxSpeed: this.maxSpeed,
             friction: this.friction,
             angularFriction: this.angularFriction,
+            mass: this.mass,
             thrustKey: this.thrustKey,
             leftKey: this.leftKey,
             rightKey: this.rightKey,
@@ -526,15 +621,20 @@ class PlayerShip extends Module {
     }
 
     fromJSON(data) {
+        super.fromJSON(data);
+
+        if (!data) return;
+
         this.thrustPower = data.thrustPower || 300;
         this.rotationSpeed = data.rotationSpeed || 180;
         this.maxSpeed = data.maxSpeed || 400;
         this.friction = data.friction || 0.98;
         this.angularFriction = data.angularFriction || 0.95;
+        this.mass = data.mass || 1.0;
         this.thrustKey = data.thrustKey || "arrowup";
         this.leftKey = data.leftKey || "arrowleft";
         this.rightKey = data.rightKey || "arrowright";
-        this.fireKey = data.fireKey || " "; // Changed default to space character
+        this.fireKey = data.fireKey || " ";
         this.bulletPrefabName = data.bulletPrefabName || "PlayerBullet";
         this.fireRate = data.fireRate || 5;
         this.bulletSpeed = data.bulletSpeed || 600;
@@ -543,7 +643,7 @@ class PlayerShip extends Module {
         this.shipColor = data.shipColor || "#00ff00";
         this.thrustColor = data.thrustColor || "#ff4400";
         this.shipSize = data.shipSize || 12;
-        this.showThrust = data.showThift !== undefined ? data.showThrust : true;
+        this.showThrust = data.showThrift !== undefined ? data.showThrust : true;
 
         if (data.velocity) {
             this.velocity = { x: data.velocity.x || 0, y: data.velocity.y || 0 };

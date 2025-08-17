@@ -460,6 +460,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Sync game object positions from engine to editor
                 if (engine.running) {
                     //syncGameToEditor();
+                    engine.stop();
                 }
                 editor.refreshCanvas();
             }

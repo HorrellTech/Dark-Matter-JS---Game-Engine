@@ -12,6 +12,7 @@ class EnemyShip extends Module {
         this.maxSpeed = 350;
         this.friction = 0.98;
         this.angularFriction = 0.95;
+        this.mass = 0.8;
 
         // AI Behavior properties
         this.targetName = "Player"; // Name of GameObject to pursue
@@ -53,7 +54,7 @@ class EnemyShip extends Module {
         this.lastBehaviorChange = 0;
         this.currentTarget = null;
         this.targetPosition = { x: 0, y: 0 };
-        
+
         // AI State
         this.aiState = "random"; // "random", "pursuing", "rotating", "thrusting", "idle"
         this.desiredAngle = 0;
@@ -93,6 +94,14 @@ class EnemyShip extends Module {
             description: "Angular friction (0-1, closer to 1 = less friction)",
             min: 0, max: 1, step: 0.01,
             onChange: (val) => { this.angularFriction = Math.max(0, Math.min(1, val)); }
+        });
+
+        this.exposeProperty("mass", "number", 0.8, {
+            description: "Mass of the ship (affects gravity and collisions)",
+            min: 0.1, max: 10, step: 0.1,
+            onChange: (val) => {
+                this.mass = Math.max(0.1, val);
+            }
         });
 
         this.exposeProperty("targetName", "string", "Player", {
@@ -162,7 +171,7 @@ class EnemyShip extends Module {
         this.exposeProperty("shipSize", "number", 10, {
             description: "Size of the ship",
             min: 2, max: 50,
-            onChange: (val) => { 
+            onChange: (val) => {
                 this.shipSize = Math.max(2, val);
                 this.generateShapeVertices();
             }
@@ -171,7 +180,7 @@ class EnemyShip extends Module {
         this.exposeProperty("shapeType", "select", "polygon", {
             description: "Type of ship shape",
             options: ["polygon", "diamond", "triangle", "star"],
-            onChange: (val) => { 
+            onChange: (val) => {
                 this.shapeType = val;
                 this.generateShapeVertices();
             }
@@ -180,7 +189,7 @@ class EnemyShip extends Module {
         this.exposeProperty("shapePoints", "number", 6, {
             description: "Number of points for polygon/star shapes",
             min: 3, max: 12,
-            onChange: (val) => { 
+            onChange: (val) => {
                 this.shapePoints = Math.max(3, Math.min(12, val));
                 this.generateShapeVertices();
             }
@@ -189,7 +198,7 @@ class EnemyShip extends Module {
         this.exposeProperty("shapeRandomness", "number", 0.2, {
             description: "How much randomness in the shape (0-1)",
             min: 0, max: 1, step: 0.01,
-            onChange: (val) => { 
+            onChange: (val) => {
                 this.shapeRandomness = Math.max(0, Math.min(1, val));
                 this.generateShapeVertices();
             }
@@ -197,7 +206,7 @@ class EnemyShip extends Module {
 
         this.exposeProperty("shapeSymmetry", "boolean", true, {
             description: "Whether the shape should be symmetrical",
-            onChange: (val) => { 
+            onChange: (val) => {
                 this.shapeSymmetry = val;
                 this.generateShapeVertices();
             }
@@ -218,7 +227,7 @@ class EnemyShip extends Module {
 
     generateShapeVertices() {
         this.shapeVertices = [];
-        
+
         switch (this.shapeType) {
             case "triangle":
                 this.generateTriangleShape();
@@ -242,7 +251,7 @@ class EnemyShip extends Module {
             { x: this.shipSize * 0.7, y: this.shipSize * 0.7 },
             { x: -this.shipSize * 0.7, y: this.shipSize * 0.7 }
         ];
-        
+
         this.shapeVertices = this.applyShapeRandomness(basePoints);
     }
 
@@ -253,14 +262,14 @@ class EnemyShip extends Module {
             { x: 0, y: this.shipSize },
             { x: -this.shipSize * 0.7, y: 0 }
         ];
-        
+
         this.shapeVertices = this.applyShapeRandomness(basePoints);
     }
 
     generatePolygonShape() {
         const basePoints = [];
         const angleStep = (Math.PI * 2) / this.shapePoints;
-        
+
         for (let i = 0; i < this.shapePoints; i++) {
             const angle = i * angleStep - Math.PI / 2; // Start from top
             const radius = this.shipSize;
@@ -269,7 +278,7 @@ class EnemyShip extends Module {
                 y: Math.sin(angle) * radius
             });
         }
-        
+
         this.shapeVertices = this.applyShapeRandomness(basePoints);
     }
 
@@ -278,7 +287,7 @@ class EnemyShip extends Module {
         const angleStep = (Math.PI * 2) / this.shapePoints;
         const outerRadius = this.shipSize;
         const innerRadius = this.shipSize * 0.5;
-        
+
         for (let i = 0; i < this.shapePoints * 2; i++) {
             const angle = i * (angleStep / 2) - Math.PI / 2;
             const radius = i % 2 === 0 ? outerRadius : innerRadius;
@@ -287,28 +296,28 @@ class EnemyShip extends Module {
                 y: Math.sin(angle) * radius
             });
         }
-        
+
         this.shapeVertices = this.applyShapeRandomness(basePoints);
     }
 
     applyShapeRandomness(basePoints) {
         if (this.shapeRandomness === 0) return basePoints;
-        
+
         const randomizedPoints = [];
-        
+
         for (let i = 0; i < basePoints.length; i++) {
             const point = basePoints[i];
             let randomX = 0, randomY = 0;
-            
+
             if (this.shapeSymmetry) {
                 // For symmetrical shapes, apply the same randomness to mirrored points
                 const seed = i < basePoints.length / 2 ? i : basePoints.length - 1 - i;
                 const random1 = this.seededRandom(seed * 2) * 2 - 1;
                 const random2 = this.seededRandom(seed * 2 + 1) * 2 - 1;
-                
+
                 randomX = random1 * this.shapeRandomness * this.shipSize * 0.3;
                 randomY = random2 * this.shapeRandomness * this.shipSize * 0.3;
-                
+
                 // Mirror for the second half
                 if (i >= basePoints.length / 2) {
                     randomX = -randomX;
@@ -317,13 +326,13 @@ class EnemyShip extends Module {
                 randomX = (this.seededRandom(i * 2) * 2 - 1) * this.shapeRandomness * this.shipSize * 0.3;
                 randomY = (this.seededRandom(i * 2 + 1) * 2 - 1) * this.shapeRandomness * this.shipSize * 0.3;
             }
-            
+
             randomizedPoints.push({
                 x: point.x + randomX,
                 y: point.y + randomY
             });
         }
-        
+
         return randomizedPoints;
     }
 
@@ -337,6 +346,7 @@ class EnemyShip extends Module {
         this.updateAI(deltaTime);
         this.updatePhysics(deltaTime);
         this.handleFiring(deltaTime);
+        this.checkShipCollisions(deltaTime);
     }
 
     updateAI(deltaTime) {
@@ -397,7 +407,7 @@ class EnemyShip extends Module {
 
     randomBehavior(deltaTime) {
         const currentTime = Date.now() / 1000;
-        
+
         // Change behavior periodically
         if (currentTime - this.lastBehaviorChange > this.behaviorChangeInterval) {
             this.generateRandomBehavior();
@@ -407,7 +417,7 @@ class EnemyShip extends Module {
         // Execute current random behavior
         if (this.aiState === "rotating") {
             this.rotateTowards(this.desiredAngle, deltaTime);
-            
+
             // Switch to thrusting when close to desired angle
             const angleDiff = this.getAngleDifference(this.gameObject.angle, this.desiredAngle);
             if (Math.abs(angleDiff) < this.rotationTolerance) {
@@ -419,13 +429,13 @@ class EnemyShip extends Module {
             this.thrustTimer += deltaTime;
             this.isThrusting = true;
             this.applyThrust(deltaTime);
-            
+
             // Add some rotation while thrusting for organic movement
             if (Math.random() < 0.3) { // 30% chance per frame to adjust rotation
                 const rotationAdjustment = (Math.random() - 0.5) * this.rotationSpeed * 0.2 * deltaTime;
                 this.angularVelocity += rotationAdjustment;
             }
-            
+
             // Stop thrusting after duration
             if (this.thrustTimer >= this.thrustDuration) {
                 this.aiState = "random";
@@ -433,7 +443,7 @@ class EnemyShip extends Module {
             }
         } else if (this.aiState === "idle") {
             this.isThrusting = false;
-            
+
             // Add gentle rotation while idle for organic feel
             if (Math.random() < 0.1) { // 10% chance per frame to start rotating
                 const idleRotationSpeed = this.rotationSpeed * 0.3 * (Math.random() - 0.5);
@@ -441,7 +451,7 @@ class EnemyShip extends Module {
             }
         } else {
             this.isThrusting = false;
-            
+
             // Add small random rotations in default state
             if (Math.random() < 0.05) { // 5% chance per frame
                 const randomRotation = (Math.random() - 0.5) * this.rotationSpeed * 0.1 * deltaTime;
@@ -456,9 +466,9 @@ class EnemyShip extends Module {
         const normalizedIdle = (this.idleChance / totalChance) * 100;
         const normalizedMoving = (this.movingChance / totalChance) * 100;
         const normalizedRotating = (this.rotatingChance / totalChance) * 100;
-        
+
         const random = Math.random() * 100;
-        
+
         if (random < normalizedIdle) {
             this.aiState = "idle";
         } else if (random < normalizedIdle + normalizedMoving) {
@@ -475,10 +485,10 @@ class EnemyShip extends Module {
         // Generate a random point within movement radius
         const angle = Math.random() * Math.PI * 2;
         const distance = Math.random() * this.randomMovementRadius;
-        
+
         this.targetPosition.x = this.gameObject.position.x + Math.cos(angle) * distance;
         this.targetPosition.y = this.gameObject.position.y + Math.sin(angle) * distance;
-        
+
         // Calculate desired angle to reach this point
         const dx = this.targetPosition.x - this.gameObject.position.x;
         const dy = this.targetPosition.y - this.gameObject.position.y;
@@ -489,14 +499,14 @@ class EnemyShip extends Module {
         if (!window.engine || !window.engine.gameObjects) return;
 
         // Find GameObject with the target name
-        this.currentTarget = window.engine.gameObjects.find(obj => 
+        this.currentTarget = window.engine.gameObjects.find(obj =>
             obj.name === this.targetName || obj.constructor.name === this.targetName
         );
     }
 
     getDistanceToTarget() {
         if (!this.currentTarget) return Infinity;
-        
+
         const dx = this.currentTarget.position.x - this.gameObject.position.x;
         const dy = this.currentTarget.position.y - this.gameObject.position.y;
         return Math.sqrt(dx * dx + dy * dy);
@@ -504,7 +514,7 @@ class EnemyShip extends Module {
 
     rotateTowards(targetAngle, deltaTime) {
         const angleDiff = this.getAngleDifference(this.gameObject.angle, targetAngle);
-        
+
         if (Math.abs(angleDiff) > this.rotationTolerance) {
             const rotationDirection = angleDiff > 0 ? 1 : -1;
             this.angularVelocity = rotationDirection * this.rotationSpeed * deltaTime;
@@ -557,7 +567,7 @@ class EnemyShip extends Module {
 
         // Try to use prefab first, then create manually
         let bullet = null;
-        
+
         if (window.engine.hasPrefab && window.engine.hasPrefab(this.bulletPrefabName)) {
             const angleRad = (this.gameObject.angle * Math.PI) / 180;
             const spawnX = this.gameObject.position.x + Math.cos(angleRad - Math.PI / 2) * this.bulletOffset;
@@ -580,7 +590,7 @@ class EnemyShip extends Module {
                 bulletModule.speed = this.bulletSpeed;
                 bulletModule.lifetime = this.bulletLifetime;
                 bulletModule.setDirectionFromAngle(this.gameObject.angle);
-                
+
                 // Add ship momentum
                 const momentumFactor = 0.3;
                 bulletModule.velocity.x += this.velocity.x * momentumFactor;
@@ -595,7 +605,7 @@ class EnemyShip extends Module {
 
     createBulletManually() {
         if (!window.AsteroidsBullet) return null;
-        
+
         const bullet = new GameObject("EnemyBullet");
         const bulletModule = new window.AsteroidsBullet();
         bullet.addModule(bulletModule);
@@ -649,11 +659,11 @@ class EnemyShip extends Module {
         if (this.shapeVertices.length > 0) {
             ctx.beginPath();
             ctx.moveTo(this.shapeVertices[0].x, this.shapeVertices[0].y);
-            
+
             for (let i = 1; i < this.shapeVertices.length; i++) {
                 ctx.lineTo(this.shapeVertices[i].x, this.shapeVertices[i].y);
             }
-            
+
             ctx.closePath();
             ctx.stroke();
         }
@@ -683,11 +693,11 @@ class EnemyShip extends Module {
             ctx.fillStyle = "cyan";
             ctx.font = "10px Arial";
             ctx.fillText(`AI: ${this.aiState}`, this.gameObject.position.x + 15, this.gameObject.position.y - 15);
-            
+
             if (this.currentTarget) {
                 const distance = Math.round(this.getDistanceToTarget());
                 ctx.fillText(`Target: ${distance}px`, this.gameObject.position.x + 15, this.gameObject.position.y - 5);
-                
+
                 // Draw line to target
                 ctx.strokeStyle = "cyan";
                 ctx.lineWidth = 1;
@@ -698,8 +708,8 @@ class EnemyShip extends Module {
             }
 
             // Draw behavior chances
-            ctx.fillText(`I:${this.idleChance}% M:${this.movingChance}% R:${this.rotatingChance}%`, 
-                        this.gameObject.position.x + 15, this.gameObject.position.y + 5);
+            ctx.fillText(`I:${this.idleChance}% M:${this.movingChance}% R:${this.rotatingChance}%`,
+                this.gameObject.position.x + 15, this.gameObject.position.y + 5);
 
             // Draw pursuit range
             ctx.strokeStyle = "orange";
@@ -717,13 +727,105 @@ class EnemyShip extends Module {
         }
     }
 
+    /**
+     * Check for collisions with other ships
+     */
+    checkShipCollisions(deltaTime) {
+        if (!window.engine || !window.engine.gameObjects) return;
+
+        for (const obj of window.engine.gameObjects) {
+            if (obj === this.gameObject) continue;
+
+            const otherShipModule = obj.getModule("PlayerShip") || obj.getModule("EnemyShip");
+            if (!otherShipModule) continue;
+
+            const dx = obj.position.x - this.gameObject.position.x;
+            const dy = obj.position.y - this.gameObject.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            const thisRadius = this.shipSize;
+            const otherRadius = otherShipModule.shipSize || 10;
+            const collisionDistance = thisRadius + otherRadius;
+
+            if (distance > 0 && distance < collisionDistance) {
+                this.handleShipCollision(obj, otherShipModule, dx, dy, distance);
+            }
+        }
+    }
+
+    /**
+     * Handle collision between this ship and another ship
+     */
+    handleShipCollision(otherShip, otherShipModule, dx, dy, distance) {
+        // Calculate collision normal
+        const normalX = dx / distance;
+        const normalY = dy / distance;
+
+        // Calculate relative velocity
+        const relativeVelX = otherShipModule.velocity.x - this.velocity.x;
+        const relativeVelY = otherShipModule.velocity.y - this.velocity.y;
+
+        // Calculate relative velocity along normal
+        const relativeVelNormal = relativeVelX * normalX + relativeVelY * normalY;
+
+        // Don't resolve if velocities are separating
+        if (relativeVelNormal > 0) return;
+
+        // Calculate restitution (bounciness)
+        const restitution = 0.7;
+
+        // Calculate impulse scalar
+        const impulseScalar = -(1 + restitution) * relativeVelNormal / (1 / this.mass + 1 / otherShipModule.mass);
+
+        // Apply impulse
+        const impulseX = impulseScalar * normalX;
+        const impulseY = impulseScalar * normalY;
+
+        this.velocity.x -= (impulseX / this.mass);
+        this.velocity.y -= (impulseY / this.mass);
+        otherShipModule.velocity.x += (impulseX / otherShipModule.mass);
+        otherShipModule.velocity.y += (impulseY / otherShipModule.mass);
+
+        // Separate overlapping ships
+        const overlap = (this.shipSize + otherShipModule.shipSize) - distance;
+        const separationX = normalX * (overlap * 0.5 + 1);
+        const separationY = normalY * (overlap * 0.5 + 1);
+
+        this.gameObject.position.x -= separationX;
+        this.gameObject.position.y -= separationY;
+        otherShip.position.x += separationX;
+        otherShip.position.y += separationY;
+
+        // Optional: Add some damage from collision
+        const collisionForce = Math.sqrt(impulseX * impulseX + impulseY * impulseY);
+        if (this.takeDamage && collisionForce > 10) {
+            const damage = Math.min(5, collisionForce * 0.1);
+            this.takeDamage(damage);
+        }
+        if (otherShipModule.takeDamage && collisionForce > 10) {
+            const damage = Math.min(5, collisionForce * 0.1);
+            otherShipModule.takeDamage(damage);
+        }
+    }
+
+    /**
+     * Take damage (optional damage system)
+     */
+    takeDamage(amount) {
+        // You can implement a health system here if desired
+        console.log(`Enemy ship took ${amount.toFixed(1)} damage`);
+    }
+
+    // Update toJSON to include mass
     toJSON() {
         return {
+            ...super.toJSON(),
             thrustPower: this.thrustPower,
             rotationSpeed: this.rotationSpeed,
             maxSpeed: this.maxSpeed,
             friction: this.friction,
             angularFriction: this.angularFriction,
+            mass: this.mass,
             targetName: this.targetName,
             pursuitRange: this.pursuitRange,
             maxPursuitRange: this.maxPursuitRange,
@@ -746,11 +848,51 @@ class EnemyShip extends Module {
     }
 
     fromJSON(data) {
-        Object.assign(this, data);
+        super.fromJSON(data);
+
+        if (!data) return;
+
+        this.thrustPower = data.thrustPower ?? 250;
+        this.rotationSpeed = data.rotationSpeed ?? 120;
+        this.maxSpeed = data.maxSpeed ?? 350;
+        this.friction = data.friction ?? 0.98;
+        this.angularFriction = data.angularFriction ?? 0.95;
+        this.mass = data.mass ?? 0.8;
+        this.targetName = data.targetName ?? "Player";
+        this.pursuitRange = data.pursuitRange ?? 200;
+        this.maxPursuitRange = data.maxPursuitRange ?? 400;
+        this.fireRange = data.fireRange ?? 180;
+        this.fireRate = data.fireRate ?? 3;
+        this.bulletSpeed = data.bulletSpeed ?? 500;
+        this.bulletLifetime = data.bulletLifetime ?? 4.0;
+        this.shipColor = data.shipColor ?? "#ff4444";
+        this.shipSize = data.shipSize ?? 10;
+        this.idleChance = data.idleChance ?? 30;
+        this.movingChance = data.movingChance ?? 50;
+        this.rotatingChance = data.rotatingChance ?? 20;
+        this.shapeType = data.shapeType ?? "polygon";
+        this.shapePoints = data.shapePoints ?? 6;
+        this.shapeRandomness = data.shapeRandomness ?? 0.2;
+        this.shapeSymmetry = data.shapeSymmetry ?? true;
+
         if (data.velocity) {
-            this.velocity = { x: data.velocity.x || 0, y: data.velocity.y || 0 };
+            this.velocity = { x: data.velocity.x ?? 0, y: data.velocity.y ?? 0 };
+        } else {
+            this.velocity = { x: 0, y: 0 };
         }
+        this.angularVelocity = data.angularVelocity ?? 0;
+
         this.generateShapeVertices();
+        this.isThrusting = false;
+        this.lastFireTime = 0;
+        this.lastBehaviorChange = 0;
+        this.currentTarget = null;
+        this.aiState = "random";
+        //this.generateRandomTarget();
+
+        if (typeof this.updateExposedProperties === "function") {
+            this.updateExposedProperties();
+        }
     }
 }
 

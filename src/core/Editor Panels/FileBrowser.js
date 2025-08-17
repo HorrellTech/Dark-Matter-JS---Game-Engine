@@ -2112,7 +2112,10 @@ window.${pascalCaseName} = ${pascalCaseName};
         try {
             // Normalize path to ensure consistency
             path = this.normalizePath(path);
-            console.log(`Creating directory: ${path}`);
+            if (path === '/') {
+                // Root already exists after DB init
+                return true;
+            }
 
             // Check if directory already exists
             const exists = await this.exists(path);
@@ -2165,15 +2168,27 @@ window.${pascalCaseName} = ${pascalCaseName};
                 };
 
                 transaction.onerror = (e) => {
-                    console.error(`Error creating directory ${path}:`, e.target.error);
-                    resolve(false);
+                    // If it's a ConstraintError, treat as success (directory already exists)
+                    if (e.target.error && e.target.error.name === 'ConstraintError') {
+                        console.warn(`Directory already exists (ConstraintError): ${path}`);
+                        resolve(true);
+                    } else {
+                        console.error(`Error creating directory ${path}:`, e.target.error);
+                        resolve(false);
+                    }
                 };
 
                 try {
                     store.add(newFolder);
                 } catch (err) {
-                    console.error("Error in store.add:", err);
-                    resolve(false);
+                    // If it's a ConstraintError, treat as success
+                    if (err.name === 'ConstraintError') {
+                        console.warn(`Directory already exists (ConstraintError): ${path}`);
+                        resolve(true);
+                    } else {
+                        console.error("Error in store.add:", err);
+                        resolve(false);
+                    }
                 }
             });
 
@@ -2699,42 +2714,29 @@ window.${pascalCaseName} = ${pascalCaseName};
         this.isInitializing = true; // Block UI actions
 
         try {
+            // Delete the old database
             if (this.db) {
                 this.db.close();
                 this.db = null;
             }
-
-            let blocked = false;
+            // Delete IndexedDB
             await new Promise((resolve, reject) => {
-                const request = indexedDB.deleteDatabase(this.dbName);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(new Error('Failed to delete database'));
-                request.onblocked = () => {
-                    blocked = true;
-                    this.showNotification('Database deletion blocked. Please close other tabs/windows using this project and try again.', 'error');
-                    console.warn('Database deletion blocked by open connections');
-                };
+                const req = indexedDB.deleteDatabase(this.dbName);
+                req.onsuccess = resolve;
+                req.onerror = reject;
+                req.onblocked = resolve;
             });
 
-            if (blocked) {
-                // Optionally, retry after a delay
-                setTimeout(() => this.resetDatabase(), 1000);
-                return false;
-            }
-
-            await new Promise(res => setTimeout(res, 100));
+            // Re-initialize DB and create root folder
             await this.initializeDB();
-
-            if (this.directoryTree) {
-                this.treePanel.removeChild(this.directoryTree.container);
+            // Check if root exists, if not, create it
+            const rootExists = await this.exists('/');
+            if (!rootExists) {
+                await this.createDirectory('/');
             }
-            this.directoryTree = new DirectoryTree(this);
-            this.treePanel.appendChild(this.directoryTree.container);
-            await this.directoryTree.initialize();
-
+            this.currentPath = '/';
             await this.navigateTo('/');
-
-            this.showNotification('File system has been reset', 'info');
+            this.showNotification("File system has been reset", "info");
             return true;
         } catch (error) {
             this.showNotification('Error resetting file system', 'error');

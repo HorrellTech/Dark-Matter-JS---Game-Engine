@@ -380,6 +380,7 @@ class ProjectManager {
 
                 // 1. Clear current project state
                 await this.fileBrowser.resetDatabase();
+                await this.fileBrowser.navigateTo('/');
                 this.editor.scenes = [];
                 this.editor.activeScene = null;
                 if (this.editor.hierarchy) {
@@ -397,14 +398,14 @@ class ProjectManager {
                     if (window.engine.running) {
                         window.engine.stop();
                     }
-                    
+
                     // Clear engine's game objects and scene references
                     window.engine.gameObjects = [];
                     window.engine.scene = null;
                     window.engine.activeScene = null;
                     window.engine.originalGameObjects = [];
                     window.engine.dynamicObjects.clear();
-                    
+
                     // Reset viewport to default
                     window.engine.viewport = {
                         width: 800,
@@ -418,12 +419,12 @@ class ProjectManager {
                         dirty: true,
                         shake: { x: 0, y: 0, intensity: 0, duration: 0 }
                     };
-                    
+
                     // Reset physics if available
                     if (window.physicsManager) {
                         window.physicsManager.reset();
                     }
-                    
+
                     console.log("Engine state reset for new project.");
                 }
 
@@ -440,28 +441,34 @@ class ProjectManager {
                 console.log("Restoring assets...");
                 const assetPromises = [];
                 zip.folder("assets").forEach((relativePath, fileEntry) => {
-                    const fullPath = `/${relativePath}`; // FileBrowser uses leading slash
+                    const fullPath = `/${relativePath}`;
                     if (!fileEntry.dir) {
-                        assetPromises.push(async () => {
-                            const content = await fileEntry.async("string"); // Or "blob", "arraybuffer" depending on file type
-                            await this.fileBrowser.writeFile(fullPath, content, true);
-                        });
+                        assetPromises.push(
+                            fileEntry.async("string").then(content =>
+                                this.fileBrowser.writeFile(fullPath, content, true)
+                            )
+                        );
                     } else {
-                        // Ensure directory exists (writeFile should handle parent dirs, but explicit can be added)
-                        // assetPromises.push(this.fileBrowser.createDirectory(fullPath));
+                        // Skip creating root directory
+                        if (relativePath !== "") {
+                            assetPromises.push(this.fileBrowser.createDirectory(fullPath));
+                        }
                     }
                 });
-                await Promise.all(assetPromises.map(p => p()));
+                await Promise.all(assetPromises);
                 await this.fileBrowser.navigateTo('/'); // Refresh file browser view
                 console.log("Assets restored.");
 
-                // ADD THIS: Reload prefabs into memory
+                // Reload prefabs into memory
                 if (this.editor.hierarchy && this.editor.hierarchy.prefabManager) {
                     await this.editor.hierarchy.prefabManager.loadExistingPrefabs();
                     console.log("Prefabs reloaded into memory.");
                 }
 
-                console.log("Scanning for module scripts...");
+                await this.fileBrowser.refreshFiles();
+                if (this.editor.inspector) {
+                    this.editor.inspector.detectAvailableModules();
+                }
 
                 console.log("Scanning for module scripts...");
                 await this.fileBrowser.scanForModuleScripts();
@@ -547,6 +554,9 @@ class ProjectManager {
                         const selectedObj = findObjectById(settings.selectedObjectId, this.editor.activeScene.gameObjects);
                         if (selectedObj && this.editor.hierarchy) {
                             this.editor.hierarchy.selectGameObject(selectedObj);
+                            if (this.editor.inspector) {
+                                this.editor.inspector.inspectObject(selectedObj);
+                            }
                         }
                     }
 
