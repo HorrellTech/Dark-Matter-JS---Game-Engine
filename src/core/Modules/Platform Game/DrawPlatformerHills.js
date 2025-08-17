@@ -1772,6 +1772,7 @@ class DrawPlatformerHills extends Module {
         const guiCtx = window.engine?.getGuiCanvas();
         if (guiCtx) {
             guiCtx.save();
+            guiCtx.clearRect(0, 0, guiCtx.canvas.width, guiCtx.canvas.height);
             guiCtx.fillStyle = "#FFFFFF";
             guiCtx.font = "16px Arial";
             guiCtx.fillText(`Time: ${this.currentHour.toFixed(2)}h`, 10, 20);

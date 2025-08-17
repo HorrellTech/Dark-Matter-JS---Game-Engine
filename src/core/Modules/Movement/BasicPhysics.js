@@ -15,9 +15,10 @@ class BasicPhysics extends Module {
         this.angularFriction = 0.95;
         this.bounciness = 0.7;
         this.contactFriction = 0.8;
-        this.fixedPosition = false; // If true, object does not move or rotate
+        this.fixedPosition = false; // If true, object does not move
+        this.fixedRotation = false; // If true, object does not rotate
         this.physicsLayer = 0; // Only interacts with objects on same layer
-        this.colliderType = "circle"; // "circle" or "rectangle"
+        this.colliderType = "rectangle"; // "circle" or "rectangle"
         this.colliderRadius = 10; // For circle collider
         this.colliderWidth = 20;  // For rectangle collider
         this.colliderHeight = 20; // For rectangle collider
@@ -47,6 +48,10 @@ class BasicPhysics extends Module {
         this.exposeProperty("fixedPosition", "boolean", false, {
             description: "If true, object does not move or rotate",
             onChange: (val) => { this.fixedPosition = val; }
+        });
+        this.exposeProperty("fixedRotation", "boolean", false, {
+            description: "If true, object does not rotate",
+            onChange: (val) => { this.fixedRotation = val; }
         });
         this.exposeProperty("physicsLayer", "number", 0, {
             min: 0, max: 10, step: 1,
@@ -122,7 +127,7 @@ class BasicPhysics extends Module {
     }
 
     setAngularVelocity(angVel) {
-        if (this.fixedPosition) return;
+        if (this.fixedPosition || this.fixedRotation) return;
         this.angularVelocity = angVel;
     }
 
@@ -131,10 +136,9 @@ class BasicPhysics extends Module {
     }
 
     loop(deltaTime) {
-        if (this.fixedPosition) return;
 
         // Gravity accumulation (velocity += gravity * dt)
-        if (this.gravityEnabled && this.gravity) {
+        if (this.gravityEnabled && this.gravity && !this.fixedPosition) {
             this.velocity.x += this.gravity.x * deltaTime;
             this.velocity.y += this.gravity.y * deltaTime;
         }
@@ -171,10 +175,15 @@ class BasicPhysics extends Module {
         this.velocity.y *= this.friction;
         this.angularVelocity *= this.angularFriction;
 
-        // Update position and rotation
-        this.gameObject.position.x += this.velocity.x * deltaTime;
-        this.gameObject.position.y += this.velocity.y * deltaTime;
-        this.gameObject.angle += this.angularVelocity * deltaTime;
+        if(!this.fixedPosition) {
+            // Update position and rotation
+            this.gameObject.position.x += this.velocity.x * deltaTime;
+            this.gameObject.position.y += this.velocity.y * deltaTime;
+        }
+
+        if(!this.fixedRotation) {
+            this.gameObject.angle += this.angularVelocity * deltaTime;
+        }
 
         // Keep angle in 0-360 range
         while (this.gameObject.angle >= 360) this.gameObject.angle -= 360;
@@ -403,22 +412,70 @@ class BasicPhysics extends Module {
     }
 
     resolveCollision(physicsA, physicsB, objA, objB, normalX, normalY, contactX, contactY, penetration) {
+        // Check for static object
+        const aStatic = physicsA.fixedPosition;
+        const bStatic = physicsB.fixedPosition;
+
+        // If one is static, only move the dynamic object and zero its velocity along the normal
+        if (aStatic && !bStatic) {
+            objB.position.x += normalX * penetration;
+            objB.position.y += normalY * penetration;
+            // Remove velocity along normal (no bounce)
+            const velDot = physicsB.velocity.x * normalX + physicsB.velocity.y * normalY;
+            physicsB.velocity.x -= velDot * normalX;
+            physicsB.velocity.y -= velDot * normalY;
+            return;
+        }
+        if (!aStatic && bStatic) {
+            objA.position.x -= normalX * penetration;
+            objA.position.y -= normalY * penetration;
+            // Remove velocity along normal (no bounce)
+            const velDot = physicsA.velocity.x * normalX + physicsA.velocity.y * normalY;
+            physicsA.velocity.x -= velDot * normalX;
+            physicsA.velocity.y -= velDot * normalY;
+            return;
+        }
+
+        // Relative velocity at contact (including angular velocity and gravity)
+        const rAx = contactX - objA.position.x;
+        const rAy = contactY - objA.position.y;
+        const rBx = contactX - objB.position.x;
+        const rBy = contactY - objB.position.y;
+
+        // Velocity at contact point for A
+        const velA = {
+            x: physicsA.velocity.x - physicsA.angularVelocity * rAy,
+            y: physicsA.velocity.y + physicsA.angularVelocity * rAx
+        };
+        // Velocity at contact point for B
+        const velB = {
+            x: physicsB.velocity.x - physicsB.angularVelocity * rBy,
+            y: physicsB.velocity.y + physicsB.angularVelocity * rBx
+        };
+
+        // Add gravity effect
+        velA.x += physicsA.gravity.x;
+        velA.y += physicsA.gravity.y;
+        velB.x += physicsB.gravity.x;
+        velB.y += physicsB.gravity.y;
+
         // Relative velocity at contact
-        const relVelX = physicsB.velocity.x - physicsA.velocity.x;
-        const relVelY = physicsB.velocity.y - physicsA.velocity.y;
+        const relVelX = velB.x - velA.x;
+        const relVelY = velB.y - velA.y;
         const relVelNormal = relVelX * normalX + relVelY * normalY;
 
         // Only resolve if objects are moving toward each other
         if (relVelNormal > 0) return;
 
-        // Restitution (bounciness)
-        const restitution = Math.min(physicsA.bounciness, physicsB.bounciness);
+        // Restitution (bounciness) - set to 0 for no bounce
+        const restitution = 0;
 
         // Friction
         const friction = Math.min(physicsA.contactFriction, physicsB.contactFriction);
 
-        // Impulse scalar
-        const impulseScalar = -(1 + restitution) * relVelNormal / (1 / physicsA.mass + 1 / physicsB.mass);
+        // Impulse scalar (add gravity magnitude for more realistic bounce)
+        const gravityMag = Math.sqrt(physicsA.gravity.x ** 2 + physicsA.gravity.y ** 2);
+        const impulseScalar = -(1 + restitution) * relVelNormal / (1 / physicsA.mass + 1 / physicsB.mass) + gravityMag * restitution;
 
         // Impulse vector
         const impulseX = impulseScalar * normalX;
@@ -438,31 +495,26 @@ class BasicPhysics extends Module {
             physicsB.velocity.y *= friction;
         }
 
-        // Angular impulse (torque) for both objects
+        // Angular impulse (torque) for both objects, stronger with gravity and bounce
         if (!physicsA.fixedPosition) {
-            const rAx = contactX - objA.position.x;
-            const rAy = contactY - objA.position.y;
-            const torqueA = rAx * (-impulseY) - rAy * (-impulseX);
             const IA = this.getMomentOfInertia(physicsA);
-            physicsA.angularVelocity += torqueA / IA;
+            const torqueA = rAx * (-impulseY) - rAy * (-impulseX);
+            physicsA.angularVelocity += (torqueA / IA) * (1 + restitution + gravityMag * 0.1);
         }
         if (!physicsB.fixedPosition) {
-            const rBx = contactX - objB.position.x;
-            const rBy = contactY - objB.position.y;
-            const torqueB = rBx * impulseY - rBy * impulseX;
             const IB = this.getMomentOfInertia(physicsB);
-            physicsB.angularVelocity += torqueB / IB;
+            const torqueB = rBx * impulseY - rBy * impulseX;
+            physicsB.angularVelocity += (torqueB / IB) * (1 + restitution + gravityMag * 0.1);
         }
 
-        // Separate objects to prevent overlap
-        const separationAmount = Math.max(penetration * 0.5, 0.1);
+        // Separate objects to prevent overlap (move to contact point, not past)
         if (!physicsA.fixedPosition) {
-            objA.position.x -= normalX * separationAmount;
-            objA.position.y -= normalY * separationAmount;
+            objA.position.x -= normalX * penetration;
+            objA.position.y -= normalY * penetration;
         }
         if (!physicsB.fixedPosition) {
-            objB.position.x += normalX * separationAmount;
-            objB.position.y += normalY * separationAmount;
+            objB.position.x += normalX * penetration;
+            objB.position.y += normalY * penetration;
         }
     }
 
@@ -621,7 +673,7 @@ class BasicPhysics extends Module {
         super.fromJSON(data);
 
         if (!data) return;
-        
+
         this.mass = data.mass ?? 1.0;
         this.velocity = data.velocity
             ? { x: data.velocity.x ?? 0, y: data.velocity.y ?? 0 }

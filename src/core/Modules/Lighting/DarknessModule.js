@@ -13,6 +13,11 @@ class DarknessModule extends Module {
         this.blendMode = "multiply";
         this.lights = []; // List of point lights that can cut through darkness
 
+        this._maskCanvas = null;
+        this._maskCtx = null;
+        this._lastVpWidth = 0;
+        this._lastVpHeight = 0;
+
         // Expose properties for inspector
         this.exposeProperty("opacity", "number", this.opacity, {
             description: "Darkness opacity (0-1)",
@@ -93,11 +98,32 @@ class DarknessModule extends Module {
         );
         ctx.restore();
 
-        // Cut out light masks
-        for (const light of this.lights) {
+        // --- Mask lights using offscreen canvas ---
+        if (this.lights.length > 0) {
+            const vp = window.engine.viewport;
+
+            // Only create or resize canvas if needed
+            if (!this._maskCanvas || this._lastVpWidth !== vp.width || this._lastVpHeight !== vp.height) {
+                this._maskCanvas = document.createElement('canvas');
+                this._maskCanvas.width = vp.width;
+                this._maskCanvas.height = vp.height;
+                this._maskCtx = this._maskCanvas.getContext('2d');
+                this._lastVpWidth = vp.width;
+                this._lastVpHeight = vp.height;
+            } else {
+                // Clear previous mask
+                this._maskCtx.clearRect(0, 0, vp.width, vp.height);
+            }
+
+            // Draw all light masks
+            for (const light of this.lights) {
+                light.drawMask(this._maskCtx, vp.x, vp.y);
+            }
+
+            // Use mask to cut darkness
             ctx.save();
             ctx.globalCompositeOperation = "destination-in";
-            light.drawMask(ctx); // Only mask, no color
+            ctx.drawImage(this._maskCanvas, vp.x, vp.y);
             ctx.restore();
         }
     }

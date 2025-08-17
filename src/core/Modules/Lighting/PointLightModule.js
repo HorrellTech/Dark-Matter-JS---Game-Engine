@@ -213,36 +213,41 @@ class PointLightModule extends Module {
         }
     }
 
-    drawMask(ctx) {
+    drawMask(ctx, offsetX = 0, offsetY = 0) {
+        const worldPos = this.gameObject.getWorldPosition();
+        const x = worldPos.x - offsetX;
+        const y = worldPos.y - offsetY;
+        const gradient = ctx.createRadialGradient(
+            x, y, 0,
+            x, y, this.radius
+        );
+        gradient.addColorStop(0, "rgba(255,255,255,1)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.globalAlpha = this.currentIntensity;
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    drawColor(ctx) {
         const worldPos = this.gameObject.getWorldPosition();
         const gradient = ctx.createRadialGradient(
             worldPos.x, worldPos.y, 0,
             worldPos.x, worldPos.y, this.radius
         );
-        switch (this.falloffType) {
-            case "linear":
-                gradient.addColorStop(0, "rgba(255,255,255,1)");
-                gradient.addColorStop(1, "rgba(255,255,255,0)");
-                break;
-            case "smooth":
-                gradient.addColorStop(0, "rgba(255,255,255,1)");
-                gradient.addColorStop(0.3, "rgba(255,255,255,1)");
-                gradient.addColorStop(0.7, "rgba(255,255,255,0.5)");
-                gradient.addColorStop(1, "rgba(255,255,255,0)");
-                break;
-            case "sharp":
-                gradient.addColorStop(0, "rgba(255,255,255,1)");
-                gradient.addColorStop(0.8, "rgba(255,255,255,1)");
-                gradient.addColorStop(1, "rgba(255,255,255,0)");
-                break;
-        }
+        gradient.addColorStop(0, this.color);
+        gradient.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
         ctx.globalAlpha = this.currentIntensity;
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
     }
-    
+
     drawGizmos(ctx) {
         const worldPos = this.gameObject.getWorldPosition();
 

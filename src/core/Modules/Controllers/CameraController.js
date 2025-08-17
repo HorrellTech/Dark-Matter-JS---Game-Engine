@@ -30,6 +30,12 @@ class CameraController extends Module {
         this.positionDamping = 0.85;
         this.zoomDamping = 0.85;
 
+        // Dynamic zoom properties
+        this.dynamicZoomEnabled = false;
+        this.maxZoomOut = 0.2;
+        this.zoomSmoothness = 0.85;
+        this.zoomIntensityMultiplier = 0.001;
+
         // Shake effect properties
         this.shakeIntensity = 0;
         this.shakeDuration = 0;
@@ -54,13 +60,13 @@ class CameraController extends Module {
             onChange: (val) => { this.followOwnerAngle = val; }
         });*/
 
-        this.exposeProperty("followAngleOffset", "number", 0, {
+        /*this.exposeProperty("followAngleOffset", "number", 0, {
             description: "Angle offset when following owner",
             min: -Math.PI,
             max: Math.PI,
             step: 0.01,
             onChange: (val) => { this.followAngleOffset = val; }
-        });
+        });*/
 
         this.exposeProperty("followSpeed", "number", 5.0, {
             description: "How quickly the camera follows its target",
@@ -78,6 +84,14 @@ class CameraController extends Module {
             onChange: (val) => { this.zoom = val; }
         });
 
+        this.exposeProperty("targetZoom", "number", 1.0, {
+            description: "Target zoom level (base zoom level)",
+            min: 0.1,
+            max: 10,
+            step: 0.1,
+            onChange: (val) => { this.targetZoom = val; }
+        });
+
         this.exposeProperty("positionDamping", "number", 0.85, {
             description: "Smoothness of camera movement (0-1)",
             min: 0,
@@ -92,6 +106,35 @@ class CameraController extends Module {
             max: 0.99,
             step: 0.01,
             onChange: (val) => { this.zoomDamping = val; }
+        });
+
+        this.exposeProperty("dynamicZoomEnabled", "boolean", false, {
+            description: "Enable dynamic zoom based on GameObject speed",
+            onChange: (val) => { this.dynamicZoomEnabled = val; }
+        });
+
+        this.exposeProperty("maxZoomOut", "number", 0.5, {
+            description: "Maximum zoom out level",
+            min: 0.1,
+            max: 10,
+            step: 0.1,
+            onChange: (val) => { this.maxZoomOut = val; }
+        });
+
+        this.exposeProperty("zoomSmoothness", "number", 0.85, {
+            description: "Smoothness of dynamic zoom (0-1)",
+            min: 0,
+            max: 0.99,
+            step: 0.01,
+            onChange: (val) => { this.zoomSmoothness = val; }
+        });
+
+        this.exposeProperty("zoomIntensityMultiplier", "number", 0.01, {
+            description: "Multiplier for zoom intensity based on speed",
+            min: 0.001,
+            max: 1,
+            step: 0.001,
+            onChange: (val) => { this.zoomIntensityMultiplier = val; }
         });
 
         this.exposeProperty("shakeIntensity", "number", 0, {
@@ -115,6 +158,51 @@ class CameraController extends Module {
                 //this.updateSceneViewport(); // Update immediately
             }
         });
+    }
+
+    /**
+ * Optional method for enhanced inspector UI using the Style helper
+ * This will be called by the Inspector if it exists
+ * @param {Style} style - Styling helper
+ */
+    style(style) {
+        style.startGroup("Camera Follow", false, {
+            backgroundColor: 'rgba(100,150,255,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("followOwner", "boolean", this.followOwner, { label: "Follow GameObject" });
+        style.exposeProperty("followSpeed", "number", this.followSpeed, { label: "Follow Speed" });
+        style.exposeProperty("offset", "vector2", this.offset, { label: "Camera Offset" });
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Zoom & Dynamics", false, {
+            backgroundColor: 'rgba(150,255,150,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("zoom", "number", this.zoom, { label: "Zoom" });
+        style.exposeProperty("targetZoom", "number", this.targetZoom, { label: "Target Zoom" });
+        style.exposeProperty("zoomDamping", "number", this.zoomDamping, { label: "Zoom Damping" });
+        style.exposeProperty("dynamicZoomEnabled", "boolean", this.dynamicZoomEnabled, { label: "Dynamic Zoom" });
+        style.exposeProperty("maxZoomOut", "number", this.maxZoomOut, { label: "Max Zoom Out" });
+        style.exposeProperty("zoomSmoothness", "number", this.zoomSmoothness, { label: "Zoom Smoothness" });
+        style.exposeProperty("zoomIntensityMultiplier", "number", this.zoomIntensityMultiplier, { label: "Zoom Intensity Multiplier" });
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Shake & Misc", false, {
+            backgroundColor: 'rgba(255,150,150,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("shakeIntensity", "number", this.shakeIntensity, { label: "Shake Intensity" });
+        style.exposeProperty("shakeTimer", "number", this.shakeTimer, { label: "Shake Timer" });
+        style.exposeProperty("positionDamping", "number", this.positionDamping, { label: "Position Damping" });
+        style.endGroup();
     }
 
     /**
@@ -262,9 +350,9 @@ class CameraController extends Module {
             shakeOffsetY = (Math.random() * 2 - 1) * this.shakeIntensity;
         }
 
-        // Always use the camera's interpolated position, regardless of angle following
-        engine.viewport.x = (centerX - halfWidth + shakeOffsetX);
-        engine.viewport.y = (centerY - halfHeight + shakeOffsetY);
+        // Camera position is always the center, so subtract half the viewport size divided by zoom
+        engine.viewport.x = centerX - (viewportWidth / 2) + shakeOffsetX;
+        engine.viewport.y = centerY - (viewportHeight / 2) + shakeOffsetY;
 
         engine.viewport.width = viewportWidth;
         engine.viewport.height = viewportHeight;
@@ -280,6 +368,12 @@ class CameraController extends Module {
      * @param {number} deltaTime - Time since last frame in seconds
      */
     loop(deltaTime) {
+        // Always follow owner if dynamic zoom is enabled
+        if (this.dynamicZoomEnabled) {
+            this.followOwner = true;
+            this._targetPosition = undefined;
+        }
+
         // Handle following with smooth lerp
         const targetPos = this.followOwner ? this.getTargetPosition() : (this._targetPosition || this.position);
 
@@ -317,13 +411,13 @@ class CameraController extends Module {
             // Reset to 0 when not following angle
             if (Math.abs(this.currentAngle) > 0.001) {
                 const angleLerpFactor = 1.0 - Math.pow(this.positionDamping, deltaTime * this.followSpeed);
-                
+
                 let angleDiff = -this.currentAngle;
                 while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
                 while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
-                
+
                 this.currentAngle += angleDiff * angleLerpFactor;
-                
+
                 if (Math.abs(this.currentAngle) < 0.001) {
                     this.currentAngle = 0;
                 }
@@ -341,6 +435,28 @@ class CameraController extends Module {
             }
         }
 
+        // Dynamic zoom based on GameObject speed
+        if (this.dynamicZoomEnabled && this.gameObject && this.gameObject.previousPosition) {
+            const prev = this.gameObject.previousPosition;
+            const curr = this.gameObject.position;
+            const speed = Math.sqrt(
+                Math.pow(curr.x - prev.x, 2) + Math.pow(curr.y - prev.y, 2)
+            ) / (deltaTime || 1);
+
+            // Calculate target zoom based on speed
+            // At speed=0, zoom=1.0; at high speed, zoom approaches maxZoomOut
+            let desiredZoom = 1.0 - speed * this.zoomIntensityMultiplier;
+            desiredZoom = Math.max(this.maxZoomOut, Math.min(1.0, desiredZoom));
+            this.targetZoom = desiredZoom;
+
+            // Smooth zoom changes
+            const zoomLerpFactor = 1.0 - Math.pow(this.zoomSmoothness, deltaTime * this.zoomSpeed);
+            this.zoom += (this.targetZoom - this.zoom) * zoomLerpFactor;
+            if (Math.abs(this.zoom - this.targetZoom) < 0.001) {
+                this.zoom = this.targetZoom;
+            }
+        }
+
         // Update shake effect
         if (this.shakeTimer > 0) {
             this.shakeTimer -= deltaTime;
@@ -351,6 +467,11 @@ class CameraController extends Module {
                 // Gradually reduce intensity over time
                 this.shakeIntensity *= this.shakeDecay;
             }
+        }
+
+        if (this.zoom <= 0.1) {
+            this.zoom = 0.1; // Prevent zooming out too far
+            this.targetZoom = 0.1; // Ensure target zoom is also clamped
         }
 
         // Ensure camera stays within bounds

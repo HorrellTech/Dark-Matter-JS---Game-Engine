@@ -28,6 +28,8 @@ class GameObject {
         // Keep track of original position and rotation
         this.originalPosition = this.position.clone();
         this.originalRotation = this.angle;
+
+        this.previousPosition = this.position.clone(); // For movement tracking
     }
 
     generateRandomColor() {
@@ -65,6 +67,8 @@ class GameObject {
 
     beginLoop() {
         if (!this.active) return;
+
+        this.previousPosition = this.position.clone(); // For movement tracking
 
         this.modules.forEach(module => {
             if (module.enabled && module.beginLoop) module.beginLoop();
@@ -1311,7 +1315,6 @@ class GameObject {
             cloned._originalPosition = { x: this._originalPosition.x, y: this._originalPosition.y };
         }
         
-        // Clone modules with proper reference handling
         // Clone modules with proper reference handling
         for (const module of this.modules) {
             try {

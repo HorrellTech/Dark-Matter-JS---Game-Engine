@@ -14,6 +14,8 @@ class ProjectManager {
         this._loadLastProjectFileHandle();
         this._setupKeyboardShortcuts();
 
+        //this.newProject(false); // Initialize with a new project
+
         console.log("ProjectManager initialized");
     }
 
@@ -106,7 +108,7 @@ class ProjectManager {
         }, 4000);
     }
 
-    async newProject() {
+    async newProject(promptUser = true) {
         if (this.isSavingOrLoading) {
             console.warn("Project operation already in progress.");
             this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
