@@ -35,10 +35,6 @@ class SnakePlayer extends Module {
         this.length = this.startLength;
         this.growQueued = 0;
         this.distanceAccumulator = 0;
-        
-        // Track actual head position separately from game object
-        this.headX = 0;
-        this.headY = 0;
 
         // Expose properties
         this.exposeProperty("moveSpeed", "number", 180, {
@@ -152,24 +148,18 @@ class SnakePlayer extends Module {
     }
 
     start() {
-        // Initialize direction from game object's initial angle
         this.direction = this.gameObject.angle || 0;
         this.length = this.startLength;
         this.segments = [];
         this.distanceAccumulator = 0;
         this.growQueued = 0;
-        
-        // Initialize head position to match game object
-        this.headX = this.gameObject.position.x;
-        this.headY = this.gameObject.position.y;
-        
-        // Initialize segments behind the head position
+
+        // Use gameObject position for head
         const dirRad = this.direction * Math.PI / 180;
-        
         for (let i = 0; i < this.length; i++) {
             this.segments.push({
-                x: this.headX - Math.cos(dirRad) * i * this.segmentSpacing,
-                y: this.headY - Math.sin(dirRad) * i * this.segmentSpacing
+                x: this.gameObject.position.x - Math.cos(dirRad) * i * this.segmentSpacing,
+                y: this.gameObject.position.y - Math.sin(dirRad) * i * this.segmentSpacing
             });
         }
     }
@@ -182,46 +172,30 @@ class SnakePlayer extends Module {
         if (window.input.keyDown(this.rightKey)) {
             this.direction += this.turnSpeed * deltaTime;
         }
-        
-        // Normalize direction angle
         this.direction = ((this.direction % 360) + 360) % 360;
-        
-        // Update game object angle to match direction
         //this.gameObject.angle = this.direction;
 
-        // Move the head position forward based on direction
+        // Move game object forward
         const moveDist = this.moveSpeed * deltaTime;
         const dirRad = this.direction * Math.PI / 180;
-        
-        this.headX += Math.cos(dirRad) * moveDist;
-        this.headY += Math.sin(dirRad) * moveDist;
-        
-        // Keep game object position synced with head
-        //this.gameObject.position.x = this.headX;
-        //this.gameObject.position.y = this.headY;
+        this.gameObject.position.x += Math.cos(dirRad) * moveDist;
+        this.gameObject.position.y += Math.sin(dirRad) * moveDist;
 
         this.distanceAccumulator += moveDist;
 
-        // Update segments when we've moved enough distance
+        // Update segments so the head follows the game object
         if (this.distanceAccumulator >= this.segmentSpacing) {
-            // Add new head segment at current head position
             this.segments.unshift({
-                x: this.headX,
-                y: this.headY
+                x: this.gameObject.position.x,
+                y: this.gameObject.position.y
             });
-            
-            // Remove segments that exceed our current length
             while (this.segments.length > this.length) {
                 this.segments.pop();
             }
-            
             this.distanceAccumulator -= this.segmentSpacing;
-        } else {
-            // Always keep the first segment at the current head position
-            if (this.segments.length > 0) {
-                this.segments[0].x = this.headX;
-                this.segments[0].y = this.headY;
-            }
+        } else if (this.segments.length > 0) {
+            this.segments[0].x = this.gameObject.position.x;
+            this.segments[0].y = this.gameObject.position.y;
         }
 
         // Check apple collision
@@ -285,7 +259,7 @@ class SnakePlayer extends Module {
             const eyeOffset = this.headRadius * 0.5;
             const eyeRadius = this.headRadius * 0.18;
             const dirRad = this.direction * Math.PI / 180;
-            
+
             // Draw both eyes
             for (let side of [-1, 1]) {
                 ctx.save();
@@ -304,11 +278,11 @@ class SnakePlayer extends Module {
 
     drawGizmos(ctx) {
         if (this.segments.length < 1) return;
-        
+
         const head = this.segments[0];
         ctx.save();
         ctx.globalAlpha = 0.5;
-        
+
         // Draw head radius
         ctx.strokeStyle = "#00ff00";
         ctx.lineWidth = 1;
@@ -347,9 +321,7 @@ class SnakePlayer extends Module {
             shadeColor: this.shadeColor,
             gradientStrength: this.gradientStrength,
             appleObject: this.appleObject,
-            length: this.length,
-            headX: this.headX,
-            headY: this.headY
+            length: this.length
         };
     }
 
@@ -371,8 +343,6 @@ class SnakePlayer extends Module {
         this.gradientStrength = data.gradientStrength ?? 0.7;
         this.appleObject = data.appleObject ?? "";
         this.length = data.length ?? this.startLength;
-        this.headX = data.headX ?? this.gameObject?.position?.x ?? 0;
-        this.headY = data.headY ?? this.gameObject?.position?.y ?? 0;
         this.segments = [];
     }
 }

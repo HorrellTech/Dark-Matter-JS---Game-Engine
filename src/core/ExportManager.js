@@ -647,6 +647,10 @@ class ExportManager {
             'DarknessModule': 'src/core/Modules/Lighting/DarknessModule.js',
             'PointLightModule': 'src/core/Modules/Lighting/PointLightModule.js',
 
+            // Snake Game Modules
+            'SnakePlayer': 'src/core/Modules/Snake/SnakePlayer.js',
+            'SnakeSegment': 'src/core/Modules/Snake/SnakeApple.js',
+
             // Utility Modules
             'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',

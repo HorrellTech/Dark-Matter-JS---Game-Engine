@@ -118,7 +118,7 @@ class SnakeApple extends Module {
         const y = this.gameObject.position.y + this.bobOffset;
         
         ctx.save();
-        ctx.translate(x, y);
+        ctx.translate(0, 0);
         ctx.rotate(this.rotation * Math.PI / 180);
 
         // Draw apple shadow
@@ -188,7 +188,7 @@ class SnakeApple extends Module {
         ctx.strokeStyle = "#ff0000";
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(this.gameObject.position.x, this.gameObject.position.y, this.size, 0, Math.PI * 2);
+        ctx.arc(0, 0, this.size, 0, Math.PI * 2);
         ctx.stroke();
         
         ctx.restore();
