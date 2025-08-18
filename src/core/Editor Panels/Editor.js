@@ -53,7 +53,7 @@ class Editor {
         this.mousePosition = new Vector2(0, 0);
         this.showMouseCoordinates = true;
 
-        if(!window.isEditor) {
+        if (!window.isEditor) {
             window.isEditor = true; // Set global flag to indicate editor mode
         }
 
@@ -75,6 +75,8 @@ class Editor {
 
         // Set up the inspector
         this.inspector = new Inspector('moduleSettings', this);
+
+        this.panningAnimationFrame = null;
 
         this.initEditor();
     }
@@ -132,7 +134,7 @@ class Editor {
         this.canvas.addEventListener('mousemove', (e) => {
             const screenPos = new Vector2(e.offsetX, e.offsetY);
             this.mousePosition = this.screenToWorldPosition(screenPos);
-            this.refreshCanvas();
+            //this.refreshCanvas();
         });
 
         // Create a single bound handler for mousemove
@@ -505,7 +507,8 @@ class Editor {
 
         // Draw all game objects from activeScene
         if (this.activeScene && this.activeScene.gameObjects) {
-            this.activeScene.gameObjects.forEach(obj => {
+            const visibleObjects = this.getVisibleObjects(this.activeScene.gameObjects);
+            visibleObjects.forEach(obj => {
                 obj.drawInEditor(this.ctx);
 
                 // Draw gizmos for each module if available
@@ -533,6 +536,48 @@ class Editor {
         if (this.showMouseCoordinates) {
             this.drawMouseCoordinates();
         }
+    }
+
+    /**
+ * Get only the objects that are visible in the current viewport
+ */
+    getVisibleObjects(gameObjects) {
+        // Calculate viewport bounds in world space
+        const viewportLeft = (0 - this.camera.position.x) / this.camera.zoom;
+        const viewportRight = (this.canvas.width - this.camera.position.x) / this.camera.zoom;
+        const viewportTop = (0 - this.camera.position.y) / this.camera.zoom;
+        const viewportBottom = (this.canvas.height - this.camera.position.y) / this.camera.zoom;
+
+        // Add some padding for objects partially outside viewport
+        const padding = 50;
+
+        const isObjectVisible = (obj) => {
+            if (!obj.active) return false;
+
+            const worldPos = obj.getWorldPosition();
+
+            // Simple bounds check with padding
+            return worldPos.x >= viewportLeft - padding &&
+                worldPos.x <= viewportRight + padding &&
+                worldPos.y >= viewportTop - padding &&
+                worldPos.y <= viewportBottom + padding;
+        };
+
+        const getVisibleObjectsRecursive = (objects) => {
+            const visible = [];
+            objects.forEach(obj => {
+                if (isObjectVisible(obj)) {
+                    visible.push(obj);
+                }
+                // Always check children regardless of parent visibility
+                if (obj.children && obj.children.length > 0) {
+                    visible.push(...getVisibleObjectsRecursive(obj.children));
+                }
+            });
+            return visible;
+        };
+
+        return getVisibleObjectsRecursive(gameObjects);
     }
 
     /**
@@ -1596,7 +1641,13 @@ class Editor {
 
         // If not dragging, just refresh canvas to update hover effects on handles
         if (!this.dragInfo.dragging) {
-            this.refreshCanvas();
+            // Only refresh if mouse is over viewport handles or transform handles
+            const overViewportHandle = this.isOnViewportMoveHandle(worldPos) || this.isOnViewportSettingsHandle(worldPos);
+            const overTransformHandle = this.hierarchy?.selectedObject && this.isOverTransformHandle(worldPos);
+
+            if (overViewportHandle || overTransformHandle) {
+                this.refreshCanvas();
+            }
             return;
         }
 
@@ -1627,7 +1678,13 @@ class Editor {
             );
 
             this.camera.position = this.dragInfo.cameraStartPos.add(delta);
-            this.refreshCanvas();
+            // Use requestAnimationFrame for smoother panning
+            if (!this.panningAnimationFrame) {
+                this.panningAnimationFrame = requestAnimationFrame(() => {
+                    this.refreshCanvas();
+                    this.panningAnimationFrame = null;
+                });
+            }
         } else if (this.dragInfo.object) {
             // Always use adjusted mouse position for correct zoom handling
             const screenPos = this.getAdjustedMousePosition(e);
@@ -1710,6 +1767,37 @@ class Editor {
         if (this.inspector) {
             this.inspector.updateTransformValues();
         }
+    }
+
+    isOverTransformHandle(worldPos) {
+        if (!this.hierarchy?.selectedObject) return false;
+
+        const selectedObj = this.hierarchy.selectedObject;
+        const objPos = selectedObj.getWorldPosition();
+        const handleSize = this.transformHandles.size / this.camera.zoom;
+        const centerBoxSize = this.transformHandles.centerBoxSize / this.camera.zoom;
+
+        // Check X handle
+        const xHandlePos = new Vector2(objPos.x + handleSize, objPos.y);
+        if (worldPos.distance(xHandlePos) < this.transformHandles.arrowSize * 1.5 / this.camera.zoom) {
+            return true;
+        }
+
+        // Check Y handle
+        const yHandlePos = new Vector2(objPos.x, objPos.y - handleSize);
+        if (worldPos.distance(yHandlePos) < this.transformHandles.arrowSize * 1.5 / this.camera.zoom) {
+            return true;
+        }
+
+        // Check center box
+        if (worldPos.x > objPos.x - centerBoxSize / 2 &&
+            worldPos.x < objPos.x + centerBoxSize / 2 &&
+            worldPos.y > objPos.y - centerBoxSize / 2 &&
+            worldPos.y < objPos.y + centerBoxSize / 2) {
+            return true;
+        }
+
+        return false;
     }
 
     isOnViewportMoveHandle(worldPos) {

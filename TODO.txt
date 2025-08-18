@@ -2,6 +2,8 @@
 
 - Fix lagging when panning editor canvas around < --- IMPORTANT
 
+- Add module for drawing a FAS Icon type thing 
+
 - Fix asset manager not transferring image references for particle emitter, create an 
     easier way to load images into a module and have them save to asset manager cache
     for the rendering pipeline.
