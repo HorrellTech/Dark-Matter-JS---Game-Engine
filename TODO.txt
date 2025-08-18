@@ -1,5 +1,7 @@
 - Fix mobile touch not performing actions when tapping buttons etc. Seems to work for welcome screen and canvas.
 
+- Fix lagging when panning editor canvas around < --- IMPORTANT
+
 - Fix asset manager not transferring image references for particle emitter, create an 
     easier way to load images into a module and have them save to asset manager cache
     for the rendering pipeline.
