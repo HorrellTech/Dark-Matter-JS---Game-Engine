@@ -1,0 +1,9 @@
+- Fix asset manager not transferring image references for particle emitter, create an 
+    easier way to load images into a module and have them save to asset manager cache
+    for the rendering pipeline.
+
+- Add full metroidvania modules, player, world tilemap, room-switching camera viewport instead of camera follow.
+
+- Spritesheet support, complete with animations (left to right is animation frames, top to bottom is animation)
+
+- Add three.js for webGL 3D capabilities.
