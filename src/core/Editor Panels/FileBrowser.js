@@ -4,7 +4,7 @@ class FileBrowser {
         this.currentPath = '';
         this.items = [];
         this.selectedItems = new Set();
-        this.dbName = 'DARKMATTERJSDB_001' + Math.random().toString(36).substring(2, 15);
+        this.dbName = 'DARKMATTERJSDB_001';// + Math.random().toString(36).substring(2, 15);
         this.dbVersion = 1;
         this.fileTypes = {}; // Initialize fileTypes object first
         this.isInitializing = false; // Track initialization state
@@ -30,7 +30,14 @@ class FileBrowser {
             };
         });
 
-        this.assetManager = new AssetManager(this);
+        if(!this.assetManager) {
+            if (window.assetManager) {
+                this.assetManager = window.assetManager; // Use existing instance if available
+            }
+            else {
+                this.assetManager = new AssetManager(this);
+            }
+        }
 
         // Register file types after initialization
         this.fileTypes['.scene'] = {

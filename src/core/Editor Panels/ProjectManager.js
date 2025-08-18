@@ -217,6 +217,11 @@ class ProjectManager {
             assets: [],
         };
 
+        // Add asset manager cache (only serializable entries)
+        if (window.assetManager) {
+            projectData.assetCache = window.assetManager.serializeCache();
+        }
+
         // Gather scenes
         for (const scene of this.editor.scenes) {
             projectData.scenes.push(scene.toJSON());
@@ -470,6 +475,11 @@ class ProjectManager {
                 await this.fileBrowser.refreshFiles();
                 if (this.editor.inspector) {
                     this.editor.inspector.detectAvailableModules();
+                }
+
+                // Restore asset manager cache
+                if (window.assetManager && projectData.assetCache) {
+                    await window.assetManager.deserializeCache(projectData.assetCache);
                 }
 
                 console.log("Scanning for module scripts...");

@@ -585,6 +585,68 @@ class AssetManager {
             audio.src = src;
         });
     }
+
+    /**
+     * Serialize cache to a plain object (only serializable entries)
+     */
+    serializeCache() {
+        const serializable = {};
+        for (const [key, value] of Object.entries(this.cache)) {
+            // Only serialize strings (e.g., data URLs, text, JSON)
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                serializable[key] = value;
+            } else if (typeof value === 'object' && value !== null && !(value instanceof HTMLImageElement) && !(value instanceof Audio)) {
+                try {
+                    serializable[key] = JSON.stringify(value);
+                } catch {}
+            }
+            // Skip DOM objects (Image, Audio, etc.)
+        }
+        return serializable;
+    }
+
+    /**
+     * Deserialize cache from a plain object
+     */
+    async deserializeCache(serializedCache) {
+        for (const [key, value] of Object.entries(serializedCache)) {
+            if (typeof value === 'string') {
+                // If it's a data URL for image/audio, rehydrate
+                if (value.startsWith('data:image/')) {
+                    if (/^data:image\/[a-zA-Z]+;base64,/.test(value)) {
+                        try {
+                            this.cache[key] = await this.loadImage(value);
+                        } catch {
+                            this.cache[key] = value; // fallback
+                        }
+                    } else {
+                        console.warn(`Skipped invalid image data URL for key: ${key}`);
+                        this.cache[key] = value; // fallback
+                    }
+                } else if (value.startsWith('data:audio/')) {
+                    if (/^data:audio\/[a-zA-Z]+;base64,/.test(value)) {
+                        try {
+                            this.cache[key] = await this.loadAudio(value);
+                        } catch {
+                            this.cache[key] = value; // fallback
+                        }
+                    } else {
+                        console.warn(`Skipped invalid audio data URL for key: ${key}`);
+                        this.cache[key] = value; // fallback
+                    }
+                } else {
+                    // Try to parse JSON, else store as string
+                    try {
+                        this.cache[key] = JSON.parse(value);
+                    } catch {
+                        this.cache[key] = value;
+                    }
+                }
+            } else {
+                this.cache[key] = value;
+            }
+        }
+    }
 }
 
 window.assetManager = new AssetManager(window.fileBrowser || null);

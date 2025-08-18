@@ -53,6 +53,10 @@ class Editor {
         this.mousePosition = new Vector2(0, 0);
         this.showMouseCoordinates = true;
 
+        if(!window.isEditor) {
+            window.isEditor = true; // Set global flag to indicate editor mode
+        }
+
         this.scenes = [];
         this.activeScene = null;
         this.sceneBuffer = new SceneBuffer();

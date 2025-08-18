@@ -1681,9 +1681,10 @@ class ParticleSystem extends Module {
         if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
         if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
 
-        // Handle image loading
+        // Handle image loading - MATCH SpriteRenderer exactly
         const hasExistingImage = this._image && this._isImageLoaded;
 
+        // Load image from AssetManager cache using imageData key
         if (json.useEmbeddedData && json.imageData && window.assetManager && window.assetManager.cache) {
             const imageData = window.assetManager.cache[json.imageData];
             if (imageData) {
@@ -1700,6 +1701,7 @@ class ParticleSystem extends Module {
                 };
             }
         } else if (json.imageDataRaw) {
+            // Fallback: load directly from raw data
             this.loadImageFromData(json.imageDataRaw).then(() => {
                 console.log('Loaded particle image from raw data');
             }).catch(error => {
@@ -1711,24 +1713,23 @@ class ParticleSystem extends Module {
                 embedded: true,
                 load: () => this.loadImageFromData(json.imageDataRaw)
             };
-        } else if (json.imageAsset && json.imageAsset.path) {
-            // Fallback: restore imageAsset from path if no embedded data
-            if (window.AssetReference) {
-                this.imageAsset = new window.AssetReference(json.imageAsset.path, 'image');
-            } else {
-                this.imageAsset = {
-                    path: json.imageAsset.path,
-                    type: 'image',
-                    embedded: false,
-                    load: () => this.fallbackLoadImage(json.imageAsset.path)
-                };
-            }
-            this._image = null;
-            this._isImageLoaded = false;
-            this.loadImage();
+        } else if (json.imageData && json.useEmbeddedData !== false) {
+            // Legacy support for imageData without useEmbeddedData flag
+            this.loadImageFromData(json.imageData).then(() => {
+                console.log('Successfully loaded particle image from legacy embedded data');
+            }).catch(error => {
+                console.error('Failed to load legacy embedded particle image data:', error);
+            });
+            this.imageAsset = {
+                path: null,
+                type: 'image',
+                embedded: true,
+                load: () => this.loadImageFromData(json.imageData)
+            };
         } else {
             // No valid image data found
             if (!hasExistingImage) {
+                console.log('No particle image data found in JSON, clearing image asset');
                 this.imageAsset = {
                     path: null,
                     type: 'image',
@@ -1737,6 +1738,8 @@ class ParticleSystem extends Module {
                 };
                 this._image = null;
                 this._isImageLoaded = false;
+            } else {
+                console.log('No particle image data in JSON, but keeping existing loaded image');
             }
         }
     }
