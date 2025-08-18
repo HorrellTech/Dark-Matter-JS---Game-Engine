@@ -215,6 +215,27 @@ class Module {
         // 1) create a fresh instance
         const cloned = new this.constructor(this.name);
 
+        // Deep copy image asset and embedded image data
+        if (this._image && this._isImageLoaded) {
+            // If image is embedded, copy the data URL
+            cloned._image = this._image;
+            cloned._isImageLoaded = true;
+            cloned._imageWidth = this._imageWidth;
+            cloned._imageHeight = this._imageHeight;
+
+            if (this.imageAsset && this.imageAsset.embedded) {
+                cloned.imageAsset = {
+                    path: null,
+                    type: 'image',
+                    embedded: true,
+                    load: () => Promise.resolve(this._image)
+                };
+            } else if (this.imageAsset) {
+                // Copy asset reference
+                cloned.imageAsset = { ...this.imageAsset };
+            }
+        }
+
         // 2) copy all your own data except any gameObject pointers
         const keys = new Set([
             ...Object.getOwnPropertyNames(this),

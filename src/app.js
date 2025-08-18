@@ -972,6 +972,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, { passive: false });*/
     }
 
+    // Utility to delete all DARKMATTERJS_001* databases
+    async function cleanupDarkMatterDatabases() {
+        if (indexedDB.databases) {
+            const dbs = await indexedDB.databases();
+            dbs.forEach(db => {
+                if (db.name && db.name.startsWith('DARKMATTERJS_001')) {
+                    indexedDB.deleteDatabase(db.name);
+                }
+            });
+        } else {
+            // Fallback: try to delete the default name (if known)
+            indexedDB.deleteDatabase('DARKMATTERJS_001');
+        }
+    }
+
     function setupMobileTouchHandling() {
         // Add touch events for canvas interaction
         const editorCanvas = document.getElementById('editorCanvas');
@@ -1141,6 +1156,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         console.warn("Export button or export manager not found.");
     }
+
+    // Call cleanup on startup
+    cleanupDarkMatterDatabases();
+
+    // Remove current database on page unload
+    window.addEventListener('beforeunload', () => {
+        if (window.fileBrowser && window.fileBrowser.dbName) {
+            indexedDB.deleteDatabase(window.fileBrowser.dbName);
+        }
+    });
 
     // Call this after engine initialization
     setupGameViewControls();

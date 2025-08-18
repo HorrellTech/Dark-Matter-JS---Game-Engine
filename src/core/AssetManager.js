@@ -1,10 +1,16 @@
 class AssetManager {
-    constructor(fileBrowser) {
+    constructor(fileBrowser = null) {
         this.fileBrowser = fileBrowser;
         this.cache = {};
         this.loadingPromises = {};
         this.modal = null;
-        this.initModal();
+        
+        // Only initialize modal after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.initModal());
+        } else {
+            this.initModal();
+        }
     }
 
     initModal() {
@@ -581,4 +587,4 @@ class AssetManager {
     }
 }
 
-window.AssetManager = AssetManager;
+window.assetManager = new AssetManager(window.fileBrowser || null);

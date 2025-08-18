@@ -978,7 +978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize AssetManager with proper export mode handling
     if (!window.assetManager) {
-        window.assetManager = new AssetManager();
+        window.assetManager = new AssetManager(null);
     }
 
     // Enhanced path normalization function

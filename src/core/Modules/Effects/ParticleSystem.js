@@ -652,6 +652,16 @@ class ParticleSystem extends Module {
                 };
             }
 
+            // Add to AssetManager cache for export
+            if (window.assetManager && typeof window.assetManager.addAssetToCache === 'function') {
+                // You may want to pass the image data URL if available
+                let imageContent = null;
+                if (this._image && this._image.src && this._image.src.startsWith('data:image')) {
+                    imageContent = this._image.src;
+                }
+                window.assetManager.addAssetToCache(path, imageContent || path, 'image/png');
+            }
+
             console.log('Created imageAsset:', this.imageAsset);
 
             const image = await this.loadImage();
@@ -1501,6 +1511,40 @@ class ParticleSystem extends Module {
         return this.particlePool.length;
     }
 
+    clone(newGameObject = null) {
+        // Clone all base properties
+        const cloned = super.clone(newGameObject);
+
+        // Deep copy image asset and embedded image data for ParticleSystem
+        if (this._image && this._isImageLoaded) {
+            cloned._image = this._image;
+            cloned._isImageLoaded = true;
+            cloned._imageWidth = this._imageWidth;
+            cloned._imageHeight = this._imageHeight;
+
+            // If image is embedded, copy the data URL and asset reference
+            if (this.imageAsset && this.imageAsset.embedded) {
+                const imageSrc = this._image.src;
+                cloned.imageAsset = {
+                    path: null,
+                    type: 'image',
+                    embedded: true,
+                    load: () => Promise.resolve(cloned._image)
+                };
+                // Optionally, copy the src if needed for serialization
+                cloned._image.src = imageSrc;
+            } else if (this.imageAsset) {
+                // Copy asset reference for non-embedded images
+                cloned.imageAsset = { ...this.imageAsset };
+            }
+        } else if (this.imageAsset) {
+            // If only asset reference exists, copy it
+            cloned.imageAsset = { ...this.imageAsset };
+        }
+
+        return cloned;
+    }
+
     toJSON() {
         const json = super.toJSON();
 
@@ -1556,9 +1600,24 @@ class ParticleSystem extends Module {
         json.enableBatching = this.enableBatching;
         json.cullingEnabled = this.cullingEnabled;
 
-        // Handle image data embedding for export (like SpriteRenderer)
-        json.imageData = null; // Don't embed here - let ExportManager handle it
-        json.useEmbeddedData = true; // Indicate that this uses embedded data
+        // Save image data if available
+        if (this._image && this._image.src && this._image.src.startsWith('data:image')) {
+            const imageKey = this.imageAsset?.path || `particle_${Date.now()}`;
+            if (window.assetManager && window.assetManager.cache) {
+                if (!window.assetManager.cache[imageKey]) {
+                    window.assetManager.cache[imageKey] = this._image.src;
+                    console.log('Stored particle image in AssetManager cache:', imageKey);
+                }
+                json.imageData = imageKey;
+            } else {
+                // Fallback: store raw data directly
+                json.imageDataRaw = this._image.src;
+            }
+        } else {
+            json.imageData = null;
+            json.imageDataRaw = null;
+        }
+        json.useEmbeddedData = true;
 
         return json;
     }
@@ -1622,69 +1681,54 @@ class ParticleSystem extends Module {
         if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
         if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
 
-        // Handle image loading - MATCH SpriteRenderer exactly
+        // Handle image loading
         const hasExistingImage = this._image && this._isImageLoaded;
 
-        if (json.useEmbeddedData === true && json.imageData) {
-            // Exported game with embedded data - PRIORITY CASE
-            console.log('Loading particle image from embedded data');
-            this.loadImageFromData(json.imageData).then(() => {
-                console.log('Successfully loaded particle image from embedded data');
-            }).catch(error => {
-                console.error('Failed to load embedded particle image data:', error);
-            });
-
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageData)
-            };
-
-        } else if (json.imageData && json.useEmbeddedData !== false) {
-            // Legacy support for imageData without useEmbeddedData flag
-            console.log('Loading particle image from legacy embedded data');
-            this.loadImageFromData(json.imageData).then(() => {
-                console.log('Successfully loaded particle image from legacy embedded data');
-            }).catch(error => {
-                console.error('Failed to load legacy embedded particle image data:', error);
-            });
-
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageData)
-            };
-
-        } else if (json.imageAsset && json.imageAsset.path) {
-            // Development mode with normal imageAsset
-            console.log('Loading particle image from path:', json.imageAsset.path);
-            try {
-                if (window.AssetReference && typeof window.AssetReference.fromJSON === 'function') {
-                    this.imageAsset = window.AssetReference.fromJSON(json.imageAsset);
-                } else {
-                    this.imageAsset = {
-                        path: json.imageAsset.path,
-                        type: 'image',
-                        embedded: false,
-                        load: () => this.fallbackLoadImage(json.imageAsset.path)
-                    };
-                }
-
-                setTimeout(() => {
-                    this.loadImage().catch(error => {
-                        console.error("Failed to load particle image from path:", error);
-                    });
-                }, 100);
-            } catch (error) {
-                console.error("Error restoring particle image asset:", error);
+        if (json.useEmbeddedData && json.imageData && window.assetManager && window.assetManager.cache) {
+            const imageData = window.assetManager.cache[json.imageData];
+            if (imageData) {
+                this.loadImageFromData(imageData).then(() => {
+                    console.log('Loaded particle image from AssetManager cache');
+                }).catch(error => {
+                    console.error('Failed to load image from cache:', error);
+                });
+                this.imageAsset = {
+                    path: null,
+                    type: 'image',
+                    embedded: true,
+                    load: () => this.loadImageFromData(imageData)
+                };
             }
-
+        } else if (json.imageDataRaw) {
+            this.loadImageFromData(json.imageDataRaw).then(() => {
+                console.log('Loaded particle image from raw data');
+            }).catch(error => {
+                console.error('Failed to load image from raw data:', error);
+            });
+            this.imageAsset = {
+                path: null,
+                type: 'image',
+                embedded: true,
+                load: () => this.loadImageFromData(json.imageDataRaw)
+            };
+        } else if (json.imageAsset && json.imageAsset.path) {
+            // Fallback: restore imageAsset from path if no embedded data
+            if (window.AssetReference) {
+                this.imageAsset = new window.AssetReference(json.imageAsset.path, 'image');
+            } else {
+                this.imageAsset = {
+                    path: json.imageAsset.path,
+                    type: 'image',
+                    embedded: false,
+                    load: () => this.fallbackLoadImage(json.imageAsset.path)
+                };
+            }
+            this._image = null;
+            this._isImageLoaded = false;
+            this.loadImage();
         } else {
             // No valid image data found
             if (!hasExistingImage) {
-                console.log('No particle image data found in JSON, clearing image asset');
                 this.imageAsset = {
                     path: null,
                     type: 'image',
@@ -1693,8 +1737,6 @@ class ParticleSystem extends Module {
                 };
                 this._image = null;
                 this._isImageLoaded = false;
-            } else {
-                console.log('No particle image data in JSON, but keeping existing loaded image');
             }
         }
     }
