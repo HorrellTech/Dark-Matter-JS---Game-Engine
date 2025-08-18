@@ -1,9 +1,14 @@
+- Fix mobile touch not performing actions when tapping buttons etc. Seems to work for welcome screen and canvas.
+
 - Fix asset manager not transferring image references for particle emitter, create an 
     easier way to load images into a module and have them save to asset manager cache
     for the rendering pipeline.
 
 - Add full metroidvania modules, player, world tilemap, room-switching camera viewport instead of camera follow.
 
-- Spritesheet support, complete with animations (left to right is animation frames, top to bottom is animation)
+- Spritesheet support, complete with animations (left to right is animation frames, top to bottom is animation).
+
+- Add a layer system for game objects, so scenes will contain layers, and each layer will hold its own game objects. Selecting a
+    game object in the editor will switch the editor scene layer to show that layers objects and the one selected/highlighted.
 
 - Add three.js for webGL 3D capabilities.
