@@ -303,7 +303,7 @@ class Editor {
 
     updateFPSDisplay() {
         const fpsElement = document.getElementById('fpsDisplay');
-        if (fpsElement) {  
+        if (fpsElement) {
             fpsElement.textContent = `FPS: ${this.fps}`;
         }
     }
@@ -1465,6 +1465,34 @@ class Editor {
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
 
+            const clickedObj = this.findObjectAtPosition(worldPos);
+
+            if (clickedObj) {
+                // Multi-select logic
+                if (e.ctrlKey && this.hierarchy) {
+                    if (this.hierarchy.selectedObjects.includes(clickedObj)) {
+                        // Deselect
+                        this.hierarchy.selectedObjects = this.hierarchy.selectedObjects.filter(obj => obj !== clickedObj);
+                        clickedObj.setSelected(false);
+                    } else {
+                        // Add to selection
+                        this.hierarchy.selectedObjects.push(clickedObj);
+                        clickedObj.setSelected(true);
+                    }
+                    if (this.hierarchy.selectedObjects.length === 1) {
+                        this.hierarchy.selectGameObject(clickedObj);
+                    } else {
+                        this.inspector.inspectMultipleObjects(this.hierarchy.selectedObjects);
+                    }
+                } else {
+                    // Single select
+                    this.hierarchy.selectedObjects.forEach(obj => obj.setSelected(false));
+                    this.hierarchy.selectedObjects = [clickedObj];
+                    clickedObj.setSelected(true);
+                    this.hierarchy.selectGameObject(clickedObj);
+                }
+            }
+
             // First check if we're interacting with the viewport
             if (this.isOnViewportMoveHandle(worldPos)) {
                 this.viewportInteraction.dragging = true;
@@ -1550,9 +1578,6 @@ class Editor {
                     return;
                 }
             }
-
-            // If not a transform handle interaction, check for object selection
-            const clickedObj = this.findObjectAtPosition(worldPos);
 
             if (clickedObj) {
                 // Start dragging the object in free mode

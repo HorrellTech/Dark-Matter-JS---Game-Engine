@@ -7,6 +7,7 @@ class HierarchyManager {
         this.draggedOver = null;
         this.dropIndicator = null; // Element to show where item will be dropped
         this.selectedObject = null;
+        this.selectedObjects = [];
         this.prefabManager = new PrefabManager(this); // Add prefab manager
 
         this.initializeUI();
@@ -493,6 +494,46 @@ class HierarchyManager {
             else {
                 this.selectGameObject(gameObject);
             }
+
+            // Multi-select logic
+            if (e.ctrlKey) {
+                if (this.selectedObjects.includes(gameObject)) {
+                    // Deselect
+                    this.selectedObjects = this.selectedObjects.filter(obj => obj !== gameObject);
+                    gameObject.setSelected(false);
+                } else {
+                    // Add to selection
+                    this.selectedObjects.push(gameObject);
+                    gameObject.setSelected(true);
+                }
+            } else {
+                // Single select (clear previous)
+                this.selectedObjects.forEach(obj => obj.setSelected(false));
+                this.selectedObjects = [gameObject];
+                gameObject.setSelected(true);
+            }
+
+            // Update UI
+            document.querySelectorAll('.hierarchy-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            this.selectedObjects.forEach(obj => {
+                const itemElement = document.querySelector(`.hierarchy-item[data-id="${obj.id}"]`);
+                if (itemElement) itemElement.classList.add('selected');
+            });
+
+            // Update inspector
+            if (this.editor.inspector) {
+                if (this.selectedObjects.length === 1) {
+                    this.editor.inspector.inspectObject(this.selectedObjects[0]);
+                } else if (this.selectedObjects.length > 1) {
+                    this.editor.inspector.inspectMultipleObjects(this.selectedObjects);
+                } else {
+                    this.editor.inspector.showNoObjectMessage();
+                }
+            }
+
+            this.editor.refreshCanvas();
 
             e.stopPropagation();
         });

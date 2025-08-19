@@ -116,6 +116,9 @@ window.MyModule = MyModule; // Register globally
 - this.gameObject.scale (Vector2)
 - this.gameObject.getWorldPosition() (Vector2)
 
+*** IMPORTANT: Game Objects can have a parent/child relationship, where the child game objects move relative to the parent game
+objects position and angle ***
+
 Provide working, complete modules. Keep code concise but functional.
 
 REQUEST: 

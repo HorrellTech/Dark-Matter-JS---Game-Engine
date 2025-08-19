@@ -1163,6 +1163,20 @@ class Inspector {
         return false; // Default to not collapsed
     }
 
+    saveGroupCollapseState(groupId, isCollapsed) {
+        try {
+            let states = JSON.parse(localStorage.getItem('inspectorGroupCollapseStates') || '{}');
+            states[groupId] = isCollapsed;
+            localStorage.setItem('inspectorGroupCollapseStates', JSON.stringify(states));
+        } catch (e) {}
+    }
+    getGroupCollapseState(groupId) {
+        try {
+            const states = JSON.parse(localStorage.getItem('inspectorGroupCollapseStates') || '{}');
+            return states[groupId] || false;
+        } catch (e) { return false; }
+    }
+
     /**
      * Generate UI for a module based on its exposed properties
      * @param {Module} module - The module to generate UI for
@@ -1188,12 +1202,23 @@ class Inspector {
                     styleHelper.html += this.generatePropertyUI({ name, type, value, options }, module);
                     return styleHelper;
                 },
-                startGroup: (label, collapsible, styleOptions) => {
-                    styleHelper.html += `<div class="property-group" style="${styleOptions ? Object.entries(styleOptions).map(([k, v]) => `${k}:${v}`).join(';') : ''}"><div class="group-label">${label}</div>`;
+                startGroup: (label, collapsible = true, styleOptions = {}) => {
+                    const groupId = `group-${Math.random().toString(36).substr(2, 8)}`;
+                    const collapsed = collapsible ? this.getGroupCollapseState(groupId) : false;
+                    styleHelper.html += `
+                        <div class="property-group" id="${groupId}" style="${styleOptions ? Object.entries(styleOptions).map(([k, v]) => `${k}:${v}`).join(';') : ''}">
+                            <div class="group-label" style="cursor:pointer;">
+                                ${label}
+                                ${collapsible ? `<button class="group-collapse-btn" data-group-id="${groupId}" title="${collapsed ? 'Expand' : 'Collapse'}" style="float:right;background:none;border:none;color:#a2b3c4;"><i class="fas ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i></button>` : ''}
+                            </div>
+                            <div class="group-content" style="display:${collapsed ? 'none' : 'block'};">
+                    `;
+                    if (!styleHelper._groups) styleHelper._groups = [];
+                    styleHelper._groups.push({ groupId, collapsible });
                     return styleHelper;
                 },
                 endGroup: () => {
-                    styleHelper.html += `</div>`;
+                    styleHelper.html += `</div></div>`;
                     return styleHelper;
                 },
                 addDivider: () => {
@@ -2667,6 +2692,21 @@ class Inspector {
         </div>`;
 
         return html;
+    }
+
+    inspectMultipleObjects(objects) {
+        // Hide object header and modules
+        this.noObjectMessage.style.display = 'none';
+        this.objectHeader.style.display = 'none';
+        this.modulesList.innerHTML = `
+            <div class="multiple-selection-message">
+                <i class="fas fa-object-group"></i>
+                <h3>${objects.length} objects selected</h3>
+                <p>Multi-object editing is not yet supported.<br>
+                You can move, duplicate, or delete all selected objects.</p>
+            </div>
+        `;
+        // Optionally, add batch actions here
     }
 
     /**

@@ -66,16 +66,25 @@ class Text extends Module {
             }
         });
         
-        this.exposeProperty("fontWeight", "enum", this.fontWeight, {
-            options: ["normal", "bold", "lighter", "bolder"],
+        this.exposeProperty("fontWeight", "select", this.fontWeight, {
+            options: [
+                { value: "normal", label: "Normal" },
+                { value: "bold", label: "Bold" },
+                { value: "lighter", label: "Lighter" },
+                { value: "bolder", label: "Bolder" }
+            ],
             description: "Font weight",
             onchange: (val) => {
                 this.fontWeight = val;
             }
         });
         
-        this.exposeProperty("fontStyle", "enum", this.fontStyle, {
-            options: ["normal", "italic", "oblique"],
+        this.exposeProperty("fontStyle", "select", this.fontStyle, {
+            options: [
+                { value: "normal", label: "Normal" },
+                { value: "italic", label: "Italic" },
+                { value: "oblique", label: "Oblique" }
+            ],
             description: "Font style",
             onchange: (val) => {
                 this.fontStyle = val;
@@ -89,16 +98,29 @@ class Text extends Module {
             }
         });
         
-        this.exposeProperty("textAlign", "enum", this.textAlign, {
-            options: ["left", "center", "right", "start", "end"],
+        this.exposeProperty("textAlign", "select", this.textAlign, {
+            options: [
+                { value: "left" },
+                { value: "center"},
+                { value: "right" },
+                { value: "start"},
+                { value: "end" }
+            ],
             description: "Text alignment",
             onchange: (val) => {
                 this.textAlign = val;
             }
         });
         
-        this.exposeProperty("textBaseline", "enum", this.textBaseline, {
-            options: ["top", "hanging", "middle", "alphabetic", "ideographic", "bottom"],
+        this.exposeProperty("textBaseline", "select", this.textBaseline, {
+            options: [
+                { value: "top", label: "Top" },
+                { value: "hanging", label: "Hanging" },
+                { value: "middle", label: "Middle" },
+                { value: "alphabetic", label: "Alphabetic" },
+                { value: "ideographic", label: "Ideographic" },
+                { value: "bottom", label: "Bottom" }
+            ],
             description: "Text baseline",
             onchange: (val) => {
                 this.textBaseline = val;
@@ -269,26 +291,42 @@ class Text extends Module {
             this.drawBackground(ctx, lines, lineHeightPx);
         }
         
-        // Set up shadow
+        // Draw text with shadow first (if enabled)
         if (this.showShadow) {
+            ctx.save();
             ctx.shadowColor = this.shadowColor;
             ctx.shadowOffsetX = this.shadowOffsetX;
             ctx.shadowOffsetY = this.shadowOffsetY;
             ctx.shadowBlur = this.shadowBlur;
+            
+            // Draw text fill with shadow
+            ctx.fillStyle = this.color;
+            this.drawTextLines(ctx, lines, lineHeightPx, false);
+            
+            ctx.restore();
         }
         
-        // Draw text outline
+        // Clear shadow settings for outline and main text
+        ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.shadowBlur = 0;
+        
+        // Draw text outline (if enabled and no shadow, or draw separately)
         if (this.showOutline) {
             ctx.strokeStyle = this.outlineColor;
             ctx.lineWidth = this.outlineWidth;
             ctx.lineJoin = "round";
+            ctx.miterLimit = 2;
             
             this.drawTextLines(ctx, lines, lineHeightPx, true);
         }
         
-        // Draw text fill
-        ctx.fillStyle = this.color;
-        this.drawTextLines(ctx, lines, lineHeightPx, false);
+        // Draw text fill (only if no shadow was drawn, otherwise it was already drawn above)
+        if (!this.showShadow) {
+            ctx.fillStyle = this.color;
+            this.drawTextLines(ctx, lines, lineHeightPx, false);
+        }
         
         ctx.restore();
     }

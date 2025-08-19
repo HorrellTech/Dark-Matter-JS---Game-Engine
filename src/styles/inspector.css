@@ -1193,6 +1193,62 @@ button.remove-vertex:disabled {
     gap: 5px;
 }
 
+/* Module dropdown: modern look */
+.module-dropdown {
+    background: linear-gradient(180deg, #232b3a 0%, #1a1e24 100%);
+    border: 1px solid #3d4a5a;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    padding: 8px 0;
+    color: #e3eaf7;
+    font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+    font-size: 15px;
+    max-width: 350px;
+    /* Remove fixed max-height here, JS will set it dynamically */
+    overflow-y: auto;
+}
+
+.module-dropdown-folder-header {
+    background: #2d3648 !important;
+    color: #e3eaf7 !important;
+    font-weight: 600;
+    border-radius: 6px;
+    margin: 2px 0;
+    padding: 8px 16px;
+    transition: background 0.2s;
+}
+
+.module-dropdown-folder-header:hover {
+    background: #3b4660 !important;
+}
+
+.module-dropdown-item {
+    background: none;
+    color: #c7d6ee;
+    padding: 8px 24px;
+    border-radius: 4px;
+    margin: 2px 0;
+    transition: background 0.2s, color 0.2s;
+    cursor: pointer;
+}
+
+.module-dropdown-item:hover {
+    background: #2e3a54;
+    color: #fff;
+}
+
+.module-dropdown-namespace {
+    background: #324055 !important;
+    color: #a2b3c4 !important;
+    font-weight: bold;
+    padding: 10px 16px 6px 16px;
+    border-radius: 8px 8px 0 0;
+    font-size: 0.95em;
+    letter-spacing: 0.5px;
+    margin-top: 8px;
+    margin-bottom: 2px;
+}
+
 /*.vector-components {
     display: flex;
     flex-direction: column;

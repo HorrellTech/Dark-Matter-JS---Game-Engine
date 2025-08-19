@@ -622,6 +622,13 @@ class ExportManager {
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
             'DrawPlatformerHills': 'src/core/Modules/Platform Game/DrawPlatformerHills.js',
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Drawing/DrawInfiniteStarFieldParallax.js',
+            'DrawHeart': 'src/core/Modules/Drawing/DrawHeart.js',
+            'DrawShield': 'src/core/Modules/Drawing/DrawShield.js',
+            'DrawStar': 'src/core/Modules/Drawing/DrawStar.js',
+            'DrawIcon': 'src/core/Modules/Drawing/DrawIcon.js',
+            'DrawText': 'src/core/Modules/Drawing/DrawText.js',
+            'DrawLine': 'src/core/Modules/Drawing/DrawLine.js',
+            'DrawGrid': 'src/core/Modules/Drawing/DrawGrid.js',
 
             // Asteroid Modules
             'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
@@ -635,10 +642,6 @@ class ExportManager {
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',
             'Timer': 'src/core/Modules/Animation/Timer.js',
-
-            // UI Modules
-            'Button': 'src/core/Modules/UI/Button.js',
-            'Text': 'src/core/Modules/UI/Text.js',
 
             // Effects Modules
             'ParticleSystem': 'src/core/Modules/Effects/ParticleSystem.js',
