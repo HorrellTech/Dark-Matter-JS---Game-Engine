@@ -1168,7 +1168,7 @@ class Inspector {
             let states = JSON.parse(localStorage.getItem('inspectorGroupCollapseStates') || '{}');
             states[groupId] = isCollapsed;
             localStorage.setItem('inspectorGroupCollapseStates', JSON.stringify(states));
-        } catch (e) {}
+        } catch (e) { }
     }
     getGroupCollapseState(groupId) {
         try {
@@ -2792,11 +2792,68 @@ class Inspector {
             });
 
             // Sort modules within this folder/namespace alphabetically
+            // UNCOMMENT TO ENABLE COINSTANT DESCRIPTION DISPLAY
+            /*(node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                const item = document.createElement('div');
+                item.className = 'module-dropdown-item';
+                item.style.paddingLeft = `${(level * 15) + 15}px`; // Indent module items further
+
+                // Get description if available
+                const description = moduleClass.description || '';
+
+                // Module name
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'module-dropdown-item-name';
+                nameSpan.textContent = moduleClass.name;
+
+                item.appendChild(nameSpan);
+
+                // If description exists, add it as a smaller text below the name
+                if (description) {
+                    const descSpan = document.createElement('span');
+                    descSpan.className = 'module-dropdown-item-description';
+                    descSpan.textContent = description;
+                    item.appendChild(descSpan);
+                }
+
+                item.addEventListener('click', () => {
+                    const module = this.addModuleToGameObject(moduleClass);
+                    if (module) {
+                        this.moduleDropdown.style.display = 'none';
+                    }
+                });
+                parentElement.appendChild(item);
+            });*/
             (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
                 const item = document.createElement('div');
                 item.className = 'module-dropdown-item';
-                item.textContent = moduleClass.name;
-                item.style.paddingLeft = `${(level * 15) + 15}px`; // Indent module items further
+                item.style.paddingLeft = `${(level * 15) + 15}px`;
+
+                // Get description if available
+                const description = moduleClass.description || '';
+
+                // Module name
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'module-dropdown-item-name';
+                nameSpan.textContent = moduleClass.name;
+                item.appendChild(nameSpan);
+
+                // If description exists, add it as a smaller text below the name
+                if (description) {
+                    const descSpan = document.createElement('span');
+                    descSpan.className = 'module-dropdown-item-description';
+                    descSpan.textContent = description;
+                    descSpan.style.display = 'none'; // Hide by default
+                    item.appendChild(descSpan);
+
+                    // Show description on hover
+                    item.addEventListener('mouseenter', () => {
+                        descSpan.style.display = 'block';
+                    });
+                    item.addEventListener('mouseleave', () => {
+                        descSpan.style.display = 'none';
+                    });
+                }
 
                 item.addEventListener('click', () => {
                     const module = this.addModuleToGameObject(moduleClass);
