@@ -303,7 +303,7 @@ class Editor {
 
     updateFPSDisplay() {
         const fpsElement = document.getElementById('fpsDisplay');
-        if (fpsElement) {
+        if (fpsElement) {  
             fpsElement.textContent = `FPS: ${this.fps}`;
         }
     }
@@ -711,7 +711,7 @@ class Editor {
             // Mark scene as modified
             this.activeScene.dirty = true;
 
-            this.refreshCanvas();
+            //this.refreshCanvas();
         }
     }
 
@@ -871,7 +871,7 @@ class Editor {
                 // Camera panning
                 const delta = screenPos.subtract(this.dragInfo.startPos);
                 this.camera.position = this.dragInfo.cameraStartPos.add(delta);
-                this.refreshCanvas();
+                //this.refreshCanvas();
             } else if (this.dragInfo.object) {
                 // Object dragging
                 const worldPos = this.screenToWorldPosition(screenPos);
@@ -887,7 +887,7 @@ class Editor {
                     this.inspector.updateTransformValues();
                 }
 
-                this.refreshCanvas();
+                //this.refreshCanvas();
             }
         } else if (e.touches.length === 2 && this.pinchData) {
             // Handle pinch zoom
