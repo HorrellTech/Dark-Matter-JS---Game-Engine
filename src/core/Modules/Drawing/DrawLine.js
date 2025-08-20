@@ -3,6 +3,7 @@ class DrawLine extends Module {
     static description = "Draws a customizable line with color, thickness, and glow";
     static allowMultiple = true;
     static iconClass = "fas fa-minus";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawLine");

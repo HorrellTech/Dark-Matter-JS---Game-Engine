@@ -3,6 +3,7 @@ class DrawIcon extends Module {
     static description = "Draws a Font Awesome icon at the GameObject's position";
     static allowMultiple = false;
     static iconClass = "fas fa-icons";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("IconDrawModule");

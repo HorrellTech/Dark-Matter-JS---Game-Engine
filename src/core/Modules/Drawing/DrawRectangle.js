@@ -1,6 +1,7 @@
 class DrawRectangle extends Module {
     static namespace   = "Drawing";
     static description = "Draws a filled rectangle at the GameObject's position";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawRectangle");

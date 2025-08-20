@@ -3,6 +3,7 @@ class DrawShield extends Module {
     static description = "Classic shield shape for defense/protection icons";
     static allowMultiple = false;
     static iconClass = "fas fa-shield-alt";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawShield");

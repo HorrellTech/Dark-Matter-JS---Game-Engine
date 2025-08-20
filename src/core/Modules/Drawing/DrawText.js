@@ -3,6 +3,7 @@ class DrawText extends Module {
     static description = "Draws customizable text with shadows, outlines, gradients and effects";
     static allowMultiple = true;
     static iconClass = "fas fa-font";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawText");

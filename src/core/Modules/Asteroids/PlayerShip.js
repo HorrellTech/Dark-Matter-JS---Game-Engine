@@ -2,6 +2,7 @@ class PlayerShip extends Module {
     static namespace = "Asteroids";
     static description = "Player-controlled spaceship with thrust, rotation, and physics";
     static allowMultiple = false;
+    static iconClass = "fas fa-space-shuttle";
 
     constructor() {
         super("PlayerShip");

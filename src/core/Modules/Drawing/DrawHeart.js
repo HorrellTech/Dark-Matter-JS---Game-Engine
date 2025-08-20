@@ -3,6 +3,7 @@ class DrawHeart extends Module {
     static description = "Scalable heart shape for health/love indicators";
     static allowMultiple = false;
     static iconClass = "fas fa-heart";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawHeart");

@@ -3,6 +3,7 @@ class TilemapSystem extends Module {
     static description = "Grid-based tilemap system with procedural generation";
     static allowMultiple = false;
     static iconClass = "fas fa-th";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("TilemapSystem");

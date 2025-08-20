@@ -3,6 +3,7 @@ class DrawStar extends Module {
     static description = "Scalable star shape for ratings and pickups";
     static allowMultiple = false;
     static iconClass = "fas fa-star";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawStar");

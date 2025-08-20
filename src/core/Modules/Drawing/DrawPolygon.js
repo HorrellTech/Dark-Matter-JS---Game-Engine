@@ -1,6 +1,7 @@
 class DrawPolygon extends Module {
     static namespace   = "Drawing";
     static description = "Draws a filled polygon at the GameObject's position";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawPolygon");

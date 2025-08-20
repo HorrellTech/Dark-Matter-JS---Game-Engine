@@ -1209,7 +1209,7 @@ button.remove-vertex:disabled {
 }
 
 .module-dropdown-folder-header {
-    background: #2d3648 !important;
+    background: #262d3b !important;
     color: #e3eaf7 !important;
     font-weight: 600;
     border-radius: 6px;
@@ -1219,7 +1219,7 @@ button.remove-vertex:disabled {
 }
 
 .module-dropdown-folder-header:hover {
-    background: #3b4660 !important;
+    background: #1e222c !important;
 }
 
 .module-dropdown-item {
@@ -1233,12 +1233,12 @@ button.remove-vertex:disabled {
 }
 
 .module-dropdown-item:hover {
-    background: #2e3a54;
+    background: #2e3544;
     color: #fff;
 }
 
 .module-dropdown-namespace {
-    background: #324055 !important;
+    background: #1b2129 !important;
     color: #a2b3c4 !important;
     font-weight: bold;
     padding: 10px 16px 6px 16px;

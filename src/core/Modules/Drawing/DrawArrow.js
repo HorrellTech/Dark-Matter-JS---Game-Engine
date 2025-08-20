@@ -3,6 +3,7 @@ class DrawArrow extends Module {
     static description = "Directional arrow for UI and gameplay";
     static allowMultiple = false;
     static iconClass = "fas fa-arrow-right";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawArrow");

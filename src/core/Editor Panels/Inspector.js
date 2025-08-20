@@ -2832,10 +2832,26 @@ class Inspector {
                 // Get description if available
                 const description = moduleClass.description || '';
 
+                let iconHtml = '';
+                const iconClass = moduleClass.iconClass;
+                const iconColor = moduleClass.iconColor || '';
+
+                if (iconClass) {
+                    if (iconClass.startsWith('fa-')) {
+                        iconHtml = `<i class="fas ${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                    } else {
+                        iconHtml = `<i class="${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                    }
+                } else {
+                    iconHtml = `<i class="fas fa-puzzle-piece" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                }
+
                 // Module name
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'module-dropdown-item-name';
                 nameSpan.textContent = moduleClass.name;
+
+                item.innerHTML = `${iconHtml}`;
                 item.appendChild(nameSpan);
 
                 // If description exists, add it as a smaller text below the name

@@ -3,6 +3,7 @@ class DrawDiamond extends Module {
     static description = "Sparkling diamond for gems and valuables";
     static allowMultiple = false;
     static iconClass = "fas fa-gem";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawDiamond");

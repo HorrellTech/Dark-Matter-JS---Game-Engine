@@ -3,6 +3,7 @@ class DrawGrid extends Module {
     static description = "Draws an infinite, scalable grid optimized for viewport rendering";
     static allowMultiple = true;
     static iconClass = "fas fa-th";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawGrid");

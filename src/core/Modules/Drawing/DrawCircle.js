@@ -1,6 +1,7 @@
 class DrawCircle extends Module {
     static namespace   = "Drawing";
     static description = "Draws a filled circle at the GameObject's position";
+    static iconColor = "#a200ffff";
 
     constructor() {
         super("DrawCircle");

@@ -3,7 +3,7 @@ class DrawShadow extends Module {
     static description = "Draws a drop shadow of all visible drawing from other modules on this GameObject.";
     static allowMultiple = false;
     static icon = "fa-shadow";
-    static color = "#222222";
+    static iconColor = "#a200ffff";
     static drawInEditor = false;
 
     constructor() {
