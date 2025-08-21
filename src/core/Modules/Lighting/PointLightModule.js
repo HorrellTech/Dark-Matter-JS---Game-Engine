@@ -35,6 +35,8 @@ class PointLightModule extends Module {
         this._lastRadius = this.radius;
         this._lastColor = this.color;
 
+        this.worldPos = { x: 0, y: 0 };
+
         this._setupProperties();
     }
 
@@ -43,7 +45,7 @@ class PointLightModule extends Module {
             description: "Light radius in pixels",
             onChange: (val) => {
                 this.radius = val;
-                this._gradientCacheDirty = true;
+                //this._gradientCacheDirty = true;
             }
         });
 
@@ -51,7 +53,7 @@ class PointLightModule extends Module {
             description: "Light intensity (0-1)",
             onChange: (val) => {
                 this.intensity = val;
-                this._gradientCacheDirty = true;
+                //this._gradientCacheDirty = true;
             }
         });
 
@@ -59,7 +61,7 @@ class PointLightModule extends Module {
             description: "Light color",
             onChange: (val) => {
                 this.color = val;
-                this._gradientCacheDirty = true;
+                //this._gradientCacheDirty = true;
             }
         });
 
@@ -75,7 +77,7 @@ class PointLightModule extends Module {
             options: ["linear", "smooth", "sharp", "inverse-square"],
             onChange: (val) => {
                 this.falloffType = val;
-                this._gradientCacheDirty = true;
+                //this._gradientCacheDirty = true;
             }
         });
 
@@ -205,13 +207,23 @@ class PointLightModule extends Module {
     }
 
     loop(deltaTime) {
-        const worldPos = this.gameObject.getWorldPosition();
+        this.worldPos = this.gameObject.getWorldPosition();
 
         // Track position changes for optimization
-        this._positionChanged = (worldPos.x !== this._lastPosition.x || worldPos.y !== this._lastPosition.y);
+        this._positionChanged = (this.worldPos.x !== this._lastPosition.x || this.worldPos.y !== this._lastPosition.y);
 
-        this._lastPosition.x = worldPos.x;
-        this._lastPosition.y = worldPos.y;
+        // Mark mask as dirty if position changed
+        if (this._positionChanged && this._registeredDarkness) {
+            this._registeredDarkness._lightsDirty = true;
+        }
+
+        // Add after position tracking:
+        /*if (this._positionChanged && this._registeredDarkness) {
+            this._registeredDarkness._lightsDirty = true;
+            // Force canvas recreation for immediate update
+            this._registeredDarkness._lastVpWidth = 0;
+            this._registeredDarkness._lastVpHeight = 0;
+        }*/
 
         // Handle flickering
         if (this.flickerEnabled) {
@@ -226,13 +238,13 @@ class PointLightModule extends Module {
         this._updateVisibility();
 
         // Register with darkness (only if visible or target changed)
-        if (this._isVisible || this._positionChanged) {
+        //if (this._isVisible || this._positionChanged) {
             this._updateDarknessRegistration();
             // Mark mask as dirty if registered
             if (this._registeredDarkness && this._positionChanged) {
                 this._registeredDarkness._lightsDirty = true;
             }
-        }
+        //}
 
         // Mark gradients as dirty if properties changed
         if (this._lastRadius !== this.radius || this._lastColor !== this.color) {
@@ -240,6 +252,11 @@ class PointLightModule extends Module {
             this._lastRadius = this.radius;
             this._lastColor = this.color;
         }
+    }
+
+    loopEnd() {
+        this._lastPosition.x = this.worldPos.x;
+        this._lastPosition.y = this.worldPos.y;
     }
 
     _updateVisibility() {
@@ -304,9 +321,9 @@ class PointLightModule extends Module {
     }
 
     _createGradient(ctx, x, y) {
-        if (!this._gradientCacheDirty && this._gradientCache) {
-            return this._gradientCache;
-        }
+        //if (!this._gradientCacheDirty && this._gradientCache) {
+        //    return this._gradientCache;
+        //}
 
         const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.radius);
 
@@ -339,19 +356,17 @@ class PointLightModule extends Module {
                 gradient.addColorStop(1, "rgba(255,255,255,0)");
         }
 
-        this._gradientCache = gradient;
-        this._gradientCacheDirty = false;
+        //this._gradientCache = gradient;
+        //this._gradientCacheDirty = false;
         return gradient;
     }
 
-    drawMask(ctx, offsetX = 0, offsetY = 0) {
+    drawMask(ctx) {  // Remove offsetX and offsetY parameters
         if (!this._isVisible && this.cullingEnabled) return;
 
-        const vp = window.engine.viewport;
         const worldPos = this.gameObject.getWorldPosition();
-        // Offset by viewport origin
-        const x = worldPos.x - vp.x;
-        const y = worldPos.y - vp.y;
+        const x = worldPos.x;
+        const y = worldPos.y;
 
         const gradient = this._createGradient(ctx, x, y);
 

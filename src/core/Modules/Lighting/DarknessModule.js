@@ -322,7 +322,7 @@ class DarknessModule extends Module {
 
         // Update time
         if (this.enableDayNight) {
-            this.currentTime += (delta * this.timeScale) / 3600; // Convert seconds to hours
+            this.currentTime += (delta * this.timeScale) / 3600;
             if (this.currentTime >= 24) {
                 this.currentTime -= 24;
             }
@@ -330,16 +330,18 @@ class DarknessModule extends Module {
         
         this._updateTimer += delta;
         if (this._updateTimer >= this.updateInterval) {
-            this._lightsDirty = true;
+            this._lightsDirty = true;  // This ensures regular updates
             this._updateTimer = 0;
         }
 
         // Calculate current darkness properties based on time
         this._updateTimeOfDay();
 
-        // Check if lights changed (performance optimization)
-        this._lightsDirty = this._lightsDirty || (this.lights.length !== this._lastLightCount);
-        this._lastLightCount = this.lights.length;
+        // SIMPLIFY the light count check:
+        if (this.lights.length !== this._lastLightCount) {
+            this._lightsDirty = true;
+            this._lastLightCount = this.lights.length;
+        }
     }
 
     _updateTimeOfDay() {
@@ -494,17 +496,12 @@ class DarknessModule extends Module {
         this._finalCtx.fillRect(0, 0, this._finalCanvas.width, this._finalCanvas.height);
         this._finalCtx.restore();
 
-        // Apply light masks (only if lights exist and something changed)
+        // Apply light masks - ALWAYS redraw, don't check _lightsDirty here
         if (this.lights.length > 0) {
-            if (this._lightsDirty) {
-                this._renderLightMasks(vp);
-                this._lightsDirty = false;
-            }
-
-            // Use the mask to cut holes in the darkness
+            this._renderLightMasks(vp);  // Always render masks
+            
             this._finalCtx.save();
-            this._finalCtx.globalCompositeOperation = "destination-in";
-            this._finalCtx.imageSmoothingEnabled = false;
+            this._finalCtx.globalCompositeOperation = "destination-out";
             this._finalCtx.drawImage(this._maskCanvas, 0, 0);
             this._finalCtx.restore();
         }
@@ -515,14 +512,15 @@ class DarknessModule extends Module {
         this._maskCtx.clearRect(0, 0, this._maskCanvas.width, this._maskCanvas.height);
 
         // Fill with white (areas to keep darkness)
-        this._maskCtx.fillStyle = 'white';
-        this._maskCtx.fillRect(0, 0, this._maskCanvas.width, this._maskCanvas.height);
+        //this._maskCtx.fillStyle = 'white';
+        //this._maskCtx.fillRect(0, 0, this._maskCanvas.width, this._maskCanvas.height);
 
         this._maskCtx.save();
-        this._maskCtx.scale(1 / mul, 1 / mul); // Scale down for low-res
+        this._maskCtx.scale(1 / mul, 1 / mul);
+        this._maskCtx.translate(-vp.x / mul, -vp.y / mul); // Account for viewport offset
         
         // Draw light masks in black (areas to remove darkness)
-        this._maskCtx.globalCompositeOperation = "destination-out";
+        //this._maskCtx.globalCompositeOperation = "destination-out";
         for (const light of this.lights) {
             if (light.drawMask) {
                 light.drawMask(this._maskCtx, vp.x, vp.y);
