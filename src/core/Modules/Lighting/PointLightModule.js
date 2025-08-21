@@ -1,7 +1,7 @@
-// Point Light Module - Cuts through darkness with gradient circles
+// Point Light Module - Optimized version that cuts through darkness with gradient circles
 class PointLightModule extends Module {
     static namespace = "Lighting";
-    static description = "Point light that cuts through darkness with colored gradient";
+    static description = "Optimized point light that cuts through darkness with colored gradient";
     static allowMultiple = true;
     static iconClass = "fas fa-lightbulb";
 
@@ -16,17 +16,34 @@ class PointLightModule extends Module {
         this.flickerEnabled = false;
         this.flickerSpeed = 5.0;
         this.flickerAmount = 0.1;
+        
+        // Performance optimization
+        this.cullingEnabled = true;
+        this.cullingMargin = 50; // Extra pixels around viewport for culling
 
+        // Internal state
         this.flickerTime = 0;
         this.currentIntensity = this.intensity;
-
         this._registeredDarkness = null;
+        this._lastPosition = { x: 0, y: 0 };
+        this._positionChanged = true;
+        this._isVisible = true;
 
-        // Expose properties for inspector
+        // Pre-calculated gradient (for performance)
+        this._gradientCache = null;
+        this._gradientCacheDirty = true;
+        this._lastRadius = this.radius;
+        this._lastColor = this.color;
+
+        this._setupProperties();
+    }
+
+    _setupProperties() {
         this.exposeProperty("radius", "number", this.radius, {
             description: "Light radius in pixels",
             onChange: (val) => {
                 this.radius = val;
+                this._gradientCacheDirty = true;
             }
         });
 
@@ -34,6 +51,7 @@ class PointLightModule extends Module {
             description: "Light intensity (0-1)",
             onChange: (val) => {
                 this.intensity = val;
+                this._gradientCacheDirty = true;
             }
         });
 
@@ -41,6 +59,7 @@ class PointLightModule extends Module {
             description: "Light color",
             onChange: (val) => {
                 this.color = val;
+                this._gradientCacheDirty = true;
             }
         });
 
@@ -53,9 +72,10 @@ class PointLightModule extends Module {
 
         this.exposeProperty("falloffType", "enum", this.falloffType, {
             description: "How light fades with distance",
-            options: ["linear", "smooth", "sharp"],
+            options: ["linear", "smooth", "sharp", "inverse-square"],
             onChange: (val) => {
                 this.falloffType = val;
+                this._gradientCacheDirty = true;
             }
         });
 
@@ -79,6 +99,20 @@ class PointLightModule extends Module {
                 this.flickerAmount = val;
             }
         });
+
+        this.exposeProperty("cullingEnabled", "boolean", this.cullingEnabled, {
+            description: "Enable viewport culling for performance",
+            onChange: (val) => {
+                this.cullingEnabled = val;
+            }
+        });
+
+        this.exposeProperty("cullingMargin", "number", this.cullingMargin, {
+            description: "Extra pixels around viewport for culling",
+            onChange: (val) => {
+                this.cullingMargin = val;
+            }
+        });
     }
 
     style(style) {
@@ -90,30 +124,23 @@ class PointLightModule extends Module {
 
         style.exposeProperty("radius", "number", this.radius, {
             description: "How far the light reaches",
-            min: 10,
-            max: 500,
-            step: 5,
-            style: {
-                label: "Light Radius",
-                slider: true
-            }
+            min: 10, max: 500, step: 5,
+            style: { label: "Light Radius", slider: true }
         });
 
         style.exposeProperty("intensity", "number", this.intensity, {
             description: "Light brightness",
-            min: 0,
-            max: 2,
-            step: 0.01,
-            style: {
-                label: "Intensity",
-                slider: true
-            }
+            min: 0, max: 2, step: 0.01,
+            style: { label: "Intensity", slider: true }
         });
 
         style.exposeProperty("color", "color", this.color, {
-            style: {
-                label: "Light Color"
-            }
+            style: { label: "Light Color" }
+        });
+
+        style.exposeProperty("falloffType", "enum", this.falloffType, {
+            options: ["linear", "smooth", "sharp", "inverse-square"],
+            style: { label: "Falloff Type" }
         });
 
         style.endGroup();
@@ -131,13 +158,6 @@ class PointLightModule extends Module {
             }
         });
 
-        style.exposeProperty("falloffType", "enum", this.falloffType, {
-            options: ["linear", "smooth", "sharp"],
-            style: {
-                label: "Falloff Type"
-            }
-        });
-
         style.endGroup();
 
         style.startGroup("Flicker Effect", false, {
@@ -147,38 +167,52 @@ class PointLightModule extends Module {
         });
 
         style.exposeProperty("flickerEnabled", "boolean", this.flickerEnabled, {
-            style: {
-                label: "Enable Flickering"
-            }
+            style: { label: "Enable Flickering" }
         });
 
         style.exposeProperty("flickerSpeed", "number", this.flickerSpeed, {
-            min: 0.1,
-            max: 20,
-            step: 0.1,
-            style: {
-                label: "Flicker Speed",
-                slider: true
-            }
+            min: 0.1, max: 20, step: 0.1,
+            style: { label: "Flicker Speed", slider: true }
         });
 
         style.exposeProperty("flickerAmount", "number", this.flickerAmount, {
-            min: 0,
-            max: 1,
-            step: 0.01,
-            style: {
-                label: "Flicker Amount",
-                slider: true
-            }
+            min: 0, max: 1, step: 0.01,
+            style: { label: "Flicker Amount", slider: true }
+        });
+
+        style.endGroup();
+
+        style.startGroup("Performance", false, {
+            backgroundColor: 'rgba(200, 200, 200, 0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("cullingEnabled", "boolean", this.cullingEnabled, {
+            style: { label: "Enable Viewport Culling" }
+        });
+
+        style.exposeProperty("cullingMargin", "number", this.cullingMargin, {
+            min: 0, max: 200, step: 10,
+            style: { label: "Culling Margin (px)", slider: true }
         });
 
         style.endGroup();
 
         style.addDivider();
-        style.addHelpText("Light will cut through darkness on the targeted GameObject. Leave target name empty to affect all darkness.");
+        style.addHelpText(`Light Status: ${this._isVisible ? 'Visible' : 'Culled'}`);
+        style.addHelpText("Light will cut through darkness on the targeted GameObject. Culling improves performance by skipping lights outside the viewport.");
     }
 
     loop(deltaTime) {
+        // Track position changes for optimization
+        const worldPos = this.gameObject.getWorldPosition();
+        this._positionChanged = (worldPos.x !== this._lastPosition.x || worldPos.y !== this._lastPosition.y);
+        if (this._positionChanged) {
+            this._lastPosition.x = worldPos.x;
+            this._lastPosition.y = worldPos.y;
+        }
+
         // Handle flickering
         if (this.flickerEnabled) {
             this.flickerTime += deltaTime * this.flickerSpeed;
@@ -188,14 +222,65 @@ class PointLightModule extends Module {
             this.currentIntensity = this.intensity;
         }
 
-        // Register with darkness
+        // Viewport culling for performance
+        this._updateVisibility();
+
+        // Register with darkness (only if visible or target changed)
+        if (this._isVisible || this._positionChanged) {
+            this._updateDarknessRegistration();
+        }
+
+        // Mark gradients as dirty if properties changed
+        if (this._lastRadius !== this.radius || this._lastColor !== this.color) {
+            this._gradientCacheDirty = true;
+            this._lastRadius = this.radius;
+            this._lastColor = this.color;
+        }
+    }
+
+    _updateVisibility() {
+        if (!this.cullingEnabled) {
+            this._isVisible = true;
+            return;
+        }
+
+        const vp = window.engine.viewport;
+        const worldPos = this.gameObject.getWorldPosition();
+        const margin = this.cullingMargin;
+
+        // Check if light is within viewport bounds (with margin and radius)
+        const lightBounds = {
+            left: worldPos.x - this.radius - margin,
+            right: worldPos.x + this.radius + margin,
+            top: worldPos.y - this.radius - margin,
+            bottom: worldPos.y + this.radius + margin
+        };
+
+        const viewportBounds = {
+            left: vp.x,
+            right: vp.x + vp.width,
+            top: vp.y,
+            bottom: vp.y + vp.height
+        };
+
+        this._isVisible = !(
+            lightBounds.right < viewportBounds.left ||
+            lightBounds.left > viewportBounds.right ||
+            lightBounds.bottom < viewportBounds.top ||
+            lightBounds.top > viewportBounds.bottom
+        );
+    }
+
+    _updateDarknessRegistration() {
         let darknessModule = null;
+        
         if (this.darknessTargetName) {
             const targetObject = window.engine.gameObjects.find(obj => obj.name === this.darknessTargetName);
             if (targetObject) {
                 darknessModule = targetObject.getModule("DarknessModule");
             }
         } else {
+            // Find first darkness module
             for (const gameObject of window.engine.gameObjects) {
                 const darkness = gameObject.getModule("DarknessModule");
                 if (darkness) {
@@ -204,6 +289,7 @@ class PointLightModule extends Module {
                 }
             }
         }
+
         if (darknessModule && darknessModule !== this._registeredDarkness) {
             if (this._registeredDarkness) {
                 this._registeredDarkness.unregisterLight(this);
@@ -213,39 +299,129 @@ class PointLightModule extends Module {
         }
     }
 
+    _createGradient(ctx, x, y) {
+        if (!this._gradientCacheDirty && this._gradientCache) {
+            return this._gradientCache;
+        }
+
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.radius);
+        
+        switch (this.falloffType) {
+            case "linear":
+                gradient.addColorStop(0, "rgba(255,255,255,1)");
+                gradient.addColorStop(1, "rgba(255,255,255,0)");
+                break;
+            case "smooth":
+                gradient.addColorStop(0, "rgba(255,255,255,1)");
+                gradient.addColorStop(0.7, "rgba(255,255,255,0.8)");
+                gradient.addColorStop(1, "rgba(255,255,255,0)");
+                break;
+            case "sharp":
+                gradient.addColorStop(0, "rgba(255,255,255,1)");
+                gradient.addColorStop(0.3, "rgba(255,255,255,0.9)");
+                gradient.addColorStop(0.6, "rgba(255,255,255,0.3)");
+                gradient.addColorStop(1, "rgba(255,255,255,0)");
+                break;
+            case "inverse-square":
+                // Simulate inverse square falloff
+                for (let i = 0; i <= 10; i++) {
+                    const t = i / 10;
+                    const intensity = Math.max(0, 1 / (1 + t * t * 4));
+                    gradient.addColorStop(t, `rgba(255,255,255,${intensity})`);
+                }
+                break;
+            default:
+                gradient.addColorStop(0, "rgba(255,255,255,1)");
+                gradient.addColorStop(1, "rgba(255,255,255,0)");
+        }
+
+        this._gradientCache = gradient;
+        this._gradientCacheDirty = false;
+        return gradient;
+    }
+
     drawMask(ctx, offsetX = 0, offsetY = 0) {
+        if (!this._isVisible && this.cullingEnabled) return;
+
         const worldPos = this.gameObject.getWorldPosition();
         const x = worldPos.x - offsetX;
         const y = worldPos.y - offsetY;
-        const gradient = ctx.createRadialGradient(
-            x, y, 0,
-            x, y, this.radius
-        );
-        gradient.addColorStop(0, "rgba(255,255,255,1)");
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        
+        const gradient = this._createGradient(ctx, x, y);
+        
+        ctx.save();
         ctx.globalAlpha = this.currentIntensity;
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(x, y, this.radius, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
     }
 
     drawColor(ctx) {
+        if (!this._isVisible && this.cullingEnabled) return;
+
         const worldPos = this.gameObject.getWorldPosition();
+        
+        // Create colored gradient
         const gradient = ctx.createRadialGradient(
             worldPos.x, worldPos.y, 0,
             worldPos.x, worldPos.y, this.radius
         );
-        gradient.addColorStop(0, this.color);
-        gradient.addColorStop(1, "rgba(0,0,0,0)");
+
+        // Parse color and apply falloff
+        const colorWithAlpha = this._addAlphaToColor(this.color, this.currentIntensity);
+        
+        switch (this.falloffType) {
+            case "linear":
+                gradient.addColorStop(0, colorWithAlpha);
+                gradient.addColorStop(1, "rgba(0,0,0,0)");
+                break;
+            case "smooth":
+                gradient.addColorStop(0, colorWithAlpha);
+                gradient.addColorStop(0.7, this._addAlphaToColor(this.color, this.currentIntensity * 0.8));
+                gradient.addColorStop(1, "rgba(0,0,0,0)");
+                break;
+            case "sharp":
+                gradient.addColorStop(0, colorWithAlpha);
+                gradient.addColorStop(0.3, this._addAlphaToColor(this.color, this.currentIntensity * 0.9));
+                gradient.addColorStop(0.6, this._addAlphaToColor(this.color, this.currentIntensity * 0.3));
+                gradient.addColorStop(1, "rgba(0,0,0,0)");
+                break;
+            case "inverse-square":
+                for (let i = 0; i <= 10; i++) {
+                    const t = i / 10;
+                    const intensity = Math.max(0, this.currentIntensity / (1 + t * t * 4));
+                    gradient.addColorStop(t, this._addAlphaToColor(this.color, intensity));
+                }
+                break;
+            default:
+                gradient.addColorStop(0, colorWithAlpha);
+                gradient.addColorStop(1, "rgba(0,0,0,0)");
+        }
+
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
-        ctx.globalAlpha = this.currentIntensity;
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+    }
+
+    _addAlphaToColor(color, alpha) {
+        // Convert color to rgba with alpha
+        if (color.startsWith('#')) {
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+            return `rgba(${r},${g},${b},${alpha})`;
+        } else if (color.startsWith('rgb(')) {
+            return color.replace('rgb(', 'rgba(').replace(')', `,${alpha})`);
+        } else if (color.startsWith('rgba(')) {
+            return color.replace(/,\s*[\d.]+\)$/, `,${alpha})`);
+        }
+        return `rgba(255,255,255,${alpha})`;
     }
 
     drawGizmos(ctx) {
@@ -267,7 +443,50 @@ class PointLightModule extends Module {
         ctx.arc(worldPos.x, worldPos.y, 5, 0, Math.PI * 2);
         ctx.fill();
 
+        // Draw culling info if enabled
+        if (this.cullingEnabled && !this._isVisible) {
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Draw X to indicate culled
+            ctx.strokeStyle = "red";
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(worldPos.x - 10, worldPos.y - 10);
+            ctx.lineTo(worldPos.x + 10, worldPos.y + 10);
+            ctx.moveTo(worldPos.x + 10, worldPos.y - 10);
+            ctx.lineTo(worldPos.x - 10, worldPos.y + 10);
+            ctx.stroke();
+        }
+
         ctx.restore();
+    }
+
+    // Public API methods
+    isVisible() {
+        return this._isVisible;
+    }
+
+    setVisibilityOverride(visible) {
+        this._isVisible = visible;
+    }
+
+    getEffectiveIntensity() {
+        return this.currentIntensity;
+    }
+
+    // Cleanup when destroyed
+    destroy() {
+        if (this._registeredDarkness) {
+            this._registeredDarkness.unregisterLight(this);
+            this._registeredDarkness = null;
+        }
+        super.destroy();
     }
 
     toJSON() {
@@ -280,7 +499,9 @@ class PointLightModule extends Module {
             falloffType: this.falloffType,
             flickerEnabled: this.flickerEnabled,
             flickerSpeed: this.flickerSpeed,
-            flickerAmount: this.flickerAmount
+            flickerAmount: this.flickerAmount,
+            cullingEnabled: this.cullingEnabled,
+            cullingMargin: this.cullingMargin
         };
     }
 
@@ -296,6 +517,11 @@ class PointLightModule extends Module {
         this.flickerEnabled = data.flickerEnabled ?? false;
         this.flickerSpeed = data.flickerSpeed ?? 5.0;
         this.flickerAmount = data.flickerAmount ?? 0.1;
+        this.cullingEnabled = data.cullingEnabled ?? true;
+        this.cullingMargin = data.cullingMargin ?? 50;
+        
+        // Mark gradient as dirty after loading
+        this._gradientCacheDirty = true;
     }
 }
 

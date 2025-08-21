@@ -3,7 +3,7 @@ class DrawPlatformerHills extends Module {
     static description = "Generates layered procedural hills with spline curves, parallax effect, infinite horizontal generation, and day/night cycle";
     static allowMultiple = false;
     static icon = "fa-mountain";
-    static color = "#445844ff"; // Green color for hills
+    static color = "#293329ff"; // Green color for hills
     static drawInEditor = false; // This module does not need to be drawn in the editor
 
     constructor() {
