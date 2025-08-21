@@ -320,12 +320,12 @@ class PointLightModule extends Module {
         }
     }
 
-    _createGradient(ctx, x, y) {
+    _createGradient(ctx, x, y, radius) {
         //if (!this._gradientCacheDirty && this._gradientCache) {
         //    return this._gradientCache;
         //}
 
-        const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.radius);
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
 
         switch (this.falloffType) {
             case "linear":
@@ -361,34 +361,33 @@ class PointLightModule extends Module {
         return gradient;
     }
 
-    drawMask(ctx) {  // Remove offsetX and offsetY parameters
+    drawMask(ctx, mul = 1) {
         if (!this._isVisible && this.cullingEnabled) return;
-
         const worldPos = this.gameObject.getWorldPosition();
-        const x = worldPos.x;
-        const y = worldPos.y;
-
-        const gradient = this._createGradient(ctx, x, y);
-
+        const x = worldPos.x / mul;
+        const y = worldPos.y / mul;
+        const radius = this.radius / mul;
+        const gradient = this._createGradient(ctx, x, y, radius);
         ctx.save();
         ctx.globalAlpha = this.currentIntensity;
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(x, y, this.radius, 0, Math.PI * 2);
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
 
-    drawColor(ctx) {
+    drawColor(ctx, mul = 1) {
         if (!this._isVisible && this.cullingEnabled) return;
 
         const worldPos = this.gameObject.getWorldPosition();
+        const x = worldPos.x / mul;
+        const y = worldPos.y / mul;
+        const radius = this.radius / mul;
 
         // Create colored gradient
-        const gradient = ctx.createRadialGradient(
-            worldPos.x, worldPos.y, 0,
-            worldPos.x, worldPos.y, this.radius
-        );
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+
 
         // Make color more prevalent by boosting alpha
         const boostedAlpha = Math.min(1, this.currentIntensity * 1.5); // Increase multiplier for stronger color
@@ -423,11 +422,11 @@ class PointLightModule extends Module {
         }
 
         ctx.save();
-        ctx.globalCompositeOperation = "screen"; // Use 'screen' for more visible color, or keep 'lighter'
-        ctx.globalAlpha = 1;//this.intensity;
+        ctx.globalCompositeOperation = "screen";
+        ctx.globalAlpha = 1;
         ctx.fillStyle = gradient;
         ctx.beginPath();
-        ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
