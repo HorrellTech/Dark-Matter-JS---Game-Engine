@@ -13,6 +13,11 @@ class DarknessModule extends Module {
         this.color = "#000000";
         this.blendMode = "multiply";
         this.lights = [];
+
+        this.blockers = [];
+        this._blockersDirty = true;
+        this._lastBlockerCount = 0;
+
         this.resolutionMultiplier = 1; // 1 = full res, 2 = half res, etc.
 
         // Day/Night System Properties
@@ -342,6 +347,11 @@ class DarknessModule extends Module {
             this._lightsDirty = true;
             this._lastLightCount = this.lights.length;
         }
+
+        if (this.blockers.length !== this._lastBlockerCount) {
+            this._blockersDirty = true;
+            this._lastBlockerCount = this.blockers.length;
+        }
     }
 
     _updateTimeOfDay() {
@@ -496,7 +506,6 @@ class DarknessModule extends Module {
         this._finalCtx.fillRect(0, 0, this._finalCanvas.width, this._finalCanvas.height);
         this._finalCtx.restore();
 
-        // --- NEW: Draw colored lights ---
         if (this.lights.length > 0) {
             this._colorCtx.clearRect(0, 0, this._colorCanvas.width, this._colorCanvas.height);
             this._colorCtx.save();
@@ -515,7 +524,6 @@ class DarknessModule extends Module {
             this._finalCtx.drawImage(this._colorCanvas, 0, 0);
             this._finalCtx.restore();
         }
-        // --- END NEW ---
 
         // Apply light masks - ALWAYS redraw, don't check _lightsDirty here
         if (this.lights.length > 0) {
@@ -539,6 +547,19 @@ class DarknessModule extends Module {
             }
         }
         this._maskCtx.restore();
+    }
+
+    onDestroy() {
+        // Clean up canvases and contexts
+        this._maskCanvas = null;
+        this._maskCtx = null;
+        this._colorCanvas = null;
+        this._colorCtx = null;
+        this._finalCanvas = null;
+        this._finalCtx = null;
+        this.lights = [];
+        this.blockers = [];
+        super.onDestroy(); // Call parent destroy
     }
 
     // Public API Methods
@@ -579,6 +600,21 @@ class DarknessModule extends Module {
 
     getCurrentTint() {
         return this._currentTint;
+    }
+
+    registerBlocker(blocker) {
+        if (!this.blockers.includes(blocker)) {
+            this.blockers.push(blocker);
+            this._blockersDirty = true;
+        }
+    }
+
+    unregisterBlocker(blocker) {
+        const index = this.blockers.indexOf(blocker);
+        if (index !== -1) {
+            this.blockers.splice(index, 1);
+            this._blockersDirty = true;
+        }
     }
 
     // Light registration (optimized)

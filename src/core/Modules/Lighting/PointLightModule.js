@@ -363,10 +363,8 @@ class PointLightModule extends Module {
 
     drawMask(ctx, mul = 1) {
         if (!this._isVisible && this.cullingEnabled) return;
-        const worldPos = this.gameObject.getWorldPosition();
-        const x = worldPos.x / mul;
-        const y = worldPos.y / mul;
-        const radius = this.radius / mul;
+        const { x, y } = this.getParallaxPosition(mul);
+        const radius = this.getParallaxRadius(mul);
         const gradient = this._createGradient(ctx, x, y, radius);
         ctx.save();
         ctx.globalAlpha = this.currentIntensity;
@@ -380,14 +378,11 @@ class PointLightModule extends Module {
     drawColor(ctx, mul = 1) {
         if (!this._isVisible && this.cullingEnabled) return;
 
-        const worldPos = this.gameObject.getWorldPosition();
-        const x = worldPos.x / mul;
-        const y = worldPos.y / mul;
-        const radius = this.radius / mul;
+        const { x, y } = this.getParallaxPosition(mul);
+        const radius = this.getParallaxRadius(mul);
 
         // Create colored gradient
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
 
         // Make color more prevalent by boosting alpha
         const boostedAlpha = Math.min(1, this.currentIntensity * 1.5); // Increase multiplier for stronger color
@@ -429,6 +424,39 @@ class PointLightModule extends Module {
         ctx.arc(x, y, radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+    }
+
+    getParallaxPosition(mul = 1) {
+        const worldPos = this.gameObject.getWorldPosition();
+
+        const vp = window.engine.viewport;
+        const depth = this.gameObject.depth || 0;
+        // Parallax factor: higher depth = less movement, lower depth = more movement
+        // You can tweak the divisor for stronger/weaker effect
+        if(depth == 0) {
+            return {
+                x: (worldPos.x) / mul,
+                y: (worldPos.y) / mul
+            };
+        }
+
+        const parallaxFactor = 1 - (depth * 0.1); // 0.1 per depth step, adjust as needed
+        return {
+            x: (worldPos.x - vp.x * parallaxFactor) / mul,
+            y: (worldPos.y - vp.y * parallaxFactor) / mul
+        };
+    }
+
+    getParallaxRadius(mul = 1) {
+        const depth = this.gameObject.depth || 0;
+
+        if(depth == 0) {
+            return this.radius / mul;
+        }
+
+        // Scale radius: deeper = smaller, closer = bigger
+        const scale = 1 - (depth * 0.08); // 0.08 per depth step, adjust as needed
+        return Math.max(10, this.radius * scale) / mul;
     }
 
     _addAlphaToColor(color, alpha) {
@@ -503,12 +531,12 @@ class PointLightModule extends Module {
     }
 
     // Cleanup when destroyed
-    destroy() {
+    onDestroy() {
         if (this._registeredDarkness) {
             this._registeredDarkness.unregisterLight(this);
             this._registeredDarkness = null;
         }
-        super.destroy();
+        super.onDestroy();
     }
 
     toJSON() {
