@@ -327,7 +327,7 @@ class DarknessModule extends Module {
                 this.currentTime -= 24;
             }
         }
-        
+
         this._updateTimer += delta;
         if (this._updateTimer >= this.updateInterval) {
             this._lightsDirty = true;  // This ensures regular updates
@@ -461,7 +461,7 @@ class DarknessModule extends Module {
 
     _createCanvases(vp) {
         const mul = this.resolutionMultiplier;
-        
+
         // Light mask canvas
         this._maskCanvas = document.createElement('canvas');
         this._maskCanvas.width = Math.ceil(vp.width / mul);
@@ -486,7 +486,7 @@ class DarknessModule extends Module {
 
     _renderToFinalCanvas(vp) {
         const mul = this.resolutionMultiplier;
-        
+
         // Clear final canvas
         this._finalCtx.clearRect(0, 0, this._finalCanvas.width, this._finalCanvas.height);
 
@@ -496,10 +496,31 @@ class DarknessModule extends Module {
         this._finalCtx.fillRect(0, 0, this._finalCanvas.width, this._finalCanvas.height);
         this._finalCtx.restore();
 
+        // --- NEW: Draw colored lights ---
+        if (this.lights.length > 0) {
+            this._colorCtx.clearRect(0, 0, this._colorCanvas.width, this._colorCanvas.height);
+            this._colorCtx.save();
+            this._colorCtx.scale(1 / mul, 1 / mul);
+            this._colorCtx.translate(-vp.x / mul, -vp.y / mul);
+            for (const light of this.lights) {
+                if (light.drawColor) {
+                    light.drawColor(this._colorCtx);
+                }
+            }
+            this._colorCtx.restore();
+
+            // Composite colored lights using 'lighter' (additive)
+            this._finalCtx.save();
+            this._finalCtx.globalCompositeOperation = "screen";
+            this._finalCtx.drawImage(this._colorCanvas, 0, 0);
+            this._finalCtx.restore();
+        }
+        // --- END NEW ---
+
         // Apply light masks - ALWAYS redraw, don't check _lightsDirty here
         if (this.lights.length > 0) {
             this._renderLightMasks(vp);  // Always render masks
-            
+
             this._finalCtx.save();
             this._finalCtx.globalCompositeOperation = "destination-out";
             this._finalCtx.drawImage(this._maskCanvas, 0, 0);
@@ -518,7 +539,7 @@ class DarknessModule extends Module {
         this._maskCtx.save();
         this._maskCtx.scale(1 / mul, 1 / mul);
         this._maskCtx.translate(-vp.x / mul, -vp.y / mul); // Account for viewport offset
-        
+
         // Draw light masks in black (areas to remove darkness)
         //this._maskCtx.globalCompositeOperation = "destination-out";
         for (const light of this.lights) {

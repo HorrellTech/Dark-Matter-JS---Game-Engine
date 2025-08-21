@@ -854,7 +854,7 @@ class Engine {
             // Draw each active and visible object
             allObjects
                 .filter(obj => obj.active && obj.visible !== false)
-                .sort((a, b) => a.depth - b.depth)
+                .sort((a, b) => b.depth - a.depth)
                 .forEach(obj => {
                     try {
                         obj.draw(this.ctx);

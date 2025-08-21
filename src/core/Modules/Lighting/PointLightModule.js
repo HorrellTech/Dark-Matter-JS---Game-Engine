@@ -239,11 +239,11 @@ class PointLightModule extends Module {
 
         // Register with darkness (only if visible or target changed)
         //if (this._isVisible || this._positionChanged) {
-            this._updateDarknessRegistration();
-            // Mark mask as dirty if registered
-            if (this._registeredDarkness && this._positionChanged) {
-                this._registeredDarkness._lightsDirty = true;
-            }
+        this._updateDarknessRegistration();
+        // Mark mask as dirty if registered
+        if (this._registeredDarkness && this._positionChanged) {
+            this._registeredDarkness._lightsDirty = true;
+        }
         //}
 
         // Mark gradients as dirty if properties changed
@@ -390,8 +390,9 @@ class PointLightModule extends Module {
             worldPos.x, worldPos.y, this.radius
         );
 
-        // Parse color and apply falloff
-        const colorWithAlpha = this._addAlphaToColor(this.color, this.currentIntensity);
+        // Make color more prevalent by boosting alpha
+        const boostedAlpha = Math.min(1, this.currentIntensity * 1.5); // Increase multiplier for stronger color
+        const colorWithAlpha = this._addAlphaToColor(this.color, boostedAlpha);
 
         switch (this.falloffType) {
             case "linear":
@@ -400,19 +401,19 @@ class PointLightModule extends Module {
                 break;
             case "smooth":
                 gradient.addColorStop(0, colorWithAlpha);
-                gradient.addColorStop(0.7, this._addAlphaToColor(this.color, this.currentIntensity * 0.8));
+                gradient.addColorStop(0.7, this._addAlphaToColor(this.color, boostedAlpha * 0.8));
                 gradient.addColorStop(1, "rgba(0,0,0,0)");
                 break;
             case "sharp":
                 gradient.addColorStop(0, colorWithAlpha);
-                gradient.addColorStop(0.3, this._addAlphaToColor(this.color, this.currentIntensity * 0.9));
-                gradient.addColorStop(0.6, this._addAlphaToColor(this.color, this.currentIntensity * 0.3));
+                gradient.addColorStop(0.3, this._addAlphaToColor(this.color, boostedAlpha * 0.9));
+                gradient.addColorStop(0.6, this._addAlphaToColor(this.color, boostedAlpha * 0.3));
                 gradient.addColorStop(1, "rgba(0,0,0,0)");
                 break;
             case "inverse-square":
                 for (let i = 0; i <= 10; i++) {
                     const t = i / 10;
-                    const intensity = Math.max(0, this.currentIntensity / (1 + t * t * 4));
+                    const intensity = Math.max(0, boostedAlpha / (1 + t * t * 4));
                     gradient.addColorStop(t, this._addAlphaToColor(this.color, intensity));
                 }
                 break;
@@ -422,7 +423,8 @@ class PointLightModule extends Module {
         }
 
         ctx.save();
-        ctx.globalCompositeOperation = "lighter";
+        ctx.globalCompositeOperation = "screen"; // Use 'screen' for more visible color, or keep 'lighter'
+        ctx.globalAlpha = 1;//this.intensity;
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
