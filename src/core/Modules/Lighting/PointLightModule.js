@@ -16,7 +16,7 @@ class PointLightModule extends Module {
         this.flickerEnabled = false;
         this.flickerSpeed = 5.0;
         this.flickerAmount = 0.1;
-        
+
         // Performance optimization
         this.cullingEnabled = true;
         this.cullingMargin = 50; // Extra pixels around viewport for culling
@@ -205,13 +205,13 @@ class PointLightModule extends Module {
     }
 
     loop(deltaTime) {
-        // Track position changes for optimization
         const worldPos = this.gameObject.getWorldPosition();
+
+        // Track position changes for optimization
         this._positionChanged = (worldPos.x !== this._lastPosition.x || worldPos.y !== this._lastPosition.y);
-        if (this._positionChanged) {
-            this._lastPosition.x = worldPos.x;
-            this._lastPosition.y = worldPos.y;
-        }
+
+        this._lastPosition.x = worldPos.x;
+        this._lastPosition.y = worldPos.y;
 
         // Handle flickering
         if (this.flickerEnabled) {
@@ -228,6 +228,10 @@ class PointLightModule extends Module {
         // Register with darkness (only if visible or target changed)
         if (this._isVisible || this._positionChanged) {
             this._updateDarknessRegistration();
+            // Mark mask as dirty if registered
+            if (this._registeredDarkness && this._positionChanged) {
+                this._registeredDarkness._lightsDirty = true;
+            }
         }
 
         // Mark gradients as dirty if properties changed
@@ -273,7 +277,7 @@ class PointLightModule extends Module {
 
     _updateDarknessRegistration() {
         let darknessModule = null;
-        
+
         if (this.darknessTargetName) {
             const targetObject = window.engine.gameObjects.find(obj => obj.name === this.darknessTargetName);
             if (targetObject) {
@@ -305,7 +309,7 @@ class PointLightModule extends Module {
         }
 
         const gradient = ctx.createRadialGradient(x, y, 0, x, y, this.radius);
-        
+
         switch (this.falloffType) {
             case "linear":
                 gradient.addColorStop(0, "rgba(255,255,255,1)");
@@ -343,12 +347,14 @@ class PointLightModule extends Module {
     drawMask(ctx, offsetX = 0, offsetY = 0) {
         if (!this._isVisible && this.cullingEnabled) return;
 
+        const vp = window.engine.viewport;
         const worldPos = this.gameObject.getWorldPosition();
-        const x = worldPos.x - offsetX;
-        const y = worldPos.y - offsetY;
-        
+        // Offset by viewport origin
+        const x = worldPos.x - vp.x;
+        const y = worldPos.y - vp.y;
+
         const gradient = this._createGradient(ctx, x, y);
-        
+
         ctx.save();
         ctx.globalAlpha = this.currentIntensity;
         ctx.fillStyle = gradient;
@@ -362,7 +368,7 @@ class PointLightModule extends Module {
         if (!this._isVisible && this.cullingEnabled) return;
 
         const worldPos = this.gameObject.getWorldPosition();
-        
+
         // Create colored gradient
         const gradient = ctx.createRadialGradient(
             worldPos.x, worldPos.y, 0,
@@ -371,7 +377,7 @@ class PointLightModule extends Module {
 
         // Parse color and apply falloff
         const colorWithAlpha = this._addAlphaToColor(this.color, this.currentIntensity);
-        
+
         switch (this.falloffType) {
             case "linear":
                 gradient.addColorStop(0, colorWithAlpha);
@@ -451,7 +457,7 @@ class PointLightModule extends Module {
             ctx.beginPath();
             ctx.arc(worldPos.x, worldPos.y, this.radius, 0, Math.PI * 2);
             ctx.stroke();
-            
+
             // Draw X to indicate culled
             ctx.strokeStyle = "red";
             ctx.lineWidth = 3;
@@ -519,7 +525,7 @@ class PointLightModule extends Module {
         this.flickerAmount = data.flickerAmount ?? 0.1;
         this.cullingEnabled = data.cullingEnabled ?? true;
         this.cullingMargin = data.cullingMargin ?? 50;
-        
+
         // Mark gradient as dirty after loading
         this._gradientCacheDirty = true;
     }

@@ -55,11 +55,19 @@ class DarknessModule extends Module {
         this._currentTint = this.color;
         this._timeOfDay = "day"; // "day", "night", "dawn", "dusk"
 
+        this.updateInterval = 0.05; // seconds, default 20 FPS
+        this._updateTimer = 0;
+
         this._setupProperties();
     }
 
     _setupProperties() {
         // Basic Properties
+        this.exposeProperty("updateInterval", "number", this.updateInterval, {
+            description: "How often to update lighting (seconds)",
+            onChange: (val) => { this.updateInterval = Math.max(0.01, val); }
+        });
+
         this.exposeProperty("baseOpacity", "number", this.baseOpacity, {
             description: "Base darkness opacity (0-1)",
             onChange: (val) => { this.baseOpacity = val; }
@@ -161,6 +169,12 @@ class DarknessModule extends Module {
     }
 
     style(style) {
+        style.exposeProperty("updateInterval", "number", this.updateInterval, {
+            description: "How often to update lighting (seconds)",
+            min: 0.01, max: 1, step: 0.01,
+            style: { label: "Update Interval", slider: true }
+        });
+
         style.startGroup("Basic Darkness Settings", false, {
             backgroundColor: 'rgba(50, 50, 100, 0.1)',
             borderRadius: '6px',
@@ -312,6 +326,12 @@ class DarknessModule extends Module {
             if (this.currentTime >= 24) {
                 this.currentTime -= 24;
             }
+        }
+        
+        this._updateTimer += delta;
+        if (this._updateTimer >= this.updateInterval) {
+            this._lightsDirty = true;
+            this._updateTimer = 0;
         }
 
         // Calculate current darkness properties based on time
