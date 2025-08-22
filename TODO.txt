@@ -21,5 +21,6 @@
 
 - Make sure we have editor ability to edit modules with gizmos, so points can be dragged around to position for point arrays etc.
 
-- Sprite editor that while drawing lines, curves, shapes etc saves each one as an object and generates a module with that drawing   
-    on it, so people dont need to use large external images.
+- Get SpriteCode to preview and export animations for the module to play. Also, we want to be able to set animations
+    with different name identifiers(for stand, walk, run etc) using the same shapes so we can have multiple animations coded
+    in. Animate color too, and get the shape export offset be relative to the center of the canvas

@@ -249,3 +249,281 @@
     color: #e5e5e5;
     font-size: 12px;
 }
+
+/* Animation Panel Styles */
+.animation-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: #2a2a2a;
+    border-top: 1px solid #444;
+    display: none;
+    z-index: 1000;
+}
+
+.animation-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    background: #333;
+    border-bottom: 1px solid #444;
+    gap: 8px;
+}
+
+.animation-toolbar button {
+    padding: 6px 12px;
+    background: #555;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.animation-toolbar button:hover {
+    background: #666;
+}
+
+.animation-toolbar button:active {
+    background: #777;
+}
+
+.frames-container {
+    display: flex;
+    overflow-x: auto;
+    padding: 8px;
+    height: calc(100% - 50px);
+    background: #1e1e1e;
+}
+
+.frames-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.frames-container::-webkit-scrollbar-track {
+    background: #2a2a2a;
+}
+
+.frames-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+.frame-item {
+    min-width: 120px;
+    height: 90px;
+    border: 2px solid #666;
+    margin-right: 8px;
+    background: #444;
+    cursor: pointer;
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.frame-item.active {
+    border-color: #4CAF50;
+}
+
+.frame-item:hover {
+    border-color: #888;
+}
+
+.frame-item.active:hover {
+    border-color: #66BB6A;
+}
+
+.frame-item > div:first-child {
+    text-align: center;
+    padding: 4px;
+    font-size: 12px;
+    color: #ccc;
+    background: rgba(0,0,0,0.3);
+}
+
+.frame-item canvas {
+    width: 100%;
+    height: calc(100% - 20px);
+    image-rendering: pixelated;
+    display: block;
+}
+
+.frame-item label {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 10px;
+    color: #ccc;
+    background: rgba(0,0,0,0.7);
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+.frame-item input[type="checkbox"] {
+    margin-right: 2px;
+}
+
+/* Animation Preview Modal */
+.animation-preview-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
+
+.animation-preview-modal > div {
+    background: #2a2a2a;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #444;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.animation-preview-modal h3 {
+    color: white;
+    margin-top: 0;
+    margin-bottom: 16px;
+    font-size: 18px;
+}
+
+.animation-preview-modal canvas {
+    border: 1px solid #444;
+    background: white;
+    border-radius: 4px;
+}
+
+.animation-preview-modal button {
+    margin: 8px 4px;
+    padding: 8px 16px;
+    background: #555;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.animation-preview-modal button:hover {
+    background: #666;
+}
+
+.animation-preview-modal button:active {
+    background: #777;
+}
+
+/* Toggle Animation Button */
+.toggle-animation-btn {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    z-index: 1001;
+}
+
+.toggle-animation-btn:hover {
+    background: #66BB6A;
+}
+
+/* Animation Options in Left Panel */
+.tool-section-sprite#animationOptions-sprite {
+    border-top: 1px solid #444;
+    margin-top: 12px;
+    padding-top: 12px;
+}
+
+.checkbox-row-sprite {
+    display: flex;
+    align-items: center;
+    margin: 8px 0;
+}
+
+.checkbox-row-sprite input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.checkbox-row-sprite label {
+    color: #ccc;
+    font-size: 12px;
+}
+
+.select-row-sprite {
+    margin: 8px 0;
+}
+
+.select-row-sprite label {
+    color: #ccc;
+    font-size: 12px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.select-row-sprite select {
+    width: 100%;
+    padding: 4px 8px;
+    background: #555;
+    color: white;
+    border: 1px solid #666;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.select-row-sprite select:focus {
+    outline: none;
+    border-color: #4CAF50;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .animation-panel {
+        height: 150px;
+    }
+    
+    .frame-item {
+        min-width: 100px;
+        height: 70px;
+    }
+    
+    .animation-toolbar {
+        padding: 4px;
+        gap: 4px;
+    }
+    
+    .animation-toolbar button {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+    
+    .toggle-animation-btn {
+        bottom: 5px;
+        right: 5px;
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+}
+
+/* Ensure main canvas container adjusts when animation panel is open */
+.main-area-sprite.animation-open {
+    bottom: 200px;
+}
+
+@media (max-width: 768px) {
+    .main-area-sprite.animation-open {
+        bottom: 150px;
+    }
+}

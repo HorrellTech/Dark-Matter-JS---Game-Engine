@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dark Matter JS - Javascript Based Game Development Tool</title>
@@ -31,7 +32,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
 
     <script src="src/core/Keywords.js"></script>
-    
+
     <script src="src/core/Windows/Documentation.js"></script>
     <script src="src/core/Windows/StartScreen.js"></script>
     <script src="src/core/Windows/DocumentationModal.js"></script>
@@ -43,26 +44,31 @@
 
     <style>
         .canvas-container.split-active {
-          display: flex !important;
-          min-height: 300px !important;
-          min-width: 400px !important;
+            display: flex !important;
+            min-height: 300px !important;
+            min-width: 400px !important;
         }
-        
+
         .split-view {
-          min-width: 200px !important;
-          min-height: 200px !important;
-          display: block !important;
+            min-width: 200px !important;
+            min-height: 200px !important;
+            display: block !important;
         }
     </style>
 </head>
+
 <body>
     <div class="toolbar">
         <div class="toolbar-group">
-            <button class="toolbar-button" title="New Project" style="color: #ffffff"><i class="fas fa-file"></i></button>
-            <button class="toolbar-button" title="Load Project" style="color: #d8be75"><i class="fas fa-folder-open"></i></button>
-            <button class="toolbar-button" title="Save Project" style="color: #789ace"><i class="fas fa-save"></i></button>
+            <button class="toolbar-button" title="New Project" style="color: #ffffff"><i
+                    class="fas fa-file"></i></button>
+            <button class="toolbar-button" title="Load Project" style="color: #d8be75"><i
+                    class="fas fa-folder-open"></i></button>
+            <button class="toolbar-button" title="Save Project" style="color: #789ace"><i
+                    class="fas fa-save"></i></button>
             <!--button class="toolbar-button" title="Save As" id="saveAsButton" style="color: #b8a1e3"><i class="fas fa-file-signature"></i></button-->
-            <button class="toolbar-button" title="Export Project" style="color: #68bb81"><i class="fas fa-file-export"></i></button>
+            <button class="toolbar-button" title="Export Project" style="color: #68bb81"><i
+                    class="fas fa-file-export"></i></button>
         </div>
         <div class="toolbar-spacer"></div>
         <button class="toolbar-button" title="Documentation" style="color: #64B5F6">
@@ -76,8 +82,9 @@
             <button class="toolbar-button" title="Stop" style="color: #f44336"><i class="fas fa-stop"></i></button>
             <div class="toolbar-spacer"></div>
             <button class="toolbar-button" title="Settings" style="color: #607D8B"><i class="fas fa-cog"></i></button>
-            <button class="toolbar-button" title="Zen Mode" id="zenModeButton" style="color: #4998d8"><i class="fas fa-moon"></i></button>
-        <!-- Buy Me A Coffee button to the right of zoom controls -->
+            <button class="toolbar-button" title="Zen Mode" id="zenModeButton" style="color: #4998d8"><i
+                    class="fas fa-moon"></i></button>
+            <!-- Buy Me A Coffee button to the right of zoom controls -->
             <a href="https://www.buymeacoffee.com/SynKrown" target="_blank" class="bmc-button"
                 style="margin-left:16px;vertical-align:middle;display:inline-block;">
                 <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="30"
@@ -85,14 +92,14 @@
             </a>
         </div>
     </div>
-    
+
     <div class="main-content">
         <div class="hierarchy-panel">
             <div class="hierarchy-header">Hierarchy</div>
             <div id="gameObjectHierarchy"></div>
             <div class="resizer-v"></div>
         </div>
-        
+
         <div class="center-panel">
             <div class="canvas-tabs">
                 <button class="canvas-tab active" data-canvas="editor">Scene</button>
@@ -105,17 +112,20 @@
                         <label>Grid Size: <input type="number" id="gridSize" value="32" min="8" max="128"></label>
                         <label><input type="checkbox" id="snapToGrid"> Snap to Grid</label>
                         <div class="zoom-controls">
-                            <button id="zoomOutButton" class="editor-button" title="Zoom Out"><i class="fas fa-search-minus"></i></button>
+                            <button id="zoomOutButton" class="editor-button" title="Zoom Out"><i
+                                    class="fas fa-search-minus"></i></button>
                             <span id="zoomLevel" class="zoom-level">100%</span>
-                            <button id="zoomInButton" class="editor-button" title="Zoom In"><i class="fas fa-search-plus"></i></button>
-                            <button id="resetZoomButton" class="editor-button" title="Reset View"><i class="fas fa-compress-arrows-alt"></i></button>
+                            <button id="zoomInButton" class="editor-button" title="Zoom In"><i
+                                    class="fas fa-search-plus"></i></button>
+                            <button id="resetZoomButton" class="editor-button" title="Reset View"><i
+                                    class="fas fa-compress-arrows-alt"></i></button>
                         </div>
                     </div>
                     <div class="editor-canvas-container">
                         <canvas id="editorCanvas" width="800" height="600"></canvas>
                         <svg class="axis-indicator" width="50" height="50" viewBox="0 0 50 50">
-                            <line x1="10" y1="40" x2="40" y2="40" stroke="#ff0000" stroke-width="2"/>
-                            <line x1="10" y1="40" x2="10" y2="10" stroke="#00ff00" stroke-width="2"/>
+                            <line x1="10" y1="40" x2="40" y2="40" stroke="#ff0000" stroke-width="2" />
+                            <line x1="10" y1="40" x2="10" y2="10" stroke="#00ff00" stroke-width="2" />
                             <text x="42" y="44" fill="#ff0000" font-size="12">X</text>
                             <text x="6" y="8" fill="#00ff00" font-size="12">Y</text>
                         </svg>
@@ -141,15 +151,15 @@
                                         </select>
                                     </label>
                                     <label>
-                                        <input type="checkbox" id="maintainAspectRatio" checked> 
+                                        <input type="checkbox" id="maintainAspectRatio" checked>
                                         Maintain Aspect Ratio
                                     </label>
                                     <label>
-                                        <input type="checkbox" id="pixelPerfect"> 
+                                        <input type="checkbox" id="pixelPerfect">
                                         Pixel Perfect
                                     </label>
                                     <label>
-                                        <input type="checkbox" id="smoothingEnabled" checked> 
+                                        <input type="checkbox" id="smoothingEnabled" checked>
                                         Image Smoothing
                                     </label>
                                 </div>
@@ -166,14 +176,14 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="module-panel">
             <div class="hierarchy-header">Inspector</div>
             <div id="moduleSettings"></div>
             <div class="resizer-v"></div>
         </div>
     </div>
-    
+
     <div class="bottom-panel">
         <div class="resizer-h"></div>
         <div class="tab-buttons">
@@ -198,7 +208,7 @@
             </div>
         </div>
     </div>
-    
+
     <!--div class="footer">
         SynKrown
     </div-->
@@ -206,7 +216,7 @@
     <div class="loading-overlay">
         <div class="spinner"></div>
         <div class="loading-text">Loading Game...</div>
-    </div>    
+    </div>
 
     <div class="mobile-panel-toggles">
         <button class="mobile-panel-button" id="toggleHierarchy" title="Toggle Hierarchy">
@@ -223,7 +233,7 @@
     <div class="modal-overlay-sprite" id="modalOverlay-sprite">
         <div class="modal-sprite">
             <button class="close-btn-sprite" onclick="spriteCode.closeModal()">×</button>
-            
+
             <div class="toolbar-sprite">
                 <button onclick="spriteCode.newDrawing()">New</button>
                 <button onclick="spriteCode.saveDrawing()">Save</button>
@@ -231,6 +241,10 @@
                 <button onclick="spriteCode.exportCode()">Export Code</button>
                 <button onclick="spriteCode.clearCanvas()">Clear</button>
                 <button onclick="spriteCode.undo()">Undo</button>
+                <button class="toggle-animation-btn" onclick="spriteCode.toggleAnimationPanel()"
+                    style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50;">
+                    🎬 Animation
+                </button>
             </div>
 
             <div class="main-area-sprite">
@@ -272,7 +286,8 @@
                         <h3>Spline Settings</h3>
                         <div class="slider-row-sprite">
                             <label>Curve Intensity: <span id="curveIntensityValue-sprite">0.5</span></label>
-                            <input type="range" class="slider" id="curveIntensity-sprite" min="0" max="1" step="0.1" value="0.5">
+                            <input type="range" class="slider" id="curveIntensity-sprite" min="0" max="1" step="0.1"
+                                value="0.5">
                         </div>
                         <div class="checkbox-row-sprite">
                             <input type="checkbox" id="closedSpline-sprite">
@@ -291,11 +306,79 @@
                             <label>Stroke Shape</label>
                         </div>
                     </div>
+
+                    <div class="tool-section-sprite" id="animationOptions-sprite">
+                        <h3>Animation Settings</h3>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="enableTweening-sprite">
+                            <label>Enable Tweening</label>
+                        </div>
+                        <div class="slider-row-sprite">
+                            <label>Animation Speed: <span id="animSpeedValue-sprite">1</span>x</label>
+                            <input type="range" class="slider" id="animSpeed-sprite" min="0.1" max="5" step="0.1"
+                                value="1">
+                        </div>
+                        <div class="select-row-sprite">
+                            <label>Tween Type:</label>
+                            <select id="tweenType-sprite">
+                                <option value="linear">Linear</option>
+                                <option value="easeIn">Ease In</option>
+                                <option value="easeOut">Ease Out</option>
+                                <option value="easeInOut">Ease In-Out</option>
+                            </select>
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="pingPong-sprite">
+                            <label>Ping Pong</label>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="canvas-container-sprite">
                     <canvas class="canvas-sprite" id="drawingCanvas-sprite" width="800" height="600"></canvas>
                 </div>
+            </div>
+        </div>
+        <div class="animation-panel"
+            style="position: fixed; bottom: 0; left: 0; right: 0; height: 200px; background: #2a2a2a; border-top: 1px solid #444; display: none;"
+            id="animationPanel-sprite">
+            <div class="animation-toolbar"
+                style="display: flex; align-items: center; padding: 8px; background: #333; border-bottom: 1px solid #444;">
+                <button onclick="spriteCode.addFrame()" style="margin-right: 8px;">Add Frame</button>
+                <button onclick="spriteCode.removeFrame()" style="margin-right: 8px;">Remove Frame</button>
+                <button onclick="spriteCode.moveFrameLeft()" style="margin-right: 8px;">←</button>
+                <button onclick="spriteCode.moveFrameRight()" style="margin-right: 8px;">→</button>
+                <button onclick="spriteCode.previewAnimation()" style="margin-right: 8px; background: #4CAF50;">Preview
+                    Animation</button>
+                <span style="color: #ccc; margin-left: auto;">Frame: <span id="currentFrameDisplay">1</span> / <span
+                        id="totalFramesDisplay">1</span></span>
+            </div>
+            <div class="frames-container"
+                style="display: flex; overflow-x: auto; padding: 8px; height: calc(100% - 50px);">
+                <div class="frame-item active" data-frame="0"
+                    style="min-width: 120px; height: 90px; border: 2px solid #4CAF50; margin-right: 8px; background: #444; cursor: pointer; position: relative;">
+                    <div style="text-align: center; padding: 4px; font-size: 12px; color: #ccc;">Frame 1</div>
+                    <canvas width="100" height="60"
+                        style="width: 100%; height: calc(100% - 20px); image-rendering: pixelated;"></canvas>
+                    <label style="position: absolute; bottom: 2px; right: 2px; font-size: 10px;"><input type="checkbox"
+                            checked> Visible</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Animation Preview Modal -->
+        <div class="animation-preview-modal" id="animationPreviewModal-sprite"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;">
+            <div style="background: #2a2a2a; padding: 20px; border-radius: 8px; text-align: center;">
+                <h3 style="color: white; margin-top: 0;">Animation Preview</h3>
+                <canvas id="animationPreviewCanvas-sprite" width="400" height="300"
+                    style="border: 1px solid #444; background: white;"></canvas>
+                <div style="margin: 16px 0;">
+                    <button onclick="spriteCode.playPreview()">Play</button>
+                    <button onclick="spriteCode.pausePreview()">Pause</button>
+                    <button onclick="spriteCode.stopPreview()">Stop</button>
+                </div>
+                <button onclick="spriteCode.closeAnimationPreview()">Close</button>
             </div>
         </div>
     </div>
@@ -308,7 +391,7 @@
             <button class="toolbar-sprite" onclick="spriteCode.copyCode()" style="margin-top: 16px;">Copy Code</button>
         </div>
     </div>
-    
+
     <!--div class="mobile-detection-overlay" style="display: none;">
         <h2>Mobile Device Detected</h2>
         <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
@@ -336,7 +419,7 @@
     <script src="src/core/Editor Panels/EditorGrid.js"></script>
     <script src="src/core/Editor Panels/HierarchyManager.js"></script>
     <script src="src/core/matter-js/PhysicsManager.js"></script>
-    
+
     <script src="src/core/Editor Panels/PanelResizer.js"></script>
 
     <script src="src/core/Editor Panels/PanelManager.js"></script>
@@ -371,7 +454,7 @@
     <script src="src/core/Modules/Asteroids/Asteroid.js"></script>
     <script src="src/core/Modules/Asteroids/AsteroidsPlanet.js"></script>
     <script src="src/core/Modules/Asteroids/AsteroidsBullet.js"></script>
-    <script src="src/core/Modules/Asteroids/AsteroidManager.js"></script>   
+    <script src="src/core/Modules/Asteroids/AsteroidManager.js"></script>
     <script src="src/core/Modules/Asteroids/EnemyShip.js"></script>
 
     <script src="src/core/Modules/BoundingBoxCollider.js"></script>
@@ -440,16 +523,17 @@
     <script src="src/core/Editor Panels/SplitViewController.js"></script-->
     <script src="src/SpriteCode.js"></script>
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('launchSpriteCodeBtn').onclick = function() {
-            if (!window.spriteCode) {
-                window.spriteCode = new SpriteCode();
-            }
-            window.spriteCode.openModal();
-        };
-    });
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('launchSpriteCodeBtn').onclick = function () {
+                if (!window.spriteCode) {
+                    window.spriteCode = new SpriteCode();
+                }
+                window.spriteCode.openModal();
+            };
+        });
     </script>
 
     <script src="src/app.js"></script>
 </body>
+
 </html>
