@@ -706,31 +706,6 @@ class SpriteCode {
         this.outlined = true;
         this.scale = 1;
         
-        this.exposeProperty("fillColor", "color", this.fillColor, {
-            description: "Fill color",
-            onChange: (val) => { this.fillColor = val; }
-        });
-        
-        this.exposeProperty("outlineColor", "color", this.outlineColor, {
-            description: "Outline color",
-            onChange: (val) => { this.outlineColor = val; }
-        });
-        
-        this.exposeProperty("outlineWidth", "number", this.outlineWidth, {
-            description: "Outline thickness",
-            onChange: (val) => { this.outlineWidth = val; }
-        });
-        
-        this.exposeProperty("filled", "boolean", this.filled, {
-            description: "Fill the shapes",
-            onChange: (val) => { this.filled = val; }
-        });
-        
-        this.exposeProperty("outlined", "boolean", this.outlined, {
-            description: "Draw outline",
-            onChange: (val) => { this.outlined = val; }
-        });
-        
         this.exposeProperty("scale", "number", this.scale, {
             description: "Scale factor",
             onChange: (val) => { this.scale = val; }
@@ -770,11 +745,6 @@ ${this.generateDrawingCode()}
     toJSON() {
         return {
             ...super.toJSON(),
-            fillColor: this.fillColor,
-            outlineColor: this.outlineColor,
-            outlineWidth: this.outlineWidth,
-            filled: this.filled,
-            outlined: this.outlined,
             scale: this.scale
         };
     }
@@ -782,12 +752,7 @@ ${this.generateDrawingCode()}
     fromJSON(data) {
         super.fromJSON(data);
         if (!data) return;
-        
-        this.fillColor = data.fillColor || "#3b82f6";
-        this.outlineColor = data.outlineColor || "#000000";
-        this.outlineWidth = data.outlineWidth || 2;
-        this.filled = data.filled !== undefined ? data.filled : true;
-        this.outlined = data.outlined !== undefined ? data.outlined : true;
+
         this.scale = data.scale || 1;
     }
 }
@@ -928,6 +893,37 @@ window.${moduleName} = ${moduleName};`;
         const dx = px - xx;
         const dy = py - yy;
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    getSplinePointAt(x, y, shape) {
+        if (!shape.points) return null;
+        for (let pt of shape.points) {
+            const dx = x - pt.x;
+            const dy = y - pt.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 8) { // 8px threshold
+                return pt;
+            }
+        }
+        return null;
+    }
+
+    drawResizeHandles(bounds) {
+        // Example: Draw small squares at the corners
+        const size = 8;
+        const handles = [
+            { x: bounds.x, y: bounds.y },
+            { x: bounds.x + bounds.width, y: bounds.y },
+            { x: bounds.x, y: bounds.y + bounds.height },
+            { x: bounds.x + bounds.width, y: bounds.y + bounds.height }
+        ];
+        this.ctx.save();
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.strokeStyle = '#00ff00';
+        handles.forEach(h => {
+            this.ctx.fillRect(h.x - size / 2, h.y - size / 2, size, size);
+            this.ctx.strokeRect(h.x - size / 2, h.y - size / 2, size, size);
+        });
+        this.ctx.restore();
     }
 
     generateShapeCode(shape, index) {
