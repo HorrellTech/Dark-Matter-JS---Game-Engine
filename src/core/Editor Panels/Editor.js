@@ -1461,11 +1461,33 @@ class Editor {
 
     handleMouseDown(e) {
         if (e.button === 0) { // Left click
+            // Prevent deselection if editing in inspector
+            const active = document.activeElement;
+            const isTextInput = (
+                active &&
+                (
+                    active.tagName === 'INPUT' ||
+                    active.tagName === 'TEXTAREA' ||
+                    active.isContentEditable
+                )
+            );
+
             // Use the adjusted mouse position
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
 
             const clickedObj = this.findObjectAtPosition(worldPos);
+
+            // Prevent changing selection if editing in inspector
+            if (isTextInput) {
+                // If clicking on the currently selected object, allow transform handles
+                if (clickedObj && this.hierarchy.selectedObject === clickedObj) {
+                    // Allow transform handle logic below
+                } else {
+                    // Do not change selection or deselect
+                    return;
+                }
+            }
 
             if (clickedObj) {
                 // Multi-select logic
@@ -1593,7 +1615,7 @@ class Editor {
                 }
             } else {
                 // Deselect if clicking empty space
-                if (this.hierarchy && this.hierarchy.selectedObject) {
+                if (!isTextInput && this.hierarchy && this.hierarchy.selectedObject) {
                     this.hierarchy.selectedObject.setSelected(false);
                     this.hierarchy.selectedObject = null;
 

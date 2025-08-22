@@ -474,6 +474,10 @@ class PointLightModule extends Module {
         return `rgba(255,255,255,${alpha})`;
     }
 
+    draw(ctx) {
+        if (!this._isVisible && this.cullingEnabled) return;
+    }
+
     drawGizmos(ctx) {
         const worldPos = this.gameObject.getWorldPosition();
 
@@ -513,6 +517,16 @@ class PointLightModule extends Module {
             ctx.lineTo(worldPos.x - 10, worldPos.y + 10);
             ctx.stroke();
         }
+
+        // Draw a wee light bulb icon
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(worldPos.x, worldPos.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "black";
+        ctx.font = "bold 16px Arial";
+        ctx.fillText("💡", worldPos.x, worldPos.y - 16);
 
         ctx.restore();
     }
