@@ -479,6 +479,48 @@ class SpriteCode {
         document.getElementById('codeModal-sprite').style.display = 'flex';
     }
 
+    async exportCodeToFileBrowser() {
+        // Check for shapes to export
+        if (this.frames.every(frame => !frame || frame.length === 0)) {
+            alert('No shapes to export!');
+            return;
+        }
+
+        // Gather module info
+        const bounds = this.calculateBounds();
+        const moduleName = prompt('Enter module name:', 'CustomDrawing') || 'CustomDrawing';
+        const namespace = prompt('Enter namespace:', 'Drawing') || 'Drawing';
+        const description = prompt('Enter description:', 'Custom generated drawing module') || 'Custom generated drawing module';
+
+        // Generate code
+        const code = this.generateModuleCode(moduleName, namespace, description, bounds);
+
+        // Ensure FileBrowser is available
+        if (!window.fileBrowser) {
+            alert('FileBrowser is not available!');
+            return;
+        }
+
+        // Directory for custom drawing modules
+        const targetDir = '/CustomDrawingModules';
+
+        // Create directory if it doesn't exist
+        await window.fileBrowser.ensureDirectoryExists(targetDir);
+
+        // File path for the module
+        const filePath = `${targetDir}/${moduleName}.js`;
+
+        // Save the module code as a file
+        const success = await window.fileBrowser.createFile(filePath, code, true);
+
+        if (success) {
+            window.fileBrowser.showNotification(`Module exported to ${filePath}`, 'success');
+            await window.fileBrowser.loadContent(targetDir);
+        } else {
+            window.fileBrowser.showNotification(`Failed to export module to ${filePath}`, 'error');
+        }
+    }
+
     generateModuleCode(moduleName, namespace, description, bounds) {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
