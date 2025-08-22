@@ -527,3 +527,197 @@
         bottom: 150px;
     }
 }
+
+/* Update main-area-sprite to accommodate right panel */
+.main-area-sprite {
+    display: flex;
+    flex: 1;
+    gap: 0;
+}
+
+.canvas-container-sprite {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    min-height: 500px;
+}
+
+.right-panel-sprite {
+    width: 250px;
+    background: #2a2a2a;
+    border-left: 1px solid #444;
+    padding: 16px;
+    overflow-y: auto;
+    max-height: 600px;
+}
+
+/* Shape list styles */
+.shapes-list-sprite {
+    border: 1px solid #444;
+    background: #333;
+    border-radius: 4px;
+    min-height: 200px;
+}
+
+.shape-item-sprite {
+    padding: 8px 12px;
+    border-bottom: 1px solid #444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.shape-item-sprite:hover {
+    background: #404040;
+}
+
+.shape-item-sprite.selected {
+    background: #4CAF50;
+    color: white;
+}
+
+.shape-item-sprite.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+}
+
+.shape-item-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.shape-item-icon {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+}
+
+.shape-item-name {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.shape-item-visibility {
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
+.shape-item-visibility.visible {
+    color: #4CAF50;
+}
+
+.shape-item-visibility.hidden {
+    color: #666;
+}
+
+/* Shape toolbar buttons */
+.shapes-toolbar-sprite {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+}
+
+.shape-tool-btn-sprite {
+    background: #404040;
+    border: 1px solid #555;
+    color: #ccc;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.shape-tool-btn-sprite:hover:not(:disabled) {
+    background: #505050;
+    color: white;
+}
+
+.shape-tool-btn-sprite:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Transform controls */
+#transformOptions-sprite {
+    border-top: 1px solid #444;
+    padding-top: 12px;
+    margin-top: 12px;
+}
+
+/* Gradient controls */
+.select-row-sprite {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.select-row-sprite label {
+    min-width: 60px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.select-row-sprite select {
+    flex: 1;
+    background: #404040;
+    border: 1px solid #555;
+    color: #ccc;
+    padding: 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* Resize handles for selected shapes */
+.resize-handle {
+    position: absolute;
+    background: #00ff00;
+    border: 1px solid #ffffff;
+    width: 8px;
+    height: 8px;
+    cursor: pointer;
+    z-index: 1000;
+}
+
+.resize-handle.nw { cursor: nw-resize; }
+.resize-handle.ne { cursor: ne-resize; }
+.resize-handle.sw { cursor: sw-resize; }
+.resize-handle.se { cursor: se-resize; }
+.resize-handle.n { cursor: n-resize; }
+.resize-handle.s { cursor: s-resize; }
+.resize-handle.w { cursor: w-resize; }
+.resize-handle.e { cursor: e-resize; }
+
+/* Rotation handle */
+.rotation-handle {
+    position: absolute;
+    background: #ff6600;
+    border: 1px solid #ffffff;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    cursor: grab;
+    z-index: 1000;
+}
+
+.rotation-handle:active {
+    cursor: grabbing;
+}
+
+/* Drop indicator for shape reordering */
+.drop-indicator {
+    height: 2px;
+    background: #4CAF50;
+    margin: 2px 0;
+    border-radius: 1px;
+}

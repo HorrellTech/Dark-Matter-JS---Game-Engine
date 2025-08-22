@@ -6,7 +6,7 @@ class SpriteCode {
         this.drawing = false;
         this.startX = 0;
         this.startY = 0;
-        
+
         // Animation system
         this.frames = [[]]; // Array of frame arrays, each containing shapes
         this.currentFrame = 0;
@@ -35,6 +35,21 @@ class SpriteCode {
         this.animSpeed = 1;
         this.tweenType = 'linear';
         this.pingPong = false;
+
+        // Gradient properties
+        this.enableGradient = false;
+        this.gradientStart = '#3b82f6';
+        this.gradientEnd = '#ffffff';
+        this.gradientType = 'linear';
+        this.gradientAngle = 0;
+
+        // Shape management
+        this.selectedShapeIndex = -1;
+        this.draggedShapeIndex = -1;
+
+        // Transform properties for selected shape
+        this.isRotating = false;
+        this.rotationStart = 0;
 
         this.selectedShape = null;
         this.dragOffset = { x: 0, y: 0 };
@@ -75,6 +90,29 @@ class SpriteCode {
 
         document.getElementById('strokeColor-sprite').addEventListener('change', (e) => {
             this.colors.stroke = e.target.value;
+        });
+
+        // Gradient controls
+        document.getElementById('enableGradient-sprite').addEventListener('change', (e) => {
+            this.enableGradient = e.target.checked;
+            this.toggleGradientOptions();
+        });
+
+        document.getElementById('gradientStart-sprite').addEventListener('change', (e) => {
+            this.gradientStart = e.target.value;
+        });
+
+        document.getElementById('gradientEnd-sprite').addEventListener('change', (e) => {
+            this.gradientEnd = e.target.value;
+        });
+
+        document.getElementById('gradientType-sprite').addEventListener('change', (e) => {
+            this.gradientType = e.target.value;
+        });
+
+        document.getElementById('gradientAngle-sprite').addEventListener('input', (e) => {
+            this.gradientAngle = parseInt(e.target.value);
+            document.getElementById('gradientAngleValue-sprite').textContent = this.gradientAngle;
         });
 
         document.getElementById('strokeWidth-sprite').addEventListener('input', (e) => {
@@ -122,6 +160,44 @@ class SpriteCode {
                 this.deleteSelectedShape();
             }
         });
+
+        // Shape management buttons
+        document.getElementById('moveShapeUp-sprite').addEventListener('click', () => this.moveShape(-1));
+        document.getElementById('moveShapeDown-sprite').addEventListener('click', () => this.moveShape(1));
+        document.getElementById('deleteShape-sprite').addEventListener('click', () => this.deleteSelectedShape());
+        document.getElementById('duplicateShape-sprite').addEventListener('click', () => this.duplicateShape());
+
+        // Transform controls
+        document.getElementById('shapeRotation-sprite')?.addEventListener('input', (e) => {
+            this.updateShapeTransform('rotation', parseFloat(e.target.value));
+            document.getElementById('rotationValue-sprite').textContent = e.target.value;
+        });
+
+        document.getElementById('shapeScaleX-sprite')?.addEventListener('input', (e) => {
+            this.updateShapeTransform('scaleX', parseFloat(e.target.value));
+            document.getElementById('scaleXValue-sprite').textContent = e.target.value;
+        });
+
+        document.getElementById('shapeScaleY-sprite')?.addEventListener('input', (e) => {
+            this.updateShapeTransform('scaleY', parseFloat(e.target.value));
+            document.getElementById('scaleYValue-sprite').textContent = e.target.value;
+        });
+
+        // Shape list event delegation
+        document.getElementById('shapesList-sprite').addEventListener('click', (e) => {
+            const shapeItem = e.target.closest('.shape-item-sprite');
+            if (shapeItem) {
+                const index = parseInt(shapeItem.dataset.index);
+                if (e.target.classList.contains('shape-item-visibility')) {
+                    this.toggleShapeVisibility(index);
+                } else {
+                    this.selectShapeByIndex(index);
+                }
+            }
+        });
+
+        // Drag and drop for shape reordering
+        this.setupShapeListDragDrop();
 
         // Frame selection
         document.addEventListener('click', (e) => {
@@ -196,43 +272,43 @@ class SpriteCode {
 
     removeFrame() {
         if (this.totalFrames <= 1) return;
-        
+
         this.frames.splice(this.currentFrame, 1);
         this.totalFrames = this.frames.length;
-        
+
         if (this.currentFrame >= this.totalFrames) {
             this.currentFrame = this.totalFrames - 1;
         }
-        
+
         this.updateFrameDisplay();
         this.redrawCanvas();
     }
 
     moveFrameLeft() {
         if (this.currentFrame <= 0) return;
-        
+
         const temp = this.frames[this.currentFrame];
         this.frames[this.currentFrame] = this.frames[this.currentFrame - 1];
         this.frames[this.currentFrame - 1] = temp;
         this.currentFrame--;
-        
+
         this.updateFrameDisplay();
     }
 
     moveFrameRight() {
         if (this.currentFrame >= this.totalFrames - 1) return;
-        
+
         const temp = this.frames[this.currentFrame];
         this.frames[this.currentFrame] = this.frames[this.currentFrame + 1];
         this.frames[this.currentFrame + 1] = temp;
         this.currentFrame++;
-        
+
         this.updateFrameDisplay();
     }
 
     selectFrame(frameIndex) {
         if (frameIndex < 0 || frameIndex >= this.totalFrames) return;
-        
+
         this.currentFrame = frameIndex;
         this.updateFrameDisplay();
         this.redrawCanvas();
@@ -241,10 +317,10 @@ class SpriteCode {
     updateFrameDisplay() {
         document.getElementById('currentFrameDisplay').textContent = this.currentFrame + 1;
         document.getElementById('totalFramesDisplay').textContent = this.totalFrames;
-        
+
         // Update frame thumbnails
         this.updateFrameThumbnails();
-        
+
         // Update active frame styling
         document.querySelectorAll('.frame-item').forEach((item, index) => {
             item.classList.toggle('active', index === this.currentFrame);
@@ -254,7 +330,7 @@ class SpriteCode {
     updateFrameThumbnails() {
         const container = document.querySelector('.frames-container');
         container.innerHTML = '';
-        
+
         for (let i = 0; i < this.totalFrames; i++) {
             const frameItem = document.createElement('div');
             frameItem.className = 'frame-item';
@@ -263,7 +339,7 @@ class SpriteCode {
                 min-width: 120px; height: 90px; border: 2px solid ${i === this.currentFrame ? '#4CAF50' : '#666'};
                 margin-right: 8px; background: #444; cursor: pointer; position: relative;
             `;
-            
+
             frameItem.innerHTML = `
                 <div style="text-align: center; padding: 4px; font-size: 12px; color: #ccc;">Frame ${i + 1}</div>
                 <canvas width="100" height="60" style="width: 100%; height: calc(100% - 20px); image-rendering: pixelated;"></canvas>
@@ -271,9 +347,9 @@ class SpriteCode {
                     <input type="checkbox" checked> Visible
                 </label>
             `;
-            
+
             container.appendChild(frameItem);
-            
+
             // Draw thumbnail
             const thumbCanvas = frameItem.querySelector('canvas');
             const thumbCtx = thumbCanvas.getContext('2d');
@@ -285,11 +361,11 @@ class SpriteCode {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.save();
         ctx.scale(0.125, 0.1); // Scale down for thumbnail
-        
+
         shapes.forEach(shape => {
             this.drawShapeOnContext(ctx, shape);
         });
-        
+
         ctx.restore();
     }
 
@@ -297,7 +373,7 @@ class SpriteCode {
     previewAnimation() {
         document.getElementById('animationPreviewModal-sprite').style.display = 'flex';
         this.previewFrame = 0;
-        this.previewDirection = 1; 
+        this.previewDirection = 1;
         this.drawPreviewFrame();
         this.playPreview();
     }
@@ -309,13 +385,16 @@ class SpriteCode {
 
     playPreview() {
         this.previewPlaying = true;
+        this.previewFrameTimer = 0;
         let lastTime = performance.now();
+
         const animate = (now) => {
             if (!this.previewPlaying) return;
             const delta = (now - lastTime) / 1000;
             lastTime = now;
+
             // Advance frame based on animSpeed
-            this.previewFrameTimer = (this.previewFrameTimer || 0) + delta * this.animSpeed;
+            this.previewFrameTimer += delta * this.animSpeed;
             if (this.previewFrameTimer >= 0.1) { // 0.1s per frame at speed=1
                 this.previewFrameTimer = 0;
                 if (this.pingPong) {
@@ -330,10 +409,11 @@ class SpriteCode {
                 } else {
                     this.previewFrame = (this.previewFrame + 1) % this.totalFrames;
                 }
+                this.drawPreviewFrame();
             }
-            this.drawPreviewFrame();
             this.previewInterval = requestAnimationFrame(animate);
         };
+
         if (this.previewInterval) cancelAnimationFrame(this.previewInterval);
         this.previewInterval = requestAnimationFrame(animate);
     }
@@ -357,19 +437,27 @@ class SpriteCode {
         const canvas = document.getElementById('animationPreviewCanvas-sprite');
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
+
         // Draw white background
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+
         ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        
+
+        // Center the drawing in the preview canvas
+        const canvasCenterX = canvas.width / 2;
+        const canvasCenterY = canvas.height / 2;
+        ctx.translate(canvasCenterX, canvasCenterY);
+
+        // Calculate shape center and offset to center around 0,0
+        const shapeCenter = this.calculateShapesCenterPoint();
+        ctx.translate(-shapeCenter.centerX, -shapeCenter.centerY);
+
         const shapes = this.frames[this.previewFrame] || [];
         shapes.forEach(shape => {
             this.drawShapeOnContext(ctx, shape);
         });
-        
+
         ctx.restore();
     }
 
@@ -579,12 +667,19 @@ class SpriteCode {
 
     draw(ctx) {
         ctx.save();
+        
         // Apply transformations
         ctx.scale(this.scale, this.scale);
         if (this.flipped) {
             ctx.scale(-1, 1);
         }
         ctx.translate(this.offsetX, this.offsetY);
+
+        // Calculate the center point of all shapes to use as origin
+        const shapeCenter = this.calculateShapesCenterPoint();
+        
+        // Translate so shapes center around 0,0
+        ctx.translate(-shapeCenter.centerX, -shapeCenter.centerY);
 
         // Get current frame shapes
         const shapes = this.frames[this.currentFrame] || [];
@@ -595,86 +690,194 @@ class SpriteCode {
         ctx.restore();
     }
 
+    calculateShapesCenterPoint() {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let hasShapes = false;
+
+        this.frames.forEach(frame => {
+            if (!frame) return;
+            frame.forEach(shape => {
+                hasShapes = true;
+                if (shape.type === 'spline') {
+                    shape.points.forEach(point => {
+                        minX = Math.min(minX, point.x);
+                        minY = Math.min(minY, point.y);
+                        maxX = Math.max(maxX, point.x);
+                        maxY = Math.max(maxY, point.y);
+                    });
+                } else if (shape.type === 'circle') {
+                    const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+                    minX = Math.min(minX, shape.startX - radius);
+                    minY = Math.min(minY, shape.startY - radius);
+                    maxX = Math.max(maxX, shape.startX + radius);
+                    maxY = Math.max(maxY, shape.startY + radius);
+                } else {
+                    minX = Math.min(minX, shape.startX, shape.endX);
+                    minY = Math.min(minY, shape.startY, shape.endY);
+                    maxX = Math.max(maxX, shape.startX, shape.endX);
+                    maxY = Math.max(maxY, shape.startY, shape.endY);
+                }
+            });
+        });
+
+        if (!hasShapes) return { centerX: 0, centerY: 0 };
+        
+        return {
+            centerX: (minX + maxX) / 2,
+            centerY: (minY + maxY) / 2
+        };
+    }
+
+    createGradient(shape, ctx) {
+        if (!shape.gradient || !shape.gradient.enabled) return shape.fillColor;
+        
+        let gradient;
+        const bounds = this.getShapeBounds(shape);
+        
+        if (shape.gradient.type === 'radial') {
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            const radius = Math.max(bounds.width, bounds.height) / 2;
+            gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        } else {
+            // Linear gradient
+            const angle = (shape.gradient.angle || 0) * Math.PI / 180;
+            const x1 = bounds.x + bounds.width / 2 - Math.cos(angle) * bounds.width / 2;
+            const y1 = bounds.y + bounds.height / 2 - Math.sin(angle) * bounds.height / 2;
+            const x2 = bounds.x + bounds.width / 2 + Math.cos(angle) * bounds.width / 2;
+            const y2 = bounds.y + bounds.height / 2 + Math.sin(angle) * bounds.height / 2;
+            gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+        }
+        
+        gradient.addColorStop(0, shape.gradient.start);
+        gradient.addColorStop(1, shape.gradient.end);
+        
+        return gradient;
+    }
+
+    getShapeBounds(shape) {
+        if (shape.type === 'spline') {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            shape.points.forEach(pt => {
+                minX = Math.min(minX, pt.x);
+                minY = Math.min(minY, pt.y);
+                maxX = Math.max(maxX, pt.x);
+                maxY = Math.max(maxY, pt.y);
+            });
+            return {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY
+            };
+        } else if (shape.type === 'circle') {
+            const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+            return {
+                x: shape.startX - radius,
+                y: shape.startY - radius,
+                width: radius * 2,
+                height: radius * 2
+            };
+        } else {
+            const minX = Math.min(shape.startX, shape.endX);
+            const minY = Math.min(shape.startY, shape.endY);
+            const maxX = Math.max(shape.startX, shape.endX);
+            const maxY = Math.max(shape.startY, shape.endY);
+            return {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY
+            };
+        }
+    }
+
     drawShape(ctx, shape) {
+        if (!shape.visible) return;
+        
         ctx.save();
-        ctx.fillStyle = shape.fillColor;
+        
+        // Apply transformations
+        if (shape.rotation || shape.scaleX !== 1 || shape.scaleY !== 1) {
+            const bounds = this.getShapeBounds(shape);
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            
+            ctx.translate(centerX, centerY);
+            ctx.rotate((shape.rotation || 0) * Math.PI / 180);
+            ctx.scale(shape.scaleX || 1, shape.scaleY || 1);
+            ctx.translate(-centerX, -centerY);
+        }
+        
+        // Set up colors/gradients
+        ctx.fillStyle = shape.gradient ? this.createGradient(shape, ctx) : shape.fillColor;
         ctx.strokeStyle = shape.strokeColor;
         ctx.lineWidth = shape.strokeWidth;
         ctx.setLineDash([]);
 
-        // Offset everything by canvas center
-        const centerX = ctx.canvas.width / 2;
-        const centerY = ctx.canvas.height / 2;
-
-        ctx.translate(centerX, centerY);
-
         switch (shape.type) {
             case 'rectangle':
-                this.drawRectangle(ctx, shape, centerX, centerY);
+                this.drawRectangle(ctx, shape);
                 break;
             case 'circle':
-                this.drawCircle(ctx, shape, centerX, centerY);
+                this.drawCircle(ctx, shape);
                 break;
             case 'triangle':
-                this.drawTriangle(ctx, shape, centerX, centerY);
+                this.drawTriangle(ctx, shape);
                 break;
             case 'line':
-                this.drawLine(ctx, shape, centerX, centerY);
+                this.drawLine(ctx, shape);
                 break;
             case 'spline':
-                this.drawSpline(ctx, shape, centerX, centerY);
+                this.drawSpline(ctx, shape);
                 break;
         }
 
         ctx.restore();
     }
 
-    drawRectangle(ctx, shape, centerX, centerY) {
+    drawRectangle(ctx, shape) {
         const width = shape.endX - shape.startX;
         const height = shape.endY - shape.startY;
-        if (shape.fill) ctx.fillRect(shape.startX - centerX, shape.startY - centerY, width, height);
-        if (shape.stroke) ctx.strokeRect(shape.startX - centerX, shape.startY - centerY, width, height);
+        if (shape.fill) ctx.fillRect(shape.startX, shape.startY, width, height);
+        if (shape.stroke) ctx.strokeRect(shape.startX, shape.startY, width, height);
     }
 
-    drawCircle(ctx, shape, centerX, centerY) {
+    drawCircle(ctx, shape) {
         const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
         ctx.beginPath();
-        ctx.arc(shape.startX - centerX, shape.startY - centerY, radius, 0, Math.PI * 2);
+        ctx.arc(shape.startX, shape.startY, radius, 0, Math.PI * 2);
         if (shape.fill) ctx.fill();
         if (shape.stroke) ctx.stroke();
     }
 
-    drawTriangle(ctx, shape, centerX, centerY) {
+    drawTriangle(ctx, shape) {
         const midX = (shape.startX + shape.endX) / 2;
         ctx.beginPath();
-        ctx.moveTo(midX - centerX, shape.startY - centerY);
-        ctx.lineTo(shape.startX - centerX, shape.endY - centerY);
-        ctx.lineTo(shape.endX - centerX, shape.endY - centerY);
+        ctx.moveTo(midX, shape.startY);
+        ctx.lineTo(shape.startX, shape.endY);
+        ctx.lineTo(shape.endX, shape.endY);
         ctx.closePath();
         if (shape.fill) ctx.fill();
         if (shape.stroke) ctx.stroke();
     }
 
-    drawLine(ctx, shape, centerX, centerY) {
+    drawLine(ctx, shape) {
         ctx.beginPath();
-        ctx.moveTo(shape.startX - centerX, shape.startY - centerY);
-        ctx.lineTo(shape.endX - centerX, shape.endY - centerY);
+        ctx.moveTo(shape.startX, shape.startY);
+        ctx.lineTo(shape.endX, shape.endY);
         ctx.stroke();
     }
 
-    drawSpline(ctx, shape, centerX, centerY) {
+    drawSpline(ctx, shape) {
         if (shape.points.length < 2) return;
         ctx.beginPath();
         if (shape.points.length === 2) {
-            ctx.moveTo(shape.points[0].x - centerX, shape.points[0].y - centerY);
-            ctx.lineTo(shape.points[1].x - centerX, shape.points[1].y - centerY);
+            ctx.moveTo(shape.points[0].x, shape.points[0].y);
+            ctx.lineTo(shape.points[1].x, shape.points[1].y);
         } else {
-            // Offset all points
-            const offsetPoints = shape.points.map(pt => ({
-                x: pt.x - centerX,
-                y: pt.y - centerY
-            }));
-            this.drawSmoothSpline(offsetPoints, shape.curveIntensity, shape.closed, ctx);
+            // Use the original points without offset
+            this.drawSmoothSpline(shape.points, shape.curveIntensity, shape.closed, ctx);
         }
         if (shape.closed) ctx.closePath();
         if (shape.fill && shape.closed) ctx.fill();
@@ -733,12 +936,29 @@ window.${moduleName} = ${moduleName};`;
     }
 
     drawShape(ctx, shape) {
+        if (!shape.visible) return;
+
         ctx.save();
-        ctx.fillStyle = shape.fillColor;
+
+        // Apply transformations
+        if (shape.rotation || shape.scaleX !== 1 || shape.scaleY !== 1) {
+            const bounds = this.getShapeBounds(shape);
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+
+            ctx.translate(centerX, centerY);
+            ctx.rotate((shape.rotation || 0) * Math.PI / 180);
+            ctx.scale(shape.scaleX || 1, shape.scaleY || 1);
+            ctx.translate(-centerX, -centerY);
+        }
+
+        // Set up colors/gradients
+        ctx.fillStyle = shape.gradient ? this.createGradient(shape, ctx) : shape.fillColor;
         ctx.strokeStyle = shape.strokeColor;
         ctx.lineWidth = shape.strokeWidth;
         ctx.setLineDash([]);
 
+        // Draw the shape
         switch (shape.type) {
             case 'rectangle':
                 this.drawRectangle(ctx, shape);
@@ -809,6 +1029,46 @@ window.${moduleName} = ${moduleName};`;
         };
     }
 
+    calculateShapesCenterPoint() {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let hasShapes = false;
+
+        this.frames.forEach(frame => {
+            if (!frame) return;
+            frame.forEach(shape => {
+                hasShapes = true;
+                if (shape.type === 'spline') {
+                    shape.points.forEach(point => {
+                        minX = Math.min(minX, point.x);
+                        minY = Math.min(minY, point.y);
+                        maxX = Math.max(maxX, point.x);
+                        maxY = Math.max(maxY, point.y);
+                    });
+                } else if (shape.type === 'circle') {
+                    const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+                    minX = Math.min(minX, shape.startX - radius);
+                    minY = Math.min(minY, shape.startY - radius);
+                    maxX = Math.max(maxX, shape.startX + radius);
+                    maxY = Math.max(maxY, shape.startY + radius);
+                } else {
+                    minX = Math.min(minX, shape.startX, shape.endX);
+                    minY = Math.min(minY, shape.startY, shape.endY);
+                    maxX = Math.max(maxX, shape.startX, shape.endX);
+                    maxY = Math.max(maxY, shape.startY, shape.endY);
+                }
+            });
+        });
+
+        if (!hasShapes) {
+            return { centerX: this.canvas.width / 2, centerY: this.canvas.height / 2 };
+        }
+
+        return {
+            centerX: (minX + maxX) / 2,
+            centerY: (minY + maxY) / 2
+        };
+    }
+
     // Rest of the existing methods remain the same...
     initializeCanvas() {
         this.canvas = document.getElementById('drawingCanvas-sprite');
@@ -824,6 +1084,34 @@ window.${moduleName} = ${moduleName};`;
         this.canvas.addEventListener('click', this.handleClick.bind(this));
     }
 
+    handleResizeStart(e, handleType) {
+        this.isResizing = true;
+        this.resizeHandle = handleType;
+        this.resizeStartX = e.clientX;
+        this.resizeStartY = e.clientY;
+
+        // Store original bounds
+        this.originalBounds = this.getShapeBounds(this.selectedShape);
+
+        e.preventDefault();
+    }
+
+    handleRotationStart(e) {
+        this.isRotating = true;
+        const bounds = this.getShapeBounds(this.selectedShape);
+        this.rotationCenterX = bounds.x + bounds.width / 2;
+        this.rotationCenterY = bounds.y + bounds.height / 2;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        this.rotationStart = Math.atan2(mouseY - this.rotationCenterY, mouseX - this.rotationCenterX) * 180 / Math.PI;
+        this.originalRotation = this.selectedShape.rotation || 0;
+
+        e.preventDefault();
+    }
+
     drawCenterDot() {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
@@ -836,6 +1124,40 @@ window.${moduleName} = ${moduleName};`;
         this.ctx.restore();
     }
 
+    toggleGradientOptions() {
+        const options = ['gradientOptions-sprite', 'gradientOptions2-sprite', 'gradientOptions3-sprite', 'gradientOptions4-sprite'];
+        options.forEach(id => {
+            document.getElementById(id).style.display = this.enableGradient ? 'flex' : 'none';
+        });
+    }
+
+    createGradient(shape, ctx) {
+        if (!this.enableGradient || !shape.gradient) return shape.fillColor;
+
+        let gradient;
+        const bounds = this.getShapeBounds(shape);
+
+        if (shape.gradient.type === 'radial') {
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            const radius = Math.max(bounds.width, bounds.height) / 2;
+            gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        } else {
+            // Linear gradient
+            const angle = (shape.gradient.angle || 0) * Math.PI / 180;
+            const x1 = bounds.x + bounds.width / 2 - Math.cos(angle) * bounds.width / 2;
+            const y1 = bounds.y + bounds.height / 2 - Math.sin(angle) * bounds.height / 2;
+            const x2 = bounds.x + bounds.width / 2 + Math.cos(angle) * bounds.width / 2;
+            const y2 = bounds.y + bounds.height / 2 + Math.sin(angle) * bounds.height / 2;
+            gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+        }
+
+        gradient.addColorStop(0, shape.gradient.start);
+        gradient.addColorStop(1, shape.gradient.end);
+
+        return gradient;
+    }
+
     createShape(startX, startY, endX, endY) {
         const shape = {
             type: this.currentTool,
@@ -844,10 +1166,22 @@ window.${moduleName} = ${moduleName};`;
             strokeColor: this.colors.stroke,
             strokeWidth: this.strokeWidth,
             fill: this.fillShape,
-            stroke: this.strokeShape
+            stroke: this.strokeShape,
+            visible: true,
+            rotation: 0,
+            scaleX: 1,
+            scaleY: 1,
+            gradient: this.enableGradient ? {
+                enabled: true,
+                start: this.gradientStart,
+                end: this.gradientEnd,
+                type: this.gradientType,
+                angle: this.gradientAngle
+            } : null
         };
 
         this.shapes.push(shape);
+        this.updateShapesList();
         this.redrawCanvas();
     }
 
@@ -863,11 +1197,23 @@ window.${moduleName} = ${moduleName};`;
             curveIntensity: this.curveIntensity,
             closed: this.closedSpline,
             fill: this.fillShape && this.closedSpline,
-            stroke: this.strokeShape
+            stroke: this.strokeShape,
+            visible: true,
+            rotation: 0,
+            scaleX: 1,
+            scaleY: 1,
+            gradient: this.enableGradient ? {
+                enabled: true,
+                start: this.gradientStart,
+                end: this.gradientEnd,
+                type: this.gradientType,
+                angle: this.gradientAngle
+            } : null
         };
 
         this.shapes.push(shape);
         this.tempSplinePoints = [];
+        this.updateShapesList();
         this.redrawCanvas();
     }
 
@@ -918,7 +1264,20 @@ window.${moduleName} = ${moduleName};`;
         }
     }
 
+    pointInPolygon(x, y, polygon) {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+            if (((polygon[i].y > y) !== (polygon[j].y > y)) &&
+                (x < (polygon[j].x - polygon[i].x) * (y - polygon[i].y) / (polygon[j].y - polygon[i].y) + polygon[i].x)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
     isPointInShape(x, y, shape) {
+        if (!shape.visible) return false;
+
         switch (shape.type) {
             case 'rectangle':
                 return x >= Math.min(shape.startX, shape.endX) &&
@@ -930,13 +1289,18 @@ window.${moduleName} = ${moduleName};`;
                 const dist = Math.sqrt((x - shape.startX) ** 2 + (y - shape.startY) ** 2);
                 return dist <= radius;
             case 'spline':
-                // Check if point is near any line segment
-                for (let i = 0; i < shape.points.length - 1; i++) {
-                    if (this.distanceToLine(x, y, shape.points[i], shape.points[i + 1]) < 10) {
-                        return true;
+                if (shape.closed && shape.fill) {
+                    // Use point-in-polygon test for closed filled splines
+                    return this.pointInPolygon(x, y, shape.points);
+                } else {
+                    // Check if point is near any line segment
+                    for (let i = 0; i < shape.points.length - 1; i++) {
+                        if (this.distanceToLine(x, y, shape.points[i], shape.points[i + 1]) < 10) {
+                            return true;
+                        }
                     }
+                    return false;
                 }
-                return false;
         }
         return false;
     }
@@ -988,6 +1352,16 @@ window.${moduleName} = ${moduleName};`;
         const rect = this.canvas.getBoundingClientRect();
         const currentX = e.clientX - rect.left;
         const currentY = e.clientY - rect.top;
+
+        if (this.isResizing && this.selectedShape) {
+            this.handleResize(e);
+            return;
+        }
+
+        if (this.isRotating && this.selectedShape) {
+            this.handleRotation(e);
+            return;
+        }
 
         // Dragging selected shape
         if (this.isDragging && this.selectedShape && this.currentTool === 'select') {
@@ -1054,6 +1428,77 @@ window.${moduleName} = ${moduleName};`;
             this.tempSplinePoints.push({ x, y });
             this.redrawCanvas();
             this.drawSplinePreview();
+        }
+    }
+
+    handleResize(e) {
+        const deltaX = e.clientX - this.resizeStartX;
+        const deltaY = e.clientY - this.resizeStartY;
+
+        const bounds = this.originalBounds;
+        let newBounds = { ...bounds };
+
+        switch (this.resizeHandle) {
+            case 'se':
+                newBounds.width = bounds.width + deltaX;
+                newBounds.height = bounds.height + deltaY;
+                break;
+            case 'sw':
+                newBounds.x = bounds.x + deltaX;
+                newBounds.width = bounds.width - deltaX;
+                newBounds.height = bounds.height + deltaY;
+                break;
+            case 'ne':
+                newBounds.width = bounds.width + deltaX;
+                newBounds.y = bounds.y + deltaY;
+                newBounds.height = bounds.height - deltaY;
+                break;
+            case 'nw':
+                newBounds.x = bounds.x + deltaX;
+                newBounds.width = bounds.width - deltaX;
+                newBounds.y = bounds.y + deltaY;
+                newBounds.height = bounds.height - deltaY;
+                break;
+            // Add cases for edge handles (n, s, e, w)
+        }
+
+        this.applyBoundsToShape(this.selectedShape, newBounds);
+        this.redrawCanvas();
+    }
+
+    handleRotation(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const currentAngle = Math.atan2(mouseY - this.rotationCenterY, mouseX - this.rotationCenterX) * 180 / Math.PI;
+        const rotation = this.originalRotation + (currentAngle - this.rotationStart);
+
+        this.selectedShape.rotation = rotation;
+
+        // Update UI slider
+        document.getElementById('shapeRotation-sprite').value = rotation;
+        document.getElementById('rotationValue-sprite').textContent = Math.round(rotation);
+
+        this.redrawCanvas();
+    }
+
+    applyBoundsToShape(shape, bounds) {
+        if (shape.type === 'spline') {
+            // Scale spline points proportionally
+            const oldBounds = this.getShapeBounds(shape);
+            const scaleX = bounds.width / oldBounds.width;
+            const scaleY = bounds.height / oldBounds.height;
+
+            shape.points.forEach(pt => {
+                pt.x = bounds.x + (pt.x - oldBounds.x) * scaleX;
+                pt.y = bounds.y + (pt.y - oldBounds.y) * scaleY;
+            });
+        } else {
+            shape.startX = bounds.x;
+            shape.startY = bounds.y;
+            shape.endX = bounds.x + bounds.width;
+            shape.endY = bounds.y + bounds.height;
         }
     }
 
@@ -1175,6 +1620,7 @@ window.${moduleName} = ${moduleName};`;
 
         // Draw selection indicators on top
         this.drawSelectionIndicators();
+        this.updateShapesList();
     }
 
     deleteSelectedShape() {
@@ -1186,6 +1632,203 @@ window.${moduleName} = ${moduleName};`;
                 this.redrawCanvas();
             }
         }
+    }
+
+    updateShapesList() {
+        const container = document.getElementById('shapesList-sprite');
+        container.innerHTML = '';
+
+        this.shapes.forEach((shape, index) => {
+            const item = document.createElement('div');
+            item.className = `shape-item-sprite ${this.selectedShapeIndex === index ? 'selected' : ''}`;
+            item.dataset.index = index;
+            item.draggable = true;
+
+            const icon = this.getShapeIcon(shape.type);
+            const name = `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} ${index + 1}`;
+
+            item.innerHTML = `
+            <div class="shape-item-info">
+                <span class="shape-item-icon">${icon}</span>
+                <span class="shape-item-name">${name}</span>
+            </div>
+            <span class="shape-item-visibility ${shape.visible ? 'visible' : 'hidden'}">${shape.visible ? '👁️' : '👁️‍🗨️'}</span>
+        `;
+
+            container.appendChild(item);
+        });
+
+        document.getElementById('shapeCount-sprite').textContent = `(${this.shapes.length})`;
+        this.updateShapeToolbarButtons();
+    }
+
+    getShapeIcon(type) {
+        const icons = {
+            rectangle: '⬜',
+            circle: '⚪',
+            triangle: '🔺',
+            line: '📏',
+            spline: '〰️'
+        };
+        return icons[type] || '⚪';
+    }
+
+    selectShapeByIndex(index) {
+        this.selectedShapeIndex = index;
+        this.selectedShape = this.shapes[index];
+        this.updateShapesList();
+        this.updateTransformControls();
+        this.updateShapeToolbarButtons();
+        this.redrawCanvas();
+    }
+
+    updateTransformControls() {
+        const transformPanel = document.getElementById('transformOptions-sprite');
+        if (this.selectedShape) {
+            transformPanel.style.display = 'block';
+
+            document.getElementById('shapeRotation-sprite').value = this.selectedShape.rotation || 0;
+            document.getElementById('rotationValue-sprite').textContent = this.selectedShape.rotation || 0;
+
+            document.getElementById('shapeScaleX-sprite').value = this.selectedShape.scaleX || 1;
+            document.getElementById('scaleXValue-sprite').textContent = this.selectedShape.scaleX || 1;
+
+            document.getElementById('shapeScaleY-sprite').value = this.selectedShape.scaleY || 1;
+            document.getElementById('scaleYValue-sprite').textContent = this.selectedShape.scaleY || 1;
+        } else {
+            transformPanel.style.display = 'none';
+        }
+    }
+
+    updateShapeTransform(property, value) {
+        if (this.selectedShape) {
+            this.selectedShape[property] = value;
+            this.redrawCanvas();
+        }
+    }
+
+    updateShapeToolbarButtons() {
+        const hasSelection = this.selectedShapeIndex >= 0;
+        const canMoveUp = hasSelection && this.selectedShapeIndex > 0;
+        const canMoveDown = hasSelection && this.selectedShapeIndex < this.shapes.length - 1;
+
+        document.getElementById('moveShapeUp-sprite').disabled = !canMoveUp;
+        document.getElementById('moveShapeDown-sprite').disabled = !canMoveDown;
+        document.getElementById('deleteShape-sprite').disabled = !hasSelection;
+        document.getElementById('duplicateShape-sprite').disabled = !hasSelection;
+    }
+
+    moveShape(direction) {
+        if (this.selectedShapeIndex < 0) return;
+
+        const newIndex = this.selectedShapeIndex + direction;
+        if (newIndex < 0 || newIndex >= this.shapes.length) return;
+
+        // Swap shapes
+        [this.shapes[this.selectedShapeIndex], this.shapes[newIndex]] =
+            [this.shapes[newIndex], this.shapes[this.selectedShapeIndex]];
+
+        this.selectedShapeIndex = newIndex;
+        this.selectedShape = this.shapes[newIndex];
+
+        this.updateShapesList();
+        this.redrawCanvas();
+    }
+
+    duplicateShape() {
+        if (this.selectedShape) {
+            const copy = JSON.parse(JSON.stringify(this.selectedShape));
+
+            // Offset the copy slightly
+            if (copy.type === 'spline') {
+                copy.points.forEach(pt => {
+                    pt.x += 10;
+                    pt.y += 10;
+                });
+            } else {
+                copy.startX += 10;
+                copy.startY += 10;
+                copy.endX += 10;
+                copy.endY += 10;
+            }
+
+            this.shapes.push(copy);
+            this.selectShapeByIndex(this.shapes.length - 1);
+            this.updateShapesList();
+            this.redrawCanvas();
+        }
+    }
+
+    toggleShapeVisibility(index) {
+        if (this.shapes[index]) {
+            this.shapes[index].visible = !this.shapes[index].visible;
+            this.updateShapesList();
+            this.redrawCanvas();
+        }
+    }
+
+    setupShapeListDragDrop() {
+        const container = document.getElementById('shapesList-sprite');
+
+        container.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('shape-item-sprite')) {
+                this.draggedShapeIndex = parseInt(e.target.dataset.index);
+                e.target.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            }
+        });
+
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const afterElement = this.getDragAfterElement(container, e.clientY);
+            const draggedElement = container.querySelector('.dragging');
+
+            if (afterElement == null) {
+                container.appendChild(draggedElement);
+            } else {
+                container.insertBefore(draggedElement, afterElement);
+            }
+        });
+
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const draggedElement = container.querySelector('.dragging');
+            if (draggedElement) {
+                const newIndex = Array.from(container.children).indexOf(draggedElement);
+
+                // Reorder the shapes array
+                const shape = this.shapes.splice(this.draggedShapeIndex, 1)[0];
+                this.shapes.splice(newIndex, 0, shape);
+
+                this.selectedShapeIndex = newIndex;
+                this.selectedShape = shape;
+
+                draggedElement.classList.remove('dragging');
+                this.updateShapesList();
+                this.redrawCanvas();
+            }
+        });
+
+        container.addEventListener('dragend', (e) => {
+            e.target.classList.remove('dragging');
+        });
+    }
+
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.shape-item-sprite:not(.dragging)')];
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
     drawRectangle(ctx, shape) {
@@ -1323,19 +1966,19 @@ window.${moduleName} = ${moduleName};`;
                 reader.onload = (e) => {
                     try {
                         const data = JSON.parse(e.target.result);
-                        
+
                         if (data.frames) {
                             // New format with animation
                             this.frames = data.frames;
                             this.totalFrames = this.frames.length;
                             this.currentFrame = 0;
-                            
+
                             if (data.animationSettings) {
                                 this.enableTweening = data.animationSettings.enableTweening;
                                 this.animSpeed = data.animationSettings.animSpeed;
                                 this.tweenType = data.animationSettings.tweenType;
                                 this.pingPong = data.animationSettings.pingPong;
-                                
+
                                 // Update UI
                                 document.getElementById('enableTweening-sprite').checked = this.enableTweening;
                                 document.getElementById('animSpeed-sprite').value = this.animSpeed;
@@ -1349,7 +1992,7 @@ window.${moduleName} = ${moduleName};`;
                             this.totalFrames = 1;
                             this.currentFrame = 0;
                         }
-                        
+
                         this.updateFrameDisplay();
                         this.redrawCanvas();
                     } catch (err) {

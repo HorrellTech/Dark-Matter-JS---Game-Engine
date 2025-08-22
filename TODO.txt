@@ -23,4 +23,4 @@
 
 - Get SpriteCode to preview and export animations for the module to play. Also, we want to be able to set animations
     with different name identifiers(for stand, walk, run etc) using the same shapes so we can have multiple animations coded
-    in. Animate color too, and get the shape export offset be relative to the center of the canvas
+    in. Animate color too
