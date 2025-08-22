@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="src/styles/settings-modal.css">
     <link rel="stylesheet" href="src/styles/export-modal.css">
     <link rel="stylesheet" href="src/styles/prefab-manager.css">
+    <link rel="stylesheet" href="src/styles/sprite-code.css">
     <!--link rel="stylesheet" href="src/styles/split-view.css"-->
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
@@ -66,6 +67,9 @@
         <div class="toolbar-spacer"></div>
         <button class="toolbar-button" title="Documentation" style="color: #64B5F6">
             <i class="fas fa-book"></i>
+        </button>
+        <button class="launch-btn" id="launchSpriteCodeBtn" title="Launch Sprite Code"
+            style="background: linear-gradient(135deg, #d1cf47, #db13d1);"><i class="fas fa-paint-brush"></i>
         </button>
         <div class="toolbar-group">
             <button class="toolbar-button" title="Play" style="color: #4CAF50"><i class="fas fa-play"></i></button>
@@ -195,9 +199,9 @@
         </div>
     </div>
     
-    <div class="footer">
+    <!--div class="footer">
         SynKrown
-    </div>
+    </div-->
 
     <div class="loading-overlay">
         <div class="spinner"></div>
@@ -215,15 +219,104 @@
             <i class="fas fa-folder"></i>
         </button>
     </div>
+
+    <div class="modal-overlay-sprite" id="modalOverlay-sprite">
+        <div class="modal-sprite">
+            <button class="close-btn-sprite" onclick="spriteCode.closeModal()">×</button>
+            
+            <div class="toolbar-sprite">
+                <button onclick="spriteCode.newDrawing()">New</button>
+                <button onclick="spriteCode.saveDrawing()">Save</button>
+                <button onclick="spriteCode.loadDrawing()">Load</button>
+                <button onclick="spriteCode.exportCode()">Export Code</button>
+                <button onclick="spriteCode.clearCanvas()">Clear</button>
+                <button onclick="spriteCode.undo()">Undo</button>
+            </div>
+
+            <div class="main-area-sprite">
+                <div class="left-panel-sprite">
+                    <div class="tool-section-sprite">
+                        <h3>Drawing Tools</h3>
+                        <div class="tool-grid-sprite">
+                            <button class="tool-btn-sprite active" data-tool="select" title="Select">⚬</button>
+                            <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle">□</button>
+                            <button class="tool-btn-sprite" data-tool="circle" title="Circle">○</button>
+                            <button class="tool-btn-sprite" data-tool="triangle" title="Triangle">△</button>
+                            <button class="tool-btn-sprite" data-tool="line" title="Line">／</button>
+                            <button class="tool-btn-sprite" data-tool="spline" title="Spline">〜</button>
+                            <button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button>
+                            <button class="tool-btn-sprite" data-tool="text" title="Text">T</button>
+                            <button class="tool-btn-sprite" data-tool="pen" title="Pen">✎</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite">
+                        <h3>Colors</h3>
+                        <div class="color-section-sprite">
+                            <div class="color-row-sprite">
+                                <label>Fill:</label>
+                                <input type="color" class="color-input" id="fillColor-sprite" value="#3b82f6">
+                            </div>
+                            <div class="color-row-sprite">
+                                <label>Stroke:</label>
+                                <input type="color" class="color-input" id="strokeColor-sprite" value="#000000">
+                            </div>
+                            <div class="slider-row-sprite">
+                                <label>Stroke Width: <span id="strokeWidthValue-sprite">2</span>px</label>
+                                <input type="range" class="slider" id="strokeWidth-sprite" min="1" max="20" value="2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="splineOptions-sprite" style="display: none;">
+                        <h3>Spline Settings</h3>
+                        <div class="slider-row-sprite">
+                            <label>Curve Intensity: <span id="curveIntensityValue-sprite">0.5</span></label>
+                            <input type="range" class="slider" id="curveIntensity-sprite" min="0" max="1" step="0.1" value="0.5">
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="closedSpline-sprite">
+                            <label>Closed Shape</label>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="shapeOptions-sprite">
+                        <h3>Shape Options</h3>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="fillShape-sprite" checked>
+                            <label>Fill Shape</label>
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="strokeShape-sprite" checked>
+                            <label>Stroke Shape</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="canvas-container-sprite">
+                    <canvas class="canvas-sprite" id="drawingCanvas-sprite" width="800" height="600"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="code-modal-sprite" id="codeModal-sprite">
+        <div class="code-content-sprite">
+            <h3>Generated JavaScript Code</h3>
+            <button class="close-btn-sprite" onclick="spriteCode.closeCodeModal()">×</button>
+            <pre id="generatedCode-sprite"></pre>
+            <button class="toolbar-sprite" onclick="spriteCode.copyCode()" style="margin-top: 16px;">Copy Code</button>
+        </div>
+    </div>
     
-    <div class="mobile-detection-overlay" style="display: none;">
+    <!--div class="mobile-detection-overlay" style="display: none;">
         <h2>Mobile Device Detected</h2>
         <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
         <div>
             <button id="enableMobileMode">Yes, use mobile mode</button>
             <button id="disableMobileMode">No, use desktop mode</button>
         </div>
-    </div>
+    </div-->
 
     <script src="src/core/Math/Vector2.js"></script>
     <script src="src/core/Math/Vector3.js"></script>
@@ -345,6 +438,17 @@
 
     <!--script src="src/core/Editor Panels/GameEditorSync.js"></script>
     <script src="src/core/Editor Panels/SplitViewController.js"></script-->
+    <script src="src/SpriteCode.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('launchSpriteCodeBtn').onclick = function() {
+            if (!window.spriteCode) {
+                window.spriteCode = new SpriteCode();
+            }
+            window.spriteCode.openModal();
+        };
+    });
+    </script>
 
     <script src="src/app.js"></script>
 </body>

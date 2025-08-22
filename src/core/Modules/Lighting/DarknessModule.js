@@ -3,6 +3,7 @@ class DarknessModule extends Module {
     static namespace = "Lighting";
     static description = "Creates darkness overlay with day/night cycle that can be cut through by point lights";
     static allowMultiple = false;
+    static drawInEditor = false;
     static iconClass = "fas fa-moon";
 
     constructor() {

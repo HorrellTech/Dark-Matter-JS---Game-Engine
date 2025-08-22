@@ -77,6 +77,10 @@ class MyModule extends Module {
         // Draw debug gizmos (optional)
     }
 
+    onDestroy() {
+        // Clean up module
+    }
+
     toJSON() { // Serialize module state
         return {
             ...super.toJSON(),

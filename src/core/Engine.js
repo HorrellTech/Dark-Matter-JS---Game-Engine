@@ -345,6 +345,11 @@ class Engine {
     }
 
     async start() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null; // Ensure no stale frame
+        }
+        
         if (!this.scene) {
             console.error('No scene loaded');
             return;
@@ -420,7 +425,10 @@ class Engine {
         console.log("Stopping game...");
         this.running = false;
         this.wasRunning = false;
-        cancelAnimationFrame(this.animationFrameId);
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null; // Ensure no stale frame
+        }
 
         // Preserve shake object structure when resetting viewport
         this.viewport = {

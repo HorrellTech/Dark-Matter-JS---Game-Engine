@@ -1293,7 +1293,12 @@ class GameObject {
         const originalGameObject = this; 
         
         // Create new GameObject
-        const cloned = new GameObject(this.name + (addNameCopySuffix ? " (Copy)" : ""));
+        // Only add " (Copy)" if not already present
+        let newName = this.name;
+        if (addNameCopySuffix && !newName.trim().endsWith("(Copy)")) {
+            newName += " (Copy)";
+        }
+        const cloned = new GameObject(newName);
         
         // Copy basic properties
         cloned.position = this.position.clone();

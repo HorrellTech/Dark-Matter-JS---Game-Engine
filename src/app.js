@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize editor
     const editor = new Editor('editorCanvas');
 
-    if(!window.editor) {
+    if (!window.editor) {
         window.editor = editor;
     }
 
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('Creating default scene on startup...');
         try {
             const defaultScene = await window.editor.sceneManager.createNewScene();
-            
+
             // Make sure it gets saved
             if (defaultScene && window.editor.fileBrowser) {
                 try {

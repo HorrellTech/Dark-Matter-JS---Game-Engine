@@ -428,35 +428,36 @@ class PointLightModule extends Module {
 
     getParallaxPosition(mul = 1) {
         const worldPos = this.gameObject.getWorldPosition();
-
         const vp = window.engine.viewport;
         const depth = this.gameObject.depth || 0;
-        // Parallax factor: higher depth = less movement, lower depth = more movement
-        // You can tweak the divisor for stronger/weaker effect
-        if(depth == 0) {
-            return {
-                x: (worldPos.x) / mul,
-                y: (worldPos.y) / mul
-            };
-        }
 
-        const parallaxFactor = 1 - (depth * 0.1); // 0.1 per depth step, adjust as needed
+        let px, py;
+        if (depth === 0) {
+            px = worldPos.x;
+            py = worldPos.y;
+        } else {
+            const parallaxFactor = 1 - (depth * 0.1);
+            px = worldPos.x - vp.x * parallaxFactor;
+            py = worldPos.y - vp.y * parallaxFactor;
+        }
+        // Only divide by mul at the end
         return {
-            x: (worldPos.x - vp.x * parallaxFactor) / mul,
-            y: (worldPos.y - vp.y * parallaxFactor) / mul
+            x: px / mul,
+            y: py / mul
         };
     }
 
     getParallaxRadius(mul = 1) {
         const depth = this.gameObject.depth || 0;
-
-        if(depth == 0) {
-            return this.radius / mul;
+        let r;
+        if (depth === 0) {
+            r = this.radius;
+        } else {
+            const scale = 1 - (depth * 0.08);
+            r = Math.max(10, this.radius * scale);
         }
-
-        // Scale radius: deeper = smaller, closer = bigger
-        const scale = 1 - (depth * 0.08); // 0.08 per depth step, adjust as needed
-        return Math.max(10, this.radius * scale) / mul;
+        // Only divide by mul at the end
+        return r / mul;
     }
 
     _addAlphaToColor(color, alpha) {

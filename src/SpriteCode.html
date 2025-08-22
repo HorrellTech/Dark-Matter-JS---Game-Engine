@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing Modal Application</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .launch-btn {
+            padding: 12px 24px;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+        }
+
+        .launch-btn:hover {
+            background: #4338ca;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal {
+            width: 95vw;
+            height: 90vh;
+            background: #1f1f1f;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            overflow: hidden;
+        }
+
+        .toolbar {
+            background: #2d2d2d;
+            padding: 8px 16px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            border-bottom: 1px solid #404040;
+        }
+
+        .toolbar button {
+            padding: 6px 12px;
+            background: #404040;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .toolbar button:hover {
+            background: #525252;
+        }
+
+        .toolbar button.active {
+            background: #4f46e5;
+        }
+
+        .main-area {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .left-panel {
+            width: 250px;
+            background: #252525;
+            border-right: 1px solid #404040;
+            padding: 16px;
+            overflow-y: auto;
+        }
+
+        .tool-section {
+            margin-bottom: 24px;
+        }
+
+        .tool-section h3 {
+            color: #e5e5e5;
+            font-size: 14px;
+            margin: 0 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .tool-btn {
+            width: 40px;
+            height: 40px;
+            background: #404040;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: #525252;
+            transform: scale(1.05);
+        }
+
+        .tool-btn.active {
+            background: #4f46e5;
+            box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);
+        }
+
+        .color-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .color-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .color-row label {
+            color: #e5e5e5;
+            font-size: 12px;
+            min-width: 60px;
+        }
+
+        .color-input {
+            width: 40px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .slider-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .slider-row label {
+            color: #e5e5e5;
+            font-size: 12px;
+        }
+
+        .slider {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: #404040;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background: #1a1a1a;
+            overflow: auto;
+        }
+
+        .canvas {
+            display: block;
+            background: white;
+            cursor: crosshair;
+            margin: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 32px;
+            height: 32px;
+            background: #ef4444;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        .code-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1100;
+        }
+
+        .code-content {
+            width: 80%;
+            max-width: 800px;
+            height: 70%;
+            background: #1e1e1e;
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        .code-content h3 {
+            color: #e5e5e5;
+            margin-top: 0;
+        }
+
+        .code-content pre {
+            background: #2d2d2d;
+            padding: 16px;
+            border-radius: 4px;
+            overflow: auto;
+            font-family: 'Courier New', monospace;
+            color: #f8f8f2;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            accent-color: #4f46e5;
+        }
+
+        .checkbox-row label {
+            color: #e5e5e5;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <button class="launch-btn" onclick="drawingApp.openModal()">Launch Drawing App</button>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <button class="close-btn" onclick="drawingApp.closeModal()">×</button>
+            
+            <div class="toolbar">
+                <button onclick="drawingApp.newDrawing()">New</button>
+                <button onclick="drawingApp.saveDrawing()">Save</button>
+                <button onclick="drawingApp.loadDrawing()">Load</button>
+                <button onclick="drawingApp.exportCode()">Export Code</button>
+                <button onclick="drawingApp.clearCanvas()">Clear</button>
+                <button onclick="drawingApp.undo()">Undo</button>
+            </div>
+
+            <div class="main-area">
+                <div class="left-panel">
+                    <div class="tool-section">
+                        <h3>Drawing Tools</h3>
+                        <div class="tool-grid">
+                            <button class="tool-btn active" data-tool="select" title="Select">⚬</button>
+                            <button class="tool-btn" data-tool="rectangle" title="Rectangle">□</button>
+                            <button class="tool-btn" data-tool="circle" title="Circle">○</button>
+                            <button class="tool-btn" data-tool="triangle" title="Triangle">△</button>
+                            <button class="tool-btn" data-tool="line" title="Line">／</button>
+                            <button class="tool-btn" data-tool="spline" title="Spline">〜</button>
+                            <button class="tool-btn" data-tool="polygon" title="Polygon">⬟</button>
+                            <button class="tool-btn" data-tool="text" title="Text">T</button>
+                            <button class="tool-btn" data-tool="pen" title="Pen">✎</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-section">
+                        <h3>Colors</h3>
+                        <div class="color-section">
+                            <div class="color-row">
+                                <label>Fill:</label>
+                                <input type="color" class="color-input" id="fillColor" value="#3b82f6">
+                            </div>
+                            <div class="color-row">
+                                <label>Stroke:</label>
+                                <input type="color" class="color-input" id="strokeColor" value="#000000">
+                            </div>
+                            <div class="slider-row">
+                                <label>Stroke Width: <span id="strokeWidthValue">2</span>px</label>
+                                <input type="range" class="slider" id="strokeWidth" min="1" max="20" value="2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tool-section" id="splineOptions" style="display: none;">
+                        <h3>Spline Settings</h3>
+                        <div class="slider-row">
+                            <label>Curve Intensity: <span id="curveIntensityValue">0.5</span></label>
+                            <input type="range" class="slider" id="curveIntensity" min="0" max="1" step="0.1" value="0.5">
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="closedSpline">
+                            <label>Closed Shape</label>
+                        </div>
+                    </div>
+
+                    <div class="tool-section" id="shapeOptions">
+                        <h3>Shape Options</h3>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="fillShape" checked>
+                            <label>Fill Shape</label>
+                        </div>
+                        <div class="checkbox-row">
+                            <input type="checkbox" id="strokeShape" checked>
+                            <label>Stroke Shape</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="canvas-container">
+                    <canvas class="canvas" id="drawingCanvas" width="800" height="600"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="code-modal" id="codeModal">
+        <div class="code-content">
+            <h3>Generated JavaScript Code</h3>
+            <button class="close-btn" onclick="drawingApp.closeCodeModal()">×</button>
+            <pre id="generatedCode"></pre>
+            <button class="toolbar" onclick="drawingApp.copyCode()" style="margin-top: 16px;">Copy Code</button>
+        </div>
+    </div>
+
+    <script>
+        class DrawingApp {
+            constructor() {
+                this.canvas = null;
+                this.ctx = null;
+                this.currentTool = 'select';
+                this.drawing = false;
+                this.startX = 0;
+                this.startY = 0;
+                this.shapes = [];
+                this.history = [];
+                this.splinePoints = [];
+                this.tempSplinePoints = [];
+                
+                this.colors = {
+                    fill: '#3b82f6',
+                    stroke: '#000000'
+                };
+                
+                this.strokeWidth = 2;
+                this.curveIntensity = 0.5;
+                this.closedSpline = false;
+                this.fillShape = true;
+                this.strokeShape = true;
+                
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                // Tool selection
+                document.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('tool-btn')) {
+                        document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.currentTool = e.target.dataset.tool;
+                        this.updateToolOptions();
+                    }
+                });
+
+                // Color and settings
+                document.getElementById('fillColor').addEventListener('change', (e) => {
+                    this.colors.fill = e.target.value;
+                });
+
+                document.getElementById('strokeColor').addEventListener('change', (e) => {
+                    this.colors.stroke = e.target.value;
+                });
+
+                document.getElementById('strokeWidth').addEventListener('input', (e) => {
+                    this.strokeWidth = parseInt(e.target.value);
+                    document.getElementById('strokeWidthValue').textContent = this.strokeWidth;
+                });
+
+                document.getElementById('curveIntensity').addEventListener('input', (e) => {
+                    this.curveIntensity = parseFloat(e.target.value);
+                    document.getElementById('curveIntensityValue').textContent = this.curveIntensity;
+                });
+
+                document.getElementById('closedSpline').addEventListener('change', (e) => {
+                    this.closedSpline = e.target.checked;
+                });
+
+                document.getElementById('fillShape').addEventListener('change', (e) => {
+                    this.fillShape = e.target.checked;
+                });
+
+                document.getElementById('strokeShape').addEventListener('change', (e) => {
+                    this.strokeShape = e.target.checked;
+                });
+            }
+
+            openModal() {
+                document.getElementById('modalOverlay').style.display = 'flex';
+                this.initializeCanvas();
+            }
+
+            closeModal() {
+                document.getElementById('modalOverlay').style.display = 'none';
+            }
+
+            closeCodeModal() {
+                document.getElementById('codeModal').style.display = 'none';
+            }
+
+            initializeCanvas() {
+                this.canvas = document.getElementById('drawingCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                
+                // Draw center dot
+                this.drawCenterDot();
+                
+                // Add event listeners
+                this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+                this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+                this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+                this.canvas.addEventListener('click', this.handleClick.bind(this));
+            }
+
+            drawCenterDot() {
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                
+                this.ctx.save();
+                this.ctx.fillStyle = '#ff0000';
+                this.ctx.beginPath();
+                this.ctx.arc(centerX, centerY, 3, 0, Math.PI * 2);
+                this.ctx.fill();
+                this.ctx.restore();
+            }
+
+            updateToolOptions() {
+                document.getElementById('splineOptions').style.display = 
+                    this.currentTool === 'spline' ? 'block' : 'none';
+            }
+
+            handleMouseDown(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                this.startX = e.clientX - rect.left;
+                this.startY = e.clientY - rect.top;
+                
+                if (this.currentTool === 'spline') {
+                    // Spline tool uses click events instead
+                    return;
+                }
+                
+                this.drawing = true;
+                this.saveState();
+            }
+
+            handleMouseMove(e) {
+                if (!this.drawing || this.currentTool === 'spline') return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const currentX = e.clientX - rect.left;
+                const currentY = e.clientY - rect.top;
+                
+                this.redrawCanvas();
+                this.drawPreview(this.startX, this.startY, currentX, currentY);
+            }
+
+            handleMouseUp(e) {
+                if (!this.drawing || this.currentTool === 'spline') return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+                
+                this.createShape(this.startX, this.startY, endX, endY);
+                this.drawing = false;
+            }
+
+            handleClick(e) {
+                if (this.currentTool !== 'spline') return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                if (e.detail === 2) { // Double click
+                    if (this.tempSplinePoints.length > 2) {
+                        this.createSpline();
+                    }
+                } else {
+                    this.tempSplinePoints.push({ x, y });
+                    this.redrawCanvas();
+                    this.drawSplinePreview();
+                }
+            }
+
+            drawPreview(startX, startY, endX, endY) {
+                this.ctx.save();
+                this.ctx.strokeStyle = this.colors.stroke;
+                this.ctx.fillStyle = this.colors.fill;
+                this.ctx.lineWidth = this.strokeWidth;
+                this.ctx.setLineDash([5, 5]);
+                
+                switch (this.currentTool) {
+                    case 'rectangle':
+                        this.drawRectanglePreview(startX, startY, endX, endY);
+                        break;
+                    case 'circle':
+                        this.drawCirclePreview(startX, startY, endX, endY);
+                        break;
+                    case 'triangle':
+                        this.drawTrianglePreview(startX, startY, endX, endY);
+                        break;
+                    case 'line':
+                        this.drawLinePreview(startX, startY, endX, endY);
+                        break;
+                }
+                
+                this.ctx.restore();
+            }
+
+            drawRectanglePreview(startX, startY, endX, endY) {
+                const width = endX - startX;
+                const height = endY - startY;
+                this.ctx.strokeRect(startX, startY, width, height);
+            }
+
+            drawCirclePreview(startX, startY, endX, endY) {
+                const radius = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+                this.ctx.beginPath();
+                this.ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+                this.ctx.stroke();
+            }
+
+            drawTrianglePreview(startX, startY, endX, endY) {
+                const midX = (startX + endX) / 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(midX, startY);
+                this.ctx.lineTo(startX, endY);
+                this.ctx.lineTo(endX, endY);
+                this.ctx.closePath();
+                this.ctx.stroke();
+            }
+
+            drawLinePreview(startX, startY, endX, endY) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(startX, startY);
+                this.ctx.lineTo(endX, endY);
+                this.ctx.stroke();
+            }
+
+            drawSplinePreview() {
+                if (this.tempSplinePoints.length < 2) return;
+                
+                this.ctx.save();
+                this.ctx.strokeStyle = this.colors.stroke;
+                this.ctx.lineWidth = this.strokeWidth;
+                this.ctx.setLineDash([5, 5]);
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.tempSplinePoints[0].x, this.tempSplinePoints[0].y);
+                
+                for (let i = 1; i < this.tempSplinePoints.length; i++) {
+                    this.ctx.lineTo(this.tempSplinePoints[i].x, this.tempSplinePoints[i].y);
+                }
+                
+                this.ctx.stroke();
+                
+                // Draw points
+                this.tempSplinePoints.forEach(point => {
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fillRect(point.x - 2, point.y - 2, 4, 4);
+                });
+                
+                this.ctx.restore();
+            }
+
+            createShape(startX, startY, endX, endY) {
+                const shape = {
+                    type: this.currentTool,
+                    startX, startY, endX, endY,
+                    fillColor: this.colors.fill,
+                    strokeColor: this.colors.stroke,
+                    strokeWidth: this.strokeWidth,
+                    fill: this.fillShape,
+                    stroke: this.strokeShape
+                };
+                
+                this.shapes.push(shape);
+                this.redrawCanvas();
+            }
+
+            createSpline() {
+                if (this.tempSplinePoints.length < 2) return;
+                
+                const shape = {
+                    type: 'spline',
+                    points: [...this.tempSplinePoints],
+                    fillColor: this.colors.fill,
+                    strokeColor: this.colors.stroke,
+                    strokeWidth: this.strokeWidth,
+                    curveIntensity: this.curveIntensity,
+                    closed: this.closedSpline,
+                    fill: this.fillShape && this.closedSpline,
+                    stroke: this.strokeShape
+                };
+                
+                this.shapes.push(shape);
+                this.tempSplinePoints = [];
+                this.redrawCanvas();
+            }
+
+            redrawCanvas() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.drawCenterDot();
+                
+                this.shapes.forEach(shape => {
+                    this.drawShape(shape);
+                });
+            }
+
+            drawShape(shape) {
+                this.ctx.save();
+                this.ctx.fillStyle = shape.fillColor;
+                this.ctx.strokeStyle = shape.strokeColor;
+                this.ctx.lineWidth = shape.strokeWidth;
+                this.ctx.setLineDash([]);
+                
+                switch (shape.type) {
+                    case 'rectangle':
+                        this.drawRectangle(shape);
+                        break;
+                    case 'circle':
+                        this.drawCircle(shape);
+                        break;
+                    case 'triangle':
+                        this.drawTriangle(shape);
+                        break;
+                    case 'line':
+                        this.drawLine(shape);
+                        break;
+                    case 'spline':
+                        this.drawSpline(shape);
+                        break;
+                }
+                
+                this.ctx.restore();
+            }
+
+            drawRectangle(shape) {
+                const width = shape.endX - shape.startX;
+                const height = shape.endY - shape.startY;
+                
+                if (shape.fill) {
+                    this.ctx.fillRect(shape.startX, shape.startY, width, height);
+                }
+                if (shape.stroke) {
+                    this.ctx.strokeRect(shape.startX, shape.startY, width, height);
+                }
+            }
+
+            drawCircle(shape) {
+                const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+                this.ctx.beginPath();
+                this.ctx.arc(shape.startX, shape.startY, radius, 0, Math.PI * 2);
+                
+                if (shape.fill) this.ctx.fill();
+                if (shape.stroke) this.ctx.stroke();
+            }
+
+            drawTriangle(shape) {
+                const midX = (shape.startX + shape.endX) / 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(midX, shape.startY);
+                this.ctx.lineTo(shape.startX, shape.endY);
+                this.ctx.lineTo(shape.endX, shape.endY);
+                this.ctx.closePath();
+                
+                if (shape.fill) this.ctx.fill();
+                if (shape.stroke) this.ctx.stroke();
+            }
+
+            drawLine(shape) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(shape.startX, shape.startY);
+                this.ctx.lineTo(shape.endX, shape.endY);
+                this.ctx.stroke();
+            }
+
+            drawSpline(shape) {
+                if (shape.points.length < 2) return;
+                
+                this.ctx.beginPath();
+                
+                if (shape.points.length === 2) {
+                    this.ctx.moveTo(shape.points[0].x, shape.points[0].y);
+                    this.ctx.lineTo(shape.points[1].x, shape.points[1].y);
+                } else {
+                    this.drawSmoothSpline(shape.points, shape.curveIntensity, shape.closed);
+                }
+                
+                if (shape.closed) this.ctx.closePath();
+                
+                if (shape.fill && shape.closed) this.ctx.fill();
+                if (shape.stroke) this.ctx.stroke();
+            }
+
+            drawSmoothSpline(points, intensity, closed) {
+                this.ctx.moveTo(points[0].x, points[0].y);
+                
+                for (let i = 1; i < points.length; i++) {
+                    const prev = points[i - 1];
+                    const curr = points[i];
+                    const next = points[(i + 1) % points.length];
+                    
+                    const cp1x = prev.x + (curr.x - prev.x) * intensity;
+                    const cp1y = prev.y + (curr.y - prev.y) * intensity;
+                    const cp2x = curr.x - (next.x - prev.x) * intensity * 0.2;
+                    const cp2y = curr.y - (next.y - prev.y) * intensity * 0.2;
+                    
+                    this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
+                }
+            }
+
+            saveState() {
+                this.history.push(JSON.stringify(this.shapes));
+                if (this.history.length > 20) {
+                    this.history.shift();
+                }
+            }
+
+            undo() {
+                if (this.history.length > 0) {
+                    this.shapes = JSON.parse(this.history.pop());
+                    this.redrawCanvas();
+                }
+            }
+
+            clearCanvas() {
+                this.shapes = [];
+                this.tempSplinePoints = [];
+                this.redrawCanvas();
+            }
+
+            newDrawing() {
+                this.clearCanvas();
+                this.history = [];
+            }
+
+            saveDrawing() {
+                const data = JSON.stringify(this.shapes);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'drawing.json';
+                a.click();
+            }
+
+            loadDrawing() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                this.shapes = JSON.parse(e.target.result);
+                                this.redrawCanvas();
+                            } catch (err) {
+                                alert('Error loading file: ' + err.message);
+                            }
+                        };
+                        reader.readAsText(file);
+                    }
+                };
+                input.click();
+            }
+
+            exportCode() {
+                const bounds = this.calculateBounds();
+                const centerX = this.canvas.width / 2;
+                const centerY = this.canvas.height / 2;
+                const offsetX = bounds.centerX - centerX;
+                const offsetY = bounds.centerY - centerY;
+                
+                let code = `// Generated drawing code
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+
+// Auto-center the drawing
+ctx.save();
+ctx.translate(${-offsetX.toFixed(2)}, ${-offsetY.toFixed(2)});
+
+`;
+
+                this.shapes.forEach((shape, index) => {
+                    code += this.generateShapeCode(shape, index);
+                });
+
+                code += `
+ctx.restore();`;
+
+                document.getElementById('generatedCode').textContent = code;
+                document.getElementById('codeModal').style.display = 'flex';
+            }
+
+            calculateBounds() {
+                if (this.shapes.length === 0) {
+                    return { 
+                        minX: 0, minY: 0, maxX: 0, maxY: 0, 
+                        centerX: this.canvas.width / 2, 
+                        centerY: this.canvas.height / 2 
+                    };
+                }
+                
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                this.shapes.forEach(shape => {
+                    if (shape.type === 'spline') {
+                        shape.points.forEach(point => {
+                            minX = Math.min(minX, point.x);
+                            minY = Math.min(minY, point.y);
+                            maxX = Math.max(maxX, point.x);
+                            maxY = Math.max(maxY, point.y);
+                        });
+                    } else if (shape.type === 'circle') {
+                        const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+                        minX = Math.min(minX, shape.startX - radius);
+                        minY = Math.min(minY, shape.startY - radius);
+                        maxX = Math.max(maxX, shape.startX + radius);
+                        maxY = Math.max(maxY, shape.startY + radius);
+                    } else {
+                        minX = Math.min(minX, shape.startX, shape.endX);
+                        minY = Math.min(minY, shape.startY, shape.endY);
+                        maxX = Math.max(maxX, shape.startX, shape.endX);
+                        maxY = Math.max(maxY, shape.startY, shape.endY);
+                    }
+                });
+                
+                return {
+                    minX, minY, maxX, maxY,
+                    centerX: (minX + maxX) / 2,
+                    centerY: (minY + maxY) / 2
+                };
+            }
+
+            generateShapeCode(shape, index) {
+                let code = `// Shape ${index + 1}: ${shape.type}\n`;
+                code += `ctx.save();\n`;
+                code += `ctx.fillStyle = '${shape.fillColor}';\n`;
+                code += `ctx.strokeStyle = '${shape.strokeColor}';\n`;
+                code += `ctx.lineWidth = ${shape.strokeWidth};\n`;
+
+                switch (shape.type) {
+                    case 'rectangle':
+                        const width = shape.endX - shape.startX;
+                        const height = shape.endY - shape.startY;
+                        code += `ctx.beginPath();\n`;
+                        if (shape.fill) {
+                            code += `ctx.fillRect(${shape.startX}, ${shape.startY}, ${width}, ${height});\n`;
+                        }
+                        if (shape.stroke) {
+                            code += `ctx.strokeRect(${shape.startX}, ${shape.startY}, ${width}, ${height});\n`;
+                        }
+                        break;
+                        
+                    case 'circle':
+                        const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
+                        code += `ctx.beginPath();\n`;
+                        code += `ctx.arc(${shape.startX}, ${shape.startY}, ${radius.toFixed(2)}, 0, Math.PI * 2);\n`;
+                        if (shape.fill) code += `ctx.fill();\n`;
+                        if (shape.stroke) code += `ctx.stroke();\n`;
+                        break;
+                        
+                    case 'triangle':
+                        const midX = (shape.startX + shape.endX) / 2;
+                        code += `ctx.beginPath();\n`;
+                        code += `ctx.moveTo(${midX}, ${shape.startY});\n`;
+                        code += `ctx.lineTo(${shape.startX}, ${shape.endY});\n`;
+                        code += `ctx.lineTo(${shape.endX}, ${shape.endY});\n`;
+                        code += `ctx.closePath();\n`;
+                        if (shape.fill) code += `ctx.fill();\n`;
+                        if (shape.stroke) code += `ctx.stroke();\n`;
+                        break;
+                        
+                    case 'line':
+                        code += `ctx.beginPath();\n`;
+                        code += `ctx.moveTo(${shape.startX}, ${shape.startY});\n`;
+                        code += `ctx.lineTo(${shape.endX}, ${shape.endY});\n`;
+                        code += `ctx.stroke();\n`;
+                        break;
+                        
+                    case 'spline':
+                        code += `ctx.beginPath();\n`;
+                        if (shape.points.length === 2) {
+                            code += `ctx.moveTo(${shape.points[0].x}, ${shape.points[0].y});\n`;
+                            code += `ctx.lineTo(${shape.points[1].x}, ${shape.points[1].y});\n`;
+                        } else {
+                            code += this.generateSplineCode(shape.points, shape.curveIntensity, shape.closed);
+                        }
+                        if (shape.closed) code += `ctx.closePath();\n`;
+                        if (shape.fill && shape.closed) code += `ctx.fill();\n`;
+                        if (shape.stroke) code += `ctx.stroke();\n`;
+                        break;
+                }
+                
+                code += `ctx.restore();\n\n`;
+                return code;
+            }
+
+            generateSplineCode(points, intensity, closed) {
+                let code = `ctx.moveTo(${points[0].x}, ${points[0].y});\n`;
+                
+                for (let i = 1; i < points.length; i++) {
+                    const prev = points[i - 1];
+                    const curr = points[i];
+                    const next = points[(i + 1) % points.length];
+                    
+                    const cp1x = prev.x + (curr.x - prev.x) * intensity;
+                    const cp1y = prev.y + (curr.y - prev.y) * intensity;
+                    const cp2x = curr.x - (next.x - prev.x) * intensity * 0.2;
+                    const cp2y = curr.y - (next.y - prev.y) * intensity * 0.2;
+                    
+                    code += `ctx.bezierCurveTo(${cp1x.toFixed(2)}, ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)}, ${cp2y.toFixed(2)}, ${curr.x}, ${curr.y});\n`;
+                }
+                
+                return code;
+            }
+
+            copyCode() {
+                const codeText = document.getElementById('generatedCode').textContent;
+                navigator.clipboard.writeText(codeText).then(() => {
+                    alert('Code copied to clipboard!');
+                });
+            }
+        }
+
+        // Initialize the drawing app
+        const drawingApp = new DrawingApp();
+    </script>
+</body>
+</html>

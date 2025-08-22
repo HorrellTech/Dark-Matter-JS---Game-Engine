@@ -158,8 +158,12 @@ class PlayerController extends Module {
         this.health = 100;
         
         // Expose properties to the inspector
-        this.exposeProperty("speed", "number", 5, { min: 0, max: 20 });
-        this.exposeProperty("health", "number", 100);
+        this.exposeProperty("speed", "number", 5, { min: 0, max: 20,
+            onChange: val => this.size = val
+         });
+        this.exposeProperty("health", "number", 100, {
+            onChange: val => this.health = val
+        });
     }
     
     start() {
@@ -168,11 +172,11 @@ class PlayerController extends Module {
     
     loop(deltaTime) {
         // Handle movement based on input
-        if (window.input.keyDown("ArrowRight")) {
+        if (window.input.keyDown(window.input.key.right)) { // Using input key constants
             this.gameObject.position.x += this.speed * deltaTime;
         }
         
-        if (window.input.keyDown("ArrowLeft")) {
+        if (window.input.keyDown("ArrowLeft")) { // Can also use keycodes
             this.gameObject.position.x -= this.speed * deltaTime;
         }
     }
