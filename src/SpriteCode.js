@@ -86,33 +86,46 @@ class SpriteCode {
         // Color and settings
         document.getElementById('fillColor-sprite').addEventListener('change', (e) => {
             this.colors.fill = e.target.value;
+            this.updateSelectedShapeProperty('fillColor', e.target.value);
         });
 
         document.getElementById('strokeColor-sprite').addEventListener('change', (e) => {
             this.colors.stroke = e.target.value;
+            this.updateSelectedShapeProperty('strokeColor', e.target.value);
         });
 
-        // Gradient controls
+        document.getElementById('strokeWidth-sprite').addEventListener('input', (e) => {
+            this.strokeWidth = parseInt(e.target.value);
+            document.getElementById('strokeWidthValue-sprite').textContent = this.strokeWidth;
+            this.updateSelectedShapeProperty('strokeWidth', this.strokeWidth);
+        });
+
+        // Update gradient listeners:
         document.getElementById('enableGradient-sprite').addEventListener('change', (e) => {
             this.enableGradient = e.target.checked;
+            this.updateSelectedShapeProperty('enableGradient', e.target.checked);
             this.toggleGradientOptions();
         });
 
         document.getElementById('gradientStart-sprite').addEventListener('change', (e) => {
             this.gradientStart = e.target.value;
+            this.updateSelectedShapeProperty('gradientStart', e.target.value);
         });
 
         document.getElementById('gradientEnd-sprite').addEventListener('change', (e) => {
             this.gradientEnd = e.target.value;
+            this.updateSelectedShapeProperty('gradientEnd', e.target.value);
         });
 
         document.getElementById('gradientType-sprite').addEventListener('change', (e) => {
             this.gradientType = e.target.value;
+            this.updateSelectedShapeProperty('gradientType', e.target.value);
         });
 
         document.getElementById('gradientAngle-sprite').addEventListener('input', (e) => {
             this.gradientAngle = parseInt(e.target.value);
             document.getElementById('gradientAngleValue-sprite').textContent = this.gradientAngle;
+            this.updateSelectedShapeProperty('gradientAngle', this.gradientAngle);
         });
 
         document.getElementById('strokeWidth-sprite').addEventListener('input', (e) => {
@@ -209,7 +222,78 @@ class SpriteCode {
         });
     }
 
+    resetState() {
+        // Reset all properties to their initial values
+        this.canvas = null;
+        this.ctx = null;
+        this.currentTool = 'select';
+        this.drawing = false;
+        this.startX = 0;
+        this.startY = 0;
+
+        this.frames = [[]];
+        this.currentFrame = 0;
+        this.totalFrames = 1;
+        this.animationPanel = false;
+        this.previewPlaying = false;
+        this.previewFrame = 0;
+        this.previewInterval = null;
+
+        this.splinePoints = [];
+        this.tempSplinePoints = [];
+
+        this.colors = {
+            fill: '#3b82f6',
+            stroke: '#000000'
+        };
+
+        this.strokeWidth = 2;
+        this.curveIntensity = 0.5;
+        this.closedSpline = false;
+        this.fillShape = true;
+        this.strokeShape = true;
+
+        this.enableTweening = false;
+        this.animSpeed = 1;
+        this.tweenType = 'linear';
+        this.pingPong = false;
+
+        this.enableGradient = false;
+        this.gradientStart = '#3b82f6';
+        this.gradientEnd = '#ffffff';
+        this.gradientType = 'linear';
+        this.gradientAngle = 0;
+
+        this.selectedShapeIndex = -1;
+        this.draggedShapeIndex = -1;
+
+        this.isRotating = false;
+        this.rotationStart = 0;
+
+        this.selectedShape = null;
+        this.dragOffset = { x: 0, y: 0 };
+        this.isDragging = false;
+        this.isResizing = false;
+        this.resizeHandle = null;
+        this.selectedPoint = null;
+
+        this.history = [];
+        // Reset UI elements if needed
+        document.getElementById('animationPanel-sprite').style.display = 'none';
+        document.getElementById('codeModal-sprite').style.display = 'none';
+        document.getElementById('animationPreviewModal-sprite').style.display = 'none';
+        document.getElementById('shapesList-sprite').innerHTML = '';
+        document.getElementById('shapeCount-sprite').textContent = '(0)';
+        document.getElementById('currentFrameDisplay').textContent = '1';
+        document.getElementById('totalFramesDisplay').textContent = '1';
+        // Reset tool buttons
+        document.querySelectorAll('.tool-btn-sprite').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('.tool-btn-sprite[data-tool="select"]')?.classList.add('active');
+    }
+
     openModal() {
+        this.resetState();
+
         document.getElementById('modalOverlay-sprite').style.display = 'flex';
         this.initializeCanvas();
         this.updateFrameDisplay();
@@ -407,7 +491,14 @@ class SpriteCode {
                         this.previewFrame = 0;
                     }
                 } else {
-                    this.previewFrame = (this.previewFrame + 1) % this.totalFrames;
+                    if (this.enableTweening) {
+                        this.previewFrame += 0.1; // Smooth interpolation
+                        if (this.previewFrame >= this.totalFrames) {
+                            this.previewFrame = 0;
+                        }
+                    } else {
+                        this.previewFrame = (Math.floor(this.previewFrame) + 1) % this.totalFrames;
+                    }
                 }
                 this.drawPreviewFrame();
             }
@@ -453,7 +544,13 @@ class SpriteCode {
         const shapeCenter = this.calculateShapesCenterPoint();
         ctx.translate(-shapeCenter.centerX, -shapeCenter.centerY);
 
-        const shapes = this.frames[this.previewFrame] || [];
+        let shapes;
+        if (this.enableTweening && this.totalFrames > 1) {
+            shapes = this.getTweenedShapes();
+        } else {
+            shapes = this.frames[this.previewFrame] || [];
+        }
+
         shapes.forEach(shape => {
             this.drawShapeOnContext(ctx, shape);
         });
@@ -521,6 +618,95 @@ class SpriteCode {
         }
     }
 
+    getTweenedShapes() {
+        const currentFrame = Math.floor(this.previewFrame);
+        const nextFrame = (currentFrame + 1) % this.totalFrames;
+        const t = this.previewFrame - currentFrame;
+
+        const currentShapes = this.frames[currentFrame] || [];
+        const nextShapes = this.frames[nextFrame] || [];
+
+        return this.interpolateShapes(currentShapes, nextShapes, t);
+    }
+
+    interpolateShapes(shapes1, shapes2, t) {
+        const result = [];
+        const maxLength = Math.max(shapes1.length, shapes2.length);
+
+        for (let i = 0; i < maxLength; i++) {
+            const shape1 = shapes1[i];
+            const shape2 = shapes2[i];
+
+            if (shape1 && shape2 && shape1.type === shape2.type) {
+                result.push(this.interpolateShape(shape1, shape2, t));
+            } else if (shape1) {
+                result.push({ ...shape1 });
+            } else if (shape2) {
+                result.push({ ...shape2 });
+            }
+        }
+
+        return result;
+    }
+
+    interpolateShape(shape1, shape2, t) {
+        const eased = this.applyEasing(t, this.tweenType);
+        const interpolated = { ...shape1 };
+
+        // Interpolate basic properties
+        if (shape1.type === 'spline') {
+            interpolated.points = [];
+            const maxPoints = Math.max(shape1.points.length, shape2.points.length);
+
+            for (let i = 0; i < maxPoints; i++) {
+                const p1 = shape1.points[i] || shape1.points[shape1.points.length - 1];
+                const p2 = shape2.points[i] || shape2.points[shape2.points.length - 1];
+
+                interpolated.points.push({
+                    x: p1.x + (p2.x - p1.x) * eased,
+                    y: p1.y + (p2.y - p1.y) * eased
+                });
+            }
+        } else {
+            interpolated.startX = shape1.startX + (shape2.startX - shape1.startX) * eased;
+            interpolated.startY = shape1.startY + (shape2.startY - shape1.startY) * eased;
+            interpolated.endX = shape1.endX + (shape2.endX - shape1.endX) * eased;
+            interpolated.endY = shape1.endY + (shape2.endY - shape1.endY) * eased;
+        }
+
+        // Interpolate transform properties
+        interpolated.rotation = (shape1.rotation || 0) + ((shape2.rotation || 0) - (shape1.rotation || 0)) * eased;
+        interpolated.scaleX = (shape1.scaleX || 1) + ((shape2.scaleX || 1) - (shape1.scaleX || 1)) * eased;
+        interpolated.scaleY = (shape1.scaleY || 1) + ((shape2.scaleY || 1) - (shape1.scaleY || 1)) * eased;
+
+        return interpolated;
+    }
+
+    applyEasing(t, type) {
+        switch (type) {
+            case 'ease-in': return t * t;
+            case 'ease-out': return 1 - (1 - t) * (1 - t);
+            case 'ease-in-out': return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            case 'bounce': return this.bounceEase(t);
+            default: return t; // linear
+        }
+    }
+
+    bounceEase(t) {
+        const n1 = 7.5625;
+        const d1 = 2.75;
+
+        if (t < 1 / d1) {
+            return n1 * t * t;
+        } else if (t < 2 / d1) {
+            return n1 * (t -= 1.5 / d1) * t + 0.75;
+        } else if (t < 2.5 / d1) {
+            return n1 * (t -= 2.25 / d1) * t + 0.9375;
+        } else {
+            return n1 * (t -= 2.625 / d1) * t + 0.984375;
+        }
+    }
+
     generateModuleCode(moduleName, namespace, description, bounds) {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
@@ -554,6 +740,10 @@ class SpriteCode {
         this.totalFrames = ${this.totalFrames};
         this.enableTweening = ${this.enableTweening};
         this.tweenType = "${this.tweenType}";
+
+        this.preGenerateImage = false;
+        this.generatedImage = null;
+        this.imageGenerated = false;
         
         // Frame data
         this.frames = ${JSON.stringify(this.frames, null, 8)};
@@ -582,15 +772,39 @@ class SpriteCode {
             onChange: (val) => { this.flipped = val; }
         });
 
+        this.exposeProperty("preGenerateImage", "boolean", this.preGenerateImage, {
+            description: "Pre-generate image for better performance",
+            onChange: (val) => { 
+                this.preGenerateImage = val; 
+                if (val) {
+                    this.generateImage();
+                } else {
+                    this.generatedImage = null;
+                    this.imageGenerated = false;
+                }
+            }
+        });
+
         if (this.isAnimated) {
             this.exposeProperty("animationSpeed", "number", this.animationSpeed, {
                 description: "Animation speed",
                 onChange: (val) => { this.animationSpeed = val; }
             });
             
+            this.exposeProperty("enableTweening", "boolean", this.enableTweening, {
+                description: "Enable tweening for smooth transitions",
+                onChange: (val) => { this.enableTweening = val; }
+            });
+
+            this.exposeProperty("tweenType", "string", this.tweenType, {
+                options: ["linear", "ease-in", "ease-out", "ease-in-out"],
+                description: "Tweening type",
+                onChange: (val) => { this.tweenType = val; }
+            });
+            
             this.exposeProperty("isPlaying", "boolean", this.isPlaying, {
                 description: "Is playing animation",
-                onChange: (val) => { val }
+                onChange: (val) => { this.isPlaying = val }
             });
         }
     }
@@ -624,6 +838,10 @@ class SpriteCode {
         style.exposeProperty("flipped", "boolean", this.flipped, {
             style: { label: "Flip Horizontally" }
         });
+
+        style.exposeProperty("preGenerateImage", "boolean", this.preGenerateImage, {
+            style: { label: "Pre-generate Image" }
+        });
         
         if (this.isAnimated) {
             style.startGroup("Animation Controls", true);
@@ -633,6 +851,15 @@ class SpriteCode {
                 max: 5,
                 step: 0.1,
                 style: { label: "Speed", slider: true }
+            });
+
+            style.exposeProperty("enableTweening", "boolean", this.enableTweening, {
+                style: { label: "Enable Tweening" }
+            });
+
+            style.exposeProperty("tweenType", "string", this.tweenType, {
+                options: ["linear", "ease-in", "ease-out", "ease-in-out"],
+                style: { label: "Tween Type" }
             });
             
             style.exposeProperty("isPlaying", "boolean", this.isPlaying, {
@@ -684,11 +911,17 @@ class SpriteCode {
         return this.totalFrames;
     }
 
+    start() {
+        if (this.preGenerateImage) {
+            this.generateImage();
+        }
+    }
+
     loop(deltaTime) {
         if (this.isAnimated && this.isPlaying) {
             this.frameTimer += deltaTime * this.animationSpeed;
             
-            if (this.frameTimer >= 1) {
+            if (this.frameTimer >= 0.1) {
                 this.frameTimer = 0;
                 
                 if (this.pingPong) {
@@ -701,13 +934,33 @@ class SpriteCode {
                         this.currentFrame = 0;
                     }
                 } else {
-                    this.currentFrame = (this.currentFrame + 1) % this.totalFrames;
+                    if (this.enableTweening) {
+                        this.currentFrame += 0.1;
+                        if (this.currentFrame >= this.totalFrames) {
+                            this.currentFrame = 0;
+                        }
+                    } else {
+                        this.currentFrame = (Math.floor(this.currentFrame) + 1) % this.totalFrames;
+                    }
                 }
             }
         }
     }
 
     draw(ctx) {
+        if (this.preGenerateImage && this.generatedImage && this.imageGenerated) {
+            ctx.save();
+            ctx.scale(this.scale, this.scale);
+            if (this.flipped) {
+                ctx.scale(-1, 1);
+            }
+            ctx.translate(this.offsetX, this.offsetY);
+            
+            ctx.drawImage(this.generatedImage, -this.generatedImage.width/2, -this.generatedImage.height/2);
+            ctx.restore();
+            return;
+        }
+
         ctx.save();
         
         // Apply transformations
@@ -724,12 +977,129 @@ class SpriteCode {
         ctx.translate(-shapeCenter.centerX, -shapeCenter.centerY);
 
         // Get current frame shapes
-        const shapes = this.frames[this.currentFrame] || [];
+        let shapes;
+        if (this.enableTweening && this.totalFrames > 1 && this.isPlaying) {
+            shapes = this.getTweenedShapes();
+        } else {
+            shapes = this.frames[Math.floor(this.currentFrame)] || [];
+        }
+        shapes = shapes.filter(shape => shape && shape.visible !== false);
+
         shapes.forEach((shape, index) => {
             this.drawShape(ctx, shape);
         });
 
         ctx.restore();
+    }
+
+    getTweenedShapes() {
+        const currentFrame = Math.floor(this.currentFrame);
+        const nextFrame = (currentFrame + 1) % this.totalFrames;
+        const t = this.currentFrame - currentFrame;
+
+        const currentShapes = this.frames[currentFrame] || [];
+        const nextShapes = this.frames[nextFrame] || [];
+
+        return this.interpolateShapes(currentShapes, nextShapes, t);
+    }
+
+    interpolateShapes(shapes1, shapes2, t) {
+        const result = [];
+        const maxLength = Math.max(shapes1.length, shapes2.length);
+
+        for (let i = 0; i < maxLength; i++) {
+            const shape1 = shapes1[i];
+            const shape2 = shapes2[i];
+
+            if (shape1 && shape2 && shape1.type === shape2.type) {
+                result.push(this.interpolateShape(shape1, shape2, t));
+            } else if (shape1) {
+                result.push({ ...shape1 });
+            } else if (shape2) {
+                result.push({ ...shape2 });
+            }
+        }
+
+        return result;
+    }
+
+    interpolateShape(shape1, shape2, t) {
+        const eased = this.applyEasing(t, this.tweenType);
+        const interpolated = { ...shape1 };
+
+        // Interpolate basic properties
+        if (shape1.type === 'spline') {
+            interpolated.points = [];
+            const maxPoints = Math.max(shape1.points.length, shape2.points.length);
+            
+            for (let i = 0; i < maxPoints; i++) {
+                const p1 = shape1.points[i] || shape1.points[shape1.points.length - 1];
+                const p2 = shape2.points[i] || shape2.points[shape2.points.length - 1];
+                
+                interpolated.points.push({
+                    x: p1.x + (p2.x - p1.x) * eased,
+                    y: p1.y + (p2.y - p1.y) * eased
+                });
+            }
+        } else {
+            interpolated.startX = shape1.startX + (shape2.startX - shape1.startX) * eased;
+            interpolated.startY = shape1.startY + (shape2.startY - shape1.startY) * eased;
+            interpolated.endX = shape1.endX + (shape2.endX - shape1.endX) * eased;
+            interpolated.endY = shape1.endY + (shape2.endY - shape1.endY) * eased;
+        }
+
+        // Interpolate transform properties
+        interpolated.rotation = (shape1.rotation || 0) + ((shape2.rotation || 0) - (shape1.rotation || 0)) * eased;
+        interpolated.scaleX = (shape1.scaleX || 1) + ((shape2.scaleX || 1) - (shape1.scaleX || 1)) * eased;
+        interpolated.scaleY = (shape1.scaleY || 1) + ((shape2.scaleY || 1) - (shape1.scaleY || 1)) * eased;
+
+        return interpolated;
+    }
+
+    applyEasing(t, type) {
+        switch (type) {
+            case 'ease-in': return t * t;
+            case 'ease-out': return 1 - (1 - t) * (1 - t);
+            case 'ease-in-out': return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            case 'bounce': return this.bounceEase(t);
+            default: return t; // linear
+        }
+    }
+
+    bounceEase(t) {
+        const n1 = 7.5625;
+        const d1 = 2.75;
+
+        if (t < 1 / d1) {
+            return n1 * t * t;
+        } else if (t < 2 / d1) {
+            return n1 * (t -= 1.5 / d1) * t + 0.75;
+        } else if (t < 2.5 / d1) {
+            return n1 * (t -= 2.25 / d1) * t + 0.9375;
+        } else {
+            return n1 * (t -= 2.625 / d1) * t + 0.984375;
+        }
+    }
+
+    generateImage() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        
+        // Calculate center point and translate
+        const shapeCenter = this.calculateShapesCenterPoint();
+        ctx.translate(canvas.width/2 - shapeCenter.centerX, canvas.height/2 - shapeCenter.centerY);
+        
+        // Draw all frames composited (or just frame 0 for static)
+        const shapes = this.frames[0] || [];
+        shapes.forEach((shape) => {
+            this.drawShape(ctx, shape);
+        });
+        
+        this.generatedImage = new Image();
+        this.generatedImage.src = canvas.toDataURL();
+        this.imageGenerated = true;
     }
 
     calculateShapesCenterPoint() {
@@ -1343,8 +1713,89 @@ window.${moduleName} = ${moduleName};`;
                     }
                     return false;
                 }
+            case 'triangle':
+                // Triangle vertices
+                const midX = (shape.startX + shape.endX) / 2;
+                const vertices = [
+                    { x: midX, y: shape.startY },
+                    { x: shape.startX, y: shape.endY },
+                    { x: shape.endX, y: shape.endY }
+                ];
+                return this.pointInPolygon(x, y, vertices);
         }
         return false;
+    }
+
+    updateUIFromSelectedShape() {
+        if (!this.selectedShape) return;
+
+        // Update color controls
+        document.getElementById('fillColor-sprite').value = this.selectedShape.fillColor || this.colors.fill;
+        document.getElementById('strokeColor-sprite').value = this.selectedShape.strokeColor || this.colors.stroke;
+        document.getElementById('strokeWidth-sprite').value = this.selectedShape.strokeWidth || this.strokeWidth;
+        document.getElementById('strokeWidthValue-sprite').textContent = this.selectedShape.strokeWidth || this.strokeWidth;
+
+        // Update gradient controls
+        if (this.selectedShape.gradient && this.selectedShape.gradient.enabled) {
+            document.getElementById('enableGradient-sprite').checked = true;
+            document.getElementById('gradientStart-sprite').value = this.selectedShape.gradient.start || this.gradientStart;
+            document.getElementById('gradientEnd-sprite').value = this.selectedShape.gradient.end || this.gradientEnd;
+            document.getElementById('gradientType-sprite').value = this.selectedShape.gradient.type || this.gradientType;
+            document.getElementById('gradientAngle-sprite').value = this.selectedShape.gradient.angle || this.gradientAngle;
+            document.getElementById('gradientAngleValue-sprite').textContent = this.selectedShape.gradient.angle || this.gradientAngle;
+        } else {
+            document.getElementById('enableGradient-sprite').checked = false;
+        }
+
+        this.enableGradient = document.getElementById('enableGradient-sprite').checked;
+        this.toggleGradientOptions();
+    }
+
+    updateSelectedShapeProperty(property, value) {
+        if (!this.selectedShape) return;
+
+        switch (property) {
+            case 'fillColor':
+                this.selectedShape.fillColor = value;
+                break;
+            case 'strokeColor':
+                this.selectedShape.strokeColor = value;
+                break;
+            case 'strokeWidth':
+                this.selectedShape.strokeWidth = value;
+                break;
+            case 'gradientStart':
+                if (!this.selectedShape.gradient) {
+                    this.selectedShape.gradient = { enabled: true };
+                }
+                this.selectedShape.gradient.start = value;
+                break;
+            case 'gradientEnd':
+                if (!this.selectedShape.gradient) {
+                    this.selectedShape.gradient = { enabled: true };
+                }
+                this.selectedShape.gradient.end = value;
+                break;
+            case 'gradientType':
+                if (!this.selectedShape.gradient) {
+                    this.selectedShape.gradient = { enabled: true };
+                }
+                this.selectedShape.gradient.type = value;
+                break;
+            case 'gradientAngle':
+                if (!this.selectedShape.gradient) {
+                    this.selectedShape.gradient = { enabled: true };
+                }
+                this.selectedShape.gradient.angle = value;
+                break;
+            case 'enableGradient':
+                if (!this.selectedShape.gradient) {
+                    this.selectedShape.gradient = {};
+                }
+                this.selectedShape.gradient.enabled = value;
+                break;
+        }
+        this.redrawCanvas();
     }
 
     updateToolOptions() {
@@ -1377,6 +1828,7 @@ window.${moduleName} = ${moduleName};`;
                     y: this.startY - (shape.startY || shape.points[0].y)
                 };
             }
+            this.updateUIFromSelectedShape();
             this.redrawCanvas();
             return;
         }
@@ -1721,6 +2173,7 @@ window.${moduleName} = ${moduleName};`;
         this.updateShapesList();
         this.updateTransformControls();
         this.updateShapeToolbarButtons();
+        this.updateUIFromSelectedShape();
         this.redrawCanvas();
     }
 
@@ -1979,7 +2432,11 @@ window.${moduleName} = ${moduleName};`;
         this.updateFrameDisplay();
     }
 
-    saveDrawing() {
+    async saveDrawing() {
+        if (!window.fileBrowser) {
+            alert('FileBrowser is not available!');
+            return;
+        }
         const data = {
             frames: this.frames,
             animationSettings: {
@@ -1989,62 +2446,101 @@ window.${moduleName} = ${moduleName};`;
                 pingPong: this.pingPong
             }
         };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'animated-drawing.json';
-        a.click();
+        const targetDir = '/SpriteCode Projects';
+        await window.fileBrowser.ensureDirectoryExists(targetDir);
+
+        const defaultName = `SpriteProject_${Date.now()}.spritecode`;
+        const fileName = await window.fileBrowser.promptDialog('Save SpriteCode Project', 'Enter file name:', defaultName);
+        if (!fileName) return;
+
+        const filePath = `${targetDir}/${fileName.endsWith('.spritecode') ? fileName : fileName + '.spritecode'}`;
+        const success = await window.fileBrowser.createFile(filePath, JSON.stringify(data, null, 2), true);
+
+        if (success) {
+            window.fileBrowser.showNotification(`SpriteCode project saved: ${filePath}`, 'success');
+            await window.fileBrowser.loadContent(targetDir);
+        } else {
+            window.fileBrowser.showNotification(`Failed to save SpriteCode project`, 'error');
+        }
     }
 
-    loadDrawing() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = JSON.parse(e.target.result);
+    async loadDrawing() {
+        if (!window.fileBrowser) {
+            alert('FileBrowser is not available!');
+            return;
+        }
 
-                        if (data.frames) {
-                            // New format with animation
-                            this.frames = data.frames;
-                            this.totalFrames = this.frames.length;
-                            this.currentFrame = 0;
+        // Get all .spritecode files in the SpriteCode Projects directory
+        await window.fileBrowser.ensureDirectoryExists('/SpriteCode Projects');
+        const allFiles = await window.fileBrowser.getAllFiles();
+        const spriteFiles = allFiles.filter(f => f.path.startsWith('/SpriteCode Projects/') && f.name.endsWith('.spritecode'));
 
-                            if (data.animationSettings) {
-                                this.enableTweening = data.animationSettings.enableTweening;
-                                this.animSpeed = data.animationSettings.animSpeed;
-                                this.tweenType = data.animationSettings.tweenType;
-                                this.pingPong = data.animationSettings.pingPong;
+        // Show the custom open file dialog
+        const selectedPath = await showOpenFileDialog(
+            spriteFiles.map(f => ({ name: f.name, path: f.path })),
+            "Open SpriteCode Project"
+        );
+        if (!selectedPath) return;
 
-                                // Update UI
-                                document.getElementById('enableTweening-sprite').checked = this.enableTweening;
-                                document.getElementById('animSpeed-sprite').value = this.animSpeed;
-                                document.getElementById('animSpeedValue-sprite').textContent = this.animSpeed;
-                                document.getElementById('tweenType-sprite').value = this.tweenType;
-                                document.getElementById('pingPong-sprite').checked = this.pingPong;
-                            }
-                        } else {
-                            // Old format - single frame
-                            this.frames = [data];
-                            this.totalFrames = 1;
-                            this.currentFrame = 0;
-                        }
-
-                        this.updateFrameDisplay();
-                        this.redrawCanvas();
-                    } catch (err) {
-                        alert('Error loading file: ' + err.message);
-                    }
-                };
-                reader.readAsText(file);
+        // Load the selected file
+        const content = await window.fileBrowser.readFile(selectedPath);
+        if (!content) {
+            alert('Failed to load project file!');
+            return;
+        }
+        try {
+            const data = JSON.parse(content);
+            if (data.frames) {
+                this.frames = data.frames;
+                this.totalFrames = this.frames.length;
+                this.currentFrame = 0;
+                if (data.animationSettings) {
+                    this.enableTweening = data.animationSettings.enableTweening;
+                    this.animSpeed = data.animationSettings.animSpeed;
+                    this.tweenType = data.animationSettings.tweenType;
+                    this.pingPong = data.animationSettings.pingPong;
+                }
+            } else {
+                this.frames = [data];
+                this.totalFrames = 1;
+                this.currentFrame = 0;
             }
-        };
-        input.click();
+            this.updateFrameDisplay();
+            this.redrawCanvas();
+        } catch (err) {
+            alert('Error loading file: ' + err.message);
+        }
+    }
+
+    async loadDrawingFromFile(filePath) {
+        if (!window.fileBrowser) return;
+        const content = await window.fileBrowser.readFile(filePath);
+        if (!content) {
+            alert('Failed to load project file!');
+            return;
+        }
+        try {
+            const data = JSON.parse(content);
+            if (data.frames) {
+                this.frames = data.frames;
+                this.totalFrames = this.frames.length;
+                this.currentFrame = 0;
+                if (data.animationSettings) {
+                    this.enableTweening = data.animationSettings.enableTweening;
+                    this.animSpeed = data.animationSettings.animSpeed;
+                    this.tweenType = data.animationSettings.tweenType;
+                    this.pingPong = data.animationSettings.pingPong;
+                }
+            } else {
+                this.frames = [data];
+                this.totalFrames = 1;
+                this.currentFrame = 0;
+            }
+            this.updateFrameDisplay();
+            this.redrawCanvas();
+        } catch (err) {
+            alert('Error loading file: ' + err.message);
+        }
     }
 
     distanceToLine(px, py, p1, p2) {
@@ -2115,6 +2611,89 @@ window.${moduleName} = ${moduleName};`;
     closeCodeModal() {
         document.getElementById('codeModal-sprite').style.display = 'none';
     }
+}
+
+/**
+ * Show a custom open file dialog modal.
+ * @param {Array} files - Array of file objects { name, path }
+ * @param {string} [title] - Optional modal title
+ * @returns {Promise<string|null>} - Resolves with selected file path or null if cancelled
+ */
+function showOpenFileDialog(files, title = "Open File") {
+    return new Promise(resolve => {
+        // Remove any existing modal
+        document.getElementById('customOpenFileModal')?.remove();
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'customOpenFileModal';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(30,30,30,0.85)';
+        overlay.style.zIndex = '99999';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+
+        // Modal content
+        const modal = document.createElement('div');
+        modal.style.background = '#222';
+        modal.style.borderRadius = '8px';
+        modal.style.padding = '24px 32px';
+        modal.style.boxShadow = '0 8px 32px #000a';
+        modal.style.minWidth = '340px';
+        modal.style.maxHeight = '70vh';
+        modal.style.overflowY = 'auto';
+        modal.innerHTML = `
+            <h2 style="color:#64B5F6; margin-bottom:16px;">${title}</h2>
+            <div style="margin-bottom:16px;">
+                ${files.length === 0 ? '<div style="color:#ccc;">No files found.</div>' : ''}
+                <ul style="list-style:none; padding:0; margin:0;">
+                    ${files.map(file => `
+                        <li class="open-file-item" 
+                            data-path="${file.path}" 
+                            style="padding:8px 0; border-bottom:1px solid #333; cursor:pointer; color:#fff;">
+                            <i class="fas fa-file-alt" style="margin-right:8px; color:#64B5F6;"></i>
+                            ${file.name}
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+            <div style="text-align:right;">
+                <button id="openFileCancelBtn" style="background:#444; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Cancel</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Item click handler
+        modal.querySelectorAll('.open-file-item').forEach(item => {
+            item.onclick = () => {
+                overlay.remove();
+                resolve(item.dataset.path);
+            };
+        });
+
+        // Cancel button
+        modal.querySelector('#openFileCancelBtn').onclick = () => {
+            overlay.remove();
+            resolve(null);
+        };
+
+        // ESC key closes modal
+        overlay.tabIndex = 0;
+        overlay.focus();
+        overlay.onkeydown = (e) => {
+            if (e.key === 'Escape') {
+                overlay.remove();
+                resolve(null);
+            }
+        };
+    });
 }
 
 window.spriteCode = new SpriteCode();

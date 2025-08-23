@@ -253,15 +253,15 @@
                     <div class="tool-section-sprite">
                         <h3>Drawing Tools</h3>
                         <div class="tool-grid-sprite">
-                            <button class="tool-btn-sprite active" data-tool="select" title="Select">⚬</button>
-                            <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle">□</button>
-                            <button class="tool-btn-sprite" data-tool="circle" title="Circle">○</button>
-                            <button class="tool-btn-sprite" data-tool="triangle" title="Triangle">△</button>
-                            <button class="tool-btn-sprite" data-tool="line" title="Line">／</button>
-                            <button class="tool-btn-sprite" data-tool="spline" title="Spline">〜</button>
-                            <button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button>
-                            <button class="tool-btn-sprite" data-tool="text" title="Text">T</button>
-                            <button class="tool-btn-sprite" data-tool="pen" title="Pen">✎</button>
+                            <button class="tool-btn-sprite active" data-tool="select" title="Select"><i class="fas fa-mouse-pointer"></i></button>
+                            <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle"><i class="fas fa-square"></i></button>
+                            <button class="tool-btn-sprite" data-tool="circle" title="Circle"><i class="fas fa-circle"></i></button>
+                            <button class="tool-btn-sprite" data-tool="triangle" title="Triangle"><i class="fas fa-play fa-rotate-270"></i></button>
+                            <button class="tool-btn-sprite" data-tool="line" title="Line"><i class="fas fa-slash"></i></button>
+                            <button class="tool-btn-sprite" data-tool="spline" title="Spline"><i class="fas fa-wave-square"></i></button>
+                            <!--button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button-->
+                            <!--button class="tool-btn-sprite" data-tool="text" title="Text">T</button-->
+                            <!---button class="tool-btn-sprite" data-tool="pen" title="Pen">✎</button-->
                         </div>
                     </div>
 
@@ -386,7 +386,7 @@
                         <h3>Transform</h3>
                         <div class="slider-row-sprite">
                             <label>Rotation: <span id="rotationValue-sprite">0</span>°</label>
-                            <input type="range" class="slider" id="shapeRotation-sprite" min="-180" max="180" value="0">
+                            <input type="range" class="slider" id="shapeRotation-sprite" min="-180" max="180" step="1" value="0">
                         </div>
                         <div class="slider-row-sprite">
                             <label>Scale X: <span id="scaleXValue-sprite">1</span></label>

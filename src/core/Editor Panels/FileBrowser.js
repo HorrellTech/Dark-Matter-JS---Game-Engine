@@ -30,7 +30,7 @@ class FileBrowser {
             };
         });
 
-        if(!this.assetManager) {
+        if (!this.assetManager) {
             if (window.assetManager) {
                 this.assetManager = window.assetManager; // Use existing instance if available
             }
@@ -44,6 +44,17 @@ class FileBrowser {
             icon: 'fa-gamepad',
             color: '#64B5F6',
             onDoubleClick: (file) => this.openSceneFile(file)
+        };
+
+        this.fileTypes['.spritecode'] = {
+            icon: 'fa-palette',
+            color: '#3b82f6',
+            onDoubleClick: (file) => {
+                if (window.spriteCode) {
+                    window.spriteCode.openModal();
+                    window.spriteCode.loadDrawingFromFile(file.path);
+                }
+            }
         };
     }
 
@@ -2026,6 +2037,14 @@ window.${pascalCaseName} = ${pascalCaseName};
 
         if (fileName.endsWith('.scene')) {
             await this.openSceneFile(file);
+        } else if (fileName.endsWith('.spritecode')) {
+            // Open in SpriteCode editor
+            if (window.spriteCode) {
+                window.spriteCode.openModal();
+                window.spriteCode.loadDrawingFromFile(file.path);
+            } else {
+                this.showNotification('SpriteCode editor not available', 'error');
+            }
         } else if (/\.(png|jpg|jpeg|gif|svg|ico|webp)$/i.test(fileName)) {
             this.showImagePreviewModal(file);
         } else if (/\.(mp3|wav|ogg|aac|flac)$/i.test(fileName)) {
