@@ -2064,6 +2064,15 @@ window.${moduleName} = ${moduleName};`;
         this.startX = x;
         this.startY = y;
 
+        if (this.selectedShape && this.selectedShape.type === 'spline') {
+            const pt = this.getSplinePointAt(this.startX, this.startY, this.selectedShape, 12); // Larger hit area
+            if (pt) {
+                this.selectedPoint = pt;
+                this.isDragging = true;
+                return;
+            }
+        }
+
         // Check for resize handles first
         if (this.selectedShape) {
             const handle = this.getResizeHandleAt(this.startX, this.startY, this.selectedShape);
@@ -2240,8 +2249,13 @@ window.${moduleName} = ${moduleName};`;
     }
 
     handleResize(e) {
-        const deltaX = e.clientX - this.resizeStartX;
-        const deltaY = e.clientY - this.resizeStartY;
+        // Use snapToGrid for the mouse position
+        const rect = this.canvas.getBoundingClientRect();
+        let { x, y } = this.snapToGrid(e.clientX, e.clientY, e);
+
+        // Calculate deltas from the snapped position
+        const deltaX = x - this.resizeStartX;
+        const deltaY = y - this.resizeStartY;
 
         const bounds = this.originalBounds;
         let newBounds = { ...bounds };
@@ -2268,6 +2282,15 @@ window.${moduleName} = ${moduleName};`;
                 newBounds.height = bounds.height - deltaY;
                 break;
             // Add cases for edge handles (n, s, e, w)
+        }
+
+        // Snap new bounds to grid
+        if (this.gridEnabled && this.snapEnabled) {
+            const size = this.gridSize;
+            newBounds.x = Math.round(newBounds.x / size) * size;
+            newBounds.y = Math.round(newBounds.y / size) * size;
+            newBounds.width = Math.round(newBounds.width / size) * size;
+            newBounds.height = Math.round(newBounds.height / size) * size;
         }
 
         this.applyBoundsToShape(this.selectedShape, newBounds);
@@ -3197,7 +3220,7 @@ window.${moduleName} = ${moduleName};`;
         this.ctx.strokeStyle = '#444';
         this.ctx.lineWidth = 1;
         this.ctx.setLineDash([]);
-        
+
         for (let x = 0; x <= w; x += size) {
             this.ctx.beginPath();
             this.ctx.moveTo(x, 0);
