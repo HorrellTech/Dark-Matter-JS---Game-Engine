@@ -2005,6 +2005,25 @@ window.${moduleName} = ${moduleName};`;
     updateSelectedShapeProperty(property, value) {
         if (!this.selectedShape) return;
 
+        // Always ensure gradient object is fully initialized if any gradient property is set
+        if (property.startsWith('gradient') || property === 'enableGradient') {
+            if (!this.selectedShape.gradient) {
+                this.selectedShape.gradient = {
+                    enabled: false,
+                    start: this.gradientStart,
+                    end: this.gradientEnd,
+                    type: this.gradientType,
+                    angle: this.gradientAngle
+                };
+            }
+            // Fill in missing fields if not present
+            if (typeof this.selectedShape.gradient.start === 'undefined') this.selectedShape.gradient.start = this.gradientStart;
+            if (typeof this.selectedShape.gradient.end === 'undefined') this.selectedShape.gradient.end = this.gradientEnd;
+            if (typeof this.selectedShape.gradient.type === 'undefined') this.selectedShape.gradient.type = this.gradientType;
+            if (typeof this.selectedShape.gradient.angle === 'undefined') this.selectedShape.gradient.angle = this.gradientAngle;
+            if (typeof this.selectedShape.gradient.enabled === 'undefined') this.selectedShape.gradient.enabled = false;
+        }
+
         switch (property) {
             case 'fillColor':
                 this.selectedShape.fillColor = value;

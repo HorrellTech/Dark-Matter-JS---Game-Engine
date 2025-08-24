@@ -1178,3 +1178,39 @@ select:focus-visible {
     width: 18px;
     height: 18px;
 }
+
+/* Group/Ungroup Buttons - Dark Theme */
+#groupShapes-sprite,
+#ungroupShapes-sprite {
+    background: linear-gradient(135deg, #23272a 0%, #444851 100%);
+    color: #FFD700;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 18px;
+    margin: 8px 0 0 0;
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px #000a;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    outline: none;
+    display: block;
+    width: 90%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#groupShapes-sprite:hover,
+#ungroupShapes-sprite:hover {
+    background: linear-gradient(135deg, #FFD700 0%, #444851 100%);
+    color: #23272a;
+    box-shadow: 0 4px 16px #FFD70044;
+}
+
+#groupShapes-sprite:active,
+#ungroupShapes-sprite:active {
+    background: linear-gradient(135deg, #444851 0%, #FFD700 100%);
+    color: #FFD700;
+    box-shadow: 0 2px 8px #FFD70022;
+}
