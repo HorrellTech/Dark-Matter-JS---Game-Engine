@@ -197,7 +197,7 @@ class BasicPhysics extends Module {
         if (!this.drawColliderGizmo) return;
         ctx.save();
         ctx.globalAlpha = 0.5;
-        ctx.strokeStyle = "#00aaff";
+        ctx.strokeStyle = "#40df31ff";
         ctx.lineWidth = 2;
         if (this.colliderType === "circle") {
             ctx.beginPath();

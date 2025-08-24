@@ -12,18 +12,26 @@ class PhysicsKeyboardController extends Module {
 
     constructor() {
         super("PhysicsKeyboardController");
-        
+
+        this.customDrawingModule = ""; // No custom drawing module by default
+
         // Movement properties
         this.speed = 200;
         this.useAcceleration = true;
         this.acceleration = 0.15;
         this.deceleration = 0.1;
         this.rotationSpeed = 180;
-        
+
         // Movement behavior
         this.moveMode = "direct"; // "direct", "rotate-and-move"
         this.allowDiagonalMovement = true;
-        
+
+        this.platformerMode = false;
+        this.jumpKey = "space";
+        this.jumpForce = 400;
+        this.isJumping = false;
+        this.grounded = false;
+
         // Input mapping
         this.upKey = "arrowup";
         this.downKey = "arrowdown";
@@ -32,10 +40,10 @@ class PhysicsKeyboardController extends Module {
         this.actionKey = "space";
         this.rotateLeftKey = "q";
         this.rotateRightKey = "e";
-        
+
         // Current velocity
         this.velocity = new Vector2(0, 0);
-        
+
         // Configure inspector styling
         this.setupProperties();
     }
@@ -44,6 +52,15 @@ class PhysicsKeyboardController extends Module {
      * Set up properties and inspector styling
      */
     setupProperties() {
+        this.exposeProperty("customDrawingModule", "string", this.customDrawingModule, {
+            description: "Custom drawing module for animations",
+            style: {
+                header: "Custom Drawing Module",
+                label: "Drawing Module"
+            },
+            onChange: (val) => { this.customDrawingModule = val; }
+        });
+
         // Movement Properties with styling
         this.exposeProperty("speed", "number", this.speed, {
             description: "Movement speed in pixels per second",
@@ -57,7 +74,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.speed = val; }
         });
-        
+
         this.exposeProperty("moveMode", "enum", this.moveMode, {
             description: "Movement style",
             options: ["direct", "rotate-and-move"],
@@ -66,7 +83,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.moveMode = val; }
         });
-        
+
         this.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
             description: "Allow movement in diagonal directions",
             style: {
@@ -74,7 +91,24 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.allowDiagonalMovement = val; }
         });
-        
+
+        this.exposeProperty("platformerMode", "boolean", this.platformerMode, {
+            description: "Enable platformer physics (gravity, jump, horizontal movement)",
+            style: { header: "Platformer Settings", label: "Platformer Mode" },
+            onChange: (val) => { this.platformerMode = val; }
+        });
+        this.exposeProperty("jumpKey", "string", this.jumpKey, {
+            description: "Key for jumping (platformer mode)",
+            style: { label: "Jump Key" },
+            onChange: (val) => { this.jumpKey = val; }
+        });
+        this.exposeProperty("jumpForce", "number", this.jumpForce, {
+            description: "Jump force (platformer mode)",
+            min: 50, max: 2000, step: 10,
+            style: { label: "Jump Force", slider: true },
+            onChange: (val) => { this.jumpForce = val; }
+        });
+
         // Acceleration settings
         this.exposeProperty("useAcceleration", "boolean", this.useAcceleration, {
             description: "Enable smooth acceleration/deceleration",
@@ -83,7 +117,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.useAcceleration = val; }
         });
-        
+
         this.exposeProperty("acceleration", "number", this.acceleration, {
             description: "Acceleration rate (0-1, higher is faster)",
             min: 0.01,
@@ -95,7 +129,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.acceleration = val; }
         });
-        
+
         this.exposeProperty("deceleration", "number", this.deceleration, {
             description: "Deceleration rate when no input (0-1)",
             min: 0.01,
@@ -107,11 +141,11 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.deceleration = val; }
         });
-        
+
         this.exposeProperty("rotationSpeed", "number", this.rotationSpeed, {
             description: "Rotation speed in degrees per second",
             min: 0,
-            max: 360, 
+            max: 360,
             step: 5,
             style: {
                 label: "Rotation Speed",
@@ -119,7 +153,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.rotationSpeed = val; }
         });
-        
+
         // Control bindings with styling
         this.exposeProperty("upKey", "string", this.upKey, {
             description: "Key for upward movement",
@@ -129,7 +163,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.upKey = val; }
         });
-        
+
         this.exposeProperty("downKey", "string", this.downKey, {
             description: "Key for downward movement",
             style: {
@@ -137,7 +171,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.downKey = val; }
         });
-        
+
         this.exposeProperty("leftKey", "string", this.leftKey, {
             description: "Key for leftward movement",
             style: {
@@ -145,7 +179,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.leftKey = val; }
         });
-        
+
         this.exposeProperty("rightKey", "string", this.rightKey, {
             description: "Key for rightward movement",
             style: {
@@ -153,7 +187,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.rightKey = val; }
         });
-        
+
         this.exposeProperty("actionKey", "string", this.actionKey, {
             description: "Key for primary action",
             style: {
@@ -161,7 +195,7 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.actionKey = val; }
         });
-        
+
         this.exposeProperty("rotateLeftKey", "string", this.rotateLeftKey, {
             description: "Key for rotating counter-clockwise",
             style: {
@@ -169,13 +203,13 @@ class PhysicsKeyboardController extends Module {
             },
             onChange: (val) => { this.rotateLeftKey = val; }
         });
-        
+
         this.exposeProperty("rotateRightKey", "string", this.rotateRightKey, {
             description: "Key for rotating clockwise",
             style: {
                 label: "Rotate Right"
             },
-            onChange: (val) => { this.rotateRightKey = val; }   
+            onChange: (val) => { this.rotateRightKey = val; }
         });
     }
 
@@ -185,12 +219,20 @@ class PhysicsKeyboardController extends Module {
      * @param {Style} style - Styling helper
      */
     style(style) {
-        style.startGroup("Movement Settings", false, { 
+        style.startGroup("Movement Settings", false, {
             backgroundColor: 'rgba(100,150,255,0.1)',
             borderRadius: '6px',
             padding: '8px'
         });
-        
+
+        style.exposeProperty("customDrawingModule", "string", this.customDrawingModule, {
+            description: "Custom drawing module for animations",
+            style: {
+                header: "Custom Drawing Module",
+                label: "Drawing Module"
+            }
+        });
+
         style.exposeProperty("speed", "number", this.speed, {
             description: "Movement speed in pixels per second",
             min: 0,
@@ -201,7 +243,7 @@ class PhysicsKeyboardController extends Module {
                 slider: true
             }
         });
-        
+
         style.exposeProperty("moveMode", "enum", this.moveMode, {
             description: "Movement style",
             options: ["direct", "rotate-and-move"],
@@ -209,21 +251,40 @@ class PhysicsKeyboardController extends Module {
                 label: "Movement Style"
             }
         });
-        
+
+        style.exposeProperty("platformerMode", "boolean", this.platformerMode, {
+            description: "Enable platformer physics (gravity, jump, horizontal movement)",
+            style: {
+                header: "Platformer Settings",
+                label: "Platformer Mode"
+            }
+        });
+
+        style.exposeProperty("jumpForce", "number", this.jumpForce, {
+            description: "Jump force (platformer mode)",
+            min: 50,
+            max: 2000,
+            step: 10,
+            style: {
+                label: "Jump Force",
+                slider: true
+            }
+        });
+
         style.exposeProperty("allowDiagonalMovement", "boolean", this.allowDiagonalMovement, {
             description: "Allow movement in diagonal directions",
             style: {
                 label: "Allow Diagonals"
             }
         });
-        
+
         style.exposeProperty("useAcceleration", "boolean", this.useAcceleration, {
             description: "Enable smooth acceleration/deceleration",
             style: {
                 label: "Use Acceleration"
             }
         });
-        
+
         style.exposeProperty("acceleration", "number", this.acceleration, {
             description: "Acceleration rate (0-1, higher is faster)",
             min: 0.01,
@@ -234,7 +295,7 @@ class PhysicsKeyboardController extends Module {
                 slider: true
             }
         });
-        
+
         style.exposeProperty("deceleration", "number", this.deceleration, {
             description: "Deceleration rate when no input (0-1)",
             min: 0.01,
@@ -245,83 +306,90 @@ class PhysicsKeyboardController extends Module {
                 slider: true
             }
         });
-        
+
         style.exposeProperty("rotationSpeed", "number", this.rotationSpeed, {
             description: "Rotation speed in degrees per second",
             min: 0,
-            max: 360, 
+            max: 360,
             step: 5,
             style: {
                 label: "Rotation Speed",
                 slider: true
             }
         });
-        
+
         style.endGroup();
-        
+
         style.addDivider();
-        
+
         style.startGroup("Control Bindings", true, {
             backgroundColor: 'rgba(100,255,150,0.1)',
             borderRadius: '6px',
             padding: '8px'
         });
-        
+
         style.addHelpText("Type key names like 'a', 'space', 'arrowup', etc.");
-        
+
+        style.exposeProperty("jumpKey", "string", this.jumpKey, {
+            description: "Key for jumping (platformer mode)",
+            style: {
+                label: "Jump Key"
+            }
+        });
+
         style.exposeProperty("upKey", "string", this.upKey, {
             description: "Key for upward movement",
             style: {
                 label: "Up Key"
             }
         });
-        
+
         style.exposeProperty("downKey", "string", this.downKey, {
             description: "Key for downward movement",
             style: {
                 label: "Down Key"
             }
         });
-        
+
         style.exposeProperty("leftKey", "string", this.leftKey, {
             description: "Key for leftward movement",
             style: {
                 label: "Left Key"
             }
         });
-        
+
         style.exposeProperty("rightKey", "string", this.rightKey, {
             description: "Key for rightward movement",
             style: {
                 label: "Right Key"
             }
         });
-        
+
         style.addSpace(10);
-        
+
         style.exposeProperty("actionKey", "string", this.actionKey, {
             description: "Key for primary action",
             style: {
                 label: "Action Key"
             }
         });
-        
+
         style.exposeProperty("rotateLeftKey", "string", this.rotateLeftKey, {
             description: "Key for rotating counter-clockwise",
             style: {
                 label: "Rotate Left"
             }
         });
-        
+
         style.exposeProperty("rotateRightKey", "string", this.rotateRightKey, {
             description: "Key for rotating clockwise",
             style: {
                 label: "Rotate Right"
             }
         });
-        
+
         style.endGroup();
-        
+
         style.addButton("Reset Controls", () => this.resetControls(), {
             primary: true,
             fullWidth: true,
@@ -340,7 +408,7 @@ class PhysicsKeyboardController extends Module {
         this.actionKey = "space";
         this.rotateLeftKey = "q";
         this.rotateRightKey = "e";
-        
+
         // Refresh the inspector to show updated values
         if (window.editor && window.editor.inspector) {
             window.editor.inspector.refreshModuleUI(this);
@@ -354,11 +422,57 @@ class PhysicsKeyboardController extends Module {
     loop(deltaTime) {
         if (!window.input) return;
 
+        const rigidBody = this.gameObject.getModule("BasicPhysics");
+
+        if (this.platformerMode && rigidBody) {
+            // Platformer: horizontal movement, gravity, jump
+            let inputX = 0;
+            if (window.input.keyDown(this.rightKey)) inputX += 1;
+            if (window.input.keyDown(this.leftKey)) inputX -= 1;
+
+            // Only horizontal velocity is controlled
+            const targetVelocityX = inputX * this.speed;
+
+            // Check if grounded (simple: velocity.y near zero and position.y >= ground level)
+            // You may want to improve this with collision checks
+            this.grounded = Math.abs(rigidBody.velocity.y) < 0.1;
+
+            // Jump
+            if (window.input.keyPressed(this.jumpKey) && this.grounded) {
+                rigidBody.velocity.y = -this.jumpForce;
+                this.isJumping = true;
+            }
+
+            // Apply horizontal movement
+            if (this.useAcceleration) {
+                rigidBody.velocity.x += (targetVelocityX - rigidBody.velocity.x) * this.acceleration;
+            } else {
+                rigidBody.velocity.x = targetVelocityX;
+            }
+
+            return; // Exit early for platformer mode
+        }
+
+        // Reference the custom drawing module
+        const drawingModule = this.gameObject.getModule(this.customDrawingModule);
+        if (drawingModule) {
+            // Flip horizontally when moving left/right
+            if (window.input.keyDown(this.leftKey)) {
+                drawingModule.flipped = true;
+                drawingModule.isPlaying = true;
+            } else if (window.input.keyDown(this.rightKey)) {
+                drawingModule.flipped = false;
+                drawingModule.isPlaying = true;
+            } else {
+                drawingModule.isPlaying = false;
+            }
+        }
+
         // Handle rotation input (if using rotation mode or explicitly rotating)
         if (window.input.keyDown(this.rotateLeftKey)) {
             this.gameObject.angle -= this.rotationSpeed * deltaTime;
         }
-        
+
         if (window.input.keyDown(this.rotateRightKey)) {
             this.gameObject.angle += this.rotationSpeed * deltaTime;
         }
@@ -366,7 +480,7 @@ class PhysicsKeyboardController extends Module {
         // Get input direction
         let inputX = 0;
         let inputY = 0;
-        
+
         if (window.input.keyDown(this.rightKey)) inputX += 1;
         if (window.input.keyDown(this.leftKey)) inputX -= 1;
         if (window.input.keyDown(this.downKey)) inputY += 1;
@@ -377,19 +491,19 @@ class PhysicsKeyboardController extends Module {
             // Prioritize horizontal movement
             inputY = 0;
         }
-        
+
         // Handle rotate-and-move mode
         if (this.moveMode === "rotate-and-move") {
             // Only move forward/backward
             let moveAmount = 0;
             if (window.input.keyDown(this.upKey)) moveAmount = -1;
             if (window.input.keyDown(this.downKey)) moveAmount = 1;
-            
+
             // Convert angle to direction vector
             const angle = this.gameObject.angle * Math.PI / 180;
             inputX = Math.sin(angle) * moveAmount;
             inputY = -Math.cos(angle) * moveAmount;
-            
+
             // Handle strafing
             if (window.input.keyDown(this.leftKey)) {
                 inputX += Math.cos(angle);
@@ -400,18 +514,18 @@ class PhysicsKeyboardController extends Module {
                 inputY -= Math.sin(angle);
             }
         }
-        
+
         // Normalize vector if it's not zero
         if (inputX !== 0 || inputY !== 0) {
             const length = Math.sqrt(inputX * inputX + inputY * inputY);
             inputX /= length;
             inputY /= length;
         }
-        
+
         // Calculate target velocity
         const targetVelocityX = inputX * this.speed;
         const targetVelocityY = inputY * this.speed;
-        
+
         // Apply movement
         if (this.useAcceleration) {
             // Smoothly accelerate/decelerate
@@ -421,7 +535,7 @@ class PhysicsKeyboardController extends Module {
                 this.velocity.x *= (1 - this.deceleration);
                 if (Math.abs(this.velocity.x) < 0.1) this.velocity.x = 0;
             }
-            
+
             if (inputY !== 0) {
                 this.velocity.y += (targetVelocityY - this.velocity.y) * this.acceleration;
             } else {
@@ -433,9 +547,8 @@ class PhysicsKeyboardController extends Module {
             this.velocity.x = targetVelocityX;
             this.velocity.y = targetVelocityY;
         }
-        
+
         // Apply movement to position
-        const rigidBody = this.gameObject.getModule("BasicPhysics");
         if (rigidBody && rigidBody.enabled) {
             // Use physics if available
             rigidBody.setVelocity(this.velocity.x, this.velocity.y);
