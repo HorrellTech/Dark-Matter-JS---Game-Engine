@@ -7,6 +7,10 @@ class SpriteCode {
         this.startX = 0;
         this.startY = 0;
 
+        this.animationRanges = [
+            { name: "idle", start: 0, end: 4 }
+        ];
+
         // Animation system
         this.frames = [[]]; // Array of frame arrays, each containing shapes
         this.currentFrame = 0;
@@ -15,6 +19,11 @@ class SpriteCode {
         this.previewPlaying = false;
         this.previewFrame = 0;
         this.previewInterval = null;
+
+        this.rotationHotspot = { x: 0, y: 0 }; // Relative to shape center
+        this.isDraggingHotspot = false;
+        this.groups = []; // Array of group objects
+        this.selectedGroup = null;
 
         this.splinePoints = [];
         this.tempSplinePoints = [];
@@ -44,6 +53,7 @@ class SpriteCode {
         this.gradientAngle = 0;
 
         // Shape management
+        this.selectedShapeIndices = [];
         this.selectedShapeIndex = -1;
         this.draggedShapeIndex = -1;
 
@@ -80,6 +90,21 @@ class SpriteCode {
                 e.target.classList.add('active');
                 this.currentTool = e.target.dataset.tool;
                 this.updateToolOptions();
+            }
+        });
+
+        document.getElementById('groupShapes-sprite').addEventListener('click', () => {
+            const selectedShapes = this.shapes.filter((shape, index) =>
+                this.selectedShapeIndices && this.selectedShapeIndices.includes(index)
+            );
+            if (selectedShapes.length > 1) {
+                this.groupShapes(selectedShapes);
+            }
+        });
+
+        document.getElementById('ungroupShapes-sprite').addEventListener('click', () => {
+            if (this.selectedShape && this.selectedShape.children.length > 0) {
+                this.ungroupShape(this.selectedShape);
             }
         });
 
@@ -204,13 +229,75 @@ class SpriteCode {
                 if (e.target.classList.contains('shape-item-visibility')) {
                     this.toggleShapeVisibility(index);
                 } else {
-                    this.selectShapeByIndex(index);
+                    if (e.ctrlKey || e.metaKey) {
+                        if (!this.selectedShapeIndices.includes(index)) {
+                            this.selectedShapeIndices.push(index);
+                        } else {
+                            this.selectedShapeIndices = this.selectedShapeIndices.filter(i => i !== index);
+                        }
+                    } else {
+                        this.selectedShapeIndices = [index];
+                    }
+                    this.selectedShapeIndex = index;
+                    this.selectedShape = this.shapes[index];
+                    this.updateShapesList();
+                    this.updateTransformControls();
+                    this.updateShapeToolbarButtons();
+                    this.updateUIFromSelectedShape();
+                    this.redrawCanvas();
                 }
             }
         });
 
+        const shapeListStyles = `
+<style>
+.shape-item-sprite.parent-shape {
+    background-color: rgba(255, 102, 0, 0.1);
+    border-left: 3px solid #ff6600;
+}
+
+.shape-item-sprite.child-shape {
+    background-color: rgba(100, 181, 246, 0.05);
+    border-left: 2px solid #64B5F6;
+}
+
+.group-icon {
+    margin-right: 4px;
+    font-size: 12px;
+}
+
+.shape-item-sprite.selected.parent-shape {
+    background-color: rgba(255, 102, 0, 0.2);
+}
+
+.shape-item-sprite.selected.child-shape {
+    background-color: rgba(100, 181, 246, 0.15);
+}
+</style>`;
+
+        // Add the styles to the document head if not already present
+        if (!document.getElementById('spriteCodeGroupingStyles')) {
+            const styleElement = document.createElement('style');
+            styleElement.id = 'spriteCodeGroupingStyles';
+            styleElement.textContent = shapeListStyles.replace(/<\/?style>/g, '');
+            document.head.appendChild(styleElement);
+        }
+
+        document.getElementById('addAnimationRangeBtn-sprite').onclick = () => {
+            const name = document.getElementById('newAnimationName-sprite').value.trim();
+            const start = parseInt(document.getElementById('newAnimationStart-sprite').value);
+            const end = parseInt(document.getElementById('newAnimationEnd-sprite').value);
+            if (!name || isNaN(start) || isNaN(end)) return;
+            if (name === 'idle') return alert('Idle is reserved.');
+            this.animationRanges.push({ name, start, end });
+            this.updateAnimationRangesList();
+        };
+
         // Drag and drop for shape reordering
         this.setupShapeListDragDrop();
+
+
+        this.updateAnimationRangesList();
 
         // Frame selection
         document.addEventListener('click', (e) => {
@@ -222,6 +309,48 @@ class SpriteCode {
         });
     }
 
+    updateAnimationRangesList() {
+        const list = document.getElementById('animationRangesList-sprite');
+        list.innerHTML = '';
+        this.animationRanges.forEach((range, i) => {
+            const div = document.createElement('div');
+            div.className = 'animation-range-item';
+            div.innerHTML = `
+            <span contenteditable="${range.name !== 'idle'}" class="anim-name">${range.name}</span>
+            <input type="number" class="anim-start" value="${range.start}" min="0" max="${this.totalFrames - 1}">
+            <input type="number" class="anim-end" value="${range.end}" min="0" max="${this.totalFrames - 1}">
+            ${range.name !== 'idle' ? `<button class="anim-remove" data-index="${i}" 
+            style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;font-size:18px;
+            ">🗑️</button>` : ''}
+
+        `;
+            list.appendChild(div);
+
+            // Edit handlers
+            div.querySelector('.anim-name').onblur = (e) => {
+                if (range.name !== 'idle') {
+                    range.name = e.target.textContent.trim();
+                    this.updateAnimationRangesList();
+                }
+            };
+            div.querySelector('.anim-start').onchange = (e) => {
+                range.start = Math.max(0, Math.min(this.totalFrames - 1, parseInt(e.target.value)));
+                this.updateAnimationRangesList();
+            };
+            div.querySelector('.anim-end').onchange = (e) => {
+                range.end = Math.max(0, Math.min(this.totalFrames - 1, parseInt(e.target.value)));
+                this.updateAnimationRangesList();
+            };
+            if (range.name !== 'idle') {
+                div.querySelector('.anim-remove').onclick = () => {
+                    this.animationRanges.splice(i, 1);
+                    this.updateAnimationRangesList();
+                };
+            }
+        });
+        document.getElementById('animationCount-sprite').textContent = `(${this.animationRanges.length})`;
+    }
+
     resetState() {
         // Reset all properties to their initial values
         this.canvas = null;
@@ -230,6 +359,10 @@ class SpriteCode {
         this.drawing = false;
         this.startX = 0;
         this.startY = 0;
+
+        this.animationRanges = [
+            { name: "idle", start: 0, end: 4 }
+        ];
 
         this.frames = [[]];
         this.currentFrame = 0;
@@ -728,12 +861,15 @@ class SpriteCode {
         this.offsetX = 0;
         this.offsetY = 0;
         this.flipped = false;
+
+        this.animationRanges = ${JSON.stringify(this.animationRanges, null, 8)};
+        this.currentAnimation = "idle";
         
         // Animation properties
         this.isAnimated = ${this.totalFrames > 1};
         this.currentFrame = 0;
         this.animationSpeed = ${this.animSpeed};
-        this.isPlaying = false;
+        this.isPlaying = true;
         this.frameTimer = 0;
         this.pingPong = ${this.pingPong};
         this.playDirection = 1;
@@ -786,6 +922,14 @@ class SpriteCode {
         });
 
         if (this.isAnimated) {
+            this.exposeProperty("currentAnimation", "enum", this.currentAnimation, {
+                options: this.animationRanges.map(r => r.name),
+                description: "Current animation",
+                onChange: (val) => {
+                    this.setAnimation(val);
+                }
+            });
+
             this.exposeProperty("animationSpeed", "number", this.animationSpeed, {
                 description: "Animation speed",
                 onChange: (val) => { this.animationSpeed = val; }
@@ -796,7 +940,7 @@ class SpriteCode {
                 onChange: (val) => { this.enableTweening = val; }
             });
 
-            this.exposeProperty("tweenType", "string", this.tweenType, {
+            this.exposeProperty("tweenType", "enum", this.tweenType, {
                 options: ["linear", "ease-in", "ease-out", "ease-in-out"],
                 description: "Tweening type",
                 onChange: (val) => { this.tweenType = val; }
@@ -845,6 +989,11 @@ class SpriteCode {
         
         if (this.isAnimated) {
             style.startGroup("Animation Controls", true);
+
+            style.exposeProperty("currentAnimation", "enum", this.currentAnimation, {
+                options: this.animationRanges.map(r => r.name.toLowerCase()),
+                style: { label: "Animation" }
+            });
             
             style.exposeProperty("animationSpeed", "number", this.animationSpeed, {
                 min: 0.1,
@@ -857,7 +1006,7 @@ class SpriteCode {
                 style: { label: "Enable Tweening" }
             });
 
-            style.exposeProperty("tweenType", "string", this.tweenType, {
+            style.exposeProperty("tweenType", "enum", this.tweenType, {
                 options: ["linear", "ease-in", "ease-out", "ease-in-out"],
                 style: { label: "Tween Type" }
             });
@@ -871,31 +1020,46 @@ class SpriteCode {
         
         style.endGroup();
         style.addHelpText("Generated drawing module with animation support");
+        style.addHelpText(\`Animation List: \n\${this.animationRanges.map(r => r.name).join(", ")}\`);
     }
 
     // Public API Methods
+    playAnimation(name) {
+        const range = this.animationRanges.find(r => r.name === name);
+        if (range) {
+            this.currentAnimation = name;
+            this.currentFrame = range.start;
+            this.isPlaying = true;
+        }
+    }
+
+    setAnimation(name) {
+        const range = this.animationRanges.find(r => r.name === name);
+        if (range) {
+            this.currentAnimation = name;
+            this.currentFrame = range.start;
+            this.isPlaying = false;
+        }
+    }
+
     play() {
         this.isPlaying = true;
-        return this;
     }
 
     pause() {
         this.isPlaying = false;
-        return this;
     }
 
     stop() {
         this.isPlaying = false;
         this.currentFrame = 0;
         this.frameTimer = 0;
-        return this;
     }
 
     setFrame(frameIndex) {
         if (frameIndex >= 0 && frameIndex < this.totalFrames) {
             this.currentFrame = frameIndex;
         }
-        return this;
     }
 
     setSpeed(speed) {
@@ -918,31 +1082,43 @@ class SpriteCode {
     }
 
     loop(deltaTime) {
-        if (this.isAnimated && this.isPlaying) {
-            this.frameTimer += deltaTime * this.animationSpeed;
-            
-            if (this.frameTimer >= 0.1) {
-                this.frameTimer = 0;
-                
-                if (this.pingPong) {
-                    this.currentFrame += this.playDirection;
-                    if (this.currentFrame >= this.totalFrames - 1) {
-                        this.playDirection = -1;
-                        this.currentFrame = this.totalFrames - 1;
-                    } else if (this.currentFrame <= 0) {
-                        this.playDirection = 1;
-                        this.currentFrame = 0;
-                    }
-                } else {
-                    if (this.enableTweening) {
-                        this.currentFrame += 0.1;
-                        if (this.currentFrame >= this.totalFrames) {
-                            this.currentFrame = 0;
-                        }
-                    } else {
-                        this.currentFrame = (Math.floor(this.currentFrame) + 1) % this.totalFrames;
-                    }
+        if (!this.isAnimated || !this.isPlaying) return;
+
+        const range = this.animationRanges.find(r => r.name === this.currentAnimation) || { start: 0, end: this.totalFrames - 1 };
+        const frameCount = range.end - range.start + 1;
+
+        this.frameTimer += deltaTime * this.animationSpeed;
+
+        if (frameCount <= 1) {
+            // Only one frame in range, just show it
+            this.currentFrame = range.start;
+            return;
+        }
+
+        if (this.frameTimer >= 0.1) {
+            this.frameTimer = 0;
+
+            if (this.pingPong) {
+                this.currentFrame += this.playDirection;
+                if (this.currentFrame > range.end) {
+                    this.playDirection = -1;
+                    this.currentFrame = range.end;
+                } else if (this.currentFrame < range.start) {
+                    this.playDirection = 1;
+                    this.currentFrame = range.start;
                 }
+            } else if (this.enableTweening) {
+                this.currentFrame += 0.1;
+                if (this.currentFrame > range.end) {
+                    this.currentFrame = range.start;
+                }
+            } else {
+                // Step to next frame in range
+                let nextFrame = Math.floor(this.currentFrame) + 1;
+                if (nextFrame > range.end) {
+                    nextFrame = range.start;
+                }
+                this.currentFrame = nextFrame;
             }
         }
     }
@@ -1352,25 +1528,25 @@ window.${moduleName} = ${moduleName};`;
 
         ctx.save();
 
-        // Apply transformations
-        if (shape.rotation || shape.scaleX !== 1 || shape.scaleY !== 1) {
-            const bounds = this.getShapeBounds(shape);
-            const centerX = bounds.x + bounds.width / 2;
-            const centerY = bounds.y + bounds.height / 2;
+        // Use hotspot as rotation center
+        const bounds = this.getShapeBounds(shape);
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+        const hotspot = shape.rotationHotspot || { x: 0, y: 0 };
+        const pivotX = centerX + hotspot.x;
+        const pivotY = centerY + hotspot.y;
 
-            ctx.translate(centerX, centerY);
-            ctx.rotate((shape.rotation || 0) * Math.PI / 180);
-            ctx.scale(shape.scaleX || 1, shape.scaleY || 1);
-            ctx.translate(-centerX, -centerY);
-        }
+        ctx.translate(pivotX, pivotY);
+        ctx.rotate((shape.rotation || 0) * Math.PI / 180);
+        ctx.scale(shape.scaleX || 1, shape.scaleY || 1);
+        ctx.translate(-pivotX, -pivotY);
 
-        // Set up colors/gradients
+        // ...rest of drawShape code...
         ctx.fillStyle = shape.gradient ? this.createGradient(shape, ctx) : shape.fillColor;
         ctx.strokeStyle = shape.strokeColor;
         ctx.lineWidth = shape.strokeWidth;
         ctx.setLineDash([]);
 
-        // Draw the shape
         switch (shape.type) {
             case 'rectangle':
                 this.drawRectangle(ctx, shape);
@@ -1589,7 +1765,14 @@ window.${moduleName} = ${moduleName};`;
                 end: this.gradientEnd,
                 type: this.gradientType,
                 angle: this.gradientAngle
-            } : null
+            } : null,
+            parentGroup: null,
+            children: [],
+            localRotation: 0, // Rotation relative to parent
+            worldRotation: 0, // Absolute rotation
+            localPosition: { x: startX, y: startY }, // Position relative to parent
+            worldPosition: { x: startX, y: startY }, // Absolute position
+            rotationHotspot: { x: 0, y: 0 } // Relative to shape center
         };
 
         this.shapes.push(shape);
@@ -1815,10 +1998,14 @@ window.${moduleName} = ${moduleName};`;
         // Check for resize handles first
         if (this.selectedShape) {
             const handle = this.getResizeHandleAt(this.startX, this.startY, this.selectedShape);
-            if (handle) {
+            if (handle === 'hotspot') {
+                this.isDraggingHotspot = true;
+                return;
+            } else if (handle) {
                 this.handleResizeStart(e, handle);
                 return;
             }
+
             // For splines, check for control points
             if (this.selectedShape.type === 'spline') {
                 const pt = this.getSplinePointAt(this.startX, this.startY, this.selectedShape, 12); // Larger hit area
@@ -1832,26 +2019,35 @@ window.${moduleName} = ${moduleName};`;
 
         if (this.currentTool === 'select') {
             const shape = this.getShapeAtPoint(this.startX, this.startY);
-            this.selectedShape = shape;
-
             if (shape) {
-                this.selectedShapeIndex = this.shapes.indexOf(shape);
-
-                if (shape.type === 'spline') {
-                    this.selectedPoint = this.getSplinePointAt(this.startX, this.startY, shape, 12);
+                const idx = this.shapes.indexOf(shape);
+                if (e.ctrlKey || e.metaKey) {
+                    // Multi-select
+                    if (!this.selectedShapeIndices.includes(idx)) {
+                        this.selectedShapeIndices.push(idx);
+                    } else {
+                        this.selectedShapeIndices = this.selectedShapeIndices.filter(i => i !== idx);
+                    }
+                } else {
+                    this.selectedShapeIndices = [idx];
                 }
+                this.selectedShapeIndex = idx;
+                this.selectedShape = shape;
 
+                // Start dragging
                 this.isDragging = true;
                 this.dragOffset = {
-                    x: this.startX - (shape.startX || shape.points[0].x),
-                    y: this.startY - (shape.startY || shape.points[0].y)
+                    x: this.startX - (shape.startX || 0),
+                    y: this.startY - (shape.startY || 0)
                 };
             } else {
+                this.selectedShapeIndices = [];
                 this.selectedShape = null;
                 this.selectedShapeIndex = -1;
-                this.updateShapesList();
             }
+            this.updateShapesList();
             this.updateUIFromSelectedShape();
+            this.updateTransformControls();
             this.redrawCanvas();
             return;
         }
@@ -1879,27 +2075,31 @@ window.${moduleName} = ${moduleName};`;
             return;
         }
 
-        // Dragging selected shape
+        if (this.isDraggingHotspot && this.selectedShape) {
+            const bounds = this.getShapeBounds(this.selectedShape);
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+
+            // Constrain hotspot within reasonable bounds around shape
+            const maxDistance = Math.max(bounds.width, bounds.height);
+            const relativeX = Math.max(-maxDistance, Math.min(maxDistance, currentX - centerX));
+            const relativeY = Math.max(-maxDistance, Math.min(maxDistance, currentY - centerY));
+
+            // Store hotspot position relative to shape center
+            this.selectedShape.rotationHotspot = { x: relativeX, y: relativeY };
+            this.redrawCanvas();
+            return;
+        }
+
+        // Rest of the existing mouse move logic...
         if (this.isDragging && this.selectedShape && this.currentTool === 'select') {
             if (this.selectedShape.type === 'spline' && this.selectedPoint) {
-                // Move selected spline point
                 this.selectedPoint.x = currentX;
                 this.selectedPoint.y = currentY;
             } else {
-                // Move entire shape
                 const dx = currentX - this.startX;
                 const dy = currentY - this.startY;
-                if (this.selectedShape.type === 'spline') {
-                    this.selectedShape.points.forEach(pt => {
-                        pt.x += dx;
-                        pt.y += dy;
-                    });
-                } else {
-                    this.selectedShape.startX += dx;
-                    this.selectedShape.startY += dy;
-                    this.selectedShape.endX += dx;
-                    this.selectedShape.endY += dy;
-                }
+                this.moveShapeAndChildren(this.selectedShape, dx, dy);
                 this.startX = currentX;
                 this.startY = currentY;
             }
@@ -1924,6 +2124,11 @@ window.${moduleName} = ${moduleName};`;
         // Stop rotating if in progress
         if (this.isRotating) {
             this.isRotating = false;
+            return;
+        }
+
+        if (this.isDraggingHotspot) {
+            this.isDraggingHotspot = false;
             return;
         }
 
@@ -2003,26 +2208,136 @@ window.${moduleName} = ${moduleName};`;
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        const currentAngle = Math.atan2(mouseY - this.rotationCenterY, mouseX - this.rotationCenterX) * 180 / Math.PI;
-        const rotation = this.originalRotation + (currentAngle - this.rotationStart);
+        // Use hotspot as rotation center instead of shape center
+        const hotspotWorld = this.getWorldHotspotPosition(this.selectedShape);
+        const pivotX = hotspotWorld.x;
+        const pivotY = hotspotWorld.y;
 
-        this.selectedShape.rotation = rotation;
+        const currentAngle = Math.atan2(mouseY - pivotY, mouseX - pivotX) * 180 / Math.PI;
+        const deltaRotation = currentAngle - this.rotationStart;
+        const newRotation = this.originalRotation + deltaRotation;
 
-        // Update UI slider
-        document.getElementById('shapeRotation-sprite').value = rotation;
-        document.getElementById('rotationValue-sprite').textContent = Math.round(rotation);
+        this.selectedShape.rotation = newRotation;
+
+        // Rotate children around the hotspot
+        if (this.selectedShape.children && this.selectedShape.children.length > 0) {
+            this.rotateChildren(this.selectedShape, deltaRotation, pivotX, pivotY);
+        }
+
+        // Update UI
+        document.getElementById('shapeRotation-sprite').value = newRotation;
+        document.getElementById('rotationValue-sprite').textContent = Math.round(newRotation);
 
         this.redrawCanvas();
     }
 
+    rotateChildren(parent, deltaAngle, pivotX, pivotY) {
+        const radians = deltaAngle * Math.PI / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+
+        parent.children.forEach(child => {
+            // Get current position
+            let childCenterX, childCenterY;
+
+            if (child.type === 'spline') {
+                // Calculate spline center
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                child.points.forEach(pt => {
+                    minX = Math.min(minX, pt.x);
+                    maxX = Math.max(maxX, pt.x);
+                    minY = Math.min(minY, pt.y);
+                    maxY = Math.max(maxY, pt.y);
+                });
+                childCenterX = (minX + maxX) / 2;
+                childCenterY = (minY + maxY) / 2;
+            } else {
+                const childBounds = this.getShapeBounds(child);
+                childCenterX = childBounds.x + childBounds.width / 2;
+                childCenterY = childBounds.y + childBounds.height / 2;
+            }
+
+            // Rotate position around pivot
+            const dx = childCenterX - pivotX;
+            const dy = childCenterY - pivotY;
+
+            const newX = pivotX + (dx * cos - dy * sin);
+            const newY = pivotY + (dx * sin + dy * cos);
+
+            const moveX = newX - childCenterX;
+            const moveY = newY - childCenterY;
+
+            // Move the child
+            if (child.type === 'spline') {
+                child.points.forEach(pt => {
+                    pt.x += moveX;
+                    pt.y += moveY;
+                });
+            } else {
+                child.startX += moveX;
+                child.startY += moveY;
+                child.endX += moveX;
+                child.endY += moveY;
+            }
+
+            // Update child's own rotation
+            child.rotation = (child.rotation || 0) + deltaAngle;
+        });
+    }
+
+    moveShapeAndChildren(shape, dx, dy) {
+        if (shape.type === 'spline') {
+            shape.points.forEach(pt => {
+                pt.x += dx;
+                pt.y += dy;
+            });
+        } else {
+            shape.startX += dx;
+            shape.startY += dy;
+            shape.endX += dx;
+            shape.endY += dy;
+        }
+
+        // Move children maintaining their relative positions
+        if (shape.children && shape.children.length > 0) {
+            shape.children.forEach(child => {
+                this.moveShapeAndChildren(child, dx, dy);
+            });
+        }
+    }
+
+    rotateSplinePoints(shape, deltaAngle, pivot) {
+        if (shape.type !== 'spline') return;
+
+        const cos = Math.cos(deltaAngle);
+        const sin = Math.sin(deltaAngle);
+
+        shape.points.forEach(point => {
+            const dx = point.x - pivot.x;
+            const dy = point.y - pivot.y;
+
+            point.x = pivot.x + (dx * cos - dy * sin);
+            point.y = pivot.y + (dx * sin + dy * cos);
+        });
+    }
+
     getResizeHandleAt(x, y, shape, hitSize = 12) {
         const bounds = this.getShapeBounds(shape);
+
+        // Check rotation hotspot first
+        const hotspotWorld = this.getWorldHotspotPosition(shape);
+        if (Math.abs(x - hotspotWorld.x) < hitSize && Math.abs(y - hotspotWorld.y) < hitSize) {
+            return 'hotspot';
+        }
+
+        // Existing resize handle code...
         const handles = [
             { x: bounds.x, y: bounds.y, type: 'nw' },
             { x: bounds.x + bounds.width, y: bounds.y, type: 'ne' },
             { x: bounds.x, y: bounds.y + bounds.height, type: 'sw' },
             { x: bounds.x + bounds.width, y: bounds.y + bounds.height, type: 'se' }
         ];
+
         for (let h of handles) {
             if (Math.abs(x - h.x) < hitSize && Math.abs(y - h.y) < hitSize) {
                 return h.type;
@@ -2079,6 +2394,19 @@ window.${moduleName} = ${moduleName};`;
         if (!this.selectedShape) return;
 
         this.ctx.save();
+
+        // If multiple shapes selected or parent with children, draw group bounds
+        if (this.selectedShapeIndices.length > 1 || (this.selectedShape.isParent && this.selectedShape.children.length > 0)) {
+            this.drawGroupSelectionBounds();
+        } else {
+            // Single shape selection
+            this.drawSingleShapeSelection();
+        }
+
+        this.ctx.restore();
+    }
+
+    drawSingleShapeSelection() {
         this.ctx.strokeStyle = '#00ff00';
         this.ctx.lineWidth = 2;
         this.ctx.setLineDash([5, 5]);
@@ -2098,7 +2426,118 @@ window.${moduleName} = ${moduleName};`;
             this.drawResizeHandles(bounds);
         }
 
+        // Draw rotation hotspot
+        this.drawRotationHotspot(this.selectedShape);
+    }
+
+    drawRotationHotspot(shape) {
+        const hotspotWorld = this.getWorldHotspotPosition(shape);
+
+        // Draw hotspot indicator
+        this.ctx.fillStyle = '#ff6600';
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([]);
+        this.ctx.beginPath();
+        this.ctx.arc(hotspotWorld.x, hotspotWorld.y, 6, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        // Draw line from shape center to hotspot
+        const bounds = this.getShapeBounds(shape);
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+
+        this.ctx.strokeStyle = '#ff6600';
+        this.ctx.setLineDash([2, 2]);
+        this.ctx.beginPath();
+        this.ctx.moveTo(centerX, centerY);
+        this.ctx.lineTo(hotspotWorld.x, hotspotWorld.y);
+        this.ctx.stroke();
+    }
+
+    drawGroupResizeHandles(bounds) {
+        const size = 10;
+        const handles = [
+            { x: bounds.x, y: bounds.y },
+            { x: bounds.x + bounds.width, y: bounds.y },
+            { x: bounds.x, y: bounds.y + bounds.height },
+            { x: bounds.x + bounds.width, y: bounds.y + bounds.height }
+        ];
+
+        this.ctx.save();
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.strokeStyle = '#ff6600';
+        this.ctx.lineWidth = 2;
+        this.ctx.setLineDash([]);
+
+        handles.forEach(h => {
+            this.ctx.fillRect(h.x - size / 2, h.y - size / 2, size, size);
+            this.ctx.strokeRect(h.x - size / 2, h.y - size / 2, size, size);
+        });
+
         this.ctx.restore();
+    }
+
+    // Draw selection bounds for groups
+    drawGroupSelectionBounds() {
+        let allShapes = [];
+
+        if (this.selectedShapeIndices.length > 1) {
+            // Multiple selection
+            allShapes = this.selectedShapeIndices.map(i => this.shapes[i]);
+        } else if (this.selectedShape.isParent) {
+            // Parent with children
+            allShapes = [this.selectedShape, ...this.selectedShape.children];
+        }
+
+        if (allShapes.length === 0) return;
+
+        // Calculate combined bounds
+        const combinedBounds = this.getCombinedBounds(allShapes);
+
+        // Draw group selection rectangle
+        this.ctx.strokeStyle = '#ff6600';
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([8, 4]);
+        this.ctx.strokeRect(combinedBounds.x, combinedBounds.y, combinedBounds.width, combinedBounds.height);
+
+        // Draw corner handles for group
+        this.drawGroupResizeHandles(combinedBounds);
+
+        // Draw individual shape outlines within group
+        this.ctx.strokeStyle = '#00ff00';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([3, 3]);
+
+        allShapes.forEach(shape => {
+            const bounds = this.getShapeBounds(shape);
+            this.ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        });
+
+        // Draw rotation hotspot for the primary shape (parent or first selected)
+        const primaryShape = this.selectedShape.isParent ? this.selectedShape : allShapes[0];
+        this.drawRotationHotspot(primaryShape);
+    }
+
+    // Get combined bounds of multiple shapes
+    getCombinedBounds(shapes) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        shapes.forEach(shape => {
+            const bounds = this.getShapeBounds(shape);
+            minX = Math.min(minX, bounds.x);
+            minY = Math.min(minY, bounds.y);
+            maxX = Math.max(maxX, bounds.x + bounds.width);
+            maxY = Math.max(maxY, bounds.y + bounds.height);
+        });
+
+        return {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
     }
 
     drawRectanglePreview(startX, startY, endX, endY) {
@@ -2162,6 +2601,28 @@ window.${moduleName} = ${moduleName};`;
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.drawCenterDot();
 
+        // Draw connection lines between grouped shapes
+        this.groups.forEach(group => {
+            if (group.children.length > 1) {
+                for (let i = 0; i < group.children.length - 1; i++) {
+                    const a = group.children[i];
+                    const b = group.children[i + 1];
+                    const boundsA = this.getShapeBounds(a);
+                    const boundsB = this.getShapeBounds(b);
+                    const centerA = { x: boundsA.x + boundsA.width / 2, y: boundsA.y + boundsA.height / 2 };
+                    const centerB = { x: boundsB.x + boundsB.width / 2, y: boundsB.y + boundsB.height / 2 };
+                    this.ctx.save();
+                    this.ctx.strokeStyle = '#FFD700';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(centerA.x, centerA.y);
+                    this.ctx.lineTo(centerB.x, centerB.y);
+                    this.ctx.stroke();
+                    this.ctx.restore();
+                }
+            }
+        });
+
         this.shapes.forEach(shape => {
             this.drawShape(this.ctx, shape);
         });
@@ -2169,6 +2630,102 @@ window.${moduleName} = ${moduleName};`;
         // Draw selection indicators on top
         this.drawSelectionIndicators();
         this.updateShapesList();
+    }
+
+    getWorldHotspotPosition(shape) {
+        const bounds = this.getShapeBounds(shape);
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+
+        return {
+            x: centerX + shape.rotationHotspot.x,
+            y: centerY + shape.rotationHotspot.y
+        };
+    }
+
+    updateShapeTransforms(shape) {
+        // Update world position and rotation based on parent hierarchy
+        if (shape.parentGroup) {
+            const parent = this.shapes.find(s => s === shape.parentGroup);
+            if (parent) {
+                // Calculate world transform based on parent
+                const cos = Math.cos(parent.worldRotation * Math.PI / 180);
+                const sin = Math.sin(parent.worldRotation * Math.PI / 180);
+
+                shape.worldPosition.x = parent.worldPosition.x +
+                    (shape.localPosition.x * cos - shape.localPosition.y * sin);
+                shape.worldPosition.y = parent.worldPosition.y +
+                    (shape.localPosition.x * sin + shape.localPosition.y * cos);
+
+                shape.worldRotation = parent.worldRotation + shape.localRotation;
+            }
+        } else {
+            shape.worldPosition = { ...shape.localPosition };
+            shape.worldRotation = shape.localRotation;
+        }
+
+        // Update children
+        shape.children.forEach(child => this.updateShapeTransforms(child));
+    }
+
+    groupShapes(shapes) {
+        if (shapes.length < 2) return;
+
+        // Use the first shape as the parent
+        const parent = shapes[0];
+
+        // Set up parent properties
+        if (!parent.children) parent.children = [];
+        parent.isParent = true;
+
+        // Convert remaining shapes to children
+        for (let i = 1; i < shapes.length; i++) {
+            const child = shapes[i];
+            child.parentShape = parent;
+            child.isGrouped = true;
+            parent.children.push(child);
+
+            // Calculate relative position from parent center
+            const parentBounds = this.getShapeBounds(parent);
+            const parentCenterX = parentBounds.x + parentBounds.width / 2;
+            const parentCenterY = parentBounds.y + parentBounds.height / 2;
+
+            const childBounds = this.getShapeBounds(child);
+            const childCenterX = childBounds.x + childBounds.width / 2;
+            const childCenterY = childBounds.y + childBounds.height / 2;
+
+            // Store relative position
+            child.relativeX = childCenterX - parentCenterX;
+            child.relativeY = childCenterY - parentCenterY;
+
+            // Calculate relative rotation
+            child.relativeRotation = (child.rotation || 0) - (parent.rotation || 0);
+        }
+
+        this.updateShapesList();
+        this.redrawCanvas();
+    }
+
+    ungroupShape(parentShape) {
+        if (!parentShape || !parentShape.children || parentShape.children.length === 0) return;
+
+        // Remove parent reference from all children
+        parentShape.children.forEach(child => {
+            child.parentShape = null;
+            child.isGrouped = false;
+            // Reset any relative positioning
+            delete child.relativeX;
+            delete child.relativeY;
+            delete child.relativeRotation;
+        });
+
+        // Clear parent properties
+        parentShape.children = [];
+        parentShape.isParent = false;
+
+        // Update UI
+        this.updateShapesList();
+        this.redrawCanvas();
     }
 
     deleteSelectedShape() {
@@ -2189,27 +2746,48 @@ window.${moduleName} = ${moduleName};`;
         container.innerHTML = '';
 
         this.shapes.forEach((shape, index) => {
-            const item = document.createElement('div');
-            item.className = `shape-item-sprite ${this.selectedShapeIndex === index ? 'selected' : ''}`;
-            item.dataset.index = index;
-            item.draggable = true;
+            // Skip shapes that are children of other shapes in the list display
+            if (shape.isGrouped && shape.parentShape) return;
 
-            const icon = this.getShapeIcon(shape.type);
-            const name = `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} ${index + 1}`;
-
-            item.innerHTML = `
-            <div class="shape-item-info">
-                <span class="shape-item-icon">${icon}</span>
-                <span class="shape-item-name">${name}</span>
-            </div>
-            <span class="shape-item-visibility ${shape.visible ? 'visible' : 'hidden'}">${shape.visible ? '👁️' : '👁️‍🗨️'}</span>
-        `;
-
-            container.appendChild(item);
+            this.createShapeListItem(shape, index, container, 0);
         });
 
         document.getElementById('shapeCount-sprite').textContent = `(${this.shapes.length})`;
         this.updateShapeToolbarButtons();
+    }
+
+    createShapeListItem(shape, index, container, indentLevel = 0) {
+        const item = document.createElement('div');
+        const selected = this.selectedShapeIndices.includes(index);
+        item.className = `shape-item-sprite${selected ? ' selected' : ''}${shape.isParent ? ' parent-shape' : ''}${shape.isGrouped ? ' child-shape' : ''}`;
+        item.dataset.index = index;
+        item.draggable = true;
+
+        const icon = this.getShapeIcon(shape.type);
+        const name = `${shape.type.charAt(0).toUpperCase() + shape.type.slice(1)} ${index + 1}`;
+        const indent = '  '.repeat(indentLevel);
+        const groupIcon = shape.isParent ? '📁' : (shape.isGrouped ? '📄' : '');
+
+        item.innerHTML = `
+        <div class="shape-item-info" style="padding-left: ${indentLevel * 20}px;">
+            ${groupIcon ? `<span class="group-icon">${groupIcon}</span>` : ''}
+            <span class="shape-item-icon">${icon}</span>
+            <span class="shape-item-name">${name}</span>
+        </div>
+        <span class="shape-item-visibility ${shape.visible ? 'visible' : 'hidden'}">${shape.visible ? '👁️' : '👁️‍🗨️'}</span>
+    `;
+
+        container.appendChild(item);
+
+        // Add children if this is a parent
+        if (shape.isParent && shape.children) {
+            shape.children.forEach(child => {
+                const childIndex = this.shapes.indexOf(child);
+                if (childIndex !== -1) {
+                    this.createShapeListItem(child, childIndex, container, indentLevel + 1);
+                }
+            });
+        }
     }
 
     getShapeIcon(type) {
@@ -2495,6 +3073,7 @@ window.${moduleName} = ${moduleName};`;
         }
         const data = {
             frames: this.frames,
+            animationRanges: this.animationRanges,
             animationSettings: {
                 enableTweening: this.enableTweening,
                 animSpeed: this.animSpeed,
@@ -2550,6 +3129,10 @@ window.${moduleName} = ${moduleName};`;
                 this.frames = data.frames;
                 this.totalFrames = this.frames.length;
                 this.currentFrame = 0;
+                if (data.animationRanges) {
+                    this.animationRanges = data.animationRanges;
+                    this.updateAnimationRangesList();
+                }
                 if (data.animationSettings) {
                     this.enableTweening = data.animationSettings.enableTweening;
                     this.animSpeed = data.animationSettings.animSpeed;
@@ -2581,6 +3164,10 @@ window.${moduleName} = ${moduleName};`;
                 this.frames = data.frames;
                 this.totalFrames = this.frames.length;
                 this.currentFrame = 0;
+                if (data.animationRanges) {
+                    this.animationRanges = data.animationRanges;
+                    this.updateAnimationRangesList();
+                }
                 if (data.animationSettings) {
                     this.enableTweening = data.animationSettings.enableTweening;
                     this.animSpeed = data.animationSettings.animSpeed;

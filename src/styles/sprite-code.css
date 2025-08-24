@@ -1120,7 +1120,7 @@ select:focus-visible {
 }
 
 #animationRangesOptions-sprite button {
-    background: linear-gradient(135deg, #64B5F6, #d1cf47);
+    background: linear-gradient(135deg, #777e83, #79786d);
     color: #222;
     border: none;
     border-radius: 3px;
@@ -1129,10 +1129,10 @@ select:focus-visible {
     cursor: pointer;
     font-size: 1em;
     transition: background 0.2s;
-    min-width: 60px;
+    min-width: 30px;
 }
 
 #animationRangesOptions-sprite button:hover {
-    background: linear-gradient(135deg, #d1cf47, #64B5F6);
+    background: linear-gradient(135deg, #b8b779, #5e6f7e);
     color: #222;
 }
