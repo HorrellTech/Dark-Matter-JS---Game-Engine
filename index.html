@@ -248,6 +248,21 @@
                 </button>
             </div>
 
+            <div class="sprite-grid-controls" style="display: flex; gap: 16px; align-items: center; margin-bottom: 8px;">
+                <label>
+                    <input type="checkbox" id="showGrid-sprite" checked>
+                    Show Grid
+                </label>
+                <label>
+                    Grid Size:
+                    <input type="number" id="gridSize-sprite" value="16" min="8" max="128" style="width: 60px;">
+                </label>
+                <label>
+                    <input type="checkbox" id="snapToGrid-sprite" checked>
+                    Snap to Grid
+                </label>
+            </div>
+
             <div class="main-area-sprite">
                 <div class="left-panel-sprite">
                     <div class="tool-section-sprite">
@@ -257,7 +272,7 @@
                             <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle"><i class="fas fa-square"></i></button>
                             <button class="tool-btn-sprite" data-tool="circle" title="Circle"><i class="fas fa-circle"></i></button>
                             <button class="tool-btn-sprite" data-tool="triangle" title="Triangle"><i class="fas fa-play fa-rotate-270"></i></button>
-                            <button class="tool-btn-sprite" data-tool="line" title="Line"><i class="fas fa-slash"></i></button>
+                            <!--button class="tool-btn-sprite" data-tool="line" title="Line"><i class="fas fa-slash"></i></button-->
                             <button class="tool-btn-sprite" data-tool="spline" title="Spline"><i class="fas fa-wave-square"></i></button>
                             <!--button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button-->
                             <!--button class="tool-btn-sprite" data-tool="text" title="Text">T</button-->

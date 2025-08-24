@@ -68,6 +68,10 @@ class SpriteCode {
         this.resizeHandle = null;
         this.selectedPoint = null;
 
+        this.gridEnabled = true;
+        this.gridSize = 16;
+        this.snapEnabled = true;
+
         this.initializeEventListeners();
     }
 
@@ -83,6 +87,18 @@ class SpriteCode {
     }
 
     initializeEventListeners() {
+        document.getElementById('showGrid-sprite').addEventListener('change', (e) => {
+            this.gridEnabled = e.target.checked;
+            this.redrawCanvas();
+        });
+        document.getElementById('gridSize-sprite').addEventListener('input', (e) => {
+            this.gridSize = Math.max(4, Math.min(64, parseInt(e.target.value) || 16));
+            this.redrawCanvas();
+        });
+        document.getElementById('snapToGrid-sprite').addEventListener('change', (e) => {
+            this.snapEnabled = e.target.checked;
+        });
+
         // Tool selection
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('tool-btn-sprite')) {
@@ -1697,6 +1713,13 @@ window.${moduleName} = ${moduleName};`;
         this.rotationStart = Math.atan2(mouseY - this.rotationCenterY, mouseX - this.rotationCenterX) * 180 / Math.PI;
         this.originalRotation = this.selectedShape.rotation || 0;
 
+        // Store original spline points only if not already set
+        if (this.selectedShape.type === 'spline') {
+            this.originalSplinePoints = this.selectedShape.points.map(pt => ({ x: pt.x, y: pt.y }));
+        } else {
+            this.originalSplinePoints = null;
+        }
+
         e.preventDefault();
     }
 
@@ -1823,6 +1846,8 @@ window.${moduleName} = ${moduleName};`;
     }
 
     getShapeBounds(shape) {
+        let bounds;
+
         if (shape.type === 'spline') {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             shape.points.forEach(pt => {
@@ -1831,7 +1856,7 @@ window.${moduleName} = ${moduleName};`;
                 maxX = Math.max(maxX, pt.x);
                 maxY = Math.max(maxY, pt.y);
             });
-            return {
+            bounds = {
                 x: minX,
                 y: minY,
                 width: maxX - minX,
@@ -1839,7 +1864,7 @@ window.${moduleName} = ${moduleName};`;
             };
         } else if (shape.type === 'circle') {
             const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
-            return {
+            bounds = {
                 x: shape.startX - radius,
                 y: shape.startY - radius,
                 width: radius * 2,
@@ -1850,13 +1875,56 @@ window.${moduleName} = ${moduleName};`;
             const minY = Math.min(shape.startY, shape.endY);
             const maxX = Math.max(shape.startX, shape.endX);
             const maxY = Math.max(shape.startY, shape.endY);
-            return {
+            bounds = {
                 x: minX,
                 y: minY,
                 width: maxX - minX,
                 height: maxY - minY
             };
         }
+
+        // If shape has rotation, calculate rotated bounds
+        if (shape.rotation && shape.rotation !== 0) {
+            return this.getRotatedBounds(shape, bounds);
+        }
+
+        return bounds;
+    }
+
+    getRotatedBounds(shape, originalBounds) {
+        const centerX = originalBounds.x + originalBounds.width / 2;
+        const centerY = originalBounds.y + originalBounds.height / 2;
+        const rotation = shape.rotation * Math.PI / 180;
+
+        // Get all four corners of the original bounds
+        const corners = [
+            { x: originalBounds.x, y: originalBounds.y },
+            { x: originalBounds.x + originalBounds.width, y: originalBounds.y },
+            { x: originalBounds.x, y: originalBounds.y + originalBounds.height },
+            { x: originalBounds.x + originalBounds.width, y: originalBounds.y + originalBounds.height }
+        ];
+
+        // Rotate all corners and find new bounds
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        corners.forEach(corner => {
+            const dx = corner.x - centerX;
+            const dy = corner.y - centerY;
+            const rotatedX = centerX + (dx * Math.cos(rotation) - dy * Math.sin(rotation));
+            const rotatedY = centerY + (dx * Math.sin(rotation) + dy * Math.cos(rotation));
+
+            minX = Math.min(minX, rotatedX);
+            minY = Math.min(minY, rotatedY);
+            maxX = Math.max(maxX, rotatedX);
+            maxY = Math.max(maxY, rotatedY);
+        });
+
+        return {
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
     }
 
     pointInPolygon(x, y, polygon) {
@@ -1992,13 +2060,17 @@ window.${moduleName} = ${moduleName};`;
 
     handleMouseDown(e) {
         const rect = this.canvas.getBoundingClientRect();
-        this.startX = e.clientX - rect.left;
-        this.startY = e.clientY - rect.top;
+        let { x, y } = this.snapToGrid(e.clientX - rect.left, e.clientY - rect.top, e);
+        this.startX = x;
+        this.startY = y;
 
         // Check for resize handles first
         if (this.selectedShape) {
             const handle = this.getResizeHandleAt(this.startX, this.startY, this.selectedShape);
-            if (handle === 'hotspot') {
+            if (handle === 'rotate') {
+                this.handleRotationStart(e);
+                return;
+            } else if (handle === 'hotspot') {
                 this.isDraggingHotspot = true;
                 return;
             } else if (handle) {
@@ -2062,8 +2134,9 @@ window.${moduleName} = ${moduleName};`;
 
     handleMouseMove(e) {
         const rect = this.canvas.getBoundingClientRect();
-        const currentX = e.clientX - rect.left;
-        const currentY = e.clientY - rect.top;
+        let { x, y } = this.snapToGrid(e.clientX - rect.left, e.clientY - rect.top, e);
+        const currentX = x;
+        const currentY = y;
 
         if (this.isResizing && this.selectedShape) {
             this.handleResize(e);
@@ -2124,6 +2197,7 @@ window.${moduleName} = ${moduleName};`;
         // Stop rotating if in progress
         if (this.isRotating) {
             this.isRotating = false;
+            this.originalSplinePoints = null; // Clear after rotation ends
             return;
         }
 
@@ -2143,21 +2217,18 @@ window.${moduleName} = ${moduleName};`;
         if (!this.drawing || this.currentTool === 'spline') return;
 
         const rect = this.canvas.getBoundingClientRect();
-        const endX = e.clientX - rect.left;
-        const endY = e.clientY - rect.top;
-
+        let { x, y } = this.snapToGrid(e.clientX - rect.left, e.clientY - rect.top);
+        const endX = x;
+        const endY = y;
         this.createShape(this.startX, this.startY, endX, endY);
         this.drawing = false;
     }
 
     handleClick(e) {
         if (this.currentTool !== 'spline') return;
-
         const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        if (e.detail === 2) { // Double click
+        let { x, y } = this.snapToGrid(e.clientX - rect.left, e.clientY - rect.top);
+        if (e.detail === 2) {
             if (this.tempSplinePoints.length > 2) {
                 this.createSpline();
             }
@@ -2208,25 +2279,34 @@ window.${moduleName} = ${moduleName};`;
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        // Use hotspot as rotation center instead of shape center
-        const hotspotWorld = this.getWorldHotspotPosition(this.selectedShape);
-        const pivotX = hotspotWorld.x;
-        const pivotY = hotspotWorld.y;
+        const bounds = this.getShapeBounds(this.selectedShape);
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
 
-        const currentAngle = Math.atan2(mouseY - pivotY, mouseX - pivotX) * 180 / Math.PI;
+        const currentAngle = Math.atan2(mouseY - centerY, mouseX - centerX) * 180 / Math.PI;
         const deltaRotation = currentAngle - this.rotationStart;
         const newRotation = this.originalRotation + deltaRotation;
 
-        this.selectedShape.rotation = newRotation;
-
-        // Rotate children around the hotspot
-        if (this.selectedShape.children && this.selectedShape.children.length > 0) {
-            this.rotateChildren(this.selectedShape, deltaRotation, pivotX, pivotY);
+        if (this.selectedShape.type === 'spline' && this.originalSplinePoints) {
+            const radians = newRotation * Math.PI / 180; // Use total rotation, not just delta
+            this.selectedShape.points = this.originalSplinePoints.map(pt => {
+                const dx = pt.x - centerX;
+                const dy = pt.y - centerY;
+                return {
+                    x: centerX + (dx * Math.cos(radians) - dy * Math.sin(radians)),
+                    y: centerY + (dx * Math.sin(radians) + dy * Math.cos(radians))
+                };
+            });
+            this.selectedShape.rotation = newRotation % 360;
+        } else {
+            this.selectedShape.rotation = newRotation % 360;
         }
 
         // Update UI
-        document.getElementById('shapeRotation-sprite').value = newRotation;
-        document.getElementById('rotationValue-sprite').textContent = Math.round(newRotation);
+        if (document.getElementById('shapeRotation-sprite')) {
+            document.getElementById('shapeRotation-sprite').value = newRotation;
+            document.getElementById('rotationValue-sprite').textContent = Math.round(newRotation);
+        }
 
         this.redrawCanvas();
     }
@@ -2324,7 +2404,14 @@ window.${moduleName} = ${moduleName};`;
     getResizeHandleAt(x, y, shape, hitSize = 12) {
         const bounds = this.getShapeBounds(shape);
 
-        // Check rotation hotspot first
+        // Check rotation handle first (above the shape)
+        const centerX = bounds.x + bounds.width / 2;
+        const handleY = bounds.y - 30;
+        if (Math.abs(x - centerX) < hitSize && Math.abs(y - handleY) < hitSize) {
+            return 'rotate';
+        }
+
+        // Check rotation hotspot
         const hotspotWorld = this.getWorldHotspotPosition(shape);
         if (Math.abs(x - hotspotWorld.x) < hitSize && Math.abs(y - hotspotWorld.y) < hitSize) {
             return 'hotspot';
@@ -2412,6 +2499,16 @@ window.${moduleName} = ${moduleName};`;
         this.ctx.setLineDash([5, 5]);
 
         if (this.selectedShape.type === 'spline') {
+            // Draw bounding box for splines too
+            const bounds = this.getShapeBounds(this.selectedShape);
+            this.ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+
+            // Draw resize handles for splines
+            this.drawResizeHandles(bounds);
+
+            // Draw rotation handle for splines
+            this.drawRotationHandle(bounds);
+
             // Draw control points for splines
             this.selectedShape.points.forEach(point => {
                 this.ctx.fillStyle = '#00ff00';
@@ -2424,10 +2521,58 @@ window.${moduleName} = ${moduleName};`;
 
             // Draw resize handles
             this.drawResizeHandles(bounds);
+
+            // Draw rotation handle
+            this.drawRotationHandle(bounds);
         }
 
         // Draw rotation hotspot
         this.drawRotationHotspot(this.selectedShape);
+    }
+
+    drawRotationHandle(bounds) {
+        const centerX = bounds.x + bounds.width / 2;
+        const centerY = bounds.y + bounds.height / 2;
+
+        // Position rotation handle above the shape
+        const handleDistance = 30;
+        const handleX = centerX;
+        const handleY = bounds.y - handleDistance;
+
+        // Draw line from top center to rotation handle
+        this.ctx.save();
+        this.ctx.setLineDash([2, 2]);
+        this.ctx.strokeStyle = '#00ff00';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(centerX, bounds.y);
+        this.ctx.lineTo(handleX, handleY);
+        this.ctx.stroke();
+
+        // Draw rotation handle circle
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.strokeStyle = '#ffffff';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(handleX, handleY, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        // Draw rotation arrow inside
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.arc(handleX, handleY, 5, -Math.PI / 4, Math.PI, false);
+        this.ctx.stroke();
+        // Arrow head
+        this.ctx.beginPath();
+        this.ctx.moveTo(handleX - 4, handleY + 2);
+        this.ctx.lineTo(handleX - 2, handleY + 4);
+        this.ctx.lineTo(handleX - 2, handleY);
+        this.ctx.stroke();
+
+        this.ctx.restore();
     }
 
     drawRotationHotspot(shape) {
@@ -2599,7 +2744,7 @@ window.${moduleName} = ${moduleName};`;
 
     redrawCanvas() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.drawCenterDot();
+        this.drawGrid();
 
         // Draw connection lines between grouped shapes
         this.groups.forEach(group => {
@@ -2630,6 +2775,8 @@ window.${moduleName} = ${moduleName};`;
         // Draw selection indicators on top
         this.drawSelectionIndicators();
         this.updateShapesList();
+
+        this.drawCenterDot();
     }
 
     getWorldHotspotPosition(shape) {
@@ -2637,9 +2784,12 @@ window.${moduleName} = ${moduleName};`;
         const centerX = bounds.x + bounds.width / 2;
         const centerY = bounds.y + bounds.height / 2;
 
+        // Ensure rotationHotspot is always defined
+        const hotspot = shape.rotationHotspot || { x: 0, y: 0 };
+
         return {
-            x: centerX + shape.rotationHotspot.x,
-            y: centerY + shape.rotationHotspot.y
+            x: centerX + hotspot.x,
+            y: centerY + hotspot.y
         };
     }
 
@@ -3035,6 +3185,51 @@ window.${moduleName} = ${moduleName};`;
         }
     }
 
+    // Draw grid on canvas
+    drawGrid() {
+        if (!this.gridEnabled) return;
+
+        const size = this.gridSize;
+        const w = this.canvas.width;
+        const h = this.canvas.height;
+
+        this.ctx.save();
+        this.ctx.strokeStyle = '#444';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([]);
+        
+        for (let x = 0; x <= w; x += size) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, h);
+            this.ctx.stroke();
+        }
+
+        for (let y = 0; y <= h; y += size) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(w, y);
+            this.ctx.stroke();
+        }
+
+        this.ctx.restore();
+    }
+
+    snapToGrid(x, y, e = null) {
+        // If dragging and Ctrl is held, do not snap
+        if (e && (e.ctrlKey || e.metaKey)) {
+            return { x, y };
+        }
+        if (this.gridEnabled && this.snapEnabled) {
+            const size = this.gridSize;
+            return {
+                x: Math.round(x / size) * size,
+                y: Math.round(y / size) * size
+            };
+        }
+        return { x, y };
+    }
+
     saveState() {
         this.history = this.history || [];
         this.history.push(JSON.stringify(this.shapes));
@@ -3071,6 +3266,16 @@ window.${moduleName} = ${moduleName};`;
             alert('FileBrowser is not available!');
             return;
         }
+        const shapesWithGroups = this.frames.map(frame =>
+            frame.map(shape => ({
+                ...shape,
+                rotationHotspot: shape.rotationHotspot || { x: 0, y: 0 },
+                isParent: shape.isParent || false,
+                isGrouped: shape.isGrouped || false,
+                parentShapeIndex: shape.parentShape ? this.shapes.indexOf(shape.parentShape) : null,
+                childrenIndices: shape.children ? shape.children.map(child => this.shapes.indexOf(child)) : []
+            }))
+        );
         const data = {
             frames: this.frames,
             animationRanges: this.animationRanges,
@@ -3126,9 +3331,30 @@ window.${moduleName} = ${moduleName};`;
         try {
             const data = JSON.parse(content);
             if (data.frames) {
-                this.frames = data.frames;
+                this.frames = data.frames.map(frame =>
+                    frame.map(shape => {
+                        shape.rotationHotspot = shape.rotationHotspot || { x: 0, y: 0 };
+                        shape.isParent = shape.isParent || false;
+                        shape.isGrouped = shape.isGrouped || false;
+                        shape.children = [];
+                        shape.parentShape = null;
+                        return shape;
+                    })
+                );
                 this.totalFrames = this.frames.length;
                 this.currentFrame = 0;
+                // Re-link parent/children after all shapes are created
+                this.frames.forEach(frame => {
+                    frame.forEach((shape, idx) => {
+                        if (shape.childrenIndices) {
+                            shape.children = shape.childrenIndices.map(i => frame[i]).filter(Boolean);
+                        }
+                        if (shape.parentShapeIndex !== null && frame[shape.parentShapeIndex]) {
+                            shape.parentShape = frame[shape.parentShapeIndex];
+                        }
+                    });
+                });
+
                 if (data.animationRanges) {
                     this.animationRanges = data.animationRanges;
                     this.updateAnimationRangesList();
@@ -3161,9 +3387,30 @@ window.${moduleName} = ${moduleName};`;
         try {
             const data = JSON.parse(content);
             if (data.frames) {
-                this.frames = data.frames;
+                this.frames = data.frames.map(frame =>
+                    frame.map(shape => {
+                        shape.rotationHotspot = shape.rotationHotspot || { x: 0, y: 0 };
+                        shape.isParent = shape.isParent || false;
+                        shape.isGrouped = shape.isGrouped || false;
+                        shape.children = [];
+                        shape.parentShape = null;
+                        return shape;
+                    })
+                );
                 this.totalFrames = this.frames.length;
                 this.currentFrame = 0;
+                // Re-link parent/children after all shapes are created
+                this.frames.forEach(frame => {
+                    frame.forEach((shape, idx) => {
+                        if (shape.childrenIndices) {
+                            shape.children = shape.childrenIndices.map(i => frame[i]).filter(Boolean);
+                        }
+                        if (shape.parentShapeIndex !== null && frame[shape.parentShapeIndex]) {
+                            shape.parentShape = frame[shape.parentShapeIndex];
+                        }
+                    });
+                });
+
                 if (data.animationRanges) {
                     this.animationRanges = data.animationRanges;
                     this.updateAnimationRangesList();
