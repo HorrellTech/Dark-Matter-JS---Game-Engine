@@ -1812,14 +1812,33 @@ window.${moduleName} = ${moduleName};`;
         this.startX = e.clientX - rect.left;
         this.startY = e.clientY - rect.top;
 
+        // Check for resize handles first
+        if (this.selectedShape) {
+            const handle = this.getResizeHandleAt(this.startX, this.startY, this.selectedShape);
+            if (handle) {
+                this.handleResizeStart(e, handle);
+                return;
+            }
+            // For splines, check for control points
+            if (this.selectedShape.type === 'spline') {
+                const pt = this.getSplinePointAt(this.startX, this.startY, this.selectedShape, 12); // Larger hit area
+                if (pt) {
+                    this.selectedPoint = pt;
+                    this.isDragging = true;
+                    return;
+                }
+            }
+        }
+
         if (this.currentTool === 'select') {
             const shape = this.getShapeAtPoint(this.startX, this.startY);
             this.selectedShape = shape;
 
             if (shape) {
+                this.selectedShapeIndex = this.shapes.indexOf(shape);
+
                 if (shape.type === 'spline') {
-                    // Check if clicking on a control point
-                    this.selectedPoint = this.getSplinePointAt(this.startX, this.startY, shape);
+                    this.selectedPoint = this.getSplinePointAt(this.startX, this.startY, shape, 12);
                 }
 
                 this.isDragging = true;
@@ -1827,6 +1846,10 @@ window.${moduleName} = ${moduleName};`;
                     x: this.startX - (shape.startX || shape.points[0].x),
                     y: this.startY - (shape.startY || shape.points[0].y)
                 };
+            } else {
+                this.selectedShape = null;
+                this.selectedShapeIndex = -1;
+                this.updateShapesList();
             }
             this.updateUIFromSelectedShape();
             this.redrawCanvas();
@@ -1834,7 +1857,6 @@ window.${moduleName} = ${moduleName};`;
         }
 
         if (this.currentTool === 'spline') {
-            // Spline tool uses click events instead
             return;
         }
 
@@ -1892,11 +1914,27 @@ window.${moduleName} = ${moduleName};`;
     }
 
     handleMouseUp(e) {
+        // Stop resizing if in progress
+        if (this.isResizing) {
+            this.isResizing = false;
+            this.resizeHandle = null;
+            return;
+        }
+
+        // Stop rotating if in progress
+        if (this.isRotating) {
+            this.isRotating = false;
+            return;
+        }
+
+        // Stop dragging spline point or shape
         if (this.isDragging && this.currentTool === 'select') {
             this.isDragging = false;
             this.selectedPoint = null;
             return;
         }
+
+        // Stop drawing new shape
         if (!this.drawing || this.currentTool === 'spline') return;
 
         const rect = this.canvas.getBoundingClientRect();
@@ -1975,6 +2013,22 @@ window.${moduleName} = ${moduleName};`;
         document.getElementById('rotationValue-sprite').textContent = Math.round(rotation);
 
         this.redrawCanvas();
+    }
+
+    getResizeHandleAt(x, y, shape, hitSize = 12) {
+        const bounds = this.getShapeBounds(shape);
+        const handles = [
+            { x: bounds.x, y: bounds.y, type: 'nw' },
+            { x: bounds.x + bounds.width, y: bounds.y, type: 'ne' },
+            { x: bounds.x, y: bounds.y + bounds.height, type: 'sw' },
+            { x: bounds.x + bounds.width, y: bounds.y + bounds.height, type: 'se' }
+        ];
+        for (let h of handles) {
+            if (Math.abs(x - h.x) < hitSize && Math.abs(y - h.y) < hitSize) {
+                return h.type;
+            }
+        }
+        return null;
     }
 
     applyBoundsToShape(shape, bounds) {
@@ -2123,6 +2177,8 @@ window.${moduleName} = ${moduleName};`;
             if (index > -1) {
                 this.shapes.splice(index, 1);
                 this.selectedShape = null;
+                this.selectedShapeIndex = -1;
+                this.updateShapesList();
                 this.redrawCanvas();
             }
         }
@@ -2571,12 +2627,12 @@ window.${moduleName} = ${moduleName};`;
         return Math.sqrt(dx * dx + dy * dy);
     }
 
-    getSplinePointAt(x, y, shape) {
+    getSplinePointAt(x, y, shape, threshold = 12) {
         if (!shape.points) return null;
         for (let pt of shape.points) {
             const dx = x - pt.x;
             const dy = y - pt.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 8) { // 8px threshold
+            if (Math.sqrt(dx * dx + dy * dy) < threshold) {
                 return pt;
             }
         }
