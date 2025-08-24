@@ -3543,6 +3543,122 @@ window.${moduleName} = ${moduleName};`;
     closeCodeModal() {
         document.getElementById('codeModal-sprite').style.display = 'none';
     }
+
+    showDocumentation() {
+        const docsModal = new SpriteCodeDocs({
+            primaryColor: '#a9c3eeff',
+            modalWidth: '85vw',
+            modalHeight: '75vh'
+        });
+
+        docsModal.addFormattedDocumentation('Getting Started', 'Basic Drawing', `
+# Drawing Shapes
+
+SpriteCode lets you draw and manipulate several basic shapes: **Circle**, **Rectangle**, and **Spline**.
+
+## Rectangle
+
+A rectangle is defined by its starting and ending coordinates. When you draw a rectangle, a new shape object is created with properties such as position, width, height, fill color, stroke color, and more. You can move, resize, rotate, and apply transformations to each rectangle independently.
+
+## Circle
+
+A circle is drawn by specifying a center point and a radius (calculated from the distance between start and end points). Each circle is its own object, with properties for position, radius, fill, stroke, and transformation options. Circles can be freely moved, scaled, and rotated around the canvas.
+
+## Spline
+
+A spline is a flexible shape defined by a series of control points. You can add points by clicking, and finish the spline when ready. Splines can be open or closed, filled or stroked, and support curve intensity for smoothness. Each spline is an object that can be transformed, rotated, and edited point-by-point.
+
+---
+
+## Shape Objects
+
+Every shape you draw is stored as an individual object. This means you can:
+
+- Select and move shapes anywhere on the canvas
+- Resize, rotate, and scale each shape independently
+- Change colors, gradients, and other visual properties
+- Group shapes for combined transformations
+
+This object-based approach gives you full control over your drawing, making it easy to create complex graphics and animations.
+`);
+
+docsModal.addFormattedDocumentation('Getting Started', 'Rotation Hotspot', `
+# Rotation Hotspot
+
+Each shape in SpriteCode has a **rotation hotspot**, shown as an orange dot in the center of the shape.  
+This hotspot determines the pivot point for rotation.
+
+## How to Use
+
+- **Move the orange dot** to set a custom pivot for rotation.
+- When you rotate the shape, it will spin around this hotspot instead of its geometric center.
+- This is useful for animating doors, levers, or any object where you want precise control over the rotation origin.
+
+You can drag the hotspot anywhere within or around the shape to achieve the desired rotation behavior.
+`);
+
+docsModal.addFormattedDocumentation('Getting Started', 'Grouping Shapes', `
+# Grouping Shapes
+
+SpriteCode allows you to group shapes together for combined transformations, which is especially useful for rigging characters or creating complex objects.
+
+## How to Group Shapes
+
+1. **Hold Control (Ctrl)** and click a shape on the canvas.  
+   - If no other shapes are selected, this shape becomes the parent shape.
+2. While still holding Control, click additional shapes you want to add as children to the parent.
+3. Click the **Group Shapes** button.
+
+The selected child shapes will now move, rotate, and scale relative to the parent shape.  
+You can select the parent to transform the entire group, or select individual children to adjust them independently.
+
+Grouping shapes makes it easy to build articulated objects, such as characters with limbs, and animate them as a single unit.
+`);
+
+docsModal.addFormattedDocumentation('Getting Started', 'Animation', `
+# Animation
+
+SpriteCode supports frame-based animation, allowing you to bring your drawings to life.
+
+## How to Animate
+
+1. Click the **Animation** button at the bottom right of the workspace to open the animation panel.
+2. Add or remove frames using the panel controls.
+3. For each frame, move, rotate, or transform your shapes to define the animation sequence.
+4. Play your animation to preview how it looks.
+
+## Tweening
+
+For smoother transitions between frames, enable the **Tween** options. Tweening automatically interpolates shape positions, rotations, and other properties between frames, creating fluid motion.
+
+You can adjust tween type and speed for different animation effects.
+
+Animation makes it easy to create moving graphics, character actions, and visual effects for your game objects.
+`);
+
+docsModal.addFormattedDocumentation('Getting Started', 'Exporting to Dark Matter', `
+# Exporting Your Drawing as a Game Object Module
+
+Once you've created your shapes and animation in SpriteCode, you can export your drawing as a reusable module for the Dark Matter engine.
+
+## How to Export
+
+1. Click the **Export to file browser** button in the SpriteCode interface.
+2. Enter a name for your module when prompted.
+3. The exported module will appear in the Dark Matter file browser under **CustomDrawingModules**.
+
+## Using the Exported Module
+
+- Drag the exported module from the file browser onto the inspector of any game object in your scene.
+- The drawing will automatically render at the position of the game object.
+- You can adjust properties like scale, offset, animation, and more directly from the inspector.
+
+This workflow lets you visually design graphics and instantly use them as components in your Dark Matter games, making it easy to create custom visuals and animated objects.
+`);
+
+        // Open the modal
+        docsModal.open();
+    }
 }
 
 /**
