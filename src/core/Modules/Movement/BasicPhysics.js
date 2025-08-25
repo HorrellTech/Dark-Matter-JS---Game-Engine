@@ -175,13 +175,13 @@ class BasicPhysics extends Module {
         this.velocity.y *= this.friction;
         this.angularVelocity *= this.angularFriction;
 
-        if(!this.fixedPosition) {
+        if (!this.fixedPosition) {
             // Update position and rotation
             this.gameObject.position.x += this.velocity.x * deltaTime;
             this.gameObject.position.y += this.velocity.y * deltaTime;
         }
 
-        if(!this.fixedRotation) {
+        if (!this.fixedRotation) {
             this.gameObject.angle += this.angularVelocity * deltaTime;
         }
 
@@ -304,56 +304,67 @@ class BasicPhysics extends Module {
             var circleRadius = otherPhysics.colliderRadius;
         }
 
-        // Transform circle position into rectangle's local space
-        const rad = (rectAngle || 0) * Math.PI / 180;
-        const cos = Math.cos(-rad);
-        const sin = Math.sin(-rad);
-        const relX = cos * (circle.x - rect.x) - sin * (circle.y - rect.y);
-        const relY = sin * (circle.x - rect.x) + cos * (circle.y - rect.y);
+        // Get rectangle corners
+        const rectCorners = this.getRectangleCorners(rect, { width: rectWidth, height: rectHeight }, rectAngle);
 
-        // Clamp to rectangle bounds to find closest point
-        const hw = rectWidth / 2;
-        const hh = rectHeight / 2;
-        const closestX = Math.max(-hw, Math.min(relX, hw));
-        const closestY = Math.max(-hh, Math.min(relY, hh));
+        // Check if circle center is inside rectangle
+        const isInside = this.pointInPolygon(circle, rectCorners);
 
-        // Find distance from circle center to closest point
-        const distX = relX - closestX;
-        const distY = relY - closestY;
-        const dist = Math.sqrt(distX * distX + distY * distY);
+        let closestPoint = { x: 0, y: 0 };
+        let minDist = Infinity;
 
-        if (dist < circleRadius) {
-            // Calculate collision normal in local space
-            let normalX = distX;
-            let normalY = distY;
-            if (dist === 0) {
-                // Circle center is inside rectangle
-                // Use direction from rectangle center to circle center
-                normalX = relX;
-                normalY = relY;
-                const len = Math.sqrt(normalX * normalX + normalY * normalY) || 1;
-                normalX /= len;
-                normalY /= len;
+        if (isInside) {
+            // Circle is inside - find closest edge
+            for (let i = 0; i < rectCorners.length; i++) {
+                const p1 = rectCorners[i];
+                const p2 = rectCorners[(i + 1) % rectCorners.length];
+                const closest = this.closestPointOnLineSegment(circle, p1, p2);
+                const dist = Math.sqrt((circle.x - closest.x) ** 2 + (circle.y - closest.y) ** 2);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestPoint = closest;
+                }
+            }
+        } else {
+            // Circle is outside - find closest point on rectangle perimeter
+            for (let i = 0; i < rectCorners.length; i++) {
+                const p1 = rectCorners[i];
+                const p2 = rectCorners[(i + 1) % rectCorners.length];
+                const closest = this.closestPointOnLineSegment(circle, p1, p2);
+                const dist = Math.sqrt((circle.x - closest.x) ** 2 + (circle.y - closest.y) ** 2);
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestPoint = closest;
+                }
+            }
+        }
+
+        const distance = Math.sqrt((circle.x - closestPoint.x) ** 2 + (circle.y - closestPoint.y) ** 2);
+
+        if ((isInside && distance < circleRadius) || (!isInside && distance <= circleRadius)) {
+            let normalX, normalY;
+            if (distance === 0) {
+                // Fallback normal
+                normalX = 1;
+                normalY = 0;
             } else {
-                normalX /= dist;
-                normalY /= dist;
+                if (isInside) {
+                    // Normal points outward from rectangle
+                    normalX = (closestPoint.x - circle.x) / distance;
+                    normalY = (closestPoint.y - circle.y) / distance;
+                } else {
+                    // Normal points from rectangle to circle
+                    normalX = (circle.x - closestPoint.x) / distance;
+                    normalY = (circle.y - closestPoint.y) / distance;
+                }
             }
 
-            // Transform normal back to world space
-            const worldNormalX = cos * normalX - sin * normalY;
-            const worldNormalY = sin * normalX + cos * normalY;
+            const penetration = isInside ? circleRadius - distance : circleRadius - distance;
 
-            // Calculate contact point in world space
-            const contactLocalX = closestX;
-            const contactLocalY = closestY;
-            const contactX = rect.x + cos * contactLocalX - sin * contactLocalY;
-            const contactY = rect.y + sin * contactLocalX + cos * contactLocalY;
-
-            // Apply collision response (now both objects get angular impulse)
             this.resolveCollision(
                 circlePhysics, rectPhysics, circleObj, rectObj,
-                worldNormalX, worldNormalY, contactX, contactY,
-                circleRadius - dist
+                normalX, normalY, closestPoint.x, closestPoint.y,
+                Math.abs(penetration)
             );
         }
     }
@@ -409,6 +420,21 @@ class BasicPhysics extends Module {
                 collision.penetration
             );
         }
+    }
+
+    closestPointOnLineSegment(point, lineStart, lineEnd) {
+        const dx = lineEnd.x - lineStart.x;
+        const dy = lineEnd.y - lineStart.y;
+        const length = dx * dx + dy * dy;
+        
+        if (length === 0) return { x: lineStart.x, y: lineStart.y };
+        
+        const t = Math.max(0, Math.min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / length));
+        
+        return {
+            x: lineStart.x + t * dx,
+            y: lineStart.y + t * dy
+        };
     }
 
     resolveCollision(physicsA, physicsB, objA, objB, normalX, normalY, contactX, contactY, penetration) {
@@ -507,12 +533,21 @@ class BasicPhysics extends Module {
             physicsB.angularVelocity += (torqueB / IB) * (1 + restitution + gravityMag * 0.1);
         }
 
-        // Separate objects to prevent overlap (move to contact point, not past)
-        if (!physicsA.fixedPosition) {
+        // Separate objects to prevent overlap - improved for dynamic-to-dynamic
+        const totalMass = physicsA.mass + physicsB.mass;
+        const separationA = physicsB.mass / totalMass;
+        const separationB = physicsA.mass / totalMass;
+
+        if (!physicsA.fixedPosition && !physicsB.fixedPosition) {
+            // Both dynamic - separate based on mass ratio
+            objA.position.x -= normalX * penetration * separationA;
+            objA.position.y -= normalY * penetration * separationA;
+            objB.position.x += normalX * penetration * separationB;
+            objB.position.y += normalY * penetration * separationB;
+        } else if (!physicsA.fixedPosition) {
             objA.position.x -= normalX * penetration;
             objA.position.y -= normalY * penetration;
-        }
-        if (!physicsB.fixedPosition) {
+        } else if (!physicsB.fixedPosition) {
             objB.position.x += normalX * penetration;
             objB.position.y += normalY * penetration;
         }

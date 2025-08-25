@@ -376,6 +376,8 @@ class ProjectManager {
                 return;
             }
 
+            this.showLoadingOverlay("Loading project...");
+
             try {
                 const zip = await JSZip.loadAsync(file);
                 console.log("Project archive loaded.");
@@ -398,6 +400,8 @@ class ProjectManager {
                     this.editor.inspector.inspectObject(null);
                 }
                 console.log("Cleared current project state.");
+
+                this.showLoadingOverlay("Restoring project...");
 
                 // 1.1. Reset engine state if engine exists
                 if (window.engine) {
@@ -444,6 +448,8 @@ class ProjectManager {
                 this.currentProjectName = projectData.projectName || "LoadedProject";
                 console.log(`Loaded project.json for: ${this.currentProjectName}`);
 
+                this.showLoadingOverlay("Restoring assets...");
+
                 // 3. Restore assets
                 console.log("Restoring assets...");
                 const assetPromises = [];
@@ -466,6 +472,8 @@ class ProjectManager {
                 await this.fileBrowser.navigateTo('/'); // Refresh file browser view
                 console.log("Assets restored.");
 
+                this.showLoadingOverlay("Reloading Prefabs and Modules...");
+
                 // Reload prefabs into memory
                 if (this.editor.hierarchy && this.editor.hierarchy.prefabManager) {
                     await this.editor.hierarchy.prefabManager.loadExistingPrefabs();
@@ -485,6 +493,8 @@ class ProjectManager {
                 console.log("Scanning for module scripts...");
                 await this.fileBrowser.scanForModuleScripts();
                 console.log("Module scripts scanned and registered.");
+
+                this.showLoadingOverlay("Restoring scenes...");
 
                 // 4. Restore scenes
                 console.log("Restoring scenes...");
@@ -507,6 +517,8 @@ class ProjectManager {
                 }
                 this.editor.scenes = loadedScenes;
                 console.log(`${this.editor.scenes.length} scenes restored.`);
+
+                this.showLoadingOverlay("Restoring editor settings...");
 
                 // 5. Restore editor settings
                 console.log("Restoring editor settings...");
@@ -541,6 +553,8 @@ class ProjectManager {
                         localStorage.setItem('moduleFolderCollapseStates', JSON.stringify(settings.inspectorFolderCollapseStates));
                     }
 
+                    this.showLoadingOverlay("Restoring active scene...");
+
                     // Restore active scene
                     const activeScene = this.editor.scenes.find(s => s.name === settings.activeSceneName);
                     if (activeScene) {
@@ -550,6 +564,8 @@ class ProjectManager {
                     } else {
                         this.editor.createDefaultScene(); // Fallback if no scenes loaded
                     }
+
+                    this.showLoadingOverlay("Restoring selected object...");
 
                     // Restore selected object (after hierarchy is populated by setActiveScene)
                     if (settings.selectedObjectId && this.editor.activeScene) {
@@ -587,6 +603,8 @@ class ProjectManager {
                 this.editor.fileBrowser.showNotification("Project loaded successfully!", "success");
                 console.log("Project loaded successfully.");
 
+                this.hideLoadingOverlay();
+
                 this.isSavingOrLoading = false;
 
             } catch (error) {
@@ -594,11 +612,13 @@ class ProjectManager {
                 this.editor.fileBrowser.showNotification(`Error loading project: ${error.message}`, "error");
                 // Attempt to revert to a clean state if loading fails badly
                 this.isSavingOrLoading = false;
+                this.hideLoadingOverlay();
                 await this.newProject(); // Or a more specific error recovery
             } finally {
                 clearTimeout(safetyTimeout);
                 this.isSavingOrLoading = false;
                 input.value = ''; // Clear file input
+                this.hideLoadingOverlay();
             }
         };
         input.click();
@@ -676,6 +696,49 @@ class ProjectManager {
                 "error"
             );
             return false;
+        }
+    }
+
+    showLoadingOverlay(message = "Loading...") {
+        let overlay = document.getElementById('project-loading-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'project-loading-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100vw';
+            overlay.style.height = '100vh';
+            overlay.style.background = 'rgba(30, 32, 36, 0.85)';
+            overlay.style.zIndex = '99999';
+            overlay.style.display = 'flex';
+            overlay.style.flexDirection = 'column';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.fontSize = '2rem';
+            overlay.innerHTML = `
+                <div style="color:#fff;display:flex;flex-direction:column;align-items:center;">
+                    <div class="loader-spinner" style="margin-bottom:24px;">
+                        <svg width="64" height="64" viewBox="0 0 50 50">
+                            <circle cx="25" cy="25" r="20" fill="none" stroke="#ffb400" stroke-width="6" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="60">
+                                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/>
+                            </circle>
+                        </svg>
+                    </div>
+                    <span id="project-loading-message">${message}</span>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        } else {
+            overlay.style.display = 'flex';
+            overlay.querySelector('#project-loading-message').textContent = message;
+        }
+    }
+
+    hideLoadingOverlay() {
+        const overlay = document.getElementById('project-loading-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
         }
     }
 

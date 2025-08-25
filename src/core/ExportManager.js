@@ -17,6 +17,37 @@ class ExportManager {
     }
 
     /**
+     * Load Terser library for advanced minification
+     * @returns {Promise<boolean>} - True if Terser was loaded successfully
+     */
+    async loadTerser() {
+        if (typeof Terser !== 'undefined') {
+            return true; // Already loaded
+        }
+
+        try {
+            // Load Terser from CDN
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/terser@5/dist/bundle.min.js';
+
+            return new Promise((resolve) => {
+                script.onload = () => {
+                    console.log('Terser loaded successfully for advanced minification');
+                    resolve(true);
+                };
+                script.onerror = () => {
+                    console.warn('Failed to load Terser, using simple minification');
+                    resolve(false);
+                };
+                document.head.appendChild(script);
+            });
+        } catch (error) {
+            console.warn('Error loading Terser:', error);
+            return false;
+        }
+    }
+
+    /**
      * Export the current project as HTML5
      * @param {Object} project - The project data to export
      * @param {Object} settings - Export settings override
@@ -28,6 +59,11 @@ class ExportManager {
         // console.log('Starting HTML5 export...');
 
         try {
+            // Load Terser if minification is enabled
+            //if (exportSettings.minifyCode) {
+            //    await this.loadTerser();
+            //}
+
             // Collect all necessary files and data
             const exportData = await this.collectExportData(project, exportSettings);
 
@@ -770,43 +806,85 @@ class ExportManager {
     async generateJavaScript(data, settings) {
         let js = '';
 
-        // Add engine files
-        js += '// Dark Matter JS Engine\n';
-        for (const filePath of data.engineFiles) {
-            js += `// ${filePath}\n`;
-            js += await this.loadFileContent(filePath) + '\n\n';
-        }
+        try {
+            // Add engine files
+            js += '// Dark Matter JS Engine\n';
+            for (const filePath of data.engineFiles) {
+                js += `// ${filePath}\n`;
+                let fileContent = await this.loadFileContent(filePath);
 
-        // Add modules
-        js += '// Game Modules\n';
-        for (const module of data.modules) {
-            js += `// ${module.filePath}\n`;
-            const moduleContent = await this.loadFileContent(module.filePath);
-            js += moduleContent + '\n\n';
+                // Only minify if explicitly enabled AND content is valid
+                if (settings.minifyCode && fileContent && !fileContent.includes('Could not load')) {
+                    try {
+                        fileContent = await this.minifyJavaScriptAdvanced(fileContent);
+                    } catch (minifyError) {
+                        console.warn(`Failed to minify ${filePath}, using original:`, minifyError);
+                        // Keep original content if minification fails
+                    }
+                }
 
-            // Verify the module class is defined after loading
-            if (!moduleContent.includes(`class ${module.className}`)) {
-                // console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
+                js += fileContent + '\n\n';
             }
+
+            // Add modules
+            js += '// Game Modules\n';
+            for (const module of data.modules) {
+                js += `// ${module.filePath}\n`;
+                let moduleContent = await this.loadFileContent(module.filePath);
+
+                // Only minify if explicitly enabled AND content is valid
+                if (settings.minifyCode && moduleContent && !moduleContent.includes('Could not load')) {
+                    try {
+                        moduleContent = await this.minifyJavaScriptAdvanced(moduleContent);
+                    } catch (minifyError) {
+                        console.warn(`Failed to minify ${module.filePath}, using original:`, minifyError);
+                        // Keep original content if minification fails
+                    }
+                }
+
+                js += moduleContent + '\n\n';
+
+                // Verify the module class is defined after loading
+                if (!moduleContent.includes(`class ${module.className}`)) {
+                    console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
+                }
+            }
+
+            // Add custom scripts
+            for (const script of data.customScripts) {
+                js += `// ${script.name}\n`;
+                let scriptContent = script.content;
+
+                // Only minify if explicitly enabled AND content is valid
+                if (settings.minifyCode && scriptContent) {
+                    try {
+                        scriptContent = await this.minifyJavaScriptAdvanced(scriptContent);
+                    } catch (minifyError) {
+                        console.warn(`Failed to minify ${script.name}, using original:`, minifyError);
+                        // Keep original content if minification fails
+                    }
+                }
+
+                js += scriptContent + '\n\n';
+            }
+
+            // Add game initialization - DON'T minify this critical code
+            let initCode = this.generateGameInitialization(data, settings);
+            js += initCode;
+
+            return js;
+
+        } catch (error) {
+            console.error('Error generating JavaScript:', error);
+            throw error;
         }
-
-        // Add custom scripts
-        for (const script of data.customScripts) {
-            js += `// ${script.name}\n`;
-            js += script.content + '\n\n';
-        }
-
-        // Add game initialization - pass settings to include startingSceneIndex
-        js += this.generateGameInitialization(data, settings);
-
-        return js;
     }
 
     /**
      * Generate CSS content
      */
     generateCSS(data, settings) {
-        return `
+        let css = `
 /* Prevent scrollbars from reacting to key presses */
 html, body {
     margin: 0;
@@ -920,6 +998,13 @@ html {
     scrollbar-width: none;
 }
 `;
+
+        // Minify CSS if enabled
+        if (settings.minifyCode) {
+            css = this.minifyCSS(css);
+        }
+
+        return css;
     }
 
     /**
@@ -1477,12 +1562,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Create standalone HTML file
      */
-    createStandaloneHTML(html, js, css) {
-        // Embed the CSS and JS directly into the HTML placeholders
-        const finalHtml = html
-            .replace('/* CSS will be injected here */', css)
-            .replace('/* JavaScript will be injected here */', js);
-        return finalHtml;
+    createStandaloneHTML(html, js, css, data, settings) {
+        let finalHtml = html;
+
+        try {
+            // Minify CSS separately if enabled
+            let finalCSS = css;
+            if (settings.minifyCode) {
+                try {
+                    finalCSS = this.minifyCSS(css);
+                } catch (cssError) {
+                    console.warn('CSS minification failed, using original:', cssError);
+                    finalCSS = css;
+                }
+            }
+
+            // Embed the CSS and JS directly into the HTML placeholders
+            finalHtml = html
+                .replace('/* CSS will be injected here */', finalCSS)
+                .replace('/* JavaScript will be injected here */', js);
+
+            // Only minify HTML if specifically enabled - and do it carefully
+            if (settings.minifyCode) {
+                try {
+                    finalHtml = this.minifyHTML(finalHtml);
+                } catch (htmlError) {
+                    console.warn('HTML minification failed, using original:', htmlError);
+                    // Keep the unminified version
+                }
+            }
+
+            return finalHtml;
+
+        } catch (error) {
+            console.error('Error creating standalone HTML:', error);
+            // Return the basic version without minification
+            return html
+                .replace('/* CSS will be injected here */', css)
+                .replace('/* JavaScript will be injected here */', js);
+        }
     }
 
     /**
@@ -1649,12 +1767,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         Include Assets
                     </label>
                 </div>
-                <div class="export-group">
+                <!--div class="export-group">
                     <label>
                         <input type="checkbox" id="export-minify" ${this.exportSettings.minifyCode ? 'checked' : ''}>
                         Minify Code
                     </label>
-                </div>
+                </div-->
             </div>
             <div class="export-modal-footer">
                 <button id="export-cancel">Cancel</button>
@@ -1681,7 +1799,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
-                minifyCode: modal.querySelector('#export-minify').checked
+                minifyCode: false //modal.querySelector('#export-minify').checked
             };
 
             document.body.removeChild(modal);
@@ -1754,6 +1872,149 @@ document.addEventListener('DOMContentLoaded', async () => {
                 document.body.removeChild(modal);
             }
         });
+    }
+
+    /**
+ * Simple JavaScript minifier
+ * @param {string} code - JavaScript code to minify
+ * @returns {string} - Minified JavaScript code
+ */
+    minifyJavaScript(code) {
+        return code;
+
+        try {
+            // Much safer minification approach
+            return code
+                // Remove single-line comments ONLY at end of lines (not in strings/regex)
+                .replace(/\/\/[^\r\n]*$/gm, '')
+                // Remove multi-line comments (but preserve license comments and avoid breaking strings)
+                .replace(/\/\*(?![\s\S]*?@license)[\s\S]*?\*\//g, '')
+                // Remove extra whitespace (but preserve single spaces and line breaks where needed)
+                .replace(/[ \t]+/g, ' ') // Replace tabs and multiple spaces with single space
+                .replace(/\n\s*\n/g, '\n') // Remove empty lines
+                // ONLY remove spaces around SAFE punctuation (avoid operators that could break)
+                .replace(/\s*([{}();,])\s*/g, '$1')
+                // Remove leading/trailing whitespace from lines
+                .replace(/^\s+/gm, '')
+                .replace(/\s+$/gm, '')
+                // Ensure we don't have completely empty result
+                .trim();
+        } catch (error) {
+            console.warn('Error minifying JavaScript:', error);
+            return code; // Return original code if minification fails
+        }
+    }
+
+    async minifyJavaScriptAdvanced(code) {
+        return code;
+
+        // Check if Terser is available
+        if (typeof Terser !== 'undefined') {
+            try {
+                const result = await Terser.minify(code, {
+                    compress: {
+                        dead_code: false, // Disable aggressive dead code removal
+                        drop_console: false, // Keep console for debugging
+                        drop_debugger: false, // Keep debugger for debugging
+                        conditionals: false, // Disable conditional optimizations that might break logic
+                        evaluate: false, // Disable constant expression evaluation
+                        booleans: false, // Disable boolean optimizations
+                        loops: false, // Disable loop optimizations
+                        unused: false, // Disable unused variable removal
+                        hoist_funs: false, // Disable function hoisting
+                        keep_fargs: true, // Keep function arguments
+                        hoist_vars: false, // Disable variable hoisting
+                        if_return: false, // Disable if-return optimizations
+                        join_vars: false, // Disable variable joining
+                        cascade: false, // Disable cascading optimizations
+                        side_effects: false // Disable side effect optimizations
+                    },
+                    mangle: false, // Disable name mangling entirely to avoid breaking references
+                    output: {
+                        comments: true, // Keep comments for debugging
+                        beautify: false
+                    }
+                });
+
+                if (result.error) {
+                    throw result.error;
+                }
+
+                return result.code;
+            } catch (error) {
+                console.warn('Terser minification failed, using original code:', error);
+                return code; // Return ORIGINAL code, not simple minified
+            }
+        } else {
+            // NO minification if Terser is not available - much safer
+            console.log('Terser not available, skipping minification');
+            return code;
+        }
+    }
+
+    /**
+     * Simple CSS minifier
+     * @param {string} css - CSS code to minify
+     * @returns {string} - Minified CSS code
+     */
+    minifyCSS(css) {
+        return css;
+        if (!css) return css;
+
+        try {
+            return css
+                // Remove comments
+                .replace(/\/\*[\s\S]*?\*\//g, '')
+                // Replace multiple spaces/tabs with single space
+                .replace(/[ \t]+/g, ' ')
+                // Remove extra newlines
+                .replace(/\n+/g, '\n')
+                // Remove spaces around SAFE CSS characters only
+                .replace(/\s*([{}:;,])\s*/g, '$1')
+                // Remove trailing semicolons before closing braces
+                .replace(/;}/g, '}')
+                // Remove leading/trailing whitespace from lines
+                .replace(/^\s+/gm, '')
+                .replace(/\s+$/gm, '')
+                .trim();
+        } catch (error) {
+            console.warn('Error minifying CSS:', error);
+            return css; // Return original code if minification fails
+        }
+    }
+
+    /**
+     * Minify HTML content
+     * @param {string} html - HTML content to minify
+     * @returns {string} - Minified HTML content
+     */
+    minifyHTML(html) {
+        return (html);
+        if (!html) return html;
+
+        try {
+            return html
+                // Remove HTML comments (but keep conditional comments for IE)
+                .replace(/<!--(?!\[if)(?!<!)[^>]*-->/g, '')
+                // Remove extra whitespace between tags (but preserve content)
+                .replace(/>\s+</g, '><')
+                // Remove leading whitespace from lines
+                .replace(/^\s+/gm, '')
+                // Remove trailing whitespace from lines  
+                .replace(/\s+$/gm, '')
+                // Compress multiple spaces to single space (but not in script/style tags)
+                .replace(/(<script[^>]*>)([\s\S]*?)(<\/script>)/gi, (match, open, content, close) => {
+                    return open + content + close; // Don't touch script content
+                })
+                .replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (match, open, content, close) => {
+                    return open + content + close; // Don't touch style content
+                })
+                .replace(/\s+/g, ' ')
+                .trim();
+        } catch (error) {
+            console.warn('Error minifying HTML:', error);
+            return html; // Return original HTML if minification fails
+        }
     }
 }
 

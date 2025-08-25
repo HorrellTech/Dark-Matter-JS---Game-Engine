@@ -900,7 +900,15 @@ class SpriteCode {
         // Frame data
         this.frames = ${JSON.stringify(this.frames, null, 8)};
         
+        // Initialize current animation range
+        this.currentAnimationRange = this.getCurrentAnimationRange();
+        
         this.exposeProperties();
+    }
+
+    getCurrentAnimationRange() {
+        return this.animationRanges.find(r => r.name === this.currentAnimation) || 
+               { name: "default", start: 0, end: this.totalFrames - 1 };
     }
 
     exposeProperties() {
@@ -1007,7 +1015,7 @@ class SpriteCode {
             style.startGroup("Animation Controls", true);
 
             style.exposeProperty("currentAnimation", "enum", this.currentAnimation, {
-                options: this.animationRanges.map(r => r.name.toLowerCase()),
+                options: this.animationRanges.map(r => r.name),
                 style: { label: "Animation" }
             });
             
@@ -1036,7 +1044,7 @@ class SpriteCode {
         
         style.endGroup();
         style.addHelpText("Generated drawing module with animation support");
-        style.addHelpText(\`Animation List: \n\${this.animationRanges.map(r => r.name).join(", ")}\`);
+        style.addHelpText(\`Animation List: \n\${this.animationRanges.map(r => \`\${r.name} (frames \${r.start}-\${r.end})\`).join(", ")}\`);
     }
 
     // Public API Methods
@@ -1044,8 +1052,11 @@ class SpriteCode {
         const range = this.animationRanges.find(r => r.name === name);
         if (range) {
             this.currentAnimation = name;
+            this.currentAnimationRange = range;
             this.currentFrame = range.start;
             this.isPlaying = true;
+            this.frameTimer = 0;
+            this.playDirection = 1;
         }
     }
 
@@ -1053,8 +1064,11 @@ class SpriteCode {
         const range = this.animationRanges.find(r => r.name === name);
         if (range) {
             this.currentAnimation = name;
+            this.currentAnimationRange = range;
             this.currentFrame = range.start;
             this.isPlaying = false;
+            this.frameTimer = 0;
+            this.playDirection = 1;
         }
     }
 
@@ -1068,12 +1082,15 @@ class SpriteCode {
 
     stop() {
         this.isPlaying = false;
-        this.currentFrame = 0;
+        const range = this.getCurrentAnimationRange();
+        this.currentFrame = range.start;
         this.frameTimer = 0;
+        this.playDirection = 1;
     }
 
     setFrame(frameIndex) {
-        if (frameIndex >= 0 && frameIndex < this.totalFrames) {
+        const range = this.getCurrentAnimationRange();
+        if (frameIndex >= range.start && frameIndex <= range.end) {
             this.currentFrame = frameIndex;
         }
     }
@@ -1091,50 +1108,57 @@ class SpriteCode {
         return this.totalFrames;
     }
 
+    getAnimationFrameCount() {
+        const range = this.getCurrentAnimationRange();
+        return range.end - range.start + 1;
+    }
+
     start() {
         if (this.preGenerateImage) {
             this.generateImage();
         }
+        // Initialize to first frame of current animation
+        const range = this.getCurrentAnimationRange();
+        this.currentFrame = range.start;
     }
 
     loop(deltaTime) {
         if (!this.isAnimated || !this.isPlaying) return;
 
-        const range = this.animationRanges.find(r => r.name === this.currentAnimation) || { start: 0, end: this.totalFrames - 1 };
+        const range = this.getCurrentAnimationRange();
         const frameCount = range.end - range.start + 1;
 
-        this.frameTimer += deltaTime * this.animationSpeed;
-
+        // If only one frame in range, nothing to animate
         if (frameCount <= 1) {
-            // Only one frame in range, just show it
             this.currentFrame = range.start;
             return;
         }
 
-        if (this.frameTimer >= 0.1) {
+        this.frameTimer += deltaTime * this.animationSpeed;
+
+        // Use frame duration of 0.1 seconds (10 FPS)
+        const frameDuration = 0.1;
+        
+        if (this.frameTimer >= frameDuration) {
             this.frameTimer = 0;
 
             if (this.pingPong) {
+                // Ping pong animation within the range
                 this.currentFrame += this.playDirection;
-                if (this.currentFrame > range.end) {
+                
+                if (this.currentFrame >= range.end) {
                     this.playDirection = -1;
                     this.currentFrame = range.end;
-                } else if (this.currentFrame < range.start) {
+                } else if (this.currentFrame <= range.start) {
                     this.playDirection = 1;
                     this.currentFrame = range.start;
                 }
-            } else if (this.enableTweening) {
-                this.currentFrame += 0.1;
+            } else {
+                // Linear loop animation within the range
+                this.currentFrame++;
                 if (this.currentFrame > range.end) {
                     this.currentFrame = range.start;
                 }
-            } else {
-                // Step to next frame in range
-                let nextFrame = Math.floor(this.currentFrame) + 1;
-                if (nextFrame > range.end) {
-                    nextFrame = range.start;
-                }
-                this.currentFrame = nextFrame;
             }
         }
     }
@@ -1173,7 +1197,8 @@ class SpriteCode {
         if (this.enableTweening && this.totalFrames > 1 && this.isPlaying) {
             shapes = this.getTweenedShapes();
         } else {
-            shapes = this.frames[Math.floor(this.currentFrame)] || [];
+            const frameIndex = Math.floor(this.currentFrame);
+            shapes = this.frames[frameIndex] || [];
         }
         shapes = shapes.filter(shape => shape && shape.visible !== false);
 
@@ -1185,9 +1210,26 @@ class SpriteCode {
     }
 
     getTweenedShapes() {
-        const currentFrame = Math.floor(this.currentFrame);
-        const nextFrame = (currentFrame + 1) % this.totalFrames;
-        const t = this.currentFrame - currentFrame;
+        const range = this.getCurrentAnimationRange();
+        
+        // Ensure current frame is within animation range for tweening
+        let currentFrame = Math.floor(this.currentFrame);
+        let nextFrame = currentFrame + 1;
+        
+        // Handle range boundaries
+        if (nextFrame > range.end) {
+            if (this.pingPong && this.playDirection === -1) {
+                nextFrame = currentFrame - 1;
+            } else {
+                nextFrame = range.start; // Loop back to start
+            }
+        }
+        
+        // Ensure frames are valid
+        currentFrame = Math.max(range.start, Math.min(range.end, currentFrame));
+        nextFrame = Math.max(range.start, Math.min(range.end, nextFrame));
+        
+        const t = this.currentFrame - Math.floor(this.currentFrame);
 
         const currentShapes = this.frames[currentFrame] || [];
         const nextShapes = this.frames[nextFrame] || [];
@@ -1512,7 +1554,8 @@ class SpriteCode {
             flipped: this.flipped,
             animationSpeed: this.animationSpeed,
             isPlaying: this.isPlaying,
-            currentFrame: this.currentFrame
+            currentFrame: this.currentFrame,
+            currentAnimation: this.currentAnimation
         };
     }
 
@@ -1527,6 +1570,10 @@ class SpriteCode {
         this.animationSpeed = data.animationSpeed || 1;
         this.isPlaying = data.isPlaying || false;
         this.currentFrame = data.currentFrame || 0;
+        this.currentAnimation = data.currentAnimation || "idle";
+        
+        // Update animation range after loading
+        this.currentAnimationRange = this.getCurrentAnimationRange();
     }
 }
 
@@ -3582,7 +3629,7 @@ Every shape you draw is stored as an individual object. This means you can:
 This object-based approach gives you full control over your drawing, making it easy to create complex graphics and animations.
 `);
 
-docsModal.addFormattedDocumentation('Getting Started', 'Rotation Hotspot', `
+        docsModal.addFormattedDocumentation('Getting Started', 'Rotation Hotspot', `
 # Rotation Hotspot
 
 Each shape in SpriteCode has a **rotation hotspot**, shown as an orange dot in the center of the shape.  
@@ -3597,7 +3644,7 @@ This hotspot determines the pivot point for rotation.
 You can drag the hotspot anywhere within or around the shape to achieve the desired rotation behavior.
 `);
 
-docsModal.addFormattedDocumentation('Getting Started', 'Grouping Shapes', `
+        docsModal.addFormattedDocumentation('Getting Started', 'Grouping Shapes', `
 # Grouping Shapes
 
 SpriteCode allows you to group shapes together for combined transformations, which is especially useful for rigging characters or creating complex objects.
@@ -3615,7 +3662,7 @@ You can select the parent to transform the entire group, or select individual ch
 Grouping shapes makes it easy to build articulated objects, such as characters with limbs, and animate them as a single unit.
 `);
 
-docsModal.addFormattedDocumentation('Getting Started', 'Animation', `
+        docsModal.addFormattedDocumentation('Getting Started', 'Animation', `
 # Animation
 
 SpriteCode supports frame-based animation, allowing you to bring your drawings to life.
@@ -3636,7 +3683,7 @@ You can adjust tween type and speed for different animation effects.
 Animation makes it easy to create moving graphics, character actions, and visual effects for your game objects.
 `);
 
-docsModal.addFormattedDocumentation('Getting Started', 'Exporting to Dark Matter', `
+        docsModal.addFormattedDocumentation('Getting Started', 'Exporting to Dark Matter', `
 # Exporting Your Drawing as a Game Object Module
 
 Once you've created your shapes and animation in SpriteCode, you can export your drawing as a reusable module for the Dark Matter engine.

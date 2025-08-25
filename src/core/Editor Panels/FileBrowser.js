@@ -1629,7 +1629,7 @@ window.${pascalCaseName} = ${pascalCaseName};
 `;
 
             // Add this line for debugging:
-            console.log("Injected module script content:", wrappedContent);
+            //console.log("Injected module script content:", wrappedContent);
 
             // Execute script in a controlled environment
             const moduleClass = await new Promise((resolve, reject) => {
@@ -1724,7 +1724,7 @@ window.${pascalCaseName} = ${pascalCaseName};
             // Extract class name from file path
             const fileName = filePath.split('/').pop().split('\\').pop();
             const className = fileName.replace('.js', '');
-            const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+            const pascalClassName = className;//className.charAt(0).toUpperCase() + className.slice(1);
 
             console.log(`Auto-registering new module: ${pascalClassName}`);
 

@@ -32,6 +32,9 @@ class PhysicsKeyboardController extends Module {
         this.isJumping = false;
         this.grounded = false;
 
+        this.animIdle = "idle";
+        this.animWalk = "walk";
+
         // Input mapping
         this.upKey = "arrowup";
         this.downKey = "arrowdown";
@@ -59,6 +62,22 @@ class PhysicsKeyboardController extends Module {
                 label: "Drawing Module"
             },
             onChange: (val) => { this.customDrawingModule = val; }
+        });
+
+        this.exposeProperty("animIdle", "string", this.animIdle, {
+            description: "Animation state for idle",
+            style: {
+                label: "Idle Animation"
+            },
+            onChange: (val) => { this.animIdle = val; }
+        });
+
+        this.exposeProperty("animWalk", "string", this.animWalk, {
+            description: "Animation state for walking",
+            style: {
+                label: "Walk Animation"
+            },
+            onChange: (val) => { this.animWalk = val; }
         });
 
         // Movement Properties with styling
@@ -219,7 +238,7 @@ class PhysicsKeyboardController extends Module {
      * @param {Style} style - Styling helper
      */
     style(style) {
-        style.startGroup("Movement Settings", false, {
+        style.startGroup("Animation Settings", false, {
             backgroundColor: 'rgba(100,150,255,0.1)',
             borderRadius: '6px',
             padding: '8px'
@@ -231,6 +250,28 @@ class PhysicsKeyboardController extends Module {
                 header: "Custom Drawing Module",
                 label: "Drawing Module"
             }
+        });
+
+        style.exposeProperty("animIdle", "string", this.animIdle, {
+            description: "Animation state for idle",
+            style: {
+                label: "Idle Animation"
+            }
+        });
+
+        style.exposeProperty("animWalk", "string", this.animWalk, {
+            description: "Animation state for walking",
+            style: {
+                label: "Walk Animation"
+            }
+        });
+
+        style.endGroup();
+
+        style.startGroup("Movement Settings", false, {
+            backgroundColor: 'rgba(100,150,255,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
         });
 
         style.exposeProperty("speed", "number", this.speed, {
@@ -459,12 +500,21 @@ class PhysicsKeyboardController extends Module {
             // Flip horizontally when moving left/right
             if (window.input.keyDown(this.leftKey)) {
                 drawingModule.flipped = true;
+                drawingModule.setAnimation(this.animWalk);
                 drawingModule.isPlaying = true;
             } else if (window.input.keyDown(this.rightKey)) {
                 drawingModule.flipped = false;
+                drawingModule.setAnimation(this.animWalk);
+                drawingModule.isPlaying = true;
+            } else if (window.input.keyDown(this.upKey)) {
+                drawingModule.setAnimation(this.animWalk);
+                drawingModule.isPlaying = true;
+            } else if (window.input.keyDown(this.downKey)) {
+                drawingModule.setAnimation(this.animWalk);
                 drawingModule.isPlaying = true;
             } else {
                 drawingModule.isPlaying = false;
+                drawingModule.setAnimation(this.animIdle);
             }
         }
 
