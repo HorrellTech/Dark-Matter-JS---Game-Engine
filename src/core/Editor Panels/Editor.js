@@ -97,25 +97,90 @@ class Editor {
                 e.dataTransfer.dropEffect = 'copy';
                 this.canvas.classList.add('prefab-drop-target');
             }
+            // Also check for JS module scripts
+            else if (e.dataTransfer.types.includes('application/module-script') ||
+                (e.dataTransfer.types.includes('application/json'))) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                this.canvas.classList.add('prefab-drop-target');
+            }
         });
 
         this.canvas.addEventListener('dragleave', (e) => {
             this.canvas.classList.remove('prefab-drop-target');
         });
 
-        this.canvas.addEventListener('drop', (e) => {
-            e.preventDefault();
+        this.canvas.addEventListener('drop', async (e) => {
             this.canvas.classList.remove('prefab-drop-target');
 
             // Handle prefab drops
             if (e.dataTransfer.types.includes('application/prefab-file')) {
+                e.preventDefault();
                 const prefabPath = e.dataTransfer.getData('application/prefab-file');
+                const screenPos = this.getAdjustedMousePosition(e);
+                const worldPos = this.screenToWorldPosition(screenPos);
+                this.instantiatePrefabAtPosition(prefabPath, worldPos);
+                return;
+            }
 
-                // Get the drop position in world coordinates
+            // Handle JS module drops by extension
+            let jsPath = null;
+            // Try to get the path from custom type first
+            if (e.dataTransfer.types.includes('application/module-script')) {
+                e.preventDefault();
+                jsPath = e.dataTransfer.getData('application/module-script');
+            } else if (e.dataTransfer.types.includes('application/json')) {
+                // If dragging multiple, check for .js files
+                try {
+                    e.preventDefault();
+                    const items = JSON.parse(e.dataTransfer.getData('application/json'));
+                    const jsItem = items.find(item => item.name && item.name.endsWith('.js'));
+                    if (jsItem) jsPath = jsItem.path;
+                } catch { }
+            }
+
+            // Fallback: check for .js extension in any available data
+            if (!jsPath && e.dataTransfer.types) {
+                for (const type of e.dataTransfer.types) {
+                    const data = e.dataTransfer.getData(type);
+                    if (typeof data === 'string' && data.endsWith('.js')) {
+                        jsPath = data;
+                        
+                        e.preventDefault();
+                        break;
+                    }
+                }
+            }
+
+            if (jsPath && jsPath.endsWith('.js')) {
+                e.preventDefault();
                 const screenPos = this.getAdjustedMousePosition(e);
                 const worldPos = this.screenToWorldPosition(screenPos);
 
-                this.instantiatePrefabAtPosition(prefabPath, worldPos);
+                try {
+                    if (this.fileBrowser) {
+                        const ModuleClass = await this.fileBrowser.loadModuleScript(jsPath);
+                        if (ModuleClass) {
+                            const go = new GameObject(ModuleClass.name || "ModuleObject");
+                            const moduleInstance = new ModuleClass();
+
+                            go.position = worldPos;
+                            go.addModule(moduleInstance);
+
+                            this.activeScene.gameObjects.push(go);
+                            if (this.hierarchy) {
+                                this.hierarchy.refreshHierarchy();
+                                this.hierarchy.selectGameObject(go);
+                            }
+                            this.refreshCanvas();
+
+                            this.showNotification(`Created GameObject with module: ${ModuleClass.name}`, 'success');
+                        }
+                    }
+                } catch (err) {
+                    this.showNotification(`Error creating module GameObject: ${err.message}`, 'error');
+                }
+                return;
             }
         });
 

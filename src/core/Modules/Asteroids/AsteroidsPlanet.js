@@ -146,13 +146,13 @@ class AsteroidsPlanet extends Module {
         this.exposeProperty("gravitationalConstant", "number", 100, {
             description: "Strength of gravitational force",
             min: 0, max: 1000,
-            onChange: (val) => { this.gravitationalConstant = Math.max(0, val); }
+            onChange: (val) => { this.gravitationalConstant = val; }//Math.max(0, val); }
         });
 
         this.exposeProperty("gravitationalRange", "number", 200, {
             description: "Range of gravitational effect",
             min: 0, max: 1000,
-            onChange: (val) => { this.gravitationalRange = Math.max(0, val); }
+            onChange: (val) => { this.gravitationalRange = val }
         });
 
         // Health Properties
@@ -869,8 +869,10 @@ class AsteroidsPlanet extends Module {
 
         this.updateRotation(deltaTime);
         this.updateOrbit(deltaTime);
-        this.updatePlanetInteractions(deltaTime);
+        //this.updatePlanetInteractions(deltaTime);
         this.applyGravityToObjects(deltaTime);
+
+        if (this.affectedObjects.size > 100) this.affectedObjects.clear();
     }
 
     updateDestruction(deltaTime) {
@@ -1016,6 +1018,8 @@ class AsteroidsPlanet extends Module {
             const dy = obj.position.y - this.gameObject.position.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
+            if (distance > effectiveGravRange + 50) continue; // Quick skip for distant objects
+
             if (distance > 0 && distance <= effectiveGravRange) {
                 // Check for collision with planet surface (using scaled radius)
                 if (distance <= effectiveRadius + this.getObjectRadius(obj)) {
@@ -1023,28 +1027,123 @@ class AsteroidsPlanet extends Module {
                     continue;
                 }
 
-                // Calculate gravitational force
-                const force = (this.gravitationalConstant * this.mass) / (distance * distance);
+                // Calculate gravitational force (fixed formula - removed extra mass term)
+                const force = (this.gravitationalConstant * this.mass) / Math.max(distance * distance, 100); // Prevent division by zero
                 const forceX = -(dx / distance) * force * deltaTime;
                 const forceY = -(dy / distance) * force * deltaTime;
 
-                // Apply to objects with velocity (ships, bullets, etc.)
-                const shipModule = obj.getModule("PlayerShip") || obj.getModule("EnemyShip");
-                const bulletModule = obj.getModule("AsteroidsBullet");
+                // Apply to objects with velocity - EXPANDED MODULE DETECTION
+                let targetModule = null;
+                let hasVelocity = false;
 
-                if (shipModule && shipModule.velocity) {
-                    const mass = shipModule.mass || 1;
-                    shipModule.velocity.x += forceX / mass;
-                    shipModule.velocity.y += forceY / mass;
+                // Check for common module types that should have physics
+                const moduleTypes = [
+                    "PlayerShip", "EnemyShip", "BasicPhysics", "AsteroidsBullet",
+                    "Asteroid", "Ship", "Projectile", "Physics", "Movement"
+                ];
+
+                for (const moduleType of moduleTypes) {
+                    const module = obj.getModule(moduleType);
+                    if (module && module.velocity) {
+                        targetModule = module;
+                        hasVelocity = true;
+                        break;
+                    }
+                }
+
+                // Fallback: check if object itself has velocity
+                if (!hasVelocity && obj.velocity) {
+                    targetModule = obj;
+                    hasVelocity = true;
+                }
+
+                // Fallback: try to find ANY module with velocity property
+                if (!hasVelocity && obj.modules) {
+                    for (const module of obj.modules) {
+                        if (module && typeof module.velocity === 'object' && module.velocity.x !== undefined) {
+                            targetModule = module;
+                            hasVelocity = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasVelocity && targetModule) {
+                    const mass = targetModule.mass || 1;
+
+                    // Ensure velocity object exists
+                    if (!targetModule.velocity) {
+                        targetModule.velocity = { x: 0, y: 0 };
+                    }
+
+                    // Apply gravitational force
+                    targetModule.velocity.x += forceX / mass;
+                    targetModule.velocity.y += forceY / mass;
+
                     this.affectedObjects.add(obj);
-                } else if (bulletModule && bulletModule.velocity) {
-                    const mass = bulletModule.mass || 0.1;
-                    bulletModule.velocity.x += forceX / mass;
-                    bulletModule.velocity.y += forceY / mass;
-                    this.affectedObjects.add(obj);
+
+                    // Debug logging (remove in production)
+                    //if (window.engine) {
+                        console.log(`Applying gravity to ${obj.name || obj.constructor.name}: force=${force.toFixed(2)}, distance=${distance.toFixed(2)}`);
+                    //}
                 }
             }
         }
+    }
+
+    shouldApplyGravityTo(obj) {
+        // Skip if it's the planet itself
+        if (obj === this.gameObject) return false;
+
+        // Skip other planets to avoid conflicts
+        if (obj.getModule("AsteroidsPlanet")) return false;
+
+        // Check for modules that typically have physics
+        const physicsModules = [
+            "PlayerShip", "EnemyShip", "BasicPhysics", "AsteroidsBullet",
+            "Asteroid", "Ship", "Projectile", "Physics", "Movement"
+        ];
+
+        for (const moduleType of physicsModules) {
+            const module = obj.getModule(moduleType);
+            if (module && (module.velocity || module.position)) {
+                return true;
+            }
+        }
+
+        // Check if object itself has velocity
+        if (obj.velocity && typeof obj.velocity === 'object') {
+            return true;
+        }
+
+        return false;
+    }
+
+    // Optional: Add this method to create a gravity field visualization for debugging
+    drawGravityField(ctx) {
+        if (!window.engine || !window.engine.debug) return;
+
+        const gameObjectScale = this.gameObject.scale || 1;
+        const effectiveGravRange = this.gravitationalRange * gameObjectScale;
+
+        // Draw gravity field strength visualization
+        ctx.save();
+        ctx.globalAlpha = 0.1;
+
+        const steps = 8;
+        for (let i = 1; i <= steps; i++) {
+            const radius = (effectiveGravRange / steps) * i;
+            const strength = this.gravitationalConstant * this.mass / (radius * radius);
+            const intensity = Math.min(1, strength / 100); // Normalize
+
+            ctx.strokeStyle = `rgba(255, 255, 0, ${intensity})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.gameObject.position.x, this.gameObject.position.y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
     }
 
     /**
@@ -1196,6 +1295,8 @@ class AsteroidsPlanet extends Module {
         }
 
         ctx.restore();
+
+        this.drawGravityField(ctx); // Optional: visualize gravity field for debugging
     }
 
     /**

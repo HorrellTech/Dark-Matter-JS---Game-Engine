@@ -2003,6 +2003,36 @@ window.${pascalCaseName} = ${pascalCaseName};
                 }
             } else if (extension === 'js') {
                 icon = 'fa-file-code';
+
+                // Check if it's a module script
+                if (item.content && item.content.includes('extends Module')) {
+                    // Try to get the module class from window
+                    const className = item.name.replace('.js', '');
+                    const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+                    let ModuleClass = window[className];
+                    if (!ModuleClass) ModuleClass = window[pascalClassName];
+
+                    /*if (ModuleClass && typeof ModuleClass.prototype.draw === 'function') {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 800;
+                            canvas.height = 800;
+                            const ctx = canvas.getContext('2d');
+                            const instance = new ModuleClass();
+                            instance.draw(ctx);
+                            const dataUrl = canvas.toDataURL();
+                            // Place preview above the file name, stretched to icon size
+                            previewHTML = `<div class="fb-preview-img" style="width:48px;height:48px;display:flex;align-items:center;
+                            justify-content:center;">
+                    <img src="${dataUrl}" alt="${item.name}" style="width:100%;height:100%;object-fit:contain;">
+                </div>`;
+                            element.classList.add('has-preview');
+                            icon = ''; // Hide code icon if preview is available
+                        } catch (err) {
+                            icon = 'fa-file-code';
+                        }
+                    }*/
+                }
             } else if (extension === 'prefab') {
                 icon = 'fa-cube';
                 element.classList.add('prefab-file');
@@ -2016,10 +2046,15 @@ window.${pascalCaseName} = ${pascalCaseName};
             // Add more file types as needed
         }
 
-        element.innerHTML = `
+        /*element.innerHTML = `
             <i class="fas ${icon}"></i>
             <span class="fb-item-name" title="${item.name}">${item.name}</span>
             ${previewHTML}
+        `;*/
+
+        element.innerHTML = `
+            ${previewHTML || (icon ? `<i class="fas ${icon}" style="font-size:32px;display:block;text-align:center;width:32px;height:32px;"></i>` : '')}
+            <span class="fb-item-name" title="${item.name}">${item.name}</span>
         `;
 
         this.content.appendChild(element);

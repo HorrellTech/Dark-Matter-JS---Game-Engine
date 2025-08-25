@@ -53,6 +53,10 @@ class Vector2 {
         return new Vector2(this.x - other.x, this.y - other.y);
     }
 
+    sub(other) {
+        return new Vector2(this.x - other.x, this.y - other.y);
+    }
+
     multiply(scalar) {
         return new Vector2(this.x * scalar, this.y * scalar);
     }

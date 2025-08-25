@@ -1,5 +1,5 @@
 class GameObject {
-    constructor(name = "GameObject") {
+    constructor(name = "GameObject", engine = null) {
         this.name = name;
         this.position = new Vector2();
         this.size = new Vector2(32, 32); // Default size in pixels for collision detection
@@ -18,6 +18,8 @@ class GameObject {
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
 
+        this.engine = engine; // Reference to the engine instance, set when added to engine
+
         this.xd = 0; // X Position for drawing (for viewport offsets)
         this.yd = 0; // Y Position for drawing (for viewport offsets)
 
@@ -30,6 +32,13 @@ class GameObject {
         this.originalRotation = this.angle;
 
         this.previousPosition = this.position.clone(); // For movement tracking
+    }
+
+    getNearestObject(gameObjectName, maxRange = Infinity) {
+        // Use global gameObjects array if available
+        const eng = window.engine || this.engine || null;
+
+        return eng.findNearestObjectByName(this.position.x, this.position.y, gameObjectName, maxRange);
     }
 
     generateRandomColor() {
@@ -893,6 +902,7 @@ class GameObject {
         obj.size = new Vector2(json.size.width, json.size.height);
         // Restore scale if available
         if (json.scale) obj.scale = new Vector2(json.scale.x, json.scale.y);
+        obj.editorColor = json.editorColor || obj.generateRandomColor();
         
         obj.angle = json.angle;
         obj.depth = json.depth;
@@ -1298,7 +1308,7 @@ class GameObject {
         if (addNameCopySuffix && !newName.trim().endsWith("(Copy)")) {
             newName += " (Copy)";
         }
-        const cloned = new GameObject(newName);
+        const cloned = new GameObject(newName, this.engine);
         
         // Copy basic properties
         cloned.position = this.position.clone();

@@ -18,7 +18,10 @@ class BasicPhysics extends Module {
         this.fixedPosition = false; // If true, object does not move
         this.fixedRotation = false; // If true, object does not rotate
         this.physicsLayer = 0; // Only interacts with objects on same layer
+        this.useCollision = true; // Enable/disable collision detection
         this.colliderType = "rectangle"; // "circle" or "rectangle"
+        this.polygonVertices = []; // Array of {x, y} points for custom polygon
+        this.polygon = null; // Will hold the Polygon instance
         this.colliderRadius = 10; // For circle collider
         this.colliderWidth = 20;  // For rectangle collider
         this.colliderHeight = 20; // For rectangle collider
@@ -52,6 +55,11 @@ class BasicPhysics extends Module {
         this.exposeProperty("fixedRotation", "boolean", false, {
             description: "If true, object does not rotate",
             onChange: (val) => { this.fixedRotation = val; }
+        });
+
+        this.exposeProperty("useCollision", "boolean", true, {
+            description: "Enable/disable collision detection",
+            onChange: (val) => { this.useCollision = val; }
         });
         this.exposeProperty("physicsLayer", "number", 0, {
             min: 0, max: 10, step: 1,
@@ -111,6 +119,147 @@ class BasicPhysics extends Module {
             description: "Draw collider shape in game",
             onChange: (val) => { this.drawColliderInGame = val; }
         });
+    }
+
+    style(style) {
+        style.startGroup("Physics Properties", false, {
+            backgroundColor: 'rgba(100,150,255,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("mass", "number", this.mass, {
+            min: 0.1, max: 100, step: 0.1,
+            description: "Mass of the object",
+            label: "Mass"
+        });
+
+        style.exposeProperty("gravityEnabled", "boolean", this.gravityEnabled, {
+            description: "Enable gravity for this object",
+            label: "Gravity Enabled"
+        });
+
+        if(this.gravityEnabled) {
+            style.exposeProperty("gravity", "vector2", this.gravity, {
+                description: "Gravity force applied every frame (Vector2)",
+                label: "Gravity Vector"
+            });
+        }
+
+        style.exposeProperty("fixedPosition", "boolean", this.fixedPosition, {
+            description: "If true, object does not move or rotate",
+            label: "Fixed Position"
+        });
+
+        style.exposeProperty("fixedRotation", "boolean", this.fixedRotation, {
+            description: "If true, object does not rotate",
+            label: "Fixed Rotation"
+        });
+
+        style.exposeProperty("friction", "number", this.friction, {
+            min: 0, max: 1, step: 0.01,
+            description: "Linear friction applied to velocity",
+            label: "Friction"
+        });
+
+        style.exposeProperty("angularFriction", "number", this.angularFriction, {
+            min: 0, max: 1, step: 0.01,
+            description: "Angular friction applied to rotation",
+            label: "Angular Friction"
+        });
+
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Collision Properties", false, {
+            backgroundColor: 'rgba(255,200,100,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("useCollision", "boolean", this.useCollision, {
+            description: "Enable/disable collision detection",
+            label: "Use Collision"
+        });
+
+        if (this.useCollision) {
+            style.exposeProperty("physicsLayer", "number", this.physicsLayer, {
+                min: 0, max: 10, step: 1,
+                description: "Physics layer for collision filtering",
+                label: "Physics Layer"
+            });
+
+            style.exposeProperty("colliderType", "select", this.colliderType, {
+                options: ["circle", "rectangle"],
+                description: "Collider shape type",
+                label: "Collider Type"
+            });
+
+            if (this.colliderType === "circle") {
+                style.exposeProperty("colliderRadius", "number", this.colliderRadius, {
+                    min: 1, max: 1000, step: 1,
+                    description: "Collider radius (for circle)",
+                    label: "Collider Radius"
+                });
+            } else if (this.colliderType === "rectangle") {
+                style.exposeProperty("colliderWidth", "number", this.colliderWidth, {
+                    min: 1, max: 1000, step: 1,
+                    description: "Collider width (for rectangle)",
+                    label: "Collider Width"
+                });
+                style.exposeProperty("colliderHeight", "number", this.colliderHeight, {
+                    min: 1, max: 1000, step: 1,
+                    description: "Collider height (for rectangle)",
+                    label: "Collider Height"
+                });
+            }
+
+            style.exposeProperty("bounciness", "number", this.bounciness, {
+                min: 0, max: 1, step: 0.01,
+                description: "Bounciness (restitution) on collision",
+                label: "Bounciness"
+            });
+
+            style.exposeProperty("contactFriction", "number", this.contactFriction, {
+                min: 0, max: 1, step: 0.01,
+                description: "Friction applied on contact",
+                label: "Contact Friction"
+            });
+
+            style.exposeProperty("drawColliderGizmo", "boolean", this.drawColliderGizmo, {
+                description: "Draw collider gizmo in editor",
+                label: "Draw Collider Gizmo"
+            });
+
+            style.exposeProperty("drawColliderInGame", "boolean", this.drawColliderInGame, {
+                description: "Draw collider shape in game",
+                label: "Draw Collider In Game"
+            });
+        }
+
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Gravity Pull Properties", false, {
+            backgroundColor: 'rgba(100,255,150,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("gravityMassAffectsOthers", "boolean", this.gravityMassAffectsOthers, {
+            description: "If true, object's mass affects gravity pull on others",
+            label: "Gravity Mass Affects Others"
+        });
+
+        style.exposeProperty("gravityPullRadius", "number", this.gravityPullRadius, {
+            min: 0, max: 1000, step: 1,
+            description: "Radius within which this object pulls others gravitationally",
+            label: "Gravity Pull Radius"
+        });
+
+        style.endGroup();
     }
 
     // Public API
@@ -189,8 +338,10 @@ class BasicPhysics extends Module {
         while (this.gameObject.angle >= 360) this.gameObject.angle -= 360;
         while (this.gameObject.angle < 0) this.gameObject.angle += 360;
 
-        // Collision detection and resolution
-        this.handleCollisions(deltaTime);
+        if(this.useCollision) {
+            // Collision detection and resolution
+            this.handleCollisions(deltaTime);
+        }
     }
 
     drawGizmos(ctx) {
@@ -264,7 +415,7 @@ class BasicPhysics extends Module {
         for (const obj of window.engine.gameObjects) {
             if (obj === this.gameObject) continue;
             const otherPhysics = obj.getModule("BasicPhysics");
-            if (!otherPhysics) continue;
+            if (!otherPhysics || !otherPhysics.useCollision) continue;
             if (otherPhysics.physicsLayer !== this.physicsLayer) continue;
 
             if (this.colliderType === "circle" && otherPhysics.colliderType === "circle") {
@@ -349,9 +500,9 @@ class BasicPhysics extends Module {
                 normalY = 0;
             } else {
                 if (isInside) {
-                    // Normal points outward from rectangle
-                    normalX = (closestPoint.x - circle.x) / distance;
-                    normalY = (closestPoint.y - circle.y) / distance;
+                    // Normal points outward from rectangle (from edge to circle center)
+                    normalX = (circle.x - closestPoint.x) / distance;
+                    normalY = (circle.y - closestPoint.y) / distance;
                 } else {
                     // Normal points from rectangle to circle
                     normalX = (circle.x - closestPoint.x) / distance;
@@ -426,11 +577,11 @@ class BasicPhysics extends Module {
         const dx = lineEnd.x - lineStart.x;
         const dy = lineEnd.y - lineStart.y;
         const length = dx * dx + dy * dy;
-        
+
         if (length === 0) return { x: lineStart.x, y: lineStart.y };
-        
+
         const t = Math.max(0, Math.min(1, ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / length));
-        
+
         return {
             x: lineStart.x + t * dx,
             y: lineStart.y + t * dy

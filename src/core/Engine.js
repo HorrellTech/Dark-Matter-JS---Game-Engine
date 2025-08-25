@@ -109,6 +109,28 @@ class Engine {
         this.updateViewport();
     }
 
+    /*
+        Find the nearest object to x and y by name within a certain range
+    */
+    findNearestObjectByName(x, y, name, maxRange = Infinity) {
+        let nearest = null;
+        let nearestDist = maxRange;
+
+        this.gameObjects.forEach(obj => {
+            if (obj.name === name) {
+                const dx = obj.position.x - x;
+                const dy = obj.position.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = obj;
+                }
+            }
+        });
+
+        return nearest;
+    }
+
     updateViewport() {
         // Add safety check for shake object
         if (!this.viewport.shake) {
@@ -1090,7 +1112,7 @@ class Engine {
 
         try {
             // Create GameObject
-            const gameObject = new GameObject(prefabData.name || "PrefabInstance");
+            const gameObject = new GameObject(prefabData.name || "PrefabInstance", this || null);
 
             // Set position
             gameObject.position.x = x;
@@ -1447,3 +1469,5 @@ class Engine {
         this.viewportCallbacks = [];
     }
 }
+
+window.Engine = Engine; // Make available globally

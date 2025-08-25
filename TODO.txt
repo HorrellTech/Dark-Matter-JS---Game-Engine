@@ -19,3 +19,4 @@
 
 - Make sure we have editor ability to edit modules with gizmos, so points can be dragged around to position for point arrays etc.
 
+- Add option for game objects to set depth to -y for isometric type games

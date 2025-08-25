@@ -3296,6 +3296,10 @@ class Inspector {
                     module[propName] = current;
                 }
 
+                if (typeof module.style === 'function') {
+                    this.refreshModuleUI(module);
+                }
+
                 // Force immediate update
                 updateGameObject();
 
@@ -3328,6 +3332,10 @@ class Inspector {
                     module.properties[propName] = value;
                 }
 
+                if (typeof module.style === 'function') {
+                    this.refreshModuleUI(module);
+                }
+
                 // IMPORTANT: Update game object for immediate effect
                 updateGameObject();
             });
@@ -3343,6 +3351,9 @@ class Inspector {
                 }
                 this.updateModuleProperty(module, range.dataset.propName, parseFloat(range.value));
                 updateGameObject();
+                if (typeof module.style === 'function') {
+                    this.refreshModuleUI(module);
+                }
             });
         });
 
@@ -3351,6 +3362,9 @@ class Inspector {
             checkbox.addEventListener('change', () => {
                 this.updateModuleProperty(module, checkbox.dataset.propName, checkbox.checked);
                 updateGameObject();
+                if (typeof module.style === 'function') {
+                    this.refreshModuleUI(module);
+                }
             });
         });
 
@@ -3425,6 +3439,10 @@ class Inspector {
                     module[propName] = value;
                 } else if (module.properties) {
                     module.properties[propName] = value;
+                }
+
+                if (typeof module.style === 'function') {
+                    this.refreshModuleUI(module);
                 }
 
                 // IMPORTANT: Update game object for immediate effect

@@ -559,6 +559,8 @@ class ExportManager {
             'src/core/Math/Vector3.js',
             'src/core/Math/CollisionSystem.js',
             'src/core/Math/Raycast.js',
+            'src/core/Math/MatterMath.js',
+            'src/core/Math/Polygon.js',
 
             // Core engine components
             'src/core/Module.js',
