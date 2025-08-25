@@ -1,8 +1,22 @@
 class StartScreen {
-    constructor(version = '0.2.0') {
+    constructor(version = '0.2.5') {
         this.version = version;
         this.container = null;
         this.updates = [
+            {
+                version: 'v0.2.5',
+                date: 'August 26, 2025',
+                changes: [
+                    'Added BasicPhysics module for simple physics simulation',
+                    'Added SpriteCode tool to create modules from drawing shapes',
+                    'Improved Inspector styling and usability',
+                    'Added MatterMath for useful math functions',
+                    'Added ParticleSystem module for particle effects',
+                    'Fix HTML5 export issues with some browsers',
+                    'Various bug fixes and performance improvements',
+                    'Updated documentation with new modules and features'
+                ]
+            },
             {
                 version: 'v0.2.0',
                 date: 'July 26, 2025',

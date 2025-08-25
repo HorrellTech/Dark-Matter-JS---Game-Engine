@@ -566,6 +566,15 @@ onSpeedChanged(newSpeed) {
                     }
                 }
             },
+            "MatterMath": {
+                icon: "fas fa-square-root-alt",
+                description: "Math utilities and helpers for game logic, physics, and more.",
+                topics: {
+                    "Function Reference": {
+                        content: this.generateMatterMathContent()
+                    }
+                }
+            },
             "Graphics & Audio": {
                 icon: "fas fa-paint-brush",
                 description: "Visual and sound effects",
@@ -883,251 +892,401 @@ stopSound() {
                     position: fixed;
                     top: 0;
                     left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background-color: rgba(0, 0, 0, 0.8);
+                    width: 100vw;
+                    height: 100vh;
+                    background: radial-gradient(ellipse at center, #23272f 0%, #181a20 100%);
                     display: flex;
                     justify-content: center;
                     align-items: center;
                     z-index: 10000;
+                    font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+                    letter-spacing: 0.01em;
                 }
-                
+
                 .documentation-content {
-                    width: 90%;
-                    height: 90%;
-                    max-width: 1200px;
-                    max-height: 800px;
+                    width: 92vw;
+                    height: 92vh;
+                    max-width: 1280px;
+                    max-height: 900px;
                     display: flex;
                     flex-direction: column;
-                    background-color: #1e1e1e;
-                    border-radius: 6px;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                    background: linear-gradient(135deg, #23272f 0%, #181a20 100%);
+                    border-radius: 14px;
+                    box-shadow: 0 12px 48px 0 rgba(0,0,0,0.8), 0 1.5px 0 #0e639c inset;
+                    overflow: hidden;
+                    border: 1.5px solid #0e639c;
+                    animation: fadeIn 0.3s;
                 }
-                
+
                 .documentation-header {
-                    padding: 15px;
-                    background: linear-gradient(to right, #1a1a1a, #252525, #1a1a1a);
-                    border-bottom: 1px solid #333;
+                    padding: 18px 28px;
+                    background: linear-gradient(90deg, #181a20 0%, #23272f 100%);
+                    border-bottom: 1.5px solid #0e639c;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
+                    box-shadow: 0 2px 8px rgba(14,99,156,0.08);
                 }
-                
+
                 .documentation-title {
-                    font-size: 24px;
+                    font-size: 28px;
                     margin: 0;
-                    color: #ffffff;
+                    color: #e6e6e6;
+                    font-weight: 700;
+                    letter-spacing: 0.03em;
+                    text-shadow: 0 2px 8px #0e639c44;
                 }
-                
+
                 .documentation-body {
                     display: flex;
                     flex: 1;
                     overflow: hidden;
+                    background: linear-gradient(90deg, #23272f 0%, #181a20 100%);
                 }
-                
+
                 .doc-sidebar {
-                    width: 250px;
-                    border-right: 1px solid #333;
+                    width: 270px;
+                    min-width: 220px;
+                    max-width: 320px;
+                    border-right: 2px solid #0e639c;
+                    background: linear-gradient(180deg, #23272f 0%, #181a20 100%);
+                    box-shadow: 2px 0 16px #0e639c22;
                     overflow-y: auto;
-                    background: #252525;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
                 }
-                
+
                 .doc-category {
-                    border-bottom: 1px solid #333;
+                    border-bottom: 1.5px solid #23272f;
+                    margin-bottom: 2px;
+                    background: #20232b;
+                    border-radius: 8px;
+                    margin: 8px 10px;
+                    box-shadow: 0 2px 8px #0e639c11;
+                    transition: box-shadow 0.2s;
                 }
-                
+
                 .doc-category-header {
-                    padding: 12px 15px;
+                    padding: 14px 18px;
                     cursor: pointer;
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    color: #cccccc;
-                    font-weight: 500;
-                    transition: background 0.2s;
+                    color: #b7c9e2;
+                    font-weight: 600;
+                    font-size: 17px;
+                    border-radius: 8px 8px 0 0;
+                    background: linear-gradient(90deg, #23272f 0%, #181a20 100%);
+                    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+                    box-shadow: 0 1px 4px #0e639c22;
+                    border-bottom: 1px solid #23272f;
                 }
-                
+
                 .doc-category-header:hover {
-                    background: #2a2a2a;
+                    background: linear-gradient(90deg, #0e639c 0%, #23272f 100%);
+                    color: #fff;
+                    box-shadow: 0 2px 8px #0e639c44;
                 }
-                
+
                 .doc-category-header.active {
-                    background: #0e639c;
-                    color: white;
+                    background: linear-gradient(90deg, #0e639c 0%, #23272f 100%);
+                    color: #fff;
+                    box-shadow: 0 2px 12px #0e639c88;
                 }
-                
+
                 .doc-category-header i {
                     margin-right: 10px;
-                    width: 16px;
+                    width: 18px;
                     text-align: center;
+                    font-size: 18px;
+                    color: #0e639c;
+                    transition: color 0.2s;
                 }
-                
+                .doc-category-header.active i {
+                    color: #fff;
+                }
+
                 .doc-category-description {
-                    font-size: 12px;
-                    color: #999;
-                    margin-top: 4px;
+                    font-size: 13px;
+                    color: #7a8ca3;
+                    margin: 0 18px 8px 18px;
+                    padding-bottom: 4px;
+                    border-bottom: 1px solid #23272f;
                 }
-                
+
                 .doc-topics {
                     overflow: hidden;
                     max-height: 0;
-                    transition: max-height 0.3s ease;
+                    transition: max-height 0.3s cubic-bezier(.4,0,.2,1);
+                    background: #20232b;
+                    border-radius: 0 0 8px 8px;
+                    box-shadow: 0 2px 8px #0e639c11;
                 }
-                
+
                 .doc-topics.expanded {
-                    max-height: 500px;
+                    max-height: 600px;
+                    transition: max-height 0.4s cubic-bezier(.4,0,.2,1);
+                    box-shadow: 0 4px 16px #0e639c22;
                 }
-                
+
                 .doc-topic {
-                    padding: 10px 15px 10px 35px;
+                    padding: 12px 24px 12px 38px;
                     cursor: pointer;
-                    color: #aaaaaa;
-                    transition: background 0.2s, color 0.2s;
+                    color: #b7c9e2;
+                    font-size: 15px;
+                    border-left: 3px solid transparent;
+                    transition: background 0.2s, color 0.2s, border-left 0.2s;
+                    border-radius: 0 0 8px 8px;
+                    margin-bottom: 2px;
                 }
-                
+
                 .doc-topic:hover {
-                    background: #2a2a2a;
-                    color: #ffffff;
-                }
-                
-                .doc-topic.active {
-                    background: #333;
-                    color: #ffffff;
+                    background: linear-gradient(90deg, #0e639c22 0%, #23272f 100%);
+                    color: #fff;
                     border-left: 3px solid #0e639c;
                 }
-                
+
+                .doc-topic.active {
+                    background: linear-gradient(90deg, #0e639c 0%, #23272f 100%);
+                    color: #fff;
+                    border-left: 3px solid #0e639c;
+                    font-weight: 600;
+                    box-shadow: 0 2px 8px #0e639c44;
+                }
+
                 .doc-content {
                     flex: 1;
-                    padding: 20px;
+                    padding: 32px 36px;
                     overflow-y: auto;
-                    color: #cccccc;
+                    color: #b7c9e2;
+                    background: linear-gradient(135deg, #23272f 0%, #181a20 100%);
+                    font-size: 16px;
+                    border-radius: 0 0 14px 0;
+                    box-shadow: 0 2px 16px #0e639c11 inset;
                 }
-                
+
                 .doc-content h2 {
                     margin-top: 0;
-                    color: #ffffff;
-                    border-bottom: 1px solid #333;
-                    padding-bottom: 10px;
-                    margin-bottom: 20px;
+                    color: #fff;
+                    border-bottom: 2px solid #0e639c;
+                    padding-bottom: 12px;
+                    margin-bottom: 24px;
+                    font-size: 24px;
+                    font-weight: 700;
+                    text-shadow: 0 2px 8px #0e639c44;
                 }
-                
+
                 .doc-content h3 {
-                    color: #cccccc;
-                    margin-top: 25px;
-                    margin-bottom: 10px;
+                    color: #0e639c;
+                    margin-top: 32px;
+                    margin-bottom: 12px;
+                    font-size: 20px;
+                    font-weight: 600;
+                    text-shadow: 0 2px 8px #0e639c22;
                 }
-                
+
                 .doc-content p {
-                    line-height: 1.6;
-                    margin-bottom: 15px;
+                    line-height: 1.7;
+                    margin-bottom: 18px;
+                    color: #b7c9e2;
                 }
-                
+
                 .doc-content ul, .doc-content ol {
-                    margin-bottom: 15px;
-                    padding-left: 25px;
+                    margin-bottom: 18px;
+                    padding-left: 28px;
                 }
-                
+
                 .doc-content li {
-                    margin-bottom: 5px;
+                    margin-bottom: 7px;
                 }
-                
+
                 .doc-content pre {
-                    background: #252525;
-                    border: 1px solid #333;
-                    border-radius: 4px;
-                    padding: 10px;
+                    background: linear-gradient(90deg, #23272f 0%, #181a20 100%);
+                    border: 1.5px solid #0e639c;
+                    border-radius: 6px;
+                    padding: 14px;
                     overflow-x: auto;
-                    margin: 15px 0;
+                    margin: 18px 0;
+                    color: #e6e6e6;
+                    font-size: 15px;
+                    box-shadow: 0 2px 8px #0e639c22;
                 }
-                
+
                 .doc-content code {
                     font-family: 'Consolas', 'Monaco', monospace;
-                    font-size: 14px;
+                    font-size: 15px;
                     color: #e6e6e6;
+                    background: #181a20;
+                    border-radius: 3px;
+                    padding: 2px 6px;
                 }
-                
+
                 .doc-section {
-                    margin-bottom: 25px;
+                    margin-bottom: 32px;
+                    background: #20232b;
+                    border-radius: 8px;
+                    padding: 18px 18px 12px 18px;
+                    box-shadow: 0 2px 8px #0e639c11;
+                    border-left: 3px solid #0e639c33;
                 }
-                
+
                 .doc-image {
                     max-width: 100%;
-                    border: 1px solid #333;
-                    border-radius: 4px;
-                    margin: 10px 0;
+                    border: 1.5px solid #0e639c;
+                    border-radius: 6px;
+                    margin: 12px 0;
+                    box-shadow: 0 2px 8px #0e639c22;
+                    background: #23272f;
                 }
-                
+
                 .documentation-footer {
-                    padding: 15px;
-                    background-color: #252525;
-                    border-top: 1px solid #333;
+                    padding: 18px 28px;
+                    background: linear-gradient(90deg, #181a20 0%, #23272f 100%);
+                    border-top: 1.5px solid #0e639c;
                     display: flex;
                     justify-content: flex-end;
+                    box-shadow: 0 -2px 8px #0e639c22;
                 }
-                
+
                 .doc-btn {
-                    background: #2a2a2a;
-                    border: 1px solid #444;
-                    border-radius: 4px;
-                    color: #cccccc;
-                    padding: 8px 15px;
-                    margin-left: 10px;
+                    background: linear-gradient(90deg, #23272f 0%, #181a20 100%);
+                    border: 1.5px solid #0e639c;
+                    border-radius: 6px;
+                    color: #b7c9e2;
+                    padding: 10px 22px;
+                    margin-left: 12px;
                     cursor: pointer;
+                    font-size: 16px;
+                    font-weight: 600;
                     transition: all 0.2s;
+                    box-shadow: 0 2px 8px #0e639c22;
                 }
-                
+
                 .doc-btn:hover {
-                    background: #333;
-                    color: #ffffff;
+                    background: linear-gradient(90deg, #0e639c 0%, #23272f 100%);
+                    color: #fff;
+                    box-shadow: 0 2px 12px #0e639c44;
                 }
-                
+
                 .doc-btn.primary {
-                    background: #0e639c;
+                    background: linear-gradient(90deg, #0e639c 0%, #23272f 100%);
                     border-color: #1177bb;
-                    color: white;
+                    color: #fff;
+                    box-shadow: 0 2px 12px #0e639c88;
                 }
-                
+
                 .doc-btn.primary:hover {
-                    background: #1177bb;
+                    background: linear-gradient(90deg, #1177bb 0%, #0e639c 100%);
                 }
-                
+
                 .shortcuts-table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin: 15px 0;
+                    margin: 18px 0;
+                    background: #20232b;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 8px #0e639c11;
                 }
-                
+
                 .shortcuts-table td {
-                    padding: 8px 15px;
-                    border-bottom: 1px solid #333;
+                    padding: 10px 18px;
+                    border-bottom: 1px solid #23272f;
+                    color: #b7c9e2;
+                    font-size: 15px;
                 }
-                
+
                 .shortcuts-table tr:last-child td {
                     border-bottom: none;
                 }
-                
+
                 kbd {
-                    background: #333;
-                    border: 1px solid #555;
-                    border-radius: 3px;
-                    padding: 3px 6px;
+                    background: #23272f;
+                    border: 1.5px solid #0e639c;
+                    border-radius: 4px;
+                    padding: 4px 10px;
                     font-family: 'Consolas', 'Monaco', monospace;
-                    font-size: 12px;
-                    box-shadow: 0 2px 0 #222;
+                    font-size: 13px;
+                    color: #e6e6e6;
+                    box-shadow: 0 2px 0 #0e639c44;
+                    margin-right: 2px;
                 }
-                
+
                 @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
+                    from { opacity: 0; transform: scale(0.98);}
+                    to { opacity: 1; transform: scale(1);}
                 }
-                
+
                 @keyframes fadeOut {
-                    from { opacity: 1; }
-                    to { opacity: 0; }
+                    from { opacity: 1; transform: scale(1);}
+                    to { opacity: 0; transform: scale(0.98);}
                 }
             `;
             document.head.appendChild(styleElement);
         }
+    }
+
+    generateMatterMathContent() {
+        // List of functions and descriptions
+        const functions = [
+            { name: "pi()", desc: "Returns the value of PI." },
+            { name: "pi2()", desc: "Returns 2 * PI." },
+            { name: "time()", desc: "Returns current timestamp in ms." },
+            { name: "dt(rate)", desc: "Returns delta time scaled by rate." },
+            { name: "setTimescale(timescale)", desc: "Sets the timescale for calculations." },
+            { name: "getTimescale()", desc: "Gets the current timescale." },
+            { name: "ts()", desc: "Alias for getTimescale()." },
+            { name: "listCreate()", desc: "Creates a new array/list." },
+            { name: "listAdd(id, value)", desc: "Adds a value to a list." },
+            { name: "listSet(id, pos, value)", desc: "Sets a value at a position in a list." },
+            { name: "listGet(id, pos)", desc: "Gets a value from a list at a position." },
+            { name: "array2dCreate(w, h, val)", desc: "Creates a 2D array initialized with val." },
+            { name: "array2dSet(array, x, y, value)", desc: "Sets a value in a 2D array." },
+            { name: "array2dGet(array, x, y)", desc: "Gets a value from a 2D array." },
+            { name: "array3dCreate(w, h, d, val)", desc: "Creates a 3D array initialized with val." },
+            { name: "array3dSet(array, x, y, z, value)", desc: "Sets a value in a 3D array." },
+            { name: "array3dGet(array, x, y, z)", desc: "Gets a value from a 3D array." },
+            { name: "arrayClear(array)", desc: "Clears an array." },
+            { name: "dcos(x)", desc: "Returns cosine of x degrees." },
+            { name: "degtorad(x)", desc: "Converts degrees to radians." },
+            { name: "radtodeg(x)", desc: "Converts radians to degrees." },
+            { name: "snap(pos, grid)", desc: "Snaps a position to grid size." },
+            { name: "pointDistance(x1, y1, x2, y2)", desc: "Distance between two points." },
+            { name: "pointDirection(x1, y1, x2, y2)", desc: "Angle from one point to another." },
+            { name: "angleDifference(a1, a2)", desc: "Smallest difference between two angles." },
+            { name: "lengthDirX(len, dir)", desc: "X offset for length/direction." },
+            { name: "lengthDirY(len, dir)", desc: "Y offset for length/direction." },
+            { name: "lerp(from, to, amt)", desc: "Linear interpolation between two values." },
+            { name: "random(max)", desc: "Random float between 1 and max." },
+            { name: "randomRange(min, max)", desc: "Random float between min and max." },
+            { name: "irandom(max)", desc: "Random integer between 1 and max." },
+            { name: "irandomRange(min, max)", desc: "Random integer between min and max." },
+            { name: "randomBool()", desc: "Random true or false." },
+            { name: "choose(...items)", desc: "Randomly chooses one of the items." },
+            { name: "stringReplaceAll(str, find, replace)", desc: "Replaces all occurrences in a string." },
+            { name: "toString(val)", desc: "Converts a value to string." },
+            { name: "toInt(val)", desc: "Converts a value to integer." },
+            { name: "sine(delay, max)", desc: "Returns a pulsing value using sine." },
+            { name: "sinePositive(delay, max)", desc: "Returns a positive pulsing value." },
+            { name: "sineNegative(delay, max)", desc: "Returns a negative pulsing value." },
+            { name: "interpolate(start, end, t)", desc: "Linear interpolation." },
+            { name: "smoothstep(t)", desc: "Smoothstep interpolation." },
+            { name: "sineInterpolation(t)", desc: "Sine-based interpolation." },
+            { name: "clamp(val, min, max)", desc: "Clamps a value between min and max." },
+            { name: "keepPositive(x)", desc: "Returns absolute value." },
+            { name: "keepNegative(x)", desc: "Returns negative absolute value." },
+            { name: "rotateSmooth(dir, target, speed)", desc: "Smoothly rotates an angle toward another." },
+            { name: "executeString(str)", desc: "Executes JS code from a string." },
+            { name: "rgb(r, g, b)", desc: "Returns an RGB color string." },
+            { name: "hsl(h, s, l)", desc: "Returns an HSL color string." }
+        ];
+
+        let html = `<h2>MatterMath Function Reference</h2><ul>`;
+        functions.forEach(f => {
+            html += `<li><code>${f.name}</code>: ${f.desc}</li>`;
+        });
+        html += `</ul>`;
+        return html;
     }
 
     generateAIPromptContent() {

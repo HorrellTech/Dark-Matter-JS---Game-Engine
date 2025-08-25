@@ -608,6 +608,10 @@ class Inspector {
                     <input type="number" class="depth" value="${this.inspectedObject.depth}" step="1" title="Render depth/layer">
                 </div>
                 <div class="property-row">
+                    <label title="Adjust depth based on Y position(Good for 2.5D/isometric games)">Depth to -y</label>
+                    <input type="checkbox" class="depth-to-y" ${this.inspectedObject.depthToY ? 'checked' : ''}>
+                </div>
+                <div class="property-row">
                     <label title="Color in editor view">Color</label>
                     <input type="color" class="editor-color" value="${this.inspectedObject.editorColor}" title="Color in editor view">
                 </div>
@@ -638,6 +642,7 @@ class Inspector {
         const scaleYInput = transformModule.querySelector('.scale-y');
         const rotationInput = transformModule.querySelector('.rotation');
         const depthInput = transformModule.querySelector('.depth');
+        const depthToYInput = transformModule.querySelector('.depth-to-y');
         const colorInput = transformModule.querySelector('.editor-color');
 
         // Add color change listener
@@ -694,6 +699,12 @@ class Inspector {
             this.inspectedObject.depth = parseFloat(depthInput.value);
             this.editor.refreshCanvas();
         });
+
+        depthToYInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.depthToY = depthToYInput.checked;
+            this.editor.refreshCanvas();
+        });
     }
 
     updateTransformValues() {
@@ -711,6 +722,7 @@ class Inspector {
         transformModule.querySelector('.scale-y').value = scale.y;
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;
         transformModule.querySelector('.depth').value = this.inspectedObject.depth;
+        transformModule.querySelector('.depth-to-y').checked = this.inspectedObject.depthToY;
         transformModule.querySelector('.editor-color').value = this.inspectedObject.editorColor || '#ffffff';
 
         // Update hierarchy icon color

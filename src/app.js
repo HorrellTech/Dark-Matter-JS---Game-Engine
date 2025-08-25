@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         console.log('Initializing documentation system...');
         if (!window.docModal && window.DocumentationModal) {
-            window.docModal = new DocumentationModal();
+            window.docModal = new Documentation();
             console.log('Documentation system initialized');
         }
     } catch (error) {
@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("Connected ModuleReloader to ModuleRegistry");
     }
 
-    const startScreen = new StartScreen('0.2.1');
+    const startScreen = new StartScreen('0.2.5');
 
     initializeMobileSupport();
 
@@ -1126,7 +1126,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (docButton && window.docModal) {
         docButton.addEventListener('click', () => {
             console.log('Documentation button clicked');
-            window.docModal.open();
+            //window.docModal.open();
+            const docsModal = new Documentation();
+            docsModal.show();
         });
     } else {
         console.warn("Documentation button or modal not found.");

@@ -7,6 +7,7 @@ class GameObject {
         this.scale = new Vector2(1, 1);
         this.angle = 0;
         this.depth = 0;
+        this.depthToY = false; // Whether to adjust depth based on Y position
         this.visible = true;
         this.modules = [];
         this.children = [];
@@ -99,6 +100,11 @@ class GameObject {
             if (module.enabled && module.endLoop) module.endLoop();
         });
         this.children.forEach(child => child.endLoop());
+
+        // Update depth based on Y position if enabled
+        if (this.depthToY) {
+            this.depth = Math.floor(this.getWorldPosition().y);
+        }
     }
 
     /**
