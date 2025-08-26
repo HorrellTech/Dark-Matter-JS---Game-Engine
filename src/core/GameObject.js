@@ -129,6 +129,11 @@ class GameObject {
     loop(deltaTime) {
         if (!this.active) return;
 
+        // Update depth based on Y position if enabled
+        if (this.depthToY) {
+            this.depth = Math.floor(this.position.y);
+        }
+
         // Update polygon if enabled
         if (this.usePolygonCollision && this.polygon) {
             this.polygon.update(this.position.clone(), this.angle + this.polygonAngleOffset);
@@ -154,11 +159,6 @@ class GameObject {
             }
         });
         this.children.forEach(child => child.endLoop());
-
-        // Update depth based on Y position if enabled
-        if (this.depthToY) {
-            this.depth = Math.floor(this.getWorldPosition().y);
-        }
     }
 
     /**
