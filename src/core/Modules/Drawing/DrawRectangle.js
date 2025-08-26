@@ -7,9 +7,9 @@ class DrawRectangle extends Module {
         super("DrawRectangle");
 
         /** @type {number} Full width of the rectangle */
-        this.width = 100;
+        this.width = 50;
         /** @type {number} Full height of the rectangle */
-        this.height = 100;
+        this.height = 50;
         /** @type {Vector2} Offset from the GameObject's center */
         this.offset = new Vector2(0, 0);
         /** @type {string} Fill color */

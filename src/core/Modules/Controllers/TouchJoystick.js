@@ -204,14 +204,14 @@ class TouchJoystick extends Module {
         ctx.save();
         ctx.globalAlpha = 0.5;
         ctx.beginPath();
-        ctx.arc(this.gameObject.position.x, this.gameObject.position.y, this.joystickRadius, 0, Math.PI * 2);
+        ctx.arc(0, 0, this.joystickRadius, 0, Math.PI * 2);
         ctx.fillStyle = "#222222";
         ctx.fill();
         ctx.globalAlpha = 1.0;
 
         // Draw knob
-        let knobX = this.gameObject.position.x;
-        let knobY = this.gameObject.position.y;
+        let knobX = 0;
+        let knobY = 0;
         if (this.active) {
             knobX += this.direction.x * this.joystickRadius;
             knobY += this.direction.y * this.joystickRadius;

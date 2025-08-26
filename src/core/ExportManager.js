@@ -699,7 +699,8 @@ class ExportManager {
 
             // Physics and Collision Modules
             'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',
-            'Rigidbody': 'src/core/Modules/Rigidbody.js',
+            'Rigidbody': 'src/core/Modules/Matter-js/Rigidbody.js',
+            'Joint': 'src/core/Modules/Matter-js/Joint.js',
             'Collider': 'src/core/Modules/Collider.js',
             'PlatformCharacterAuto': 'src/core/Modules/Platform Game/PlatformCharacterAuto.js',
 

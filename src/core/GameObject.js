@@ -2,7 +2,7 @@ class GameObject {
     constructor(name = "GameObject", engine = null) {
         this.name = name;
         this.position = new Vector2();
-        this.size = new Vector2(32, 32); // Default size in pixels for collision detection
+        this.size = new Vector2(50, 50); // Default size in pixels for collision detection
         this.useCollisions = false; // Whether to use collision detection
         this.origin = new Vector2(0.5, 0.5); // Centered by default
         this.scale = new Vector2(1, 1);

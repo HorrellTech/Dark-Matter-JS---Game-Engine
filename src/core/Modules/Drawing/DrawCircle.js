@@ -7,7 +7,7 @@ class DrawCircle extends Module {
         super("DrawCircle");
 
         /** @type {number} Radius of the circle */
-        this.radius = 50;
+        this.radius = 25;
         /** @type {Vector2} Offset from the GameObject's center */
         this.offset = new Vector2(0, 0);
         /** @type {string} Fill color */
