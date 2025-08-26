@@ -1,641 +1,640 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dark Matter JS - Javascript Based Game Development Tool</title>
-    <link rel="stylesheet" href="src/styles/main.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="src/styles/file-browser.css">
-    <link rel="stylesheet" href="src/styles/script-editor.css">
-    <link rel="stylesheet" href="src/styles/hierarchy.css">
-    <link rel="stylesheet" href="src/styles/inspector.css">
-    <link rel="stylesheet" href="src/styles/scene-manager.css">
-    <link rel="stylesheet" href="src/styles/scene.css">
-    <link rel="stylesheet" href="src/styles/scrollbars.css">
-    <link rel="stylesheet" href="src/styles/game-canvas.css">
-    <link rel="stylesheet" href="src/styles/start-screen.css">
-    <link rel="stylesheet" href="src/styles/documentation-modal.css">
-    <link rel="stylesheet" href="src/styles/asset-manager.css">
-    <link rel="stylesheet" href="src/styles/mobile-management.css">
-    <link rel="stylesheet" href="src/styles/layout-fix.css">
-    <link rel="stylesheet" href="src/styles/ai-panel.css">
-    <link rel="stylesheet" href="src/styles/settings-modal.css">
-    <link rel="stylesheet" href="src/styles/export-modal.css">
-    <link rel="stylesheet" href="src/styles/prefab-manager.css">
-    <link rel="stylesheet" href="src/styles/sprite-code.css">
-    <link rel="stylesheet" href="src/styles/prism.css">
-    <!--link rel="stylesheet" href="src/styles/split-view.css"-->
-
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
-    
-    <script src="src/prism.js"></script>
-
-    <script src="src/core/Keywords.js"></script>
-
-    <script src="src/core/Windows/Documentation.js"></script>
-    <script src="src/core/Windows/DocumentationModal.js"></script>
-    <script src="src/core/Windows/StartScreen.js"></script>
-    <script src="src/core/Windows/SettingsModal.js"></script>
-
-    <!-- Add Matter.js physics engine -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Matter JS - Game Development Suite</title>
     <style>
-        .canvas-container.split-active {
-            display: flex !important;
-            min-height: 300px !important;
-            min-width: 400px !important;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        .split-view {
-            min-width: 200px !important;
-            min-height: 200px !important;
-            display: block !important;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+            scroll-behavior: smooth;
+        }
+
+        /* Navigation */
+        .navbar {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            border-bottom: 1px solid #333;
+            transition: all 0.3s ease;
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #fff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo-icon {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(45deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.8rem;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: #e0e0e0;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-links a:hover {
+            color: #fff;
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .nav-links a.active {
+            color: #6366f1;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23333" stroke-width="0.5" opacity="0.3"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            z-index: 1;
+            position: relative;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            color: #b0b0b0;
+            margin-bottom: 2rem;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        /* Section Styling */
+        .section {
+            padding: 5rem 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            text-align: center;
+            color: #fff;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2rem;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .feature-card h3 {
+            color: #fff;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card p {
+            color: #b0b0b0;
+        }
+
+        /* Getting Started */
+        .code-block {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            color: #e0e0e0;
+        }
+
+        .code-block pre {
+            margin: 0;
+        }
+
+        /* Stats Section */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            text-align: center;
+            margin: 3rem 0;
+        }
+
+        .stat-item {
+            padding: 1.5rem;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #6366f1;
+            display: block;
+        }
+
+        .stat-label {
+            color: #b0b0b0;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Footer */
+        .footer {
+            background: #111;
+            padding: 3rem 2rem 1rem;
+            text-align: center;
+            border-top: 1px solid #333;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: #b0b0b0;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: #6366f1;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Scroll animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
         }
     </style>
 </head>
-
 <body>
-    <div class="toolbar">
-        <div class="toolbar-group">
-            <button class="toolbar-button" title="New Project" style="color: #ffffff"><i
-                    class="fas fa-file"></i></button>
-            <button class="toolbar-button" title="Load Project" style="color: #d8be75"><i
-                    class="fas fa-folder-open"></i></button>
-            <button class="toolbar-button" title="Save Project" style="color: #789ace"><i
-                    class="fas fa-save"></i></button>
-            <!--button class="toolbar-button" title="Save As" id="saveAsButton" style="color: #b8a1e3"><i class="fas fa-file-signature"></i></button-->
-            <button class="toolbar-button" title="Export Project" style="color: #68bb81"><i
-                    class="fas fa-file-export"></i></button>
-        </div>
-        <div class="toolbar-spacer"></div>
-        <button class="toolbar-button" title="Documentation" style="color: #64B5F6">
-            <i class="fas fa-book"></i>
-        </button>
-        <button class="launch-btn" id="launchSpriteCodeBtn" title="Launch Sprite Code"
-            style="background: linear-gradient(135deg, #d1cf47, #db13d1);"><i class="fas fa-paint-brush"></i>
-        </button>
-        <div class="toolbar-group">
-            <button class="toolbar-button" title="Play" style="color: #4CAF50"><i class="fas fa-play"></i></button>
-            <button class="toolbar-button" title="Stop" style="color: #f44336"><i class="fas fa-stop"></i></button>
-            <div class="toolbar-spacer"></div>
-            <button class="toolbar-button" title="Settings" style="color: #607D8B"><i class="fas fa-cog"></i></button>
-            <button class="toolbar-button" title="Zen Mode" id="zenModeButton" style="color: #4998d8"><i
-                    class="fas fa-moon"></i></button>
-            <!-- Buy Me A Coffee button to the right of zoom controls -->
-            <a href="https://www.buymeacoffee.com/SynKrown" target="_blank" class="bmc-button"
-                style="margin-left:16px;vertical-align:middle;display:inline-block;">
-                <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="30"
-                    style="vertical-align:middle;">
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#home" class="logo">
+                <div class="logo-icon">⚫</div>
+                Dark Matter JS
             </a>
+            <ul class="nav-links">
+                <li><a href="#home" class="nav-link">Home</a></li>
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#getting-started" class="nav-link">Getting Started</a></li>
+                <li><a href="#examples" class="nav-link">Examples</a></li>
+                <li><a href="#roadmap" class="nav-link">Roadmap</a></li>
+            </ul>
         </div>
-    </div>
+    </nav>
 
-    <div class="main-content">
-        <div class="hierarchy-panel">
-            <div class="hierarchy-header">Hierarchy</div>
-            <div id="gameObjectHierarchy"></div>
-            <div class="resizer-v"></div>
-        </div>
-
-        <div class="center-panel">
-            <div class="canvas-tabs">
-                <button class="canvas-tab active" data-canvas="editor">Scene</button>
-                <button class="canvas-tab" data-canvas="game">Game</button>
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="hero-content">
+            <h1>Dark Matter JS</h1>
+            <p>A powerful, open-source, component-based 2D game engine for the web. Build games directly in your browser with our integrated editor and runtime environment.</p>
+            <div class="cta-buttons">
+                <a href="DarkMatter.html" class="btn btn-primary">
+                    🚀 Start Creating
+                </a>
+                <a href="#getting-started" class="btn btn-secondary">
+                    📖 Learn More
+                </a>
             </div>
-            <div class="canvas-container">
-                <div class="canvas-view active" id="editorView">
-                    <div class="editor-toolbar">
-                        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
-                        <label>Grid Size: <input type="number" id="gridSize" value="32" min="8" max="128"></label>
-                        <label><input type="checkbox" id="snapToGrid"> Snap to Grid</label>
-                        <div class="zoom-controls">
-                            <button id="zoomOutButton" class="editor-button" title="Zoom Out"><i
-                                    class="fas fa-search-minus"></i></button>
-                            <span id="zoomLevel" class="zoom-level">100%</span>
-                            <button id="zoomInButton" class="editor-button" title="Zoom In"><i
-                                    class="fas fa-search-plus"></i></button>
-                            <button id="resetZoomButton" class="editor-button" title="Reset View"><i
-                                    class="fas fa-compress-arrows-alt"></i></button>
-                        </div>
-                    </div>
-                    <div class="editor-canvas-container">
-                        <canvas id="editorCanvas" width="800" height="600"></canvas>
-                        <svg class="axis-indicator" width="50" height="50" viewBox="0 0 50 50">
-                            <line x1="10" y1="40" x2="40" y2="40" stroke="#ff0000" stroke-width="2" />
-                            <line x1="10" y1="40" x2="10" y2="10" stroke="#00ff00" stroke-width="2" />
-                            <text x="42" y="44" fill="#ff0000" font-size="12">X</text>
-                            <text x="6" y="8" fill="#00ff00" font-size="12">Y</text>
-                        </svg>
-                    </div>
-                </div>
-                <div class="canvas-view" id="gameView">
-                    <div class="game-toolbar">
-                        <div class="game-controls">
-                            <button id="fullscreenButton" class="game-button" title="Toggle Fullscreen">
-                                <i class="fas fa-expand"></i>
-                            </button>
-                            <div class="game-dropdown">
-                                <button class="game-button" title="Rendering Options">
-                                    <i class="fas fa-sliders-h"></i>
-                                </button>
-                                <div class="game-dropdown-content">
-                                    <label>Scaling Mode:
-                                        <select id="scaleModeSelect">
-                                            <option value="fit">Fit</option>
-                                            <option value="stretch">Stretch</option>
-                                            <option value="pixel-perfect">Pixel Perfect</option>
-                                            <option value="nearest-neighbor">Nearest Neighbor</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <input type="checkbox" id="maintainAspectRatio" checked>
-                                        Maintain Aspect Ratio
-                                    </label>
-                                    <label>
-                                        <input type="checkbox" id="pixelPerfect">
-                                        Pixel Perfect
-                                    </label>
-                                    <label>
-                                        <input type="checkbox" id="smoothingEnabled" checked>
-                                        Image Smoothing
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="game-info">
-                            <div id="fpsDisplay" style="font-family: monospace; font-size: 14px;">FPS: 0</div>
-                            <span id="resolutionDisplay">800×600</span>
-                        </div>
-                    </div>
-                    <div class="game-canvas-container">
-                        <canvas id="gameCanvas" width="800" height="600"></canvas>
-                    </div>
-                </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="section">
+        <h2 class="fade-in">Powerful Features</h2>
+        <div class="features-grid">
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎯</div>
+                <h3>Component-Based Architecture</h3>
+                <p>Build games using reusable modules and components, similar to Unity's approach but designed for web development.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎨</div>
+                <h3>Visual Editor</h3>
+                <p>Create and arrange game objects in a visual scene editor with real-time property modification and instant testing.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">⚡</div>
+                <h3>Instant Development</h3>
+                <p>Test your games instantly within the editor with Play Mode, no compilation or build steps required.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎮</div>
+                <h3>Input System</h3>
+                <p>Comprehensive keyboard, mouse, and touch input handling with easy-to-use APIs for all input methods.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🌙</div>
+                <h3>Zen Mode</h3>
+                <p>Toggle fullscreen editing for distraction-free development with customizable grid and snapping tools.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🤖</div>
+                <h3>AI Assistant</h3>
+                <p>Integrated AI-powered code assistant supports ChatGPT, Gemini, and Claude to help generate modules and solve coding challenges.</p>
             </div>
         </div>
 
-        <div class="module-panel">
-            <div class="hierarchy-header">Inspector</div>
-            <div id="moduleSettings"></div>
-            <div class="resizer-v"></div>
+        <div class="stats fade-in">
+            <div class="stat-item">
+                <span class="stat-number">100%</span>
+                <span class="stat-label">Browser-Based</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">0</span>
+                <span class="stat-label">Setup Required</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">∞</span>
+                <span class="stat-label">Possibilities</span>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <div class="bottom-panel">
-        <div class="resizer-h"></div>
-        <div class="tab-buttons">
-            <button class="tab-button active" data-tab="fileManager">Project</button>
-            <button class="tab-button" data-tab="console">Console</button>
+    <!-- Getting Started Section -->
+    <section id="getting-started" class="section">
+        <h2 class="fade-in">Getting Started</h2>
+        <div class="fade-in">
+            <p style="text-align: center; font-size: 1.1rem; margin-bottom: 2rem; color: #b0b0b0;">
+                Start creating games in minutes with our browser-based editor. No downloads, no setup required.
+            </p>
+
+            <h3 style="color: #fff; margin-bottom: 1rem;">1. Access the Online Editor</h3>
+            <p style="margin-bottom: 1rem;">Visit our online development environment and start creating immediately:</p>
+            <div class="code-block">
+                <pre>🌐 https://horrelltech.github.io/Dark-Matter-JS---Game-Engine/</pre>
+            </div>
+
+            <h3 style="color: #fff; margin-bottom: 1rem; margin-top: 2rem;">2. Create Your First Game Object</h3>
+            <div class="code-block">
+                <pre>// Create a new game object
+const player = new GameObject("Player");
+player.position = new Vector2(400, 300);
+
+// Add it to the scene
+scene.gameObjects.push(player);</pre>
+            </div>
+
+            <h3 style="color: #fff; margin-bottom: 1rem; margin-top: 2rem;">3. Add Behavior with Modules</h3>
+            <div class="code-block">
+                <pre>class PlayerController extends Module {
+    constructor() {
+        super("PlayerController");
+        this.speed = 5;
+        this.exposeProperty("speed", "number", 5);
+    }
+    
+    loop(deltaTime) {
+        if (window.input.keyDown(window.input.key.right)) {
+            this.gameObject.position.x += this.speed * deltaTime;
+        }
+    }
+}</pre>
+            </div>
         </div>
-        <div class="tab-content active" id="fileManager">
-            <div id="fileBrowserContainer" style="height: 100%; display: flex; flex-direction: column;"></div>
+    </section>
+
+    <!-- Examples Section -->
+    <section id="examples" class="section">
+        <h2 class="fade-in">Built-in Modules & Examples</h2>
+        <div class="features-grid">
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎪</div>
+                <h3>SpriteRenderer</h3>
+                <p>Render images and animations with built-in sprite management and animation controls.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎨</div>
+                <h3>Drawing Modules</h3>
+                <p>Multiple drawing modules for shapes and infinitely generated parallax backgrounds.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">✨</div>
+                <h3>Tween System</h3>
+                <p>Smooth animations and transitions for object properties like position, rotation, and scale.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon">🎮</div>
+                <h3>KeyboardController</h3>
+                <p>Ready-to-use keyboard controller for immediate game object control and movement.</p>
+            </div>
         </div>
-        <div class="tab-content" id="console">
-            <div class="console-container">
-                <div class="console-toolbar">
-                    <button class="console-button" id="clearConsole" title="Clear Console">
-                        <i class="fas fa-trash"></i> Clear
-                    </button>
+    </section>
+
+    <!-- Roadmap Section -->
+    <section id="roadmap" class="section">
+        <h2 class="fade-in">Development Roadmap</h2>
+        <div class="fade-in">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2rem;">
+                <div>
+                    <h3 style="color: #4ade80; margin-bottom: 1rem;">✅ Completed</h3>
+                    <ul style="list-style: none; color: #b0b0b0;">
+                        <li style="padding: 0.25rem 0;">• Core engine architecture</li>
+                        <li style="padding: 0.25rem 0;">• Visual editor interface</li>
+                        <li style="padding: 0.25rem 0;">• Component system</li>
+                        <li style="padding: 0.25rem 0;">• Scene management</li>
+                        <li style="padding: 0.25rem 0;">• AI Assistant integration</li>
+                        <li style="padding: 0.25rem 0;">• HTML5 export</li>
+                        <li style="padding: 0.25rem 0;">• Particle effects</li>
+                    </ul>
                 </div>
-                <div class="console-output"></div>
-                <div class="console-input">
-                    <span class="console-prompt">></span>
-                    <input type="text" class="console-input-field">
+                <div>
+                    <h3 style="color: #f59e0b; margin-bottom: 1rem;">🚧 Coming Soon</h3>
+                    <ul style="list-style: none; color: #b0b0b0;">
+                        <li style="padding: 0.25rem 0;">• Physics engine integration</li>
+                        <li style="padding: 0.25rem 0;">• Advanced audio system</li>
+                        <li style="padding: 0.25rem 0;">• Timeline animation system</li>
+                        <li style="padding: 0.25rem 0;">• WebGL performance boost</li>
+                        <li style="padding: 0.25rem 0;">• Mobile export options</li>
+                    </ul>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!--div class="footer">
-        SynKrown
-    </div-->
-
-    <div class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="loading-text">Loading Game...</div>
-    </div>
-
-    <div class="mobile-panel-toggles">
-        <button class="mobile-panel-button" id="toggleHierarchy" title="Toggle Hierarchy">
-            <i class="fas fa-sitemap"></i>
-        </button>
-        <button class="mobile-panel-button" id="toggleInspector" title="Toggle Inspector">
-            <i class="fas fa-sliders-h"></i>
-        </button>
-        <button class="mobile-panel-button" id="toggleBottom" title="Toggle Files/Console">
-            <i class="fas fa-folder"></i>
-        </button>
-    </div>
-
-    <div class="modal-overlay-sprite" id="modalOverlay-sprite">
-        <div class="modal-sprite">
-            <button class="close-btn-sprite" onclick="spriteCode.closeModal()">×</button>
-
-            <div class="toolbar-sprite">
-                <button onclick="spriteCode.newDrawing()">New</button>
-                <button onclick="spriteCode.saveDrawing()">Save</button>
-                <button onclick="spriteCode.loadDrawing()">Load</button>
-                <button onclick="spriteCode.exportCode()">Export Code</button>
-                <button onclick="spriteCode.exportCodeToFileBrowser()">Export Code To File Browser</button>
-                <button onclick="spriteCode.showDocumentation()">Docs</button>
-                <button onclick="spriteCode.clearCanvas()">Clear</button>
-                <button onclick="spriteCode.undo()">Undo</button>
-                <button class="toggle-animation-btn" onclick="spriteCode.toggleAnimationPanel()"
-                    style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50;">
-                    🎬 Animation
-                </button>
-            </div>
-
-            <div class="main-area-sprite">
-                <div class="left-panel-sprite">
-                    <div class="tool-section-sprite">
-                        <h3>Drawing Tools</h3>
-                        <div class="tool-grid-sprite">
-                            <button class="tool-btn-sprite active" data-tool="select" title="Select"><i class="fas fa-mouse-pointer"></i></button>
-                            <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle"><i class="fas fa-square"></i></button>
-                            <button class="tool-btn-sprite" data-tool="circle" title="Circle"><i class="fas fa-circle"></i></button>
-                            <button class="tool-btn-sprite" data-tool="triangle" title="Triangle"><i class="fas fa-play fa-rotate-270"></i></button>
-                            <!--button class="tool-btn-sprite" data-tool="line" title="Line"><i class="fas fa-slash"></i></button-->
-                            <button class="tool-btn-sprite" data-tool="spline" title="Spline"><i class="fas fa-wave-square"></i></button>
-                            <!--button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button-->
-                            <!--button class="tool-btn-sprite" data-tool="text" title="Text">T</button-->
-                            <!---button class="tool-btn-sprite" data-tool="pen" title="Pen">✎</button-->
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite">
-                        <h3>Colors</h3>
-                        <div class="color-section-sprite">
-                            <div class="color-row-sprite">
-                                <label>Fill:</label>
-                                <input type="color" class="color-input" id="fillColor-sprite" value="#3b82f6">
-                            </div>
-                            <div class="color-row-sprite">
-                                <label>Stroke:</label>
-                                <input type="color" class="color-input" id="strokeColor-sprite" value="#000000">
-                            </div>
-                            <div class="slider-row-sprite">
-                                <label>Stroke Width: <span id="strokeWidthValue-sprite">2</span>px</label>
-                                <input type="range" class="slider" id="strokeWidth-sprite" min="1" max="20" value="2">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite">
-                        <h3>Gradient</h3>
-                        <div class="color-section-sprite">
-                            <div class="checkbox-row-sprite">
-                                <input type="checkbox" id="enableGradient-sprite">
-                                <label>Enable Gradient</label>
-                            </div>
-                            <div class="color-row-sprite" id="gradientOptions-sprite" style="display: none;">
-                                <label>Start:</label>
-                                <input type="color" class="color-input" id="gradientStart-sprite" value="#3b82f6">
-                            </div>
-                            <div class="color-row-sprite" id="gradientOptions2-sprite" style="display: none;">
-                                <label>End:</label>
-                                <input type="color" class="color-input" id="gradientEnd-sprite" value="#ffffff">
-                            </div>
-                            <div class="select-row-sprite" id="gradientOptions3-sprite" style="display: none;">
-                                <label>Type:</label>
-                                <select id="gradientType-sprite">
-                                    <option value="linear">Linear</option>
-                                    <option value="radial">Radial</option>
-                                </select>
-                            </div>
-                            <div class="slider-row-sprite" id="gradientOptions4-sprite" style="display: none;">
-                                <label>Angle: <span id="gradientAngleValue-sprite">0</span>°</label>
-                                <input type="range" class="slider" id="gradientAngle-sprite" min="0" max="360" value="0">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite" id="splineOptions-sprite" style="display: none;">
-                        <h3>Spline Settings</h3>
-                        <div class="slider-row-sprite">
-                            <label>Curve Intensity: <span id="curveIntensityValue-sprite">0.5</span></label>
-                            <input type="range" class="slider" id="curveIntensity-sprite" min="0" max="1" step="0.1"
-                                value="0.5">
-                        </div>
-                        <div class="checkbox-row-sprite">
-                            <input type="checkbox" id="closedSpline-sprite">
-                            <label>Closed Shape</label>
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite" id="shapeOptions-sprite">
-                        <h3>Shape Options</h3>
-                        <div class="checkbox-row-sprite">
-                            <input type="checkbox" id="fillShape-sprite" checked>
-                            <label>Fill Shape</label>
-                        </div>
-                        <div class="checkbox-row-sprite">
-                            <input type="checkbox" id="strokeShape-sprite" checked>
-                            <label>Stroke Shape</label>
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite" id="animationOptions-sprite">
-                        <h3>Animation Settings</h3>
-                        <div class="checkbox-row-sprite">
-                            <input type="checkbox" id="enableTweening-sprite">
-                            <label>Enable Tweening</label>
-                        </div>
-                        <div class="slider-row-sprite">
-                            <label>Animation Speed: <span id="animSpeedValue-sprite">1</span>x</label>
-                            <input type="range" class="slider" id="animSpeed-sprite" min="0.1" max="5" step="0.1"
-                                value="1">
-                        </div>
-                        <div class="select-row-sprite">
-                            <label>Tween Type:</label>
-                            <select id="tweenType-sprite">
-                                <option value="linear">Linear</option>
-                                <option value="easeIn">Ease In</option>
-                                <option value="easeOut">Ease Out</option>
-                                <option value="easeInOut">Ease In-Out</option>
-                            </select>
-                        </div>
-                        <div class="checkbox-row-sprite">
-                            <input type="checkbox" id="pingPong-sprite">
-                            <label>Ping Pong</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="flex:1; display:flex; flex-direction:column;">
-                    <div class="sprite-grid-controls">
-                        <label>
-                            <input type="checkbox" id="showGrid-sprite" unchecked>
-                            Show Grid
-                        </label>
-                        <label>
-                            Grid Size:
-                            <input type="number" id="gridSize-sprite" value="16" min="8" max="128" style="width: 60px;">
-                        </label>
-                        <label>
-                            <input type="checkbox" id="snapToGrid-sprite" checked>
-                            Snap to Grid
-                        </label>
-                    </div>
-
-                    <div class="canvas-container-sprite">
-                        <canvas class="canvas-sprite" id="drawingCanvas-sprite" width="800" height="600"></canvas>
-                    </div>
-                </div>
-
-                <div class="right-panel-sprite" style="width: 250px; background: #2a2a2a; border-left: 1px solid #444; display: flex; flex-direction: column;">
-                    <div class="tool-section-sprite">
-                        <h3>Shapes <span id="shapeCount-sprite">(0)</span></h3>
-                        <div class="shapes-toolbar-sprite" style="display: flex; gap: 4px; margin-bottom: 8px;">
-                            <button class="shape-tool-btn-sprite" id="moveShapeUp-sprite" title="Move Up" disabled>↑</button>
-                            <button class="shape-tool-btn-sprite" id="moveShapeDown-sprite" title="Move Down" disabled>↓</button>
-                            <button class="shape-tool-btn-sprite" id="deleteShape-sprite" title="Delete" disabled>🗑️</button>
-                            <button class="shape-tool-btn-sprite" id="duplicateShape-sprite" title="Duplicate" disabled>📋</button>
-                        </div>
-                        <div class="shapes-list-sprite" id="shapesList-sprite" style="flex: 1; overflow-y: auto; max-height: 400px; border: 1px solid #444; background: #333;">
-                            <!-- Shape items will be populated here -->
-                        </div>
-
-                        <button id="groupShapes-sprite" class="sprite-btn">Group Shapes</button>
-                        <button id="ungroupShapes-sprite" class="sprite-btn">Ungroup</button>
-                    </div>
-                    
-                    <div class="tool-section-sprite" id="transformOptions-sprite" style="display: none;">
-                        <h3>Transform</h3>
-                        <div class="slider-row-sprite">
-                            <label>Rotation: <span id="rotationValue-sprite">0</span>°</label>
-                            <input type="range" class="slider" id="shapeRotation-sprite" min="-180" max="180" step="1" value="0">
-                        </div>
-                        <div class="slider-row-sprite">
-                            <label>Scale X: <span id="scaleXValue-sprite">1</span></label>
-                            <input type="range" class="slider" id="shapeScaleX-sprite" min="0.1" max="3" step="0.1" value="1">
-                        </div>
-                        <div class="slider-row-sprite">
-                            <label>Scale Y: <span id="scaleYValue-sprite">1</span></label>
-                            <input type="range" class="slider" id="shapeScaleY-sprite" min="0.1" max="3" step="0.1" value="1">
-                        </div>
-                    </div>
-
-                    <div class="tool-section-sprite" id="animationRangesOptions-sprite">
-                        <h3>Animation Ranges <span id="animationCount-sprite">(0)</span></h3>
-                        <div id="animationRangesList-sprite" style="margin-bottom:8px;"></div>
-                        <div class="animation-ranges-input-row">
-                            <input type="text" id="newAnimationName-sprite" placeholder="Name">
-                            <input type="number" id="newAnimationStart-sprite" placeholder="Start" min="0">
-                            <input type="number" id="newAnimationEnd-sprite" placeholder="End" min="0">
-                            <button id="addAnimationRangeBtn-sprite">Add</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="animation-panel"
-                style="position: fixed; bottom: 0; left: 0; right: 0; height: 200px; background: #2a2a2a; border-top: 1px solid #444; display: none;"
-                id="animationPanel-sprite">
-                <div class="animation-toolbar"
-                    style="display: flex; align-items: center; padding: 8px; background: #333; border-bottom: 1px solid #444;">
-                    <button onclick="spriteCode.addFrame()" style="margin-right: 8px;">Add Frame</button>
-                    <button onclick="spriteCode.removeFrame()" style="margin-right: 8px;">Remove Frame</button>
-                    <button onclick="spriteCode.moveFrameLeft()" style="margin-right: 8px;">←</button>
-                    <button onclick="spriteCode.moveFrameRight()" style="margin-right: 8px;">→</button>
-                    <button onclick="spriteCode.previewAnimation()" style="margin-right: 8px; background: #4CAF50;">Preview
-                        Animation</button>
-                    <span style="color: #ccc; margin-left: auto;">Frame: <span id="currentFrameDisplay">1</span> / <span
-                            id="totalFramesDisplay">1</span></span>
-                </div>
-                <div class="frames-container"
-                    style="display: flex; overflow-x: auto; padding: 8px; height: calc(100% - 50px);">
-                    <div class="frame-item active" data-frame="0"
-                        style="min-width: 120px; height: 90px; border: 2px solid #4CAF50; margin-right: 8px; background: #444; cursor: pointer; position: relative;">
-                        <div style="text-align: center; padding: 4px; font-size: 12px; color: #ccc;">Frame 1</div>
-                        <canvas width="100" height="60"
-                            style="width: 100%; height: calc(100% - 20px); image-rendering: pixelated;"></canvas>
-                        <label style="position: absolute; bottom: 2px; right: 2px; font-size: 10px;"><input type="checkbox"
-                                checked> Visible</label>
-                    </div>
-                </div>
-            </div>
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-links">
+            <a href="DarkMatter.html">Online Editor</a>
+            <a href="https://github.com/HorrellTech/Dark-Matter-JS---Game-Engine">GitHub</a>
+            <a href="#features">Documentation</a>
+            <a href="#examples">Examples</a>
         </div>
+        <p style="color: #666;">A SynKrown Production</p>
+    </footer>
 
-        <!-- Animation Preview Modal -->
-        <div class="animation-preview-modal" id="animationPreviewModal-sprite"
-            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;">
-            <div style="background: #2a2a2a; padding: 20px; border-radius: 8px; text-align: center;">
-                <h3 style="color: white; margin-top: 0;">Animation Preview</h3>
-                <canvas id="animationPreviewCanvas-sprite" width="400" height="300"
-                    style="border: 1px solid #444; background: white;"></canvas>
-                <div style="margin: 16px 0;">
-                    <button onclick="spriteCode.playPreview()">Play</button>
-                    <button onclick="spriteCode.pausePreview()">Pause</button>
-                    <button onclick="spriteCode.stopPreview()">Stop</button>
-                </div>
-                <button onclick="spriteCode.closeAnimationPreview()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="code-modal-sprite" id="codeModal-sprite">
-        <div class="code-content-sprite">
-            <h3>Generated JavaScript Code</h3>
-            <button class="close-btn-sprite" onclick="spriteCode.closeCodeModal()">×</button>
-            <pre id="generatedCode-sprite"></pre>
-            <button class="toolbar-sprite" onclick="spriteCode.copyCode()" style="margin-top: 16px;">Copy Code</button>
-        </div>
-    </div>
-
-    <!--div class="mobile-detection-overlay" style="display: none;">
-        <h2>Mobile Device Detected</h2>
-        <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
-        <div>
-            <button id="enableMobileMode">Yes, use mobile mode</button>
-            <button id="disableMobileMode">No, use desktop mode</button>
-        </div>
-    </div-->
-
-    <script src="src/core/Math/Vector2.js"></script>
-    <script src="src/core/Math/Vector3.js"></script>
-    <script src="src/core/Math/MatterMath.js"></script>
-    <script src="src/core/Math/Polygon.js"></script>
-    <script src="src/core/Module.js"></script>
-    <script src="src/core/ModuleRegistry.js"></script>
-    <script src="src/core/ModuleReloader.js"></script>
-    <script src="src/core/Math/Raycast.js"></script>
-
-    <script src="src/core/GameObject.js"></script>
-    <script src="src/core/InputManager.js"></script>
-    <script src="src/core/Scene.js"></script>
-    <script src="src/core/SceneBuffer.js"></script>
-    <script src="src/core/SceneStorage.js"></script>
-    <script src="src/core/SceneManager.js"></script>
-    <script src="src/core/babylon-js/BabylonRenderer.js"></script>
-    <script src="src/core/Engine.js"></script>
-    <script src="src/core/Editor Panels/EditorGrid.js"></script>
-    <script src="src/core/Editor Panels/HierarchyManager.js"></script>
-    <script src="src/core/matter-js/PhysicsManager.js"></script>
-
-    <script src="src/core/Editor Panels/PanelResizer.js"></script>
-
-    <script src="src/core/Editor Panels/PanelManager.js"></script>
-
-    <script src="src/core/3D/Camera3D.js"></script>
-    <script src="src/core/3D/Mesh3D.js"></script>
-    <script src="src/core/3D/CubeMesh3D.js"></script>
-    <script src="src/core/3D/FlyCamera.js"></script>
-    <script src="src/core/3D/MouseLook.js"></script>
-
-    <script src="src/core/AssetManager.js"></script>
-    <script src="src/core/AssetReference.js"></script>
-
-    <!-- Core Modules -->
-    <!--script src="src/core/Modules/RigidBody.js"></script>
-    <script src="src/core/Modules/Collider.js"></script-->
-
-    <script src="src/core/Modules/Visual/SpriteRenderer.js"></script>
-    <!--script src="src/core/Modules/Visual/SpriteSheetRenderer.js"></script-->
-
-    <!-- Lighting Modules -->
-    <script src="src/core/Modules/Lighting/DarknessModule.js"></script>
-    <script src="src/core/Modules/Lighting/PointLightModule.js"></script>
-    <!--script src="src/core/Modules/Lighting/LightBlockerModule.js"></script-->
-
-    <!-- Snake Modules -->
-    <!--script src="src/core/Modules/Snake/SnakePlayer.js"></script>
-    <script src="src/core/Modules/Snake/SnakeApple.js"></script-->
-
-    <script src="src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js"></script>
-    <script src="src/core/Modules/Asteroids/PlayerShip.js"></script>
-    <script src="src/core/Modules/Asteroids/Asteroid.js"></script>
-    <script src="src/core/Modules/Asteroids/AsteroidsPlanet.js"></script>
-    <script src="src/core/Modules/Asteroids/AsteroidsBullet.js"></script>
-    <script src="src/core/Modules/Asteroids/AsteroidManager.js"></script>
-    <script src="src/core/Modules/Asteroids/EnemyShip.js"></script>
-
-    <script src="src/core/Modules/BoundingBoxCollider.js"></script>
-
-    <script src="src/core/Modules/SimpleHealth.js"></script>
-
-    <!--script src="src/core/Modules/Controllers/SimpleMovementController.js"></script-->
-    <script src="src/core/Modules/Controllers/TouchJoystick.js"></script>
-    <!--script src="src/core/Modules/Controllers/KeyboardController.js"></script-->
-    <script src="src/core/Modules/Controllers/CameraController.js"></script>
-    <!--script src="src/core/Modules/Controllers/PlatformCharacterController.js"></script-->
-
-    <!--script src="src/core/Modules/Platform Game/PlatformCharacterAuto.js"></script-->
-
-    <!--script src="src/core/Modules/Inverse Kinematics/AutoIK.js"></script-->
-
-    <script src="src/core/Modules/Drawing/DrawCircle.js"></script>
-    <script src="src/core/Modules/Drawing/DrawRectangle.js"></script>
-    <script src="src/core/Modules/Drawing/DrawPolygon.js"></script>
-    <script src="src/core/Modules/Drawing/DrawShadow.js"></script>
-    <script src="src/core/Modules/Drawing/DrawDiamond.js"></script>
-    <script src="src/core/Modules/Drawing/DrawArrow.js"></script>
-    <script src="src/core/Modules/Drawing/DrawHeart.js"></script>
-    <script src="src/core/Modules/Drawing/DrawShield.js"></script>
-    <script src="src/core/Modules/Drawing/DrawStar.js"></script>
-    <script src="src/core/Modules/Drawing/DrawIcon.js"></script>
-    <script src="src/core/Modules/Drawing/DrawText.js"></script>
-    <script src="src/core/Modules/Drawing/DrawLine.js"></script>
-    <script src="src/core/Modules/Drawing/DrawGrid.js"></script>
-
-    <script src="src/core/Modules/Platform Game/DrawPlatformerHills.js"></script>
-
-    <!--script src="src/core/Modules/Visual/PostScreenEffects.js"></script-->
-
-    <!-- Animation Modules -->
-    <script src="src/core/Modules/Animation/Tween.js"></script>
-    <script src="src/core/Modules/Animation/Timer.js"></script>
-
-    <!-- UI Modules -->
-    <script src="src/core/Modules/UI/Button.js"></script>
-    <!--script src="src/core/Modules/UI/Text.js"></script-->
-
-    <!-- Effects Modules -->
-    <script src="src/core/Modules/Effects/ParticleSystem.js"></script>
-    <!---script src="src/core/Modules/Effects/ZoomQuilt.js"></script-->
-
-    <!-- Utility Modules -->
-    <script src="src/core/Modules/Utility/FollowTarget.js"></script>
-    <script src="src/core/Modules/Utility/Spawner.js"></script>
-
-    <script src="src/core/Modules/Movement/BasicPhysics.js"></script>
-    <script src="src/core/Modules/Movement/PhysicsKeyboardController.js"></script>
-
-    <script src="src/core/Editor Panels/Inspector.js"></script>
-    <script src="src/core/Editor Panels/InspectorStyling.js"></script>
-    <script src="src/core/Editor Panels/DirectoryTree.js"></script>
-    <script src="src/core/Editor Panels/FileBrowser.js"></script>
-    <script src="src/core/Editor Panels/Editor.js"></script>
-    <script src="src/core/Windows/ScriptEditor.js"></script>
-    <script src="src/core/AutoSaveManager.js"></script>
-    <script src="src/core/Editor Panels/ProjectManager.js"></script>
-    <script src="src/core/Editor Panels/PrefabManager.js"></script>
-    <script src="src/core/ExportManager.js"></script>
-
-    <script src="src/core/ModuleManager.js"></script>
-
-    <!--script src="src/core/Editor Panels/GameEditorSync.js"></script>
-    <script src="src/core/Editor Panels/SplitViewController.js"></script-->
-    <script src="src/SpriteCodeDocs.js"></script>
-    <script src="src/SpriteCode.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            document.getElementById('launchSpriteCodeBtn').onclick = function () {
-                if (!window.spriteCode) {
-                    window.spriteCode = new SpriteCode();
-                }
-                window.spriteCode.openModal();
-            };
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                const targetSection = document.querySelector(targetId);
+                const navHeight = document.querySelector('.navbar').offsetHeight;
+                
+                window.scrollTo({
+                    top: targetSection.offsetTop - navHeight,
+                    behavior: 'smooth'
+                });
+            });
         });
+
+        // Update active navigation link on scroll
+        function updateActiveNavLink() {
+            const sections = document.querySelectorAll('section[id]');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const navHeight = document.querySelector('.navbar').offsetHeight;
+            
+            let currentSection = '';
+            
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop - navHeight - 100;
+                const sectionBottom = sectionTop + section.offsetHeight;
+                
+                if (window.scrollY >= sectionTop && window.scrollY < sectionBottom) {
+                    currentSection = section.getAttribute('id');
+                }
+            });
+            
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href') === '#' + currentSection) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        // Intersection Observer for fade-in animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        // Observe all fade-in elements
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Update navbar background on scroll
+        function updateNavbar() {
+            const navbar = document.querySelector('.navbar');
+            if (window.scrollY > 50) {
+                navbar.style.background = 'rgba(10, 10, 10, 0.98)';
+            } else {
+                navbar.style.background = 'rgba(10, 10, 10, 0.95)';
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('scroll', () => {
+            updateActiveNavLink();
+            updateNavbar();
+        });
+
+        // Initialize
+        updateActiveNavLink();
+        
+        // Add easy way to add new navigation links
+        function addNavLink(text, targetId) {
+            const navLinks = document.querySelector('.nav-links');
+            const newLink = document.createElement('li');
+            newLink.innerHTML = `<a href="#${targetId}" class="nav-link">${text}</a>`;
+            navLinks.appendChild(newLink);
+            
+            // Add click event to new link
+            newLink.querySelector('a').addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetSection = document.querySelector('#' + targetId);
+                const navHeight = document.querySelector('.navbar').offsetHeight;
+                
+                window.scrollTo({
+                    top: targetSection.offsetTop - navHeight,
+                    behavior: 'smooth'
+                });
+            });
+        }
+
+        // Example usage: addNavLink('API', 'api');
     </script>
-
-    <script src="src/app.js"></script>
 </body>
-
 </html>

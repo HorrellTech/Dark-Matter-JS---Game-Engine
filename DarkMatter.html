@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dark Matter JS - Javascript Based Game Development Tool</title>
+    <link rel="stylesheet" href="src/styles/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="src/styles/file-browser.css">
+    <link rel="stylesheet" href="src/styles/script-editor.css">
+    <link rel="stylesheet" href="src/styles/hierarchy.css">
+    <link rel="stylesheet" href="src/styles/inspector.css">
+    <link rel="stylesheet" href="src/styles/scene-manager.css">
+    <link rel="stylesheet" href="src/styles/scene.css">
+    <link rel="stylesheet" href="src/styles/scrollbars.css">
+    <link rel="stylesheet" href="src/styles/game-canvas.css">
+    <link rel="stylesheet" href="src/styles/start-screen.css">
+    <link rel="stylesheet" href="src/styles/documentation-modal.css">
+    <link rel="stylesheet" href="src/styles/asset-manager.css">
+    <link rel="stylesheet" href="src/styles/mobile-management.css">
+    <link rel="stylesheet" href="src/styles/layout-fix.css">
+    <link rel="stylesheet" href="src/styles/ai-panel.css">
+    <link rel="stylesheet" href="src/styles/settings-modal.css">
+    <link rel="stylesheet" href="src/styles/export-modal.css">
+    <link rel="stylesheet" href="src/styles/prefab-manager.css">
+    <link rel="stylesheet" href="src/styles/sprite-code.css">
+    <link rel="stylesheet" href="src/styles/prism.css">
+    <!--link rel="stylesheet" href="src/styles/split-view.css"-->
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-beautify/1.14.7/beautify.min.js"></script>
+    
+    <script src="src/prism.js"></script>
+
+    <script src="src/core/Keywords.js"></script>
+
+    <script src="src/core/Windows/Documentation.js"></script>
+    <script src="src/core/Windows/DocumentationModal.js"></script>
+    <script src="src/core/Windows/StartScreen.js"></script>
+    <script src="src/core/Windows/SettingsModal.js"></script>
+
+    <!-- Add Matter.js physics engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <style>
+        .canvas-container.split-active {
+            display: flex !important;
+            min-height: 300px !important;
+            min-width: 400px !important;
+        }
+
+        .split-view {
+            min-width: 200px !important;
+            min-height: 200px !important;
+            display: block !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <button class="toolbar-button" title="New Project" style="color: #ffffff"><i
+                    class="fas fa-file"></i></button>
+            <button class="toolbar-button" title="Load Project" style="color: #d8be75"><i
+                    class="fas fa-folder-open"></i></button>
+            <button class="toolbar-button" title="Save Project" style="color: #789ace"><i
+                    class="fas fa-save"></i></button>
+            <!--button class="toolbar-button" title="Save As" id="saveAsButton" style="color: #b8a1e3"><i class="fas fa-file-signature"></i></button-->
+            <button class="toolbar-button" title="Export Project" style="color: #68bb81"><i
+                    class="fas fa-file-export"></i></button>
+        </div>
+        <div class="toolbar-spacer"></div>
+        <button class="toolbar-button" title="Documentation" style="color: #64B5F6">
+            <i class="fas fa-book"></i>
+        </button>
+        <button class="launch-btn" id="launchSpriteCodeBtn" title="Launch Sprite Code"
+            style="background: linear-gradient(135deg, #d1cf47, #db13d1);"><i class="fas fa-paint-brush"></i>
+        </button>
+        <div class="toolbar-group">
+            <button class="toolbar-button" title="Play" style="color: #4CAF50"><i class="fas fa-play"></i></button>
+            <button class="toolbar-button" title="Stop" style="color: #f44336"><i class="fas fa-stop"></i></button>
+            <div class="toolbar-spacer"></div>
+            <button class="toolbar-button" title="Settings" style="color: #607D8B"><i class="fas fa-cog"></i></button>
+            <button class="toolbar-button" title="Zen Mode" id="zenModeButton" style="color: #4998d8"><i
+                    class="fas fa-moon"></i></button>
+            <!-- Buy Me A Coffee button to the right of zoom controls -->
+            <a href="https://www.buymeacoffee.com/SynKrown" target="_blank" class="bmc-button"
+                style="margin-left:16px;vertical-align:middle;display:inline-block;">
+                <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="30"
+                    style="vertical-align:middle;">
+            </a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="hierarchy-panel">
+            <div class="hierarchy-header">Hierarchy</div>
+            <div id="gameObjectHierarchy"></div>
+            <div class="resizer-v"></div>
+        </div>
+
+        <div class="center-panel">
+            <div class="canvas-tabs">
+                <button class="canvas-tab active" data-canvas="editor">Scene</button>
+                <button class="canvas-tab" data-canvas="game">Game</button>
+            </div>
+            <div class="canvas-container">
+                <div class="canvas-view active" id="editorView">
+                    <div class="editor-toolbar">
+                        <label><input type="checkbox" id="showGrid" checked> Show Grid</label>
+                        <label>Grid Size: <input type="number" id="gridSize" value="32" min="8" max="128"></label>
+                        <label><input type="checkbox" id="snapToGrid"> Snap to Grid</label>
+                        <div class="zoom-controls">
+                            <button id="zoomOutButton" class="editor-button" title="Zoom Out"><i
+                                    class="fas fa-search-minus"></i></button>
+                            <span id="zoomLevel" class="zoom-level">100%</span>
+                            <button id="zoomInButton" class="editor-button" title="Zoom In"><i
+                                    class="fas fa-search-plus"></i></button>
+                            <button id="resetZoomButton" class="editor-button" title="Reset View"><i
+                                    class="fas fa-compress-arrows-alt"></i></button>
+                        </div>
+                    </div>
+                    <div class="editor-canvas-container">
+                        <canvas id="editorCanvas" width="800" height="600"></canvas>
+                        <svg class="axis-indicator" width="50" height="50" viewBox="0 0 50 50">
+                            <line x1="10" y1="40" x2="40" y2="40" stroke="#ff0000" stroke-width="2" />
+                            <line x1="10" y1="40" x2="10" y2="10" stroke="#00ff00" stroke-width="2" />
+                            <text x="42" y="44" fill="#ff0000" font-size="12">X</text>
+                            <text x="6" y="8" fill="#00ff00" font-size="12">Y</text>
+                        </svg>
+                    </div>
+                </div>
+                <div class="canvas-view" id="gameView">
+                    <div class="game-toolbar">
+                        <div class="game-controls">
+                            <button id="fullscreenButton" class="game-button" title="Toggle Fullscreen">
+                                <i class="fas fa-expand"></i>
+                            </button>
+                            <div class="game-dropdown">
+                                <button class="game-button" title="Rendering Options">
+                                    <i class="fas fa-sliders-h"></i>
+                                </button>
+                                <div class="game-dropdown-content">
+                                    <label>Scaling Mode:
+                                        <select id="scaleModeSelect">
+                                            <option value="fit">Fit</option>
+                                            <option value="stretch">Stretch</option>
+                                            <option value="pixel-perfect">Pixel Perfect</option>
+                                            <option value="nearest-neighbor">Nearest Neighbor</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="maintainAspectRatio" checked>
+                                        Maintain Aspect Ratio
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="pixelPerfect">
+                                        Pixel Perfect
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="smoothingEnabled" checked>
+                                        Image Smoothing
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="game-info">
+                            <div id="fpsDisplay" style="font-family: monospace; font-size: 14px;">FPS: 0</div>
+                            <span id="resolutionDisplay">800×600</span>
+                        </div>
+                    </div>
+                    <div class="game-canvas-container">
+                        <canvas id="gameCanvas" width="800" height="600"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="module-panel">
+            <div class="hierarchy-header">Inspector</div>
+            <div id="moduleSettings"></div>
+            <div class="resizer-v"></div>
+        </div>
+    </div>
+
+    <div class="bottom-panel">
+        <div class="resizer-h"></div>
+        <div class="tab-buttons">
+            <button class="tab-button active" data-tab="fileManager">Project</button>
+            <button class="tab-button" data-tab="console">Console</button>
+        </div>
+        <div class="tab-content active" id="fileManager">
+            <div id="fileBrowserContainer" style="height: 100%; display: flex; flex-direction: column;"></div>
+        </div>
+        <div class="tab-content" id="console">
+            <div class="console-container">
+                <div class="console-toolbar">
+                    <button class="console-button" id="clearConsole" title="Clear Console">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                </div>
+                <div class="console-output"></div>
+                <div class="console-input">
+                    <span class="console-prompt">></span>
+                    <input type="text" class="console-input-field">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!--div class="footer">
+        SynKrown
+    </div-->
+
+    <div class="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Loading Game...</div>
+    </div>
+
+    <div class="mobile-panel-toggles">
+        <button class="mobile-panel-button" id="toggleHierarchy" title="Toggle Hierarchy">
+            <i class="fas fa-sitemap"></i>
+        </button>
+        <button class="mobile-panel-button" id="toggleInspector" title="Toggle Inspector">
+            <i class="fas fa-sliders-h"></i>
+        </button>
+        <button class="mobile-panel-button" id="toggleBottom" title="Toggle Files/Console">
+            <i class="fas fa-folder"></i>
+        </button>
+    </div>
+
+    <div class="modal-overlay-sprite" id="modalOverlay-sprite">
+        <div class="modal-sprite">
+            <button class="close-btn-sprite" onclick="spriteCode.closeModal()">×</button>
+
+            <div class="toolbar-sprite">
+                <button onclick="spriteCode.newDrawing()">New</button>
+                <button onclick="spriteCode.saveDrawing()">Save</button>
+                <button onclick="spriteCode.loadDrawing()">Load</button>
+                <button onclick="spriteCode.exportCode()">Export Code</button>
+                <button onclick="spriteCode.exportCodeToFileBrowser()">Export Code To File Browser</button>
+                <button onclick="spriteCode.showDocumentation()">Docs</button>
+                <button onclick="spriteCode.clearCanvas()">Clear</button>
+                <button onclick="spriteCode.undo()">Undo</button>
+                <button class="toggle-animation-btn" onclick="spriteCode.toggleAnimationPanel()"
+                    style="position: absolute; bottom: 10px; right: 10px; background: #4CAF50;">
+                    🎬 Animation
+                </button>
+            </div>
+
+            <div class="main-area-sprite">
+                <div class="left-panel-sprite">
+                    <div class="tool-section-sprite">
+                        <h3>Drawing Tools</h3>
+                        <div class="tool-grid-sprite">
+                            <button class="tool-btn-sprite active" data-tool="select" title="Select"><i class="fas fa-mouse-pointer"></i></button>
+                            <button class="tool-btn-sprite" data-tool="rectangle" title="Rectangle"><i class="fas fa-square"></i></button>
+                            <button class="tool-btn-sprite" data-tool="circle" title="Circle"><i class="fas fa-circle"></i></button>
+                            <button class="tool-btn-sprite" data-tool="triangle" title="Triangle"><i class="fas fa-play fa-rotate-270"></i></button>
+                            <!--button class="tool-btn-sprite" data-tool="line" title="Line"><i class="fas fa-slash"></i></button-->
+                            <button class="tool-btn-sprite" data-tool="spline" title="Spline"><i class="fas fa-wave-square"></i></button>
+                            <!--button class="tool-btn-sprite" data-tool="polygon" title="Polygon">⬟</button-->
+                            <!--button class="tool-btn-sprite" data-tool="text" title="Text">T</button-->
+                            <!---button class="tool-btn-sprite" data-tool="pen" title="Pen">✎</button-->
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite">
+                        <h3>Colors</h3>
+                        <div class="color-section-sprite">
+                            <div class="color-row-sprite">
+                                <label>Fill:</label>
+                                <input type="color" class="color-input" id="fillColor-sprite" value="#3b82f6">
+                            </div>
+                            <div class="color-row-sprite">
+                                <label>Stroke:</label>
+                                <input type="color" class="color-input" id="strokeColor-sprite" value="#000000">
+                            </div>
+                            <div class="slider-row-sprite">
+                                <label>Stroke Width: <span id="strokeWidthValue-sprite">2</span>px</label>
+                                <input type="range" class="slider" id="strokeWidth-sprite" min="1" max="20" value="2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite">
+                        <h3>Gradient</h3>
+                        <div class="color-section-sprite">
+                            <div class="checkbox-row-sprite">
+                                <input type="checkbox" id="enableGradient-sprite">
+                                <label>Enable Gradient</label>
+                            </div>
+                            <div class="color-row-sprite" id="gradientOptions-sprite" style="display: none;">
+                                <label>Start:</label>
+                                <input type="color" class="color-input" id="gradientStart-sprite" value="#3b82f6">
+                            </div>
+                            <div class="color-row-sprite" id="gradientOptions2-sprite" style="display: none;">
+                                <label>End:</label>
+                                <input type="color" class="color-input" id="gradientEnd-sprite" value="#ffffff">
+                            </div>
+                            <div class="select-row-sprite" id="gradientOptions3-sprite" style="display: none;">
+                                <label>Type:</label>
+                                <select id="gradientType-sprite">
+                                    <option value="linear">Linear</option>
+                                    <option value="radial">Radial</option>
+                                </select>
+                            </div>
+                            <div class="slider-row-sprite" id="gradientOptions4-sprite" style="display: none;">
+                                <label>Angle: <span id="gradientAngleValue-sprite">0</span>°</label>
+                                <input type="range" class="slider" id="gradientAngle-sprite" min="0" max="360" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="splineOptions-sprite" style="display: none;">
+                        <h3>Spline Settings</h3>
+                        <div class="slider-row-sprite">
+                            <label>Curve Intensity: <span id="curveIntensityValue-sprite">0.5</span></label>
+                            <input type="range" class="slider" id="curveIntensity-sprite" min="0" max="1" step="0.1"
+                                value="0.5">
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="closedSpline-sprite">
+                            <label>Closed Shape</label>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="shapeOptions-sprite">
+                        <h3>Shape Options</h3>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="fillShape-sprite" checked>
+                            <label>Fill Shape</label>
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="strokeShape-sprite" checked>
+                            <label>Stroke Shape</label>
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="animationOptions-sprite">
+                        <h3>Animation Settings</h3>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="enableTweening-sprite">
+                            <label>Enable Tweening</label>
+                        </div>
+                        <div class="slider-row-sprite">
+                            <label>Animation Speed: <span id="animSpeedValue-sprite">1</span>x</label>
+                            <input type="range" class="slider" id="animSpeed-sprite" min="0.1" max="5" step="0.1"
+                                value="1">
+                        </div>
+                        <div class="select-row-sprite">
+                            <label>Tween Type:</label>
+                            <select id="tweenType-sprite">
+                                <option value="linear">Linear</option>
+                                <option value="easeIn">Ease In</option>
+                                <option value="easeOut">Ease Out</option>
+                                <option value="easeInOut">Ease In-Out</option>
+                            </select>
+                        </div>
+                        <div class="checkbox-row-sprite">
+                            <input type="checkbox" id="pingPong-sprite">
+                            <label>Ping Pong</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="flex:1; display:flex; flex-direction:column;">
+                    <div class="sprite-grid-controls">
+                        <label>
+                            <input type="checkbox" id="showGrid-sprite" unchecked>
+                            Show Grid
+                        </label>
+                        <label>
+                            Grid Size:
+                            <input type="number" id="gridSize-sprite" value="16" min="8" max="128" style="width: 60px;">
+                        </label>
+                        <label>
+                            <input type="checkbox" id="snapToGrid-sprite" checked>
+                            Snap to Grid
+                        </label>
+                    </div>
+
+                    <div class="canvas-container-sprite">
+                        <canvas class="canvas-sprite" id="drawingCanvas-sprite" width="800" height="600"></canvas>
+                    </div>
+                </div>
+
+                <div class="right-panel-sprite" style="width: 250px; background: #2a2a2a; border-left: 1px solid #444; display: flex; flex-direction: column;">
+                    <div class="tool-section-sprite">
+                        <h3>Shapes <span id="shapeCount-sprite">(0)</span></h3>
+                        <div class="shapes-toolbar-sprite" style="display: flex; gap: 4px; margin-bottom: 8px;">
+                            <button class="shape-tool-btn-sprite" id="moveShapeUp-sprite" title="Move Up" disabled>↑</button>
+                            <button class="shape-tool-btn-sprite" id="moveShapeDown-sprite" title="Move Down" disabled>↓</button>
+                            <button class="shape-tool-btn-sprite" id="deleteShape-sprite" title="Delete" disabled>🗑️</button>
+                            <button class="shape-tool-btn-sprite" id="duplicateShape-sprite" title="Duplicate" disabled>📋</button>
+                        </div>
+                        <div class="shapes-list-sprite" id="shapesList-sprite" style="flex: 1; overflow-y: auto; max-height: 400px; border: 1px solid #444; background: #333;">
+                            <!-- Shape items will be populated here -->
+                        </div>
+
+                        <button id="groupShapes-sprite" class="sprite-btn">Group Shapes</button>
+                        <button id="ungroupShapes-sprite" class="sprite-btn">Ungroup</button>
+                    </div>
+                    
+                    <div class="tool-section-sprite" id="transformOptions-sprite" style="display: none;">
+                        <h3>Transform</h3>
+                        <div class="slider-row-sprite">
+                            <label>Rotation: <span id="rotationValue-sprite">0</span>°</label>
+                            <input type="range" class="slider" id="shapeRotation-sprite" min="-180" max="180" step="1" value="0">
+                        </div>
+                        <div class="slider-row-sprite">
+                            <label>Scale X: <span id="scaleXValue-sprite">1</span></label>
+                            <input type="range" class="slider" id="shapeScaleX-sprite" min="0.1" max="3" step="0.1" value="1">
+                        </div>
+                        <div class="slider-row-sprite">
+                            <label>Scale Y: <span id="scaleYValue-sprite">1</span></label>
+                            <input type="range" class="slider" id="shapeScaleY-sprite" min="0.1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+
+                    <div class="tool-section-sprite" id="animationRangesOptions-sprite">
+                        <h3>Animation Ranges <span id="animationCount-sprite">(0)</span></h3>
+                        <div id="animationRangesList-sprite" style="margin-bottom:8px;"></div>
+                        <div class="animation-ranges-input-row">
+                            <input type="text" id="newAnimationName-sprite" placeholder="Name">
+                            <input type="number" id="newAnimationStart-sprite" placeholder="Start" min="0">
+                            <input type="number" id="newAnimationEnd-sprite" placeholder="End" min="0">
+                            <button id="addAnimationRangeBtn-sprite">Add</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="animation-panel"
+                style="position: fixed; bottom: 0; left: 0; right: 0; height: 200px; background: #2a2a2a; border-top: 1px solid #444; display: none;"
+                id="animationPanel-sprite">
+                <div class="animation-toolbar"
+                    style="display: flex; align-items: center; padding: 8px; background: #333; border-bottom: 1px solid #444;">
+                    <button onclick="spriteCode.addFrame()" style="margin-right: 8px;">Add Frame</button>
+                    <button onclick="spriteCode.removeFrame()" style="margin-right: 8px;">Remove Frame</button>
+                    <button onclick="spriteCode.moveFrameLeft()" style="margin-right: 8px;">←</button>
+                    <button onclick="spriteCode.moveFrameRight()" style="margin-right: 8px;">→</button>
+                    <button onclick="spriteCode.previewAnimation()" style="margin-right: 8px; background: #4CAF50;">Preview
+                        Animation</button>
+                    <span style="color: #ccc; margin-left: auto;">Frame: <span id="currentFrameDisplay">1</span> / <span
+                            id="totalFramesDisplay">1</span></span>
+                </div>
+                <div class="frames-container"
+                    style="display: flex; overflow-x: auto; padding: 8px; height: calc(100% - 50px);">
+                    <div class="frame-item active" data-frame="0"
+                        style="min-width: 120px; height: 90px; border: 2px solid #4CAF50; margin-right: 8px; background: #444; cursor: pointer; position: relative;">
+                        <div style="text-align: center; padding: 4px; font-size: 12px; color: #ccc;">Frame 1</div>
+                        <canvas width="100" height="60"
+                            style="width: 100%; height: calc(100% - 20px); image-rendering: pixelated;"></canvas>
+                        <label style="position: absolute; bottom: 2px; right: 2px; font-size: 10px;"><input type="checkbox"
+                                checked> Visible</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Animation Preview Modal -->
+        <div class="animation-preview-modal" id="animationPreviewModal-sprite"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;">
+            <div style="background: #2a2a2a; padding: 20px; border-radius: 8px; text-align: center;">
+                <h3 style="color: white; margin-top: 0;">Animation Preview</h3>
+                <canvas id="animationPreviewCanvas-sprite" width="400" height="300"
+                    style="border: 1px solid #444; background: white;"></canvas>
+                <div style="margin: 16px 0;">
+                    <button onclick="spriteCode.playPreview()">Play</button>
+                    <button onclick="spriteCode.pausePreview()">Pause</button>
+                    <button onclick="spriteCode.stopPreview()">Stop</button>
+                </div>
+                <button onclick="spriteCode.closeAnimationPreview()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="code-modal-sprite" id="codeModal-sprite">
+        <div class="code-content-sprite">
+            <h3>Generated JavaScript Code</h3>
+            <button class="close-btn-sprite" onclick="spriteCode.closeCodeModal()">×</button>
+            <pre id="generatedCode-sprite"></pre>
+            <button class="toolbar-sprite" onclick="spriteCode.copyCode()" style="margin-top: 16px;">Copy Code</button>
+        </div>
+    </div>
+
+    <!--div class="mobile-detection-overlay" style="display: none;">
+        <h2>Mobile Device Detected</h2>
+        <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
+        <div>
+            <button id="enableMobileMode">Yes, use mobile mode</button>
+            <button id="disableMobileMode">No, use desktop mode</button>
+        </div>
+    </div-->
+
+    <script src="src/core/Math/Vector2.js"></script>
+    <script src="src/core/Math/Vector3.js"></script>
+    <script src="src/core/Math/MatterMath.js"></script>
+    <script src="src/core/Math/Polygon.js"></script>
+    <script src="src/core/Module.js"></script>
+    <script src="src/core/ModuleRegistry.js"></script>
+    <script src="src/core/ModuleReloader.js"></script>
+    <script src="src/core/Math/Raycast.js"></script>
+
+    <script src="src/core/GameObject.js"></script>
+    <script src="src/core/InputManager.js"></script>
+    <script src="src/core/Scene.js"></script>
+    <script src="src/core/SceneBuffer.js"></script>
+    <script src="src/core/SceneStorage.js"></script>
+    <script src="src/core/SceneManager.js"></script>
+    <script src="src/core/babylon-js/BabylonRenderer.js"></script>
+    <script src="src/core/Engine.js"></script>
+    <script src="src/core/Editor Panels/EditorGrid.js"></script>
+    <script src="src/core/Editor Panels/HierarchyManager.js"></script>
+    <script src="src/core/matter-js/PhysicsManager.js"></script>
+
+    <script src="src/core/Editor Panels/PanelResizer.js"></script>
+
+    <script src="src/core/Editor Panels/PanelManager.js"></script>
+
+    <script src="src/core/3D/Camera3D.js"></script>
+    <script src="src/core/3D/Mesh3D.js"></script>
+    <script src="src/core/3D/CubeMesh3D.js"></script>
+    <script src="src/core/3D/FlyCamera.js"></script>
+    <script src="src/core/3D/MouseLook.js"></script>
+
+    <script src="src/core/AssetManager.js"></script>
+    <script src="src/core/AssetReference.js"></script>
+
+    <!-- Core Modules -->
+    <!--script src="src/core/Modules/RigidBody.js"></script>
+    <script src="src/core/Modules/Collider.js"></script-->
+
+    <script src="src/core/Modules/Visual/SpriteRenderer.js"></script>
+    <!--script src="src/core/Modules/Visual/SpriteSheetRenderer.js"></script-->
+
+    <!-- Lighting Modules -->
+    <script src="src/core/Modules/Lighting/DarknessModule.js"></script>
+    <script src="src/core/Modules/Lighting/PointLightModule.js"></script>
+    <!--script src="src/core/Modules/Lighting/LightBlockerModule.js"></script-->
+
+    <!-- Snake Modules -->
+    <!--script src="src/core/Modules/Snake/SnakePlayer.js"></script>
+    <script src="src/core/Modules/Snake/SnakeApple.js"></script-->
+
+    <script src="src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js"></script>
+    <script src="src/core/Modules/Asteroids/PlayerShip.js"></script>
+    <script src="src/core/Modules/Asteroids/Asteroid.js"></script>
+    <script src="src/core/Modules/Asteroids/AsteroidsPlanet.js"></script>
+    <script src="src/core/Modules/Asteroids/AsteroidsBullet.js"></script>
+    <script src="src/core/Modules/Asteroids/AsteroidManager.js"></script>
+    <script src="src/core/Modules/Asteroids/EnemyShip.js"></script>
+
+    <script src="src/core/Modules/BoundingBoxCollider.js"></script>
+
+    <script src="src/core/Modules/SimpleHealth.js"></script>
+
+    <!--script src="src/core/Modules/Controllers/SimpleMovementController.js"></script-->
+    <script src="src/core/Modules/Controllers/TouchJoystick.js"></script>
+    <!--script src="src/core/Modules/Controllers/KeyboardController.js"></script-->
+    <script src="src/core/Modules/Controllers/CameraController.js"></script>
+    <!--script src="src/core/Modules/Controllers/PlatformCharacterController.js"></script-->
+
+    <!--script src="src/core/Modules/Platform Game/PlatformCharacterAuto.js"></script-->
+
+    <!--script src="src/core/Modules/Inverse Kinematics/AutoIK.js"></script-->
+
+    <script src="src/core/Modules/Drawing/DrawCircle.js"></script>
+    <script src="src/core/Modules/Drawing/DrawRectangle.js"></script>
+    <script src="src/core/Modules/Drawing/DrawPolygon.js"></script>
+    <script src="src/core/Modules/Drawing/DrawShadow.js"></script>
+    <script src="src/core/Modules/Drawing/DrawDiamond.js"></script>
+    <script src="src/core/Modules/Drawing/DrawArrow.js"></script>
+    <script src="src/core/Modules/Drawing/DrawHeart.js"></script>
+    <script src="src/core/Modules/Drawing/DrawShield.js"></script>
+    <script src="src/core/Modules/Drawing/DrawStar.js"></script>
+    <script src="src/core/Modules/Drawing/DrawIcon.js"></script>
+    <script src="src/core/Modules/Drawing/DrawText.js"></script>
+    <script src="src/core/Modules/Drawing/DrawLine.js"></script>
+    <script src="src/core/Modules/Drawing/DrawGrid.js"></script>
+
+    <script src="src/core/Modules/Platform Game/DrawPlatformerHills.js"></script>
+
+    <!--script src="src/core/Modules/Visual/PostScreenEffects.js"></script-->
+
+    <!-- Animation Modules -->
+    <script src="src/core/Modules/Animation/Tween.js"></script>
+    <script src="src/core/Modules/Animation/Timer.js"></script>
+
+    <!-- UI Modules -->
+    <script src="src/core/Modules/UI/Button.js"></script>
+    <!--script src="src/core/Modules/UI/Text.js"></script-->
+
+    <!-- Effects Modules -->
+    <script src="src/core/Modules/Effects/ParticleSystem.js"></script>
+    <!---script src="src/core/Modules/Effects/ZoomQuilt.js"></script-->
+
+    <!-- Utility Modules -->
+    <script src="src/core/Modules/Utility/FollowTarget.js"></script>
+    <script src="src/core/Modules/Utility/Spawner.js"></script>
+
+    <script src="src/core/Modules/Movement/BasicPhysics.js"></script>
+    <script src="src/core/Modules/Movement/PhysicsKeyboardController.js"></script>
+
+    <script src="src/core/Editor Panels/Inspector.js"></script>
+    <script src="src/core/Editor Panels/InspectorStyling.js"></script>
+    <script src="src/core/Editor Panels/DirectoryTree.js"></script>
+    <script src="src/core/Editor Panels/FileBrowser.js"></script>
+    <script src="src/core/Editor Panels/Editor.js"></script>
+    <script src="src/core/Windows/ScriptEditor.js"></script>
+    <script src="src/core/AutoSaveManager.js"></script>
+    <script src="src/core/Editor Panels/ProjectManager.js"></script>
+    <script src="src/core/Editor Panels/PrefabManager.js"></script>
+    <script src="src/core/ExportManager.js"></script>
+
+    <script src="src/core/ModuleManager.js"></script>
+
+    <!--script src="src/core/Editor Panels/GameEditorSync.js"></script>
+    <script src="src/core/Editor Panels/SplitViewController.js"></script-->
+    <script src="src/SpriteCodeDocs.js"></script>
+    <script src="src/SpriteCode.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('launchSpriteCodeBtn').onclick = function () {
+                if (!window.spriteCode) {
+                    window.spriteCode = new SpriteCode();
+                }
+                window.spriteCode.openModal();
+            };
+        });
+    </script>
+
+    <script src="src/app.js"></script>
+</body>
+
+</html>
