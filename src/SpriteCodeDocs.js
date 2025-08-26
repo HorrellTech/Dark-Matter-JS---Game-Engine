@@ -40,6 +40,9 @@ class SpriteCodeDocs {
 
   // Create modal DOM elements with inline styles
   createModal() {
+    //this.theme.contentBg = options.contentBg || '#181a1d'; // darker than modal background
+    //this.theme.codeHighlight = options.codeHighlight || '#232a36'; // vivid for code blocks
+
     // Create overlay
     this.overlay = document.createElement('div');
     this.overlay.style.cssText = `
@@ -236,33 +239,53 @@ class SpriteCodeDocs {
     sidebar.innerHTML = '';
 
     Object.keys(this.documentation).forEach(category => {
-      // Create category header
-      const categoryEl = document.createElement('div');
-      categoryEl.style.cssText = `
-        padding: 8px 20px;
-        font-weight: 600;
-        color: ${this.theme.textPrimary};
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-top: 16px;
-      `;
-      categoryEl.textContent = category;
-      sidebar.appendChild(categoryEl);
+      // Collapsible category header
+      const categoryHeader = document.createElement('div');
+      categoryHeader.style.cssText = `
+      padding: 8px 20px;
+      font-weight: 600;
+      color: ${this.theme.textPrimary};
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 16px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    `;
+      categoryHeader.textContent = category;
 
-      // Create topics under category
+      // Arrow icon
+      const arrow = document.createElement('span');
+      arrow.textContent = '▶';
+      arrow.style.cssText = `
+      font-size: 12px;
+      margin-left: 8px;
+      transition: transform 0.2s;
+    `;
+      categoryHeader.appendChild(arrow);
+
+      // Topics container (collapsible)
+      const topicsContainer = document.createElement('div');
+      topicsContainer.style.cssText = `
+      display: none;
+      flex-direction: column;
+    `;
+
+      // Add topics
       Object.keys(this.documentation[category]).forEach(topic => {
         const topicEl = document.createElement('div');
         topicEl.style.cssText = `
-          padding: 8px 20px 8px 32px;
-          cursor: pointer;
-          color: ${this.theme.textSecondary};
-          transition: all 0.2s;
-          border-left: 3px solid transparent;
-        `;
+        padding: 8px 20px 8px 32px;
+        cursor: pointer;
+        color: ${this.theme.textSecondary};
+        transition: all 0.2s;
+        border-left: 3px solid transparent;
+      `;
         topicEl.textContent = topic;
 
-        // Hover effects
         topicEl.onmouseover = () => {
           topicEl.style.backgroundColor = this.theme.hover;
           topicEl.style.color = this.theme.textPrimary;
@@ -274,12 +297,8 @@ class SpriteCodeDocs {
             topicEl.style.borderLeftColor = 'transparent';
           }
         };
-
-        // Click handler
         topicEl.onclick = () => {
           this.showTopic(category, topic);
-
-          // Update active state
           sidebar.querySelectorAll('div').forEach(el => {
             if (el.style.cursor === 'pointer') {
               el.style.backgroundColor = 'transparent';
@@ -287,24 +306,31 @@ class SpriteCodeDocs {
               el.style.borderLeftColor = 'transparent';
             }
           });
-
           topicEl.style.backgroundColor = this.theme.hover;
           topicEl.style.color = this.theme.primary;
           topicEl.style.borderLeftColor = this.theme.primary;
-
           this.currentTopic = `${category}-${topic}`;
-
           this.addShineEffectToTopic(topicEl);
-
-          // Set interval for shine effect (e.g., every 3 seconds)
           if (this.shineInterval) clearInterval(this.shineInterval);
           this.shineInterval = setInterval(() => {
             this.addShineEffectToTopic(topicEl);
           }, 3000);
         };
-
-        sidebar.appendChild(topicEl);
+        topicsContainer.appendChild(topicEl);
       });
+
+      // Collapse/expand logic
+      categoryHeader.addEventListener('click', () => {
+        const isCollapsed = topicsContainer.style.display === 'none';
+        topicsContainer.style.display = isCollapsed ? 'flex' : 'none';
+        arrow.style.transform = isCollapsed ? 'rotate(90deg)' : 'rotate(0deg)';
+      });
+
+      // Start collapsed
+      topicsContainer.style.display = 'none';
+
+      sidebar.appendChild(categoryHeader);
+      sidebar.appendChild(topicsContainer);
     });
   }
 
@@ -312,47 +338,66 @@ class SpriteCodeDocs {
   showTopic(category, topic) {
     const content = this.documentation[category][topic];
     const contentArea = this.modal.querySelector('.docs-content');
-
     contentArea.innerHTML = '';
 
-    // Create topic header
+    // Topic header
     const header = document.createElement('h1');
     header.style.cssText = `
-      margin: 0 0 16px 0;
-      color: ${this.theme.textPrimary};
-      font-size: 24px;
-      font-weight: 700;
-      border-bottom: 2px solid ${this.theme.border};
-      padding-bottom: 12px;
-    `;
+    margin: 0 0 16px 0;
+    color: ${this.theme.textPrimary};
+    font-size: 24px;
+    font-weight: 700;
+    border-bottom: 2px solid ${this.theme.border};
+    padding-bottom: 12px;
+  `;
     header.textContent = topic;
     contentArea.appendChild(header);
 
-    // Create content container
+    // Content container with rounded, darker background
     const contentContainer = document.createElement('div');
     contentContainer.style.cssText = `
-      color: ${this.theme.textPrimary};
-      line-height: 1.6;
-    `;
+    background: ${this.theme.contentBg || '#181a1d'};
+    border-radius: 14px;
+    padding: 32px 28px;
+    color: ${this.theme.textPrimary};
+    line-height: 1.6;
+    box-shadow: 0 2px 12px 0 rgba(0,0,0,0.12);
+    margin-bottom: 24px;
+    border: 1px solid ${this.theme.border};
+  `;
 
-    // Handle different content types
+    // Use Markdown formatting for string content
     if (typeof content === 'string') {
-      // Handle HTML content
-      if (content.includes('<')) {
-        contentContainer.innerHTML = content;
-      } else {
-        // Handle plain text with line breaks
-        contentContainer.innerHTML = content.replace(/\n/g, '<br>');
-      }
+      contentContainer.innerHTML = this.formatDocumentation(content);
     } else if (typeof content === 'object') {
-      // Handle structured content
       this.renderStructuredContent(contentContainer, content);
     }
 
     contentArea.appendChild(contentContainer);
 
-    // Style common HTML elements
+    // Style common HTML elements, including code blocks
     this.styleContentElements(contentContainer);
+
+    // Trigger Prism.js syntax highlighting
+    if (window.Prism && typeof window.Prism.highlightAll === 'function') {
+      window.Prism.highlightAll();
+    }
+  }
+
+  /**
+   * Loads documentation from a Documentation class instance.
+   * @param {Documentation} docInstance - Instance of Documentation.js
+   */
+  loadFromDocumentationClass(docInstance) {
+    if (!docInstance || !docInstance.docs) return;
+    Object.entries(docInstance.docs).forEach(([category, catData]) => {
+      const topics = {};
+      Object.entries(catData.topics).forEach(([topic, topicData]) => {
+        // Use topicData.content if available, otherwise fallback to topicData
+        topics[topic] = topicData.content || topicData;
+      });
+      this.addCategory(category, topics);
+    });
   }
 
   // Render structured content objects
@@ -404,13 +449,13 @@ class SpriteCodeDocs {
   styleContentElements(container) {
     const styles = {
       'h1, h2, h3, h4, h5, h6': `color: ${this.theme.textPrimary}; margin: 24px 0 16px 0; font-weight: 600;`,
-      'p': `margin: 0 0 16px 0; line-height: 1.6; color: ${this.theme.textPrimary};`,
-      'ul, ol': `margin: 0 0 16px 0; padding-left: 24px; color: ${this.theme.textPrimary};`,
+      'p': `margin: 0 0 10px 0; line-height: 1.6; color: ${this.theme.textPrimary};`,
+      'ul, ol': `margin: 0 0 10px 0; padding-left: 24px; color: ${this.theme.textPrimary};`,
       'li': `margin: 4px 0; line-height: 1.5;`,
-      'code': `background: ${this.theme.sidebarBg}; padding: 2px 6px; border-radius: 3px; font-family: 'Monaco', 'Consolas', monospace; font-size: 13px; border: 1px solid ${this.theme.border};`,
-      'pre': `background: ${this.theme.sidebarBg}; padding: 16px; border-radius: 6px; overflow-x: auto; margin: 16px 0; border: 1px solid ${this.theme.border}; font-family: 'Monaco', 'Consolas', monospace;`,
-      'a': `color: ${this.theme.primary}; text-decoration: none;`,
-      'blockquote': `border-left: 4px solid ${this.theme.primary}; margin: 16px 0; padding: 12px 16px; background: ${this.theme.sidebarBg}; font-style: italic;`
+      'code': `background: none; padding: 0; border-radius: 0; font-family: 'Monaco', 'Consolas', monospace; font-size: 13px; color: #e0eaff;`,
+      // Fill the background of the code block area
+      'pre': `background: ${this.theme.codeHighlight || '#232a36'}; padding: 16px 10px; border-radius: 10px; overflow-x: auto; margin: 14px 0; border: 1px solid ${this.theme.primary}; font-family: 'Monaco', 'Consolas', monospace; color: #e0eaff; width: 100%; box-sizing: border-box;`,
+      '.code-line': `background: rgba(0,0,0,0.18); border: 1px solid ${this.theme.primary}; border-radius: 6px; padding: 6px 12px; margin: 2px 0; display: block; width: 100%; box-sizing: border-box; font-family: 'Monaco', 'Consolas', monospace; color: #e0eaff;`
     };
 
     Object.keys(styles).forEach(selector => {
@@ -418,6 +463,27 @@ class SpriteCodeDocs {
       elements.forEach(el => {
         el.style.cssText += styles[selector];
       });
+    });
+
+    // Remove extra <p> tags around <pre> if present (for raw HTML)
+    container.querySelectorAll('p > pre').forEach(pre => {
+      const parent = pre.parentElement;
+      parent.replaceWith(pre);
+    });
+
+    // For all <pre><code>, wrap each line in a .code-line span/div
+    container.querySelectorAll('pre code').forEach(codeEl => {
+      // Only process if not already wrapped and not Prism-highlighted
+      if (!codeEl.classList.contains('code-lines-processed') &&
+          !codeEl.classList.contains('language-javascript') &&
+          !codeEl.classList.contains('language-json') &&
+          !codeEl.classList.contains('language-css')) {
+        const lines = codeEl.textContent.split('\n');
+        codeEl.innerHTML = lines.map(line =>
+          `<div class="code-line">${this.escapeHtml(line)}</div>`
+        ).join('');
+        codeEl.classList.add('code-lines-processed');
+      }
     });
   }
 

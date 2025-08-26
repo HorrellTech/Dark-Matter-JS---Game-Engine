@@ -1312,7 +1312,6 @@ stopSound() {
 - Viewport x and y is viewport top left, and width and height is overall width/height
 
 **Module Template:**
-\`\`\`javascript
 class MyModule extends Module {
     static namespace = "Category";
     static description = "Brief description";
@@ -1362,7 +1361,6 @@ class MyModule extends Module {
 }
 
 window.MyModule = MyModule; // Register globally
-\`\`\`
 
 **Common Property Types:**
 - "number", "string", "boolean", "color"

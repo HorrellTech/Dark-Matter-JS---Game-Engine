@@ -400,9 +400,7 @@ class ScriptEditor {
         document.getElementById('se-format').addEventListener('click', () => this.formatCode());
 
         document.getElementById('se-docs').addEventListener('click', () => {
-            if (window.docModal) {
-                window.docModal.toggle();
-            }
+            window.scriptDocsModal.open();
         });
         // AI Toggle button
         this.modal.querySelector('#se-ai-toggle').addEventListener('click', () => {

@@ -3,6 +3,7 @@ class GameObject {
         this.name = name;
         this.position = new Vector2();
         this.size = new Vector2(32, 32); // Default size in pixels for collision detection
+        this.useCollisions = false; // Whether to use collision detection
         this.origin = new Vector2(0.5, 0.5); // Centered by default
         this.scale = new Vector2(1, 1);
         this.angle = 0;
@@ -13,11 +14,19 @@ class GameObject {
         this.children = [];
         this.parent = null;
         this.active = true;
+        this.colliderWidth = this.size.x; // For collision detection
+        this.colliderHeight = this.size.y; // For collision detection
         this.tags = [];
         this.selected = false; // Track if selected in editor
         this.expanded = false; // Track if expanded in hierarchy
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
+
+        this.usePolygonCollision = false; // Enable polygon collision
+        this.polygonPointCount = 3; // Number of points in the polygon
+        this.polygonAngleOffset = 0; // Angle offset for polygon points
+        this.polygonPoints = []; // Array of Vector2 points for polygon
+        this.polygon = null; // Polygon instance
 
         this.engine = engine; // Reference to the engine instance, set when added to engine
 
@@ -33,6 +42,10 @@ class GameObject {
         this.originalRotation = this.angle;
 
         this.previousPosition = this.position.clone(); // For movement tracking
+
+        if (this.usePolygonCollision) {
+            this.generatePolygonPoints();
+        }
     }
 
     getNearestObject(gameObjectName, maxRange = Infinity) {
@@ -55,7 +68,11 @@ class GameObject {
 
     async preload() {
         for (const module of this.modules) {
-            if (module.enabled && module.preload) await module.preload();
+            try {
+                if (module.enabled && module.preload) await module.preload();
+            } catch (error) {
+                console.error(`Error in module ${module.type || module.constructor.name} preload on ${this.name}:`, error);
+            }
         }
         for (const child of this.children) {
             await child.preload();
@@ -64,13 +81,29 @@ class GameObject {
 
     start() {
         if (!this.active) return;
+
+        // Polygon setup
+        /*if (this.usePolygonCollision && this.polygonPoints.length >= 3) {
+            // Center points around GameObject position
+            this.polygon = new Polygon(
+                this,
+                this.position.clone(),
+                ...this.polygonPoints.map(pt => pt.clone())
+            );
+            this.polygon.update(this.position.clone(), this.angle);
+        }*/
+
         // Save initial position and rotation when the game starts
         this.originalPosition = this.position.clone();
         this.originalRotation = this.angle;
 
         // Initialize modules and children
         this.modules.forEach(module => {
-            if (module.enabled && module.start) module.start();
+            try {
+                if (module.enabled && module.start) module.start();
+            } catch (error) {
+                console.error(`Error in module ${module.type || module.constructor.name} start on ${this.name}:`, error);
+            }
         });
         this.children.forEach(child => child.start());
     }
@@ -78,18 +111,35 @@ class GameObject {
     beginLoop() {
         if (!this.active) return;
 
+        this.colliderWidth = this.size.x; // For collision detection
+        this.colliderHeight = this.size.y; // For collision detection
+
         this.previousPosition = this.position.clone(); // For movement tracking
 
         this.modules.forEach(module => {
-            if (module.enabled && module.beginLoop) module.beginLoop();
+            try {
+                if (module.enabled && module.beginLoop) module.beginLoop();
+            } catch (error) {
+                console.error(`Error in module ${module.type || module.constructor.name} beginLoop on ${this.name}:`, error);
+            }
         });
         this.children.forEach(child => child.beginLoop());
     }
 
     loop(deltaTime) {
         if (!this.active) return;
+
+        // Update polygon if enabled
+        if (this.usePolygonCollision && this.polygon) {
+            this.polygon.update(this.position.clone(), this.angle + this.polygonAngleOffset);
+        }
+
         this.modules.forEach(module => {
-            if (module.enabled && module.loop) module.loop(deltaTime);
+            try {
+                if (module.enabled && module.loop) module.loop(deltaTime);
+            } catch (error) {
+                console.error(`Error in module ${module.type || module.constructor.name} loop on ${this.name}:`, error);
+            }
         });
         this.children.forEach(child => child.loop(deltaTime));
     }
@@ -97,7 +147,11 @@ class GameObject {
     endLoop() {
         if (!this.active) return;
         this.modules.forEach(module => {
-            if (module.enabled && module.endLoop) module.endLoop();
+            try {
+                if (module.enabled && module.endLoop) module.endLoop();
+            } catch (error) {
+                console.error(`Error in module ${module.type || module.constructor.name} endLoop on ${this.name}:`, error);
+            }
         });
         this.children.forEach(child => child.endLoop());
 
@@ -113,36 +167,24 @@ class GameObject {
      */
     draw(ctx) {
         if (!this.active || !this.visible) return;
-        
+
         ctx.save();
-        
+
         // Apply local transform
         const worldPos = this.getWorldPosition();
         const worldAngle = this.getWorldRotation();
         const worldScale = this.getWorldScale();
 
-        // Calculate xd and yd relative to viewport/camera
-        /*let camera = this.engine?.viewport || window.viewport;
-        if (camera) {
-            // Adjust for camera position and zoom
-            this.xd = (worldPos.x - camera.position.x) * (camera.zoom || 1);
-            this.yd = (worldPos.y - camera.position.y) * (camera.zoom || 1);
-        } else {
-            // Fallback: use world position directly
-            this.xd = worldPos.x;
-            this.yd = worldPos.y;
-        }*/
-
         ctx.translate(worldPos.x, worldPos.y);
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
-        
+
         // Track if any module actually drew something
         let moduleDidDraw = false;
-        
+
         // Always draw the fallback shape first to ensure object visibility
         //this.drawFallbackShape(ctx);
-        
+
         // Draw modules
         for (const module of this.modules) {
             if (module.enabled && typeof module.draw === 'function') {
@@ -154,9 +196,9 @@ class GameObject {
                 }
             }
         }
-        
+
         ctx.restore();
-        
+
         // Draw all children
         this.children.forEach(child => {
             if (child.active && child.visible) {
@@ -171,22 +213,22 @@ class GameObject {
      */
     drawInEditor(ctx) {
         if (!this.active) return;
-        
+
         // Draw this object
         ctx.save();
-        
+
         // Apply transformations
         const worldPos = this.getWorldPosition();
         const worldAngle = this.getWorldRotation();
         const worldScale = this.getWorldScale();
-        
+
         ctx.translate(worldPos.x, worldPos.y);
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
-        
+
         // Check if any module has a draw method and can be drawn in editor
         let moduleDidDraw = false;
-        
+
         // Draw modules that support rendering
         for (const module of this.modules) {
             // Check for modules that should draw in editor
@@ -194,51 +236,51 @@ class GameObject {
                 try {
                     // Instead of trying to analyze the function code, let's use a pattern
                     // where modules can explicitly indicate if they should be drawn in editor
-                    
+
                     // Option 1: Check for module.drawInEditor flag
                     if (module.drawInEditor === false) {
                         continue;
                     }
-                    
+
                     // Option 2: Use a canvas measuring approach - detect if anything was drawn
                     const tempCanvas = document.createElement('canvas');
                     tempCanvas.width = 100;
                     tempCanvas.height = 100;
                     const tempCtx = tempCanvas.getContext('2d');
-                    
+
                     // Clear the temp canvas and save its state
                     tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
                     tempCtx.save();
                     tempCtx.translate(50, 50); // Center for drawing
-                    
+
                     // Get image data before drawing
                     const beforeData = tempCtx.getImageData(0, 0, 100, 100).data;
-                    
+
                     // Try to draw
                     module.draw(tempCtx);
-                    
+
                     // Get image data after drawing
                     const afterData = tempCtx.getImageData(0, 0, 100, 100).data;
-                    
+
                     // Check if anything changed
                     let hasDrawnSomething = false;
                     for (let i = 0; i < beforeData.length; i += 4) {
-                        if (beforeData[i] !== afterData[i] || 
-                            beforeData[i+1] !== afterData[i+1] || 
-                            beforeData[i+2] !== afterData[i+2] || 
-                            beforeData[i+3] !== afterData[i+3]) {
+                        if (beforeData[i] !== afterData[i] ||
+                            beforeData[i + 1] !== afterData[i + 1] ||
+                            beforeData[i + 2] !== afterData[i + 2] ||
+                            beforeData[i + 3] !== afterData[i + 3]) {
                             hasDrawnSomething = true;
                             break;
                         }
                     }
-                    
+
                     // Restore temp context
                     tempCtx.restore();
-                    
+
                     if (!hasDrawnSomething) {
                         continue; // Module's draw didn't change anything visually
                     }
-                    
+
                     // Now we know the module actually draws something, so use it in the main context
                     module.draw(ctx);
                     moduleDidDraw = true;
@@ -247,23 +289,23 @@ class GameObject {
                 }
             }
         }
-        
+
         // If no module drew anything, draw the default representation
         if (!moduleDidDraw) {
             // Draw square representation
             const size = 20; // Base size
             ctx.beginPath();
-            ctx.rect(-size/2, -size/2, size, size);
+            ctx.rect(-size / 2, -size / 2, size, size);
             ctx.fillStyle = this.selected ? '#ffffff' : this.editorColor;
             ctx.fill();
-            
+
             // Draw origin point
             ctx.beginPath();
             ctx.arc(0, 0, 2, 0, Math.PI * 2);
             ctx.fillStyle = '#ff0000';
             ctx.fill();
         }
-        
+
         // Always draw the angle indicator line for better orientation
         const size = 20; // Base size for consistency with default representation
         const lineLength = size * 1.5; // Length of the line - 1.5x the size
@@ -273,7 +315,7 @@ class GameObject {
         ctx.strokeStyle = '#ffcc00'; // Distinct yellow color for angle line
         ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
         ctx.stroke();
-        
+
         // Add arrowhead to angle line
         ctx.beginPath();
         ctx.moveTo(lineLength, 0);
@@ -282,7 +324,32 @@ class GameObject {
         ctx.closePath();
         ctx.fillStyle = '#ffcc00';
         ctx.fill();
-        
+
+        if (!this.usePolygonCollision && this.useCollisions) {
+            ctx.beginPath();
+            ctx.rect(
+                -this.size.x / 2,
+                -this.size.y / 2,
+                this.size.x,
+                this.size.y
+            );
+            ctx.setLineDash([5, 3]); // Dashed line: 5px dash, 3px gap
+            ctx.strokeStyle = "#00ff00";
+            ctx.lineWidth = 1 / (this.editor?.camera?.zoom || 1);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset to solid for future drawing
+        }
+
+        if (this.usePolygonCollision && this.polygon) {
+            ctx.save();
+            ctx.setLineDash([5, 3]);
+            // Apply polygonAngleOffset rotation
+            ctx.rotate((this.polygonAngleOffset || 0) * Math.PI / 180);
+            this.polygon.draw(ctx, "#00ff00");
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
+
         // Draw selection outline if selected
         if (this.selected) {
             // Draw either around the module bounds or the default square
@@ -292,16 +359,16 @@ class GameObject {
                 ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
                 // A slightly larger rectangle than the typical module would draw
                 // This is an approximation - ideally modules would report their bounds
-                ctx.strokeRect(-size/2, -size/2, size, size);
+                ctx.strokeRect(-size / 2, -size / 2, size, size);
             } else {
                 ctx.strokeStyle = '#00aaff';
                 ctx.lineWidth = 2 / (this.editor?.camera?.zoom || 1);
-                ctx.strokeRect(-size/2, -size/2, size, size);
+                ctx.strokeRect(-size / 2, -size / 2, size, size);
             }
         }
-        
+
         ctx.restore();
-        
+
         // Draw name (always upright)
         if (this.selected) {
             ctx.fillStyle = '#ffffff';
@@ -310,7 +377,7 @@ class GameObject {
             ctx.textBaseline = 'bottom';
             ctx.fillText(this.name, worldPos.x, worldPos.y - 25);
         }
-        
+
         // Draw children
         this.children.forEach(child => {
             if (child.active) {
@@ -327,11 +394,11 @@ class GameObject {
         const worldPos = this.getWorldPosition();
         const worldScale = this.getWorldScale();
         const worldAngle = this.getWorldRotation();
-        
+
         // Calculate the effective width and height
         const effectiveWidth = this.width * worldScale.x;
         const effectiveHeight = this.height * worldScale.y;
-        
+
         // If there's no rotation, return a simple axis-aligned box
         if (worldAngle % 360 === 0) {
             return {
@@ -342,7 +409,7 @@ class GameObject {
                 rotation: 0
             };
         }
-        
+
         // For rotated objects, return an oriented bounding box
         return {
             x: worldPos.x,
@@ -421,19 +488,40 @@ class GameObject {
         if (!this.collisionEnabled || !other.collisionEnabled) {
             return false;
         }
-        
+
         // Skip collision check if collision layers don't match
-        if ((this.collisionLayer & other.collisionMask) === 0 && 
+        if ((this.collisionLayer & other.collisionMask) === 0 &&
             (other.collisionLayer & this.collisionMask) === 0) {
             return false;
         }
-        
+
         // Get bounding boxes
         const thisBox = this.getBoundingBox();
         const otherBox = other.getBoundingBox();
-        
-        // Check for collision using the CollisionSystem
-        return window.collisionSystem.checkCollision(thisBox, otherBox);
+
+        // AABB collision check (ignoring rotation)
+        return (
+            thisBox.x < otherBox.x + otherBox.width &&
+            thisBox.x + thisBox.width > otherBox.x &&
+            thisBox.y < otherBox.y + otherBox.height &&
+            thisBox.y + thisBox.height > otherBox.y
+        );
+    }
+
+    /*
+        Returns an array of all GameObjects this object is currently colliding with
+    */
+    checkForCollisions() {
+        const collisions = [];
+        const allObjects = window.engine.getAllObjects();
+
+        allObjects.forEach(obj => {
+            if (obj !== this && this.collidesWith(obj) && obj.collisionEnabled) {
+                collisions.push(obj);
+            }
+        });
+
+        return collisions;
     }
 
     /**
@@ -455,13 +543,65 @@ class GameObject {
     }
 
     /**
+     * Check polygon collision with another GameObject
+     * @param {GameObject} other
+     * @returns {boolean}
+     */
+    collidesWithPolygon(other) {
+        if (!this.usePolygonCollision || !other.usePolygonCollision) return false;
+        if (!this.polygon || !other.polygon) return false;
+        return this.polygon.collidesWith(other.polygon);
+    }
+
+    /**
+     * Check if a point is inside this GameObject's polygon
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
+    polygonContainsPoint(x, y) {
+        if (!this.usePolygonCollision || !this.polygon) return false;
+        return this.polygon.collisionPoint(x, y);
+    }
+
+    /**
+     * Get all GameObjects this polygon collides with
+     * @returns {Array<GameObject>}
+     */
+    checkPolygonCollisions() {
+        if (!this.usePolygonCollision || !this.polygon) return [];
+        const allObjects = window.engine.getAllObjects();
+        return allObjects.filter(obj =>
+            obj !== this &&
+            obj.usePolygonCollision &&
+            obj.polygon &&
+            this.collidesWithPolygon(obj)
+        );
+    }
+
+    generatePolygonPoints() {
+        const count = Math.max(3, this.polygonPointCount);
+        const radius = Math.max(this.size.x, this.size.y) / 2;
+        this.polygonPoints = [];
+        for (let i = 0; i < count; i++) {
+            const angle = (2 * Math.PI * i) / count;
+            const x = this.position.x + Math.cos(angle) * radius;
+            const y = this.position.y + Math.sin(angle) * radius;
+            // Points should be relative to (0,0), not this.position
+            this.polygonPoints.push(new Vector2(x, y));
+        }
+        // Always center polygon at the GameObject's position
+        this.polygon = new Polygon(this, this.position.clone(), ...this.polygonPoints.map(pt => pt.clone()));
+    }
+
+    /**
      * Add a module to this GameObject
      * @param {Module} module - The module to add
      * @returns {Module} The added module
      */
     addModule(module) {
         if (!module) return null;
-    
+
         // Check if this type of module is already attached
         const cls = module.constructor;
         if (cls.allowMultiple === false) {
@@ -471,12 +611,12 @@ class GameObject {
                 return already;
             }
         }
-    
+
         // Generate a unique ID for the module if it doesn't have one
         if (!module.id) {
             module.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         }
-    
+
         // Add required modules first
         const requirements = module.getRequirements ? module.getRequirements() : [];
         for (const requiredName of requirements) {
@@ -484,20 +624,20 @@ class GameObject {
             const existingReq = this.getModuleByType(requiredName);
             if (!existingReq) {
                 console.log(`Adding required module: ${requiredName} for ${module.constructor.name}`);
-                
+
                 // Try to get the module class
                 let ModuleClass = null;
-                
+
                 // First try to get from registry
                 if (window.moduleRegistry) {
                     ModuleClass = window.moduleRegistry.getModuleClass(requiredName);
                 }
-                
+
                 // Fall back to global scope
                 if (!ModuleClass && window[requiredName]) {
                     ModuleClass = window[requiredName];
                 }
-                
+
                 if (ModuleClass) {
                     // Create a new instance and add it
                     const requiredModule = new ModuleClass();
@@ -507,18 +647,18 @@ class GameObject {
                 }
             }
         }
-    
+
         // Set the gameObject reference
         module.gameObject = this;
-        
+
         // Add to modules array
         this.modules.push(module);
-        
+
         // Call onAttach
         if (typeof module.onAttach === 'function') {
             module.onAttach(this);
         }
-        
+
         return module;
     }
 
@@ -530,40 +670,40 @@ class GameObject {
     addRequiredModules(module) {
         // Get the requirements
         const requirements = module.getRequirements ? module.getRequirements() : [];
-        
+
         // Process each requirement
         for (const requiredName of requirements) {
             // Check if we already have this required module
             const existing = this.getModuleByType(requiredName);
-            
+
             if (!existing) {
                 console.log(`Module ${module.constructor.name} requires ${requiredName}, adding it automatically`);
-                
+
                 // Find the module class from registry or global scope
                 let ModuleClass = null;
-                
+
                 // Try to get from registry first
                 if (window.moduleRegistry) {
                     ModuleClass = window.moduleRegistry.getModuleClass(requiredName);
                 }
-                
+
                 // Fall back to global namespace
                 if (!ModuleClass && window[requiredName]) {
                     ModuleClass = window[requiredName];
                 }
-                
+
                 if (ModuleClass) {
                     // Create and add the required module
                     const requiredModule = new ModuleClass();
-                    
+
                     // Check if this required module itself has requirements
                     this.addRequiredModules(requiredModule);
-                    
+
                     // Add the module normally
                     requiredModule.gameObject = this;
                     requiredModule.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
                     this.modules.push(requiredModule);
-                    
+
                     // Call onAttach
                     if (typeof requiredModule.onAttach === 'function') {
                         requiredModule.onAttach(this);
@@ -583,17 +723,17 @@ class GameObject {
     getModule(moduleType) {
         // Handle module type as string
         if (typeof moduleType === 'string') {
-            return this.modules.find(module => 
-                module.constructor.name === moduleType || 
+            return this.modules.find(module =>
+                module.constructor.name === moduleType ||
                 module.type === moduleType
             );
         }
-        
+
         // Handle module type as class
         if (typeof moduleType === 'function') {
             return this.modules.find(module => module instanceof moduleType);
         }
-        
+
         // If moduleType is neither string nor function, return null
         return null;
     }
@@ -604,10 +744,10 @@ class GameObject {
      */
     reorderModules(moduleIds) {
         if (!moduleIds || !moduleIds.length) return;
-        
+
         // Create a new ordered modules array
         const orderedModules = [];
-        
+
         // First add modules in the specified order
         for (const moduleId of moduleIds) {
             const module = this.getModuleById(moduleId);
@@ -615,14 +755,14 @@ class GameObject {
                 orderedModules.push(module);
             }
         }
-        
+
         // Add any remaining modules that weren't in the moduleIds array
         for (const module of this.modules) {
             if (!orderedModules.includes(module)) {
                 orderedModules.push(module);
             }
         }
-        
+
         // Replace the modules array with the ordered one
         this.modules = orderedModules;
     }
@@ -633,8 +773,8 @@ class GameObject {
      * @returns {Module} The found module or null
      */
     getModuleByType(typeName) {
-        return this.modules.find(module => 
-            module.constructor.name === typeName || 
+        return this.modules.find(module =>
+            module.constructor.name === typeName ||
             module.type === typeName
         );
     }
@@ -752,6 +892,45 @@ class GameObject {
     }
 
     /**
+     * Find a child by name (including deep search through children)
+     * @param {string} name - The name of the GameObject to find
+     * @param {boolean} deep - Whether to search recursively through all children
+     * @returns {GameObject|null} The found GameObject or null
+     */
+    findChild(name, deep = true) {
+        // First, check direct children
+        for (const child of this.children) {
+            if (child.name === name) return child;
+        }
+
+        // If not found and deep search is enabled, search in children's children
+        if (deep) {
+            for (const child of this.children) {
+                const found = child.findChild(name, true);
+                if (found) return found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Set the selection state of this GameObject
+     * @param {boolean} selected - Whether the GameObject is selected
+     */
+    setSelected(selected) {
+        this.selected = selected;
+    }
+
+    /**
+     * Rename this GameObject
+     * @param {string} newName - The new name
+     */
+    rename(newName) {
+        this.name = newName;
+    }
+
+    /**
      * Get the world position of this GameObject
      * @returns {Vector2} The world position
      */
@@ -784,6 +963,10 @@ class GameObject {
             worldPos = worldPos.add(this.parent.getWorldPosition());
         }
 
+        // Round to 2 decimal places
+        worldPos.x = Math.round(worldPos.x * 100) / 100;
+        worldPos.y = Math.round(worldPos.y * 100) / 100;
+
         return worldPos;
     }
 
@@ -794,77 +977,38 @@ class GameObject {
      */
     worldToLocalPosition(worldPosition) {
         if (!this.parent) return worldPosition.subtract(this.position);
-        
+
         const parentWorldPos = this.parent.getWorldPosition();
         let localToParent = worldPosition.subtract(parentWorldPos);
         localToParent = localToParent.rotate(-this.parent.angle * Math.PI / 180);
         return localToParent.subtract(this.position);
     }
-    
-    /**
-     * Find a child by name (including deep search through children)
-     * @param {string} name - The name of the GameObject to find
-     * @param {boolean} deep - Whether to search recursively through all children
-     * @returns {GameObject|null} The found GameObject or null
-     */
-    findChild(name, deep = true) {
-        // First, check direct children
-        for (const child of this.children) {
-            if (child.name === name) return child;
-        }
-        
-        // If not found and deep search is enabled, search in children's children
-        if (deep) {
-            for (const child of this.children) {
-                const found = child.findChild(name, true);
-                if (found) return found;
-            }
-        }
-        
-        return null;
-    }
-
-    /**
-     * Set the selection state of this GameObject
-     * @param {boolean} selected - Whether the GameObject is selected
-     */
-    setSelected(selected) {
-        this.selected = selected;
-    }
-    
-    /**
-     * Rename this GameObject
-     * @param {string} newName - The new name
-     */
-    rename(newName) {
-        this.name = newName;
-    }
 
     getWorldRotation() {
         let rotation = this.angle;
         let currentParent = this.parent;
-        
+
         while (currentParent) {
             rotation += currentParent.angle;
             currentParent = currentParent.parent;
         }
-        
+
         return rotation;
     }
-    
+
     getWorldScale() {
         let scale = this.scale.clone();
         let currentParent = this.parent;
-        
+
         while (currentParent) {
             scale.x *= currentParent.scale.x;
             scale.y *= currentParent.scale.y;
             currentParent = currentParent.parent;
         }
-        
+
         return scale;
     }
-    
+
     /**
      * Serialize this GameObject to JSON
      * @returns {Object} Serialized GameObject data
@@ -874,13 +1018,18 @@ class GameObject {
             id: this.id, // Include the ID for reference
             name: this.name,
             position: { x: this.position.x, y: this.position.y },
-            scale: { x: this.scale.x, y: this.scale.y }, // Add scale
+            scale: { x: this.scale.x, y: this.scale.y },
+            useCollisions: this.useCollisions,
+            polygonPointCount: this.polygonPointCount,
+            polygonPoints: this.polygonPoints.map(pt => ({ x: pt.x, y: pt.y })),
+            usePolygonCollision: this.usePolygonCollision,
+            polygon: this.polygon ? this.polygon.toJSON() : null,
             size: { width: this.size.x, height: this.size.y },
             angle: this.angle,
             depth: this.depth,
             active: this.active,
             editorColor: this.editorColor,
-            visible: this.visible, // Add visible property
+            visible: this.visible,
             tags: [...this.tags],
             collisionEnabled: this.collisionEnabled,
             collisionLayer: this.collisionLayer,
@@ -893,7 +1042,7 @@ class GameObject {
             children: this.children.map(child => child.toJSON())
         };
     }
-    
+
     /**
      * Create a GameObject from serialized data
      * @param {Object} json - Serialized GameObject data
@@ -903,35 +1052,48 @@ class GameObject {
         const obj = new GameObject(json.name);
         // Restore ID if available
         if (json.id) obj.id = json.id;
-        
+
         obj.position = new Vector2(json.position.x, json.position.y);
+        obj.useCollisions = json.useCollisions || false;
         obj.size = new Vector2(json.size.width, json.size.height);
         // Restore scale if available
         if (json.scale) obj.scale = new Vector2(json.scale.x, json.scale.y);
         obj.editorColor = json.editorColor || obj.generateRandomColor();
-        
+
+        if (json.polygonPointCount !== undefined) {
+            obj.polygonPointCount = json.polygonPointCount;
+        }
+        if (json.polygonPoints && Array.isArray(json.polygonPoints)) {
+            obj.polygonPoints = json.polygonPoints.map(pt => new Vector2(pt.x, pt.y));
+            obj.polygon = new Polygon(obj.polygonPoints);
+        }
+
+        if (json.usePolygonCollision !== undefined) {
+            obj.usePolygonCollision = json.usePolygonCollision;
+        }
+
         obj.angle = json.angle;
         obj.depth = json.depth;
         obj.active = json.active;
         if (json.visible !== undefined) obj.visible = json.visible;
         obj.tags = [...json.tags];
-    
+
         if (json.collisionEnabled !== undefined) obj.collisionEnabled = json.collisionEnabled;
         if (json.collisionLayer !== undefined) obj.collisionLayer = json.collisionLayer;
         if (json.collisionMask !== undefined) obj.collisionMask = json.collisionMask;
-        
+
         // Add modules - with improved module class lookup
         if (json.modules && Array.isArray(json.modules)) {
             json.modules.forEach(moduleData => {
                 // Try to get the module class from registry or window
                 const moduleTypeName = moduleData.type;
                 let ModuleClass = null;
-                
+
                 // Try module registry first
                 if (window.moduleRegistry) {
                     ModuleClass = window.moduleRegistry.getModuleClass(moduleTypeName);
                 }
-                
+
                 // Fall back to global scope with various naming conventions
                 if (!ModuleClass) {
                     // Try PascalCase (standard naming convention)
@@ -952,16 +1114,16 @@ class GameObject {
                         }
                     }
                 }
-                
+
                 if (ModuleClass) {
                     try {
                         // Create the module instance
                         const module = new ModuleClass();
-                        
+
                         // Restore the module's ID and type
                         if (moduleData.id) module.id = moduleData.id;
                         module.type = moduleTypeName; // Explicitly set type to what was saved
-                        
+
                         // Initialize from saved data if module has fromJSON method
                         if (moduleData.data && typeof module.fromJSON === 'function') {
                             module.fromJSON(moduleData.data);
@@ -973,10 +1135,10 @@ class GameObject {
                                 }
                             }
                         }
-                        
+
                         // Add module to game object
                         obj.addModule(module);
-                        
+
                     } catch (error) {
                         console.error(`Error restoring module ${moduleTypeName}:`, error);
                         // Create a placeholder module to preserve data
@@ -989,13 +1151,13 @@ class GameObject {
                 }
             });
         }
-        
+
         // Add children
         json.children.forEach(childJson => {
             const child = GameObject.fromJSON(childJson);
             obj.addChild(child);
         });
-        
+
         return obj;
     }
 
@@ -1011,31 +1173,31 @@ class GameObject {
             console.warn("copyModuleProperties: Missing required arguments");
             return;
         }
-    
+
         const originalGameObject = this; // Store reference to original GameObject
-        
+
         // Get all property names (including non-enumerable ones)
         const propertyNames = new Set([
-            ...Object.getOwnPropertyNames(sourceModule), 
+            ...Object.getOwnPropertyNames(sourceModule),
             ...Object.keys(sourceModule)
         ]);
-        
+
         // Process each property
         for (const key of propertyNames) {
             try {
                 // Skip special properties and functions
-                if (key === 'id' || key === 'gameObject' || key === 'constructor' || 
+                if (key === 'id' || key === 'gameObject' || key === 'constructor' ||
                     key.startsWith('__') || typeof sourceModule[key] === 'function') {
                     continue;
                 }
-                
+
                 // Get the source value
                 const value = sourceModule[key];
-                
+
                 // Handle different value types
                 if (value === null || value === undefined) {
                     targetModule[key] = value;
-                } 
+                }
                 else if (value === originalGameObject) {
                     // Direct reference to the original GameObject
                     targetModule[key] = newGameObject;
@@ -1052,8 +1214,8 @@ class GameObject {
                     // Process arrays - create a new array for the clone
                     targetModule[key] = deepCloneArray(value, originalGameObject, newGameObject);
                 }
-                else if (typeof value === 'object' && value !== null && 
-                         !(value instanceof HTMLElement)) {
+                else if (typeof value === 'object' && value !== null &&
+                    !(value instanceof HTMLElement)) {
                     // For any other objects that aren't DOM elements
                     if (typeof value.clone === 'function') {
                         // Use clone method if available
@@ -1070,17 +1232,17 @@ class GameObject {
                 console.warn(`Error cloning property ${key} in module ${sourceModule.constructor.name}:`, e);
             }
         }
-        
+
         // Handle private properties for exposed properties
         if (Array.isArray(sourceModule.exposedProperties)) {
             for (const prop of sourceModule.exposedProperties) {
                 const propName = prop.name;
                 const privatePropName = `_${propName}`;
-                
+
                 // Copy the private property if it exists
                 if (privatePropName in sourceModule) {
                     const privateValue = sourceModule[privatePropName];
-                    
+
                     if (privateValue === originalGameObject) {
                         targetModule[privatePropName] = newGameObject;
                     } else if (typeof privateValue === 'object' && privateValue !== null) {
@@ -1101,21 +1263,21 @@ class GameObject {
 
     deepCloneObject(obj, newGameObject) {
         if (!obj) return obj;
-        
+
         try {
             // For DOM elements, return as-is
             if (obj instanceof HTMLElement) return obj;
-            
+
             // For objects with clone method, use it
             if (typeof obj.clone === 'function') return obj.clone();
-            
+
             const clone = {};
-            
+
             for (const key in obj) {
                 if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-                
+
                 const value = obj[key];
-                
+
                 if (value === this || value === this.gameObject) {
                     clone[key] = newGameObject;
                 } else if (value instanceof Vector2) {
@@ -1128,9 +1290,9 @@ class GameObject {
                     clone[key] = value;
                 }
             }
-            
+
             return clone;
-            
+
         } catch (e) {
             console.warn("Failed to deep clone object:", e);
             return {}; // Return empty object as fallback
@@ -1145,7 +1307,7 @@ class GameObject {
      */
     deepCloneArray(arr, originalGameObject, newGameObject) {
         if (!arr) return arr;
-        
+
         return arr.map(item => {
             if (item === originalGameObject || item === originalGameObject.gameObject) {
                 return newGameObject;
@@ -1177,39 +1339,39 @@ class GameObject {
     deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
         if (!obj) return obj;
         if (obj === originalGameObject) return newGameObject;
-        
+
         // Skip non-objects and DOM elements
         if (typeof obj !== 'object' || obj instanceof HTMLElement) return obj;
-        
+
         // Handle special objects
         if (typeof obj.clone === 'function') return obj.clone();
         if (obj instanceof Date) return new Date(obj.getTime());
-        
+
         // Handle arrays
         if (Array.isArray(obj)) {
             return this.deepCloneArray(obj, originalGameObject, newGameObject);
         }
-        
+
         // Create a new object of the same type
         const clone = Object.create(Object.getPrototypeOf(obj));
-        
+
         // Copy all properties with reference checks
         for (const key in obj) {
             if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-            
+
             const value = obj[key];
-            
+
             if (value === originalGameObject || value === originalGameObject.gameObject) {
                 // Replace GameObject references
                 clone[key] = newGameObject;
-            } 
+            }
             else if (value === null || value === undefined || typeof value !== 'object') {
                 // Direct copy for primitives and null/undefined
                 clone[key] = value;
             }
             else if (typeof value.clone === 'function') {
                 // Use clone method if available
-                clone[key] = value.clone(); 
+                clone[key] = value.clone();
             }
             else if (value instanceof HTMLElement) {
                 // Keep references to DOM elements intact
@@ -1224,7 +1386,7 @@ class GameObject {
                 clone[key] = this.deepCloneWithReplacements(value, originalGameObject, newGameObject);
             }
         }
-        
+
         return clone;
     }
 
@@ -1235,21 +1397,21 @@ class GameObject {
      */
     replaceMissedReferences(obj, newGameObject) {
         if (!obj || typeof obj !== 'object') return;
-        
+
         // Use a Set to track visited objects and avoid circular reference issues
         const visited = new Set();
-        
+
         function scan(o) {
             if (!o || typeof o !== 'object' || visited.has(o)) return;
             visited.add(o);
-            
+
             // Check all properties
             for (const key in o) {
                 if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
                 if (key === 'gameObject') continue; // Skip the gameObject property itself
-                
+
                 const value = o[key];
-                
+
                 if (value === this) {
                     // Replace references to the original GameObject
                     o[key] = newGameObject;
@@ -1259,7 +1421,7 @@ class GameObject {
                 }
             }
         }
-        
+
         scan.call(this, obj);
     }
 
@@ -1271,33 +1433,33 @@ class GameObject {
      */
     deepScanAndReplaceAllReferences(obj, originalObj, newObj) {
         if (!obj || typeof obj !== 'object') return;
-        
+
         // Use a WeakMap to track visited objects and avoid circular reference issues
         const visited = new WeakMap();
-        
+
         const scan = (o) => {
             if (!o || typeof o !== 'object' || visited.has(o)) return;
             visited.set(o, true);
-            
+
             // Check all properties recursively
             for (const key in o) {
                 if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
-                
+
                 const value = o[key];
-                
+
                 // Replace direct references
                 if (value === originalObj || value === originalObj.gameObject) {
                     o[key] = newObj;
                     continue;
                 }
-                
+
                 // Recursively scan objects and arrays
                 if (typeof value === 'object' && value !== null && !visited.has(value)) {
                     scan(value);
                 }
             }
         };
-        
+
         scan(obj);
     }
 
@@ -1306,8 +1468,8 @@ class GameObject {
      * @returns {GameObject} A deep copy of this GameObject
      */
     clone(addNameCopySuffix = true) {
-        const originalGameObject = this; 
-        
+        const originalGameObject = this;
+
         // Create new GameObject
         // Only add " (Copy)" if not already present
         let newName = this.name;
@@ -1315,7 +1477,7 @@ class GameObject {
             newName += " (Copy)";
         }
         const cloned = new GameObject(newName, this.engine);
-        
+
         // Copy basic properties
         cloned.position = this.position.clone();
         cloned.scale = this.scale.clone();
@@ -1330,12 +1492,12 @@ class GameObject {
         cloned.collisionEnabled = this.collisionEnabled;
         cloned.collisionLayer = this.collisionLayer;
         cloned.collisionMask = this.collisionMask;
-    
+
         // Copy original position if it exists
         if (this._originalPosition) {
             cloned._originalPosition = { x: this._originalPosition.x, y: this._originalPosition.y };
         }
-        
+
         // Clone modules with proper reference handling
         for (const module of this.modules) {
             try {
@@ -1343,53 +1505,53 @@ class GameObject {
                 let ModuleClass = module.constructor;
                 if (!ModuleClass && module.type) {
                     ModuleClass = window.moduleRegistry?.getModuleClass(module.type)
-                              || window[module.type];
+                        || window[module.type];
                 }
-                
+
                 if (!ModuleClass) {
                     console.warn(`Could not find class for module type ${module.type}`);
                     createPlaceholderModule(cloned, { id: module.id, type: module.type }, module.type);
                     continue;
                 }
-                
+
                 // Create a new module instance
                 const clonedModule = new ModuleClass();
-                
+
                 // Generate a new unique ID for the cloned module
                 clonedModule.id = crypto.randomUUID();
-                
+
                 // Store the module type explicitly
                 clonedModule.type = module.type || ModuleClass.name;
-                
+
                 // IMPORTANT: Set the gameObject reference first so that 
                 // fromJSON has the correct reference when restoring properties
                 clonedModule.gameObject = cloned;
-                
+
                 // Now restore data from the original module
                 const data = module.toJSON();
                 if (data) {
                     clonedModule.fromJSON(data);
                 }
-                
+
                 // Proper attachment
                 clonedModule.attachTo(cloned);
-                
+
                 // Add the module to the cloned game object's modules array
                 cloned.modules.push(clonedModule);
-                
+
                 // Call onAttach explicitly if it exists
                 if (typeof clonedModule.onAttach === 'function') {
                     clonedModule.onAttach(cloned);
                 }
-                
+
                 // Deep scan for any missed references
                 deepScanAndReplaceReferences(clonedModule, originalGameObject, cloned);
-                
+
             } catch (error) {
                 console.error(`Error cloning module ${module.type || module.constructor?.name}:`, error);
             }
         }
-        
+
         // Clone children recursively
         for (const child of this.children) {
             const clonedChild = child.clone();
@@ -1400,7 +1562,7 @@ class GameObject {
         for (const module of cloned.modules) {
             // Replace any remaining references to the original GameObject
             deepScanAndReplaceAllReferences(module, originalGameObject, cloned);
-            
+
             // Also check for private properties
             for (const key in module) {
                 if (key.startsWith('_') && module[key] === originalGameObject) {
@@ -1408,37 +1570,37 @@ class GameObject {
                 }
             }
         }
-        
+
         return cloned;
     }
-    
+
 }
 
 function deepScanAndReplaceAllReferences(obj, originalObj, newObj) {
     if (!obj || typeof obj !== 'object') return;
-    
+
     const visited = new WeakMap();
-    
+
     const scan = (o) => {
         if (!o || typeof o !== 'object' || visited.has(o)) return;
         visited.set(o, true);
-        
+
         for (const key in o) {
             if (!Object.prototype.hasOwnProperty.call(o, key)) continue;
-            
+
             const value = o[key];
-            
+
             if (value === originalObj || value === originalObj.gameObject) {
                 console.log(`Replacing reference in ${o.constructor.name}.${key}`);
                 o[key] = newObj;
             }
-            
+
             if (typeof value === 'object' && value !== null && !visited.has(value)) {
                 scan(value);
             }
         }
     };
-    
+
     scan(obj);
 }
 
@@ -1449,24 +1611,24 @@ function deepScanAndReplaceAllReferences(obj, originalObj, newObj) {
  */
 function findModuleClass(moduleName) {
     if (!moduleName) return null;
-    
+
     // Check registry first (most reliable source)
     if (window.moduleRegistry) {
         const moduleClass = window.moduleRegistry.getModuleClass(moduleName);
         if (moduleClass) return moduleClass;
     }
-    
+
     // Try direct global lookup with original name
     if (window[moduleName]) return window[moduleName];
-    
+
     // Try camelCase variation
     const camelCase = moduleName.charAt(0).toLowerCase() + moduleName.slice(1);
     if (window[camelCase]) return window[camelCase];
-    
+
     // Try capitalized version
     const capitalized = moduleName.charAt(0).toUpperCase() + moduleName.slice(1);
     if (window[capitalized]) return window[capitalized];
-    
+
     // Not found
     return null;
 }
@@ -1480,29 +1642,29 @@ function copyModuleProperties(sourceModule, targetModule, newGameObject, origina
         console.warn("copyModuleProperties: Missing required arguments");
         return;
     }
-    
+
     // Get all property names (including non-enumerable ones)
     const propertyNames = new Set([
-        ...Object.getOwnPropertyNames(sourceModule), 
+        ...Object.getOwnPropertyNames(sourceModule),
         ...Object.keys(sourceModule)
     ]);
-    
+
     // Process each property
     for (const key of propertyNames) {
         try {
             // Skip special properties and functions
-            if (key === 'id' || key === 'gameObject' || key === 'constructor' || 
+            if (key === 'id' || key === 'gameObject' || key === 'constructor' ||
                 key.startsWith('__') || typeof sourceModule[key] === 'function') {
                 continue;
             }
-            
+
             // Get the source value
             const value = sourceModule[key];
-            
+
             // Handle different value types
             if (value === null || value === undefined) {
                 targetModule[key] = value;
-            } 
+            }
             else if (value === originalGameObject) {
                 // Direct reference to the original GameObject
                 targetModule[key] = newGameObject;
@@ -1519,8 +1681,8 @@ function copyModuleProperties(sourceModule, targetModule, newGameObject, origina
                 // Process arrays - create a new array for the clone
                 targetModule[key] = deepCloneArray(value, originalGameObject, newGameObject);
             }
-            else if (typeof value === 'object' && value !== null && 
-                     !(value instanceof HTMLElement)) {
+            else if (typeof value === 'object' && value !== null &&
+                !(value instanceof HTMLElement)) {
                 // For any other objects that aren't DOM elements
                 if (typeof value.clone === 'function') {
                     // Use clone method if available
@@ -1537,17 +1699,17 @@ function copyModuleProperties(sourceModule, targetModule, newGameObject, origina
             console.warn(`Error cloning property ${key} in module ${sourceModule.constructor.name}:`, e);
         }
     }
-    
+
     // Handle private properties for exposed properties
     if (Array.isArray(sourceModule.exposedProperties)) {
         for (const prop of sourceModule.exposedProperties) {
             const propName = prop.name;
             const privatePropName = `_${propName}`;
-            
+
             // Copy the private property if it exists
             if (privatePropName in sourceModule) {
                 const privateValue = sourceModule[privatePropName];
-                
+
                 if (privateValue === originalGameObject) {
                     targetModule[privatePropName] = newGameObject;
                 } else if (typeof privateValue === 'object' && privateValue !== null) {
@@ -1573,7 +1735,7 @@ function copyModuleProperties(sourceModule, targetModule, newGameObject, origina
  */
 function deepCloneArray(arr, originalGameObject, newGameObject) {
     if (!arr) return arr;
-    
+
     return arr.map(item => {
         if (item === originalGameObject || item === originalGameObject.gameObject) {
             return newGameObject;
@@ -1602,39 +1764,39 @@ function deepCloneArray(arr, originalGameObject, newGameObject) {
 function deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
     if (!obj) return obj;
     if (obj === originalGameObject) return newGameObject;
-    
+
     // Skip non-objects and DOM elements
     if (typeof obj !== 'object' || obj instanceof HTMLElement) return obj;
-    
+
     // Handle special objects
     if (typeof obj.clone === 'function') return obj.clone();
     if (obj instanceof Date) return new Date(obj.getTime());
-    
+
     // Handle arrays
     if (Array.isArray(obj)) {
         return deepCloneArray(obj, originalGameObject, newGameObject);
     }
-    
+
     // Create a new object of the same type
     const clone = Object.create(Object.getPrototypeOf(obj));
-    
+
     // Copy all properties with reference checks
     for (const key in obj) {
         if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-        
+
         const value = obj[key];
-        
+
         if (value === originalGameObject || value === originalGameObject.gameObject) {
             // Replace GameObject references
             clone[key] = newGameObject;
-        } 
+        }
         else if (value === null || value === undefined || typeof value !== 'object') {
             // Direct copy for primitives and null/undefined
             clone[key] = value;
         }
         else if (typeof value.clone === 'function') {
             // Use clone method if available
-            clone[key] = value.clone(); 
+            clone[key] = value.clone();
         }
         else if (value instanceof HTMLElement) {
             // Keep references to DOM elements intact
@@ -1649,7 +1811,7 @@ function deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
             clone[key] = deepCloneWithReplacements(value, originalGameObject, newGameObject);
         }
     }
-    
+
     return clone;
 }
 
@@ -1661,23 +1823,23 @@ function deepCloneWithReplacements(obj, originalGameObject, newGameObject) {
  */
 function deepScanAndReplaceReferences(obj, original, replacement) {
     if (!obj || typeof obj !== 'object') return;
-    
+
     // Use a Set to track objects we've already visited to avoid circular references
     const visited = new Set();
-    
+
     function _scan(o) {
         if (!o || typeof o !== 'object' || visited.has(o)) return;
         visited.add(o);
-        
+
         // Check all properties of the object
         for (const key in o) {
             if (!o.hasOwnProperty(key)) continue;
-            
+
             // Skip the 'gameObject' property as it's already set correctly
             if (key === 'gameObject') continue;
-            
+
             const value = o[key];
-            
+
             // If the value is a reference to the original GameObject, replace it
             if (value === original) {
                 o[key] = replacement;
@@ -1688,7 +1850,7 @@ function deepScanAndReplaceReferences(obj, original, replacement) {
             }
         }
     }
-    
+
     _scan(obj);
 }
 
@@ -1701,19 +1863,19 @@ function deepScanAndReplaceReferences(obj, original, replacement) {
  */
 function deepCloneWithReferenceReplacement(obj, originalGameObject, clonedGameObject) {
     if (!obj || typeof obj !== 'object') return obj;
-    
+
     // Handle null
     if (obj === null) return null;
-    
+
     // Handle Date objects
     if (obj instanceof Date) return new Date(obj.getTime());
-    
+
     // Handle GameObject references
     if (obj === originalGameObject) return clonedGameObject;
-    
+
     // Handle Vector2 instances
     if (obj instanceof Vector2) return obj.clone();
-    
+
     // Handle arrays
     if (Array.isArray(obj)) {
         return obj.map(item => {
@@ -1721,18 +1883,18 @@ function deepCloneWithReferenceReplacement(obj, originalGameObject, clonedGameOb
             return deepCloneWithReferenceReplacement(item, originalGameObject, clonedGameObject);
         });
     }
-    
+
     // Skip functions (they can't be reliably cloned)
     if (typeof obj === 'function') return undefined;
-    
+
     // Handle objects with their own clone method
     if (typeof obj.clone === 'function') return obj.clone();
-    
+
     // Handle regular objects - deep copy each property
     try {
         // For regular objects, create a new object of the same type
         const clone = Array.isArray(obj) ? [] : Object.create(Object.getPrototypeOf(obj));
-        
+
         // Copy each property with reference replacement
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -1745,12 +1907,12 @@ function deepCloneWithReferenceReplacement(obj, originalGameObject, clonedGameOb
                 }
             }
         }
-        
+
         return clone;
     } catch (e) {
         // Fallback to simpler approach for objects that cause errors
         console.warn("Error during deep clone, using simpler clone:", e);
-        
+
         const simpleClone = {};
         for (const key in obj) {
             if (obj[key] === originalGameObject) {
@@ -1759,7 +1921,7 @@ function deepCloneWithReferenceReplacement(obj, originalGameObject, clonedGameOb
                 simpleClone[key] = obj[key];
             }
         }
-        
+
         return simpleClone;
     }
 }
@@ -1774,7 +1936,7 @@ function replaceReferences(obj, originalObj, newObj) {
     if (!obj || typeof obj !== 'object' || originalObj === null || newObj === null) {
         return;
     }
-    
+
     for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
             if (obj[key] === originalObj) {
@@ -1797,17 +1959,17 @@ function safeClone(obj, originalGameObject, newGameObject) {
     if (obj === null || obj === undefined) {
         return obj;
     }
-    
+
     // Handle GameObject references
     if (originalGameObject && obj === originalGameObject) {
         return newGameObject;
     }
-    
+
     // Handle primitive types
     if (typeof obj !== 'object' && typeof obj !== 'function') {
         return obj;
     }
-    
+
     // Handle Vector2 objects
     if (obj instanceof Vector2) {
         return obj.clone();
@@ -1842,25 +2004,25 @@ function safeClone(obj, originalGameObject, newGameObject) {
     try {
         // Try using structuredClone first for performance
         const cloned = structuredClone(obj);
-        
+
         // Still need to check for and replace gameObject references
         if (originalGameObject && newGameObject) {
             // Recursively search for references to replace
             replaceReferences(cloned, originalGameObject, newGameObject);
         }
-        
+
         return cloned;
     } catch (e) {
         // Fall back to manual cloning when structuredClone fails
         const clonedObj = Array.isArray(obj) ? [] : {};
-        
+
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
                 if (typeof obj[key] === 'function') {
                     // Skip functions - they can't be cloned reliably
                     continue;
                 }
-                
+
                 // Replace GameObject references
                 if (originalGameObject && obj[key] === originalGameObject) {
                     clonedObj[key] = newGameObject;
@@ -1869,7 +2031,7 @@ function safeClone(obj, originalGameObject, newGameObject) {
                 }
             }
         }
-        
+
         return clonedObj;
     }
 }
@@ -1889,14 +2051,13 @@ function createPlaceholderModule(gameObj, moduleData, typeName) {
         placeholderModule.missingModule = true;
         placeholderModule.originalData = moduleData;
         placeholderModule.gameObject = gameObj;  // Make sure to set this reference
-        
+
         // Add the placeholder module directly to avoid using addModule which could have side effects
         gameObj.modules.push(placeholderModule);
-        
-        console.warn(`Created placeholder for missing module: ${typeName}. Available modules: ${
-            Array.from(window.moduleRegistry?.modules?.keys() || []).join(', ')
-        }`);
-        
+
+        console.warn(`Created placeholder for missing module: ${typeName}. Available modules: ${Array.from(window.moduleRegistry?.modules?.keys() || []).join(', ')
+            }`);
+
         return placeholderModule;
     } catch (e) {
         console.error("Failed to create placeholder module:", e);

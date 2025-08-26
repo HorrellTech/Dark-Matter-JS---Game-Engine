@@ -6,12 +6,24 @@ const DarkMatterDocs = {
     GameObject: {
         group: "Core",
         functions: {
-            addModule: {
-                description: "Add a module/component to the GameObject",
-                example: `const sprite = gameObject.addModule(new SpriteRenderer());
-sprite.setSprite("player.png");`,
-                params: [{ name: "module", type: "Module", description: "The module instance to add" }],
-                returns: { type: "Module", description: "The added module instance" }
+            addTag: {
+                description: "Add a tag to the GameObject, useful for grouping and identification",
+                example: `this.gameObject.addTag("player");`,
+                params: [{ name: "tag", type: "string", description: "The tag to add" }],
+                returns: { type: "void", description: "No return value" }
+            },
+
+            hasTag: {
+                description: "Check if the GameObject has a specific tag",
+                example: `const collisions = this.gameObject.checkForCollisions();
+
+collisions.forEach(other => {
+    if(other.gameObject.hasTag("enemy")) {
+        // Code to inflict damage
+    }
+});`,
+                params: [{ name: "tag", type: "string", description: "The tag to check for" }],
+                returns: { type: "boolean", description: "True if the tag is present" }
             },
 
             addChild: {
@@ -19,6 +31,14 @@ sprite.setSprite("player.png");`,
                 example: `const child = new GameObject("Child");
 parentObject.addChild(child);`,
                 params: [{ name: "child", type: "GameObject", description: "The child object to add" }]
+            },
+
+            addModule: {
+                description: "Add a module/component to the GameObject to extend its functionality",
+                example: `const rigidBody = gameObject.addModule(new RigidBody());
+rigidBody.gravity = 500;`,
+                params: [{ name: "module", type: "Module", description: "The module instance to add" }],
+                returns: { type: "Module", description: "The added module instance" }
             },
 
             getModule: {
@@ -33,19 +53,55 @@ if(rigidBody) rigidBody.setVelocity(new Vector2(0, 10));`,
                 description: "Set the position of the GameObject in world space",
                 example: `gameObject.setPosition(new Vector2(100, 200));`,
                 params: [{ name: "position", type: "Vector2", description: "The new position" }]
+            },
+
+            checkForCollisions: {
+                description: "Check for collisions with other GameObjects that have useCollisions enabled",
+                example: `const collisions = this.gameObject.checkForCollisions();
+
+collisions.forEach(other => {
+    if(other.gameObject.hasTag("enemy")) {
+        // Code to inflict damage
+    }
+});`,
+                params: [],
+                returns: { type: "Array<GameObject>", description: "Array of collided GameObjects" }
+            },
+
+            checkPolygonCollisions: {
+                description: "Check for collisions with other GameObjects using polygon collision",
+                example: `const collisions = this.gameObject.checkPolygonCollisions();
+
+collisions.forEach(other => {
+    if(other.gameObject.hasTag("enemy")) {
+        // Code to inflict damage
+    }
+});`,
+                params: [],
+                returns: { type: "Array<GameObject>", description: "Array of collided GameObjects" }
+            },
+
+            polygonContainsPoint: {
+                description: "Check if a point is inside the GameObject's polygon",
+                example: `if(this.gameObject.polygonContainsPoint(window.input.mousePosition.x, window.input.mousePosition.y)) {
+    // Code to execute if the point is inside the polygon
+}`,
+                params: [{ name: "x", type: "number", description: "The x coordinate of the point" },
+                { name: "y", type: "number", description: "The y coordinate of the point" }],
+                returns: { type: "boolean", description: "True if the point is inside the polygon" }
             }
         }
     },
-
+    
     // Prefab Functions
     Prefab: {
         group: "Core",
         functions: {
-            inastantiatePrefab: {
+            instantiatePrefab: {
                 description: "Create a new instance of a prefab",
                 example: `const player = window.engine.instantiatePrefab("Player");
 player.setPosition(new Vector2(100, 200));`,
-                params: [{ name:  "name", type: "string", description: "The name of the prefab to create" },
+                params: [{ name: "name", type: "string", description: "The name of the prefab to create" },
                 { name: "x", type: "number", description: "Optional  x position to place the prefab" },
                 { name: "y", type: "number", description: "Optional  y position to place the prefab" },
                 { name: "parent", type: "GameObject|null", description: "Optional parent GameObject to attach the prefab to" }
@@ -780,7 +836,7 @@ engine.start();`,
 - Viewport x and y are viewport center coordinates
 
 **Module Template:**
-\`\`\`javascript
+
 class MyModule extends Module {
     static namespace = "Category";
     static description = "Brief description";
@@ -830,7 +886,6 @@ class MyModule extends Module {
 }
 
 window.MyModule = MyModule; // Register globally
-\`\`\`
 
 **Common Property Types:**
 - "number", "string", "boolean", "color"

@@ -900,7 +900,7 @@ class FileBrowser {
             const fileName = name.endsWith('.js') ? name : `${name}.js`;
             // Ensure class name is PascalCase for consistency
             const baseName = name.replace(/\.js$/, '');
-            const className = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+            const className = baseName;//.charAt(0).toUpperCase() + baseName.slice(1);
 
             // Generate template code for the new module
             const templateCode = this.generateModuleTemplate(className);
@@ -1038,7 +1038,7 @@ class FileBrowser {
 
     generateModuleTemplate(className) {
         // Convert to PascalCase if it's not already
-        const pascalCaseName = className.charAt(0).toUpperCase() + className.slice(1);
+        const pascalCaseName = className;//.charAt(0).toUpperCase() + className.slice(1);
 
         return `/**
 * ${pascalCaseName} - Custom module for Dark Matter JS
@@ -1069,9 +1069,15 @@ class ${pascalCaseName} extends Module {
         this.direction = options.direction || 0;
         
         // Store serializable properties and expose them to the Inspector
-        this.exposeProperty("speed", "number", this.speed, { min: 0, max: 20, step: 0.1 });
-        this.exposeProperty("direction", "number", this.direction, { min: 0, max: 360, step: 1 });
-        
+        this.exposeProperty("speed", "number", this.speed, { min: 0, max: 20, step: 0.1,
+            description: "Movement speed of the object",
+            onChange: (newValue) => { this.speed = newValue; }        
+        });
+        this.exposeProperty("direction", "number", this.direction, { min: 0, max: 360, step: 1,
+            description: "Movement direction of the object",
+            onChange: (newValue) => { this.direction = newValue; }
+        });
+
         // Example of a private variable (not exposed to Inspector)
         this._internalCounter = 0;
     }
@@ -1082,7 +1088,6 @@ class ${pascalCaseName} extends Module {
      */
     async preload() {
         // Load any resources your module needs before the game starts
-        // Example: await this.loadImage("path/to/image.png");
     }
 
     /**
@@ -1117,6 +1122,13 @@ class ${pascalCaseName} extends Module {
      */
     draw(ctx) {
         // Add custom rendering logic here
+        // Position and angle are relative to the parent game object
+        ctx.save();
+        ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     /**
@@ -1133,6 +1145,34 @@ class ${pascalCaseName} extends Module {
      */
     onDestroy() {
         console.log(\`${pascalCaseName} module destroyed on \${this.gameObject?.name}\`);
+    }
+
+    /**
+     * Serialize the module to JSON
+     * 
+     * This keeps properties saved with the scene
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+
+            speed: this.speed,
+            direction: this.direction
+        };
+    }
+
+    /**
+     * Deserialize the module from JSON
+     * 
+     * This restores properties when loading a scene
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+
+        if (!data) return;
+
+        this.speed = data.speed || 5;
+        this.direction = data.direction || 0;
     }
 }
 

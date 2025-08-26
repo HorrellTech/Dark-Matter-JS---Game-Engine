@@ -109,28 +109,6 @@ class Engine {
         this.updateViewport();
     }
 
-    /*
-        Find the nearest object to x and y by name within a certain range
-    */
-    findNearestObjectByName(x, y, name, maxRange = Infinity) {
-        let nearest = null;
-        let nearestDist = maxRange;
-
-        this.gameObjects.forEach(obj => {
-            if (obj.name === name) {
-                const dx = obj.position.x - x;
-                const dy = obj.position.y - y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    nearest = obj;
-                }
-            }
-        });
-
-        return nearest;
-    }
-
     updateViewport() {
         // Add safety check for shake object
         if (!this.viewport.shake) {
@@ -223,6 +201,39 @@ class Engine {
             return null;
         };
         return findInObjects(this.gameObjects);
+    }
+
+    getAllObjects() {
+        let result = [];
+        this.gameObjects.forEach(obj => {
+            result.push(obj);
+            if (obj.children && obj.children.length) {
+                result = result.concat(this.getAllObjects(obj.children));
+            }
+        });
+        return result;
+    }
+
+    /*
+        Find the nearest object to x and y by name within a certain range
+    */
+    findNearestObjectByName(x, y, name, maxRange = Infinity) {
+        let nearest = null;
+        let nearestDist = maxRange;
+
+        this.gameObjects.forEach(obj => {
+            if (obj.name === name) {
+                const dx = obj.position.x - x;
+                const dy = obj.position.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = obj;
+                }
+            }
+        });
+
+        return nearest;
     }
 
     async preload() {
@@ -780,7 +791,7 @@ class Engine {
                 if (obj.beginLoop) obj.beginLoop(deltaTime);
 
                 // Call modules' beginLoop methods
-                obj.modules.forEach(module => {
+                /*obj.modules.forEach(module => {
                     if (module.enabled && module.beginLoop) {
                         try {
                             // Only pass deltaTime parameter, not the object reference
@@ -789,7 +800,7 @@ class Engine {
                             console.error(`Error in beginLoop for module ${module.type || module.constructor.name}:`, error);
                         }
                     }
-                });
+                });*/
             }
         });
 
@@ -809,7 +820,7 @@ class Engine {
                 if (obj.loop) obj.loop(deltaTime);
 
                 // Call modules' loop methods
-                obj.modules.forEach(module => {
+                /*obj.modules.forEach(module => {
                     if (module.enabled && module.loop) {
                         try {
                             // Only pass deltaTime parameter, not the object reference
@@ -818,7 +829,7 @@ class Engine {
                             console.error(`Error in loop for module ${module.type || module.constructor.name}:`, error);
                         }
                     }
-                });
+                });*/
             }
         });
 
@@ -829,7 +840,7 @@ class Engine {
                 if (obj.endLoop) obj.endLoop(deltaTime);
 
                 // Call modules' endLoop methods
-                obj.modules.forEach(module => {
+                /*obj.modules.forEach(module => {
                     if (module.enabled && module.endLoop) {
                         try {
                             // Only pass deltaTime parameter, not the object reference
@@ -838,7 +849,7 @@ class Engine {
                             console.error(`Error in endLoop for module ${module.type || module.constructor.name}:`, error);
                         }
                     }
-                });
+                });*/
             }
         });
     }
@@ -930,17 +941,6 @@ class Engine {
             -centerX - this.viewport.x + this.viewport.shake.x,
             -centerY - this.viewport.y + this.viewport.shake.y
         );
-    }
-
-    getAllObjects(objects) {
-        let result = [];
-        objects.forEach(obj => {
-            result.push(obj);
-            if (obj.children && obj.children.length) {
-                result = result.concat(this.getAllObjects(obj.children));
-            }
-        });
-        return result;
     }
 
     loadScene(scene) {

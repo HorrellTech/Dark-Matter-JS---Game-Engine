@@ -592,6 +592,33 @@ class Inspector {
                     <input type="number" class="position-y" value="${this.inspectedObject.position.y}" step="1" title="Y position in world space">
                 </div>
                 <div class="property-row">
+                    <label title="Process collisions">Use Bounding Box Collision</label>
+                    <input type="checkbox" class="use-collision" ${this.inspectedObject.useCollisions ? 'checked' : ''}>
+                </div>
+
+                <div class="property-row">
+                    <label title="Use Polygon Collision">Use Polygon Collision</label>
+                    <input type="checkbox" class="use-polygon-collision" ${this.inspectedObject.usePolygonCollision ? 'checked' : ''}>
+                </div>
+                <div class="property-row">
+                    <label title="Polygon Point Count">Polygon Points</label>
+                    <input type="number" class="polygon-points" value="${this.inspectedObject.polygonPointCount}">
+                </div>
+                <div class="property-row">
+                    <label title="Polygon Angle Offset">Polygon Angle Offset</label>
+                    <input type="number" class="polygon-angle-offset" value="${this.inspectedObject.polygonAngleOffset}" step="1" title="Polygon Angle Offset">
+                </div>
+
+                <div class="property-row">
+                    <label title="Width of the collider">Width</label>
+                    <input type="number" class="width" value="${this.inspectedObject.size.x}" step="1" title="Width of the object">
+                </div>
+                <div class="property-row">
+                    <label title="Height of the collider">Height</label>
+                    <input type="number" class="height" value="${this.inspectedObject.size.y}" step="1" title="Height of the object">
+                </div>
+
+                <div class="property-row">
                     <label title="X scale factor">Scale X</label>
                     <input type="number" class="scale-x" value="${this.inspectedObject.scale.x}" step="0.1" title="X scale factor">
                 </div>
@@ -638,6 +665,12 @@ class Inspector {
         // Add existing event listeners...
         const posXInput = transformModule.querySelector('.position-x');
         const posYInput = transformModule.querySelector('.position-y');
+        const useCollisionInput = transformModule.querySelector('.use-collision');
+        const usePolygonCollisionInput = transformModule.querySelector('.use-polygon-collision');
+        const polygonPointsInput = transformModule.querySelector('.polygon-points');
+        const polygonAngleOffsetInput = transformModule.querySelector('.polygon-angle-offset');
+        const widthInput = transformModule.querySelector('.width');
+        const heightInput = transformModule.querySelector('.height');
         const scaleXInput = transformModule.querySelector('.scale-x');
         const scaleYInput = transformModule.querySelector('.scale-y');
         const rotationInput = transformModule.querySelector('.rotation');
@@ -682,6 +715,50 @@ class Inspector {
             this.editor.refreshCanvas();
         });
 
+        useCollisionInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.useCollisions = useCollisionInput.checked;
+            this.editor.refreshCanvas();
+        });
+
+        widthInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.size.x = parseFloat(widthInput.value);
+            this.inspectedObject.generatePolygonPoints();
+            this.editor.refreshCanvas();
+        });
+
+        heightInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.size.y = parseFloat(heightInput.value);
+            this.inspectedObject.generatePolygonPoints();
+            this.editor.refreshCanvas();
+        });
+
+        usePolygonCollisionInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.usePolygonCollision = usePolygonCollisionInput.checked;
+            this.inspectedObject.generatePolygonPoints();
+            this.editor.refreshCanvas();
+        });
+
+        polygonPointsInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            let val = parseInt(polygonPointsInput.value);
+            if (isNaN(val) || val < 3) val = 3;
+            this.inspectedObject.polygonPointCount = val;
+            polygonPointsInput.value = val;
+            this.inspectedObject.generatePolygonPoints();
+            this.editor.refreshCanvas();
+        });
+
+        polygonAngleOffsetInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.polygonAngleOffset = parseFloat(polygonAngleOffsetInput.value);
+            this.inspectedObject.generatePolygonPoints();
+            this.editor.refreshCanvas();
+        });
+
         posYInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.position.y = parseFloat(posYInput.value);
@@ -718,6 +795,11 @@ class Inspector {
 
         transformModule.querySelector('.position-x').value = pos.x;
         transformModule.querySelector('.position-y').value = pos.y;
+        transformModule.querySelector('.use-collision').checked = this.inspectedObject.useCollisions;
+        transformModule.querySelector('.use-polygon-collision').checked = this.inspectedObject.usePolygonCollision;
+        transformModule.querySelector('.polygon-points').value = this.inspectedObject.polygonPointCount;
+        transformModule.querySelector('.width').value = this.inspectedObject.size.x;
+        transformModule.querySelector('.height').value = this.inspectedObject.size.y;
         transformModule.querySelector('.scale-x').value = scale.x;
         transformModule.querySelector('.scale-y').value = scale.y;
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;
@@ -4227,9 +4309,13 @@ class Inspector {
                 font-style: italic;
                 font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
                 color: #b3c0d6;
-                font-size: 0.97em;
+                font-size: 0.85em;           /* Smaller font */
                 margin: 6px 0 2px 0;
                 letter-spacing: 0.01em;
+                border: 1px solid #444;      /* Add border */
+                border-radius: 4px;          /* Rounded corners */
+                background: #3e4246ff;         /* Optional: subtle background */
+                padding: 4px 8px;            /* Padding inside border */
             }
 
             /* --- Dropdown Styling --- */

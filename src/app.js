@@ -2,10 +2,13 @@
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         console.log('Initializing documentation system...');
-        if (!window.docModal && window.DocumentationModal) {
+        /*if (!window.docModal && window.DocumentationModal) {
             window.docModal = new Documentation();
             console.log('Documentation system initialized');
-        }
+        }*/
+        window.docsModal = new SpriteCodeDocs();
+        const documentation = new Documentation();
+        docsModal.loadFromDocumentationClass(documentation);
     } catch (error) {
         console.error('Failed to initialize documentation:', error);
     }
@@ -1121,14 +1124,66 @@ document.addEventListener('DOMContentLoaded', async () => {
         });*/
     }
 
+    // Script documentation modal
+    window.scriptDocsModal = new SpriteCodeDocs({
+        primaryColor: '#3b82f6',
+        modalWidth: '85vw',
+        modalHeight: '75vh'
+    });
+
+    function populateDocsFromKeywords() {
+        const docs = {};
+        for (const category in window.DarkMatterDocs) {
+            docs[category] = {};
+            const functions = window.DarkMatterDocs[category].functions;
+            if (functions) {
+                for (const funcName in functions) {
+                    const doc = functions[funcName];
+                    let content = '';
+                    if (doc.description) content += `**Description:** ${doc.description}\n\n`;
+                    if (doc.example) content += `**Example:**\n\`\`\`javascript\n${doc.example}\n\`\`\`\n\n`;
+                    if (doc.params) {
+                        content += '**Parameters:**\n';
+                        doc.params.forEach(p => {
+                            content += `- \`${p.name}\` (${p.type || ''}): ${p.description || ''}\n`;
+                        });
+                        content += '\n';
+                    }
+                    if (doc.properties) {
+                        content += '**Properties:**\n';
+                        doc.properties.forEach(p => {
+                            content += `- \`${p.name}\` (${p.type || ''}): ${p.description || ''}\n`;
+                        });
+                        content += '\n';
+                    }
+                    if (doc.methods) {
+                        content += '**Methods:**\n';
+                        doc.methods.forEach(m => {
+                            content += `- \`${m.name}\`: ${m.description || ''}\n`;
+                        });
+                        content += '\n';
+                    }
+                    if (doc.returns) {
+                        content += `**Returns:** \`${doc.returns.type || ''}\` - ${doc.returns.description || ''}\n\n`;
+                    }
+                    docs[category][funcName] = content.trim();
+                }
+            }
+        }
+        window.scriptDocsModal.setDocumentation(docs);
+    }
+
+    populateDocsFromKeywords();
+
     // Add event listeners for modal buttons here
     const docButton = document.querySelector('.toolbar-button[title="Documentation"]'); // Replace with actual selector
-    if (docButton && window.docModal) {
+    if (docButton && window.docsModal) {
         docButton.addEventListener('click', () => {
             console.log('Documentation button clicked');
             //window.docModal.open();
-            const docsModal = new Documentation();
-            docsModal.show();
+            //const docsModal = new Documentation();
+            //docsModal.show();
+            window.docsModal.open();
         });
     } else {
         console.warn("Documentation button or modal not found.");
