@@ -252,8 +252,8 @@ class Joint extends Module {
                 case "spring":
                     this.constraint = Matter.Constraint.create({
                         ...options,
-                        stiffness: this.stiffness,
-                        damping: this.damping
+                        stiffness: 0.01, // Lower stiffness for Matter.js constraint
+                        damping: 0.01    // Lower damping for Matter.js constraint
                     });
                     break;
 
@@ -421,6 +421,40 @@ class Joint extends Module {
     update() {
         if (this.constraint && this.jointType === "revolute" && this.enableMotor && this.motorSpeed !== 0) {
             this.setMotorSpeed(this.motorSpeed);
+        }
+
+        // Add spring force for "spring" joint
+        if (this.constraint && this.jointType === "spring") {
+            const bodyA = this.constraint.bodyA;
+            const bodyB = this.constraint.bodyB;
+            if (bodyA && bodyB) {
+                // Get world positions of attachment points
+                const pointA = Matter.Vector.add(bodyA.position, 
+                    Matter.Vector.rotate(this.constraint.pointA, bodyA.angle));
+                const pointB = Matter.Vector.add(bodyB.position, 
+                    Matter.Vector.rotate(this.constraint.pointB, bodyB.angle));
+                
+                const delta = Matter.Vector.sub(pointB, pointA);
+                const dist = Matter.Vector.magnitude(delta);
+                
+                if (dist > 0) {
+                    const dir = Matter.Vector.normalise(delta);
+
+                    // Spring force: F = -k * (x - x0) - d * v
+                    const stretch = dist - this.length;
+                    const relVel = Matter.Vector.sub(bodyB.velocity, bodyA.velocity);
+                    const relVelAlongDir = Matter.Vector.dot(relVel, dir);
+
+                    const springForce = -this.stiffness * stretch * 0.001; // Scale down
+                    const dampingForce = -this.damping * relVelAlongDir * 0.01; // Scale down
+                    const totalForce = springForce + dampingForce;
+                    
+                    const force = Matter.Vector.mult(dir, totalForce);
+
+                    Matter.Body.applyForce(bodyA, pointA, force);
+                    Matter.Body.applyForce(bodyB, pointB, Matter.Vector.neg(force));
+                }
+            }
         }
     }
 
