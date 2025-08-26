@@ -20,9 +20,9 @@ class ProjectManager {
     }
 
     async _confirmUnsavedChanges(promptUser = true) {
-        if (!promptUser) return true;
+        //if (!promptUser) return true;
         if (this.editor.activeScene && this.editor.activeScene.dirty) {
-            const choice = await this.sceneManager.showUnsavedChangesDialog(); // 'save', 'dont-save', 'cancel'
+            const choice = await this.sceneManager.showUnsavedChangesDialog(promptUser); // 'save', 'dont-save', 'cancel'
             if (choice === 'cancel') {
                 this.isSavingOrLoading = false;
                 return false; // User cancelled
@@ -120,7 +120,7 @@ class ProjectManager {
 
         try {
             //if(!promptUser) {
-                if (!await this._confirmUnsavedChanges(!promptUser)) {
+                if (!await this._confirmUnsavedChanges(true)) {
                     this.isSavingOrLoading = false;
                     return;
                 }

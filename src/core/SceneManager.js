@@ -455,6 +455,12 @@ class SceneManager {
                 <div class="dialog-content">
                     <h2>Unsaved Changes</h2>
                     <p>Do you want to save changes to the current scene?</p>
+                    <p> </p>
+                    <p style="font-size: 0.9em; font-style: italic;">
+                        (Note, if you have just opened DarkMatter, just click "Don't save",<br>
+                        as this is needed to discard the initial empty scene. But if you have <br>
+                        made changes, please save them.)
+                    </p>
                     <div class="dialog-buttons">
                         <button class="save-btn">Save</button>
                         <button class="dont-save-btn">Don't Save</button>
