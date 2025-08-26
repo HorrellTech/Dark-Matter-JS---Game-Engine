@@ -429,10 +429,10 @@ class SceneManager {
         });
     }
 
-    async checkUnsavedChanges() {
+    async checkUnsavedChanges(promptUser = true) {
         const scene = this.editor.activeScene;
         if (scene && scene.dirty) {
-            const result = await this.showUnsavedChangesDialog();
+            const result = await this.showUnsavedChangesDialog(promptUser);
             if (result === 'cancel') return false;
             if (result === 'save') {
                 // Check if fileBrowser is available - if not, use local storage
@@ -446,7 +446,8 @@ class SceneManager {
         return true;
     }
 
-    showUnsavedChangesDialog() {
+    showUnsavedChangesDialog(promptUser = true) {
+        if (!promptUser) return Promise.resolve('save');
         return new Promise(resolve => {
             const dialog = document.createElement('div');
             dialog.className = 'dialog-overlay';
@@ -573,7 +574,7 @@ class SceneManager {
         ).join('');
     }
 
-    async createNewScene() {
+    async createNewScene(promptUser = true) {
         // Check if there are unsaved changes in the current scene
         if (!(await this.checkUnsavedChanges())) return;
 

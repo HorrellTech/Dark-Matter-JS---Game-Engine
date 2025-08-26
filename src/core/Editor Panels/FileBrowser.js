@@ -2807,8 +2807,8 @@ window.${pascalCaseName} = ${pascalCaseName};
      * Reset the entire filesystem database (use with caution)
      * @returns {Promise<boolean>} Success indicator
      */
-    async resetDatabase() {
-        if (!confirm('WARNING: This will delete ALL files and folders. This action cannot be undone. Continue?')) {
+    async resetDatabase(promptUser = true) {
+        if (promptUser && !confirm('WARNING: This will delete ALL files and folders. This action cannot be undone. Continue?')) {
             return false;
         }
 

@@ -714,7 +714,7 @@ class Editor {
     /**
      * Create and save a default scene
      */
-    async createDefaultScene() {
+    async createDefaultScene(promptUser = true) {
         try {
             // Create a default scene
             const defaultScene = new Scene("Main Scene");

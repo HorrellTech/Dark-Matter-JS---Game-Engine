@@ -14,12 +14,13 @@ class ProjectManager {
         this._loadLastProjectFileHandle();
         this._setupKeyboardShortcuts();
 
-        //this.newProject(false); // Initialize with a new project
+        this.newProject(false); // Initialize with a new project
 
         console.log("ProjectManager initialized");
     }
 
-    async _confirmUnsavedChanges() {
+    async _confirmUnsavedChanges(promptUser = true) {
+        if (!promptUser) return true;
         if (this.editor.activeScene && this.editor.activeScene.dirty) {
             const choice = await this.sceneManager.showUnsavedChangesDialog(); // 'save', 'dont-save', 'cancel'
             if (choice === 'cancel') {
@@ -118,10 +119,12 @@ class ProjectManager {
         this.editor.fileBrowser.showNotification("Creating new project...", "info");
 
         try {
-            if (!await this._confirmUnsavedChanges()) {
-                this.isSavingOrLoading = false;
-                return;
-            }
+            //if(!promptUser) {
+                if (!await this._confirmUnsavedChanges(!promptUser)) {
+                    this.isSavingOrLoading = false;
+                    return;
+                }
+            //}
 
             console.log("Creating new project...");
 
@@ -131,12 +134,12 @@ class ProjectManager {
             }
 
             // 1. Reset File Browser
-            await this.fileBrowser.resetDatabase(); // This clears and re-initializes with root
+            await this.fileBrowser.resetDatabase(promptUser); // This clears and re-initializes with root
             await this.fileBrowser.navigateTo('/'); // Navigate to root after reset
 
             // 2. Reset Scenes
             this.editor.scenes = [];
-            this.editor.createDefaultScene(); // Creates a new scene and sets it active
+            this.editor.createDefaultScene(promptUser); // Creates a new scene and sets it active
 
             // 3. Reset Editor State
             if (this.editor.camera.position && typeof this.editor.camera.position.set === 'function') {
