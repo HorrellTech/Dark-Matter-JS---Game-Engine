@@ -82,17 +82,6 @@ class GameObject {
     start() {
         if (!this.active) return;
 
-        // Polygon setup
-        /*if (this.usePolygonCollision && this.polygonPoints.length >= 3) {
-            // Center points around GameObject position
-            this.polygon = new Polygon(
-                this,
-                this.position.clone(),
-                ...this.polygonPoints.map(pt => pt.clone())
-            );
-            this.polygon.update(this.position.clone(), this.angle);
-        }*/
-
         // Save initial position and rotation when the game starts
         this.originalPosition = this.position.clone();
         this.originalRotation = this.angle;
@@ -1024,7 +1013,7 @@ class GameObject {
             polygonPoints: this.polygonPoints.map(pt => ({ x: pt.x, y: pt.y })),
             usePolygonCollision: this.usePolygonCollision,
             polygon: this.polygon ? this.polygon.toJSON() : null,
-            size: { width: this.size.x, height: this.size.y },
+            size: this.size ? { width: this.size.x, height: this.size.y } : { width: 50, height: 50 },
             angle: this.angle,
             depth: this.depth,
             active: this.active,
@@ -1055,7 +1044,7 @@ class GameObject {
 
         obj.position = new Vector2(json.position.x, json.position.y);
         obj.useCollisions = json.useCollisions || false;
-        obj.size = new Vector2(json.size.width, json.size.height);
+        obj.size = json.size ? new Vector2(json.size.width, json.size.height) : new Vector2(50, 50);
         // Restore scale if available
         if (json.scale) obj.scale = new Vector2(json.scale.x, json.scale.y);
         obj.editorColor = json.editorColor || obj.generateRandomColor();
@@ -1065,7 +1054,8 @@ class GameObject {
         }
         if (json.polygonPoints && Array.isArray(json.polygonPoints)) {
             obj.polygonPoints = json.polygonPoints.map(pt => new Vector2(pt.x, pt.y));
-            obj.polygon = new Polygon(obj.polygonPoints);
+            // Pass parent, position, ...points
+            obj.polygon = new Polygon(obj, obj.position.clone(), ...obj.polygonPoints.map(pt => pt.clone()));
         }
 
         if (json.usePolygonCollision !== undefined) {
@@ -1076,7 +1066,7 @@ class GameObject {
         obj.depth = json.depth;
         obj.active = json.active;
         if (json.visible !== undefined) obj.visible = json.visible;
-        obj.tags = [...json.tags];
+        obj.tags = Array.isArray(json.tags) ? [...json.tags] : [];
 
         if (json.collisionEnabled !== undefined) obj.collisionEnabled = json.collisionEnabled;
         if (json.collisionLayer !== undefined) obj.collisionLayer = json.collisionLayer;
@@ -1157,6 +1147,13 @@ class GameObject {
             const child = GameObject.fromJSON(childJson);
             obj.addChild(child);
         });
+
+        // Now call start() on all modules to initialize physics bodies
+        /*obj.modules.forEach(module => {
+            if (typeof module.start === 'function') {
+                try { module.start(); } catch (e) { console.error(e); }
+            }
+        });*/
 
         return obj;
     }

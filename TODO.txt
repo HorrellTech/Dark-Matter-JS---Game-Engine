@@ -21,3 +21,5 @@
 
 - Update documentation to better reflect the app. Update templates for modules to use JSON serialization properly, make a keywords 
     specific documentation modal for script editor that references keywords, update keywords
+
+- Export 'function createGameObjectFromData(data) {' first lot of json data cant find width for size

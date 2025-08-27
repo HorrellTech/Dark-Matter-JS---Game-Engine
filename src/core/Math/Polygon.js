@@ -247,6 +247,8 @@ class Polygon {
 
   toJSON() {
     return {
+      x: this.position.x,
+      y: this.position.y,
       position: { x: this.position.x, y: this.position.y },
       rotation: this.rotation,
       vertices: this.vertices.map(v => ({ x: v.x, y: v.y }))

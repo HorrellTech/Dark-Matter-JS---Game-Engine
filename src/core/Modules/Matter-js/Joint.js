@@ -536,23 +536,23 @@ class Joint extends Module {
     fromJSON(data) {
         super.fromJSON(data);
         
-        this.jointType = data.jointType || this.jointType;
-        this.targetObjectName = data.targetObjectName || this.targetObjectName;
+        this.jointType = data.jointType ?? this.jointType;
+        this.targetObjectName = data.targetObjectName ?? this.targetObjectName;
         this.pointA = { ...this.pointA, ...data.pointA };
         this.pointB = { ...this.pointB, ...data.pointB };
-        this.length = data.length || this.length;
+        this.length = data.length ?? this.length;
         this.stiffness = data.stiffness !== undefined ? data.stiffness : this.stiffness;
         this.damping = data.damping !== undefined ? data.damping : this.damping;
         this.strength = data.strength !== undefined ? data.strength : this.strength;
-        this.enableLimits = data.enableLimits || false;
-        this.minLength = data.minLength || this.minLength;
-        this.maxLength = data.maxLength || this.maxLength;
-        this.enableMotor = data.enableMotor || false;
-        this.motorSpeed = data.motorSpeed || this.motorSpeed;
-        this.maxMotorTorque = data.maxMotorTorque || this.maxMotorTorque;
+        this.enableLimits = data.enableLimits ?? false;
+        this.minLength = data.minLength ?? this.minLength;
+        this.maxLength = data.maxLength ?? this.maxLength;
+        this.enableMotor = data.enableMotor ?? false;
+        this.motorSpeed = data.motorSpeed ?? this.motorSpeed;
+        this.maxMotorTorque = data.maxMotorTorque ?? this.maxMotorTorque;
         this.axis = { ...this.axis, ...data.axis };
-        this.showDebug = data.showDebug || false;
-        this.debugColor = data.debugColor || this.debugColor;
+        this.showDebug = data.showDebug ?? false;
+        this.debugColor = data.debugColor ?? this.debugColor;
         this.autoConnect = data.autoConnect !== undefined ? data.autoConnect : this.autoConnect;
     }
 }

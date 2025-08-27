@@ -561,10 +561,16 @@ class ExportManager {
             'src/core/Math/Raycast.js',
             'src/core/Math/MatterMath.js',
             'src/core/Math/Polygon.js',
+            'src/core/matter-js/matter.min.js',
+
+            // Physics (if using Matter.js)
+            'src/core/matter-js/PhysicsManager.js',
 
             // Core engine components
             'src/core/Module.js',
             'src/core/ModuleRegistry.js',
+            'src/core/ModuleReloader.js',
+            'src/core/ModuleManager.js',
             'src/core/GameObject.js',
             'src/core/InputManager.js',
             'src/core/Scene.js',
@@ -572,10 +578,7 @@ class ExportManager {
 
             // Asset management
             'src/core/AssetManager.js',
-            'src/core/AssetReference.js',
-
-            // Physics (if using Matter.js)
-            'src/core/matter-js/PhysicsManager.js'
+            'src/core/AssetReference.js'
         ];
     }
 
@@ -651,7 +654,6 @@ class ExportManager {
 
             // Controller Modules
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
-            'KeyboardController': 'src/core/Modules/Controllers/KeyboardController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
 
             // Drawing Modules
@@ -698,11 +700,8 @@ class ExportManager {
             'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
             // Physics and Collision Modules
-            'BoundingBoxCollider': 'src/core/Modules/BoundingBoxCollider.js',
-            'Rigidbody': 'src/core/Modules/Matter-js/Rigidbody.js',
+            'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
-            'Collider': 'src/core/Modules/Collider.js',
-            'PlatformCharacterAuto': 'src/core/Modules/Platform Game/PlatformCharacterAuto.js',
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
             'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
@@ -788,7 +787,26 @@ class ExportManager {
     <meta name="description" content="${description}">
     
     <!-- External Dependencies -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js"></script>
+    <!-- Fallback CDN for Matter.js if local file fails -->
+    <script>
+        // Check if Matter.js was loaded from local files, if not load from CDN
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof Matter === 'undefined') {
+                console.log('Loading Matter.js from CDN as fallback...');
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js';
+                script.onload = function() {
+                    console.log('Matter.js loaded from CDN');
+                    // Trigger a custom event to let the game know Matter.js is ready
+                    window.dispatchEvent(new Event('matter-loaded'));
+                };
+                document.head.appendChild(script);
+            } else {
+                // Matter.js already loaded, trigger ready event
+                window.dispatchEvent(new Event('matter-loaded'));
+            }
+        });
+    </script>
     
     ${scriptAndStyleTags.trim()}
 </head>
@@ -1014,19 +1032,24 @@ html {
  * Generate game initialization code
  */
     generateGameInitialization(data, settings) {
-        // Use safer JSON embedding approach
-        const scenesData = this.safeStringify(data.scenes);
-        const prefabsData = this.safeStringify(data.prefabs);
-        const assetsData = settings.standalone && settings.includeAssets ?
-            this.safeStringify(data.assets) : 'null';
+    // Use safer JSON embedding approach
+    const scenesData = this.safeStringify(data.scenes);
+    const prefabsData = this.safeStringify(data.prefabs);
+    const assetsData = settings.standalone && settings.includeAssets ?
+        this.safeStringify(data.assets) : 'null';
 
-        // Get the starting scene index from settings, default to 0
-        const startingSceneIndex = settings.startingSceneIndex || 0;
+    // Get the starting scene index from settings, default to 0
+    const startingSceneIndex = settings.startingSceneIndex || 0;
 
-        return `
-// Game Initialization
-document.addEventListener('DOMContentLoaded', async () => {
-    // console.log('Initializing exported game...');
+    return `
+// Game Initialization - Fixed for Physics
+let gameInitialized = false;
+
+async function initializeGame() {
+    if (gameInitialized) return;
+    gameInitialized = true;
+    
+    console.log('Initializing exported game...');
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
@@ -1042,31 +1065,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const loadingScreen = document.getElementById('loading-screen');
     
+    // Wait for Matter.js to be available
+    if (typeof Matter === 'undefined') {
+        console.log('Waiting for Matter.js to load...');
+        return; // Will be called again when matter-loaded event fires
+    }
+    
+    console.log('Matter.js is available, proceeding with initialization...');
+    
+    // Initialize physics manager FIRST
+    if (!window.physicsManager) {
+        window.physicsManager = new PhysicsManager();
+        console.log('Physics manager initialized');
+    }
+    
     // Initialize module registry
     if (!window.moduleRegistry) {
         window.moduleRegistry = new ModuleRegistry();
     }
     
     // Register all available modules
-    // console.log('Registering modules...');
+    console.log('Registering modules...');
     ${data.modules.map(module => `
     if (typeof ${module.className} !== 'undefined') {
         window.moduleRegistry.register(${module.className});
-        // console.log('Registered module: ${module.className}');
+        console.log('Registered module: ${module.className}');
     } else {
-        // console.error('Module class not found: ${module.className}');
+        console.error('Module class not found: ${module.className}');
     }`).join('')}
     
-    // console.log('Total registered modules:', window.moduleRegistry.modules.size);
+    console.log('Total registered modules:', window.moduleRegistry.modules.size);
     
     // Initialize input manager
     if (!window.input) {
         window.input = new InputManager();
-    }
-    
-    // Initialize physics manager
-    if (typeof PhysicsManager !== 'undefined' && !window.physicsManager) {
-        window.physicsManager = new PhysicsManager();
     }
 
     // Initialize AssetManager with proper export mode handling
@@ -1077,9 +1109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Enhanced path normalization function
     window.assetManager.normalizePath = function(path) {
         if (!path) return '';
-        // Remove leading slashes/backslashes and normalize separators
         let normalized = path.replace(/^[\/\\\\]+/, '').replace(/\\\\/g, '/');
-        // Handle URL encoding for spaces and special characters
         try {
             normalized = decodeURIComponent(normalized);
         } catch (e) {
@@ -1089,12 +1119,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     ${settings.standalone ?
-                `// Standalone mode - override asset loading to use embedded assets
+        `// Standalone mode - override asset loading to use embedded assets
         window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
         window.assetManager.loadAsset = function(path) {
             const normalizedPath = this.normalizePath(path);
             
-            // Check cache first with all possible path variations
             const pathVariations = [
                 path,
                 normalizedPath,
@@ -1110,115 +1139,87 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    // console.log('Found asset in cache with path variation:', variation);
+                    console.log('Found asset in cache with path variation:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
-            // console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
-            // console.warn('Available cached assets:', Object.keys(this.cache));
+            console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
             return Promise.reject(new Error('Asset not found: ' + path));
         };
 
-        // Override loadImage method to use cached assets
+        // Override loadImage and loadAudio methods...
         window.assetManager.originalLoadImage = window.assetManager.loadImage;
         window.assetManager.loadImage = function(src) {
-            // If src is already a data URL or blob URL, use it directly
             if (src.startsWith('data:') || src.startsWith('blob:')) {
                 return this.originalLoadImage(src);
             }
             
-            // Otherwise, try to find it in cache first
             const normalizedSrc = this.normalizePath(src);
             const pathVariations = [
-                src,
-                normalizedSrc,
-                src.replace(/^[\/\\\\]+/, ''),
-                normalizedSrc.replace(/^[\/\\\\]+/, ''),
-                '/' + src.replace(/^[\/\\\\]+/, ''),
-                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''),
-                decodeURIComponent(src),
-                decodeURIComponent(normalizedSrc),
-                src.split('/').pop(),
-                normalizedSrc.split('/').pop()
+                src, normalizedSrc, src.replace(/^[\/\\\\]+/, ''),
+                normalizedSrc.replace(/^[\/\\\\]+/, ''), '/' + src.replace(/^[\/\\\\]+/, ''),
+                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''), decodeURIComponent(src),
+                decodeURIComponent(normalizedSrc), src.split('/').pop(), normalizedSrc.split('/').pop()
             ];
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    // console.log('Loading cached image for:', src, 'found as:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
-            // If not in cache, fall back to original method
-            // console.warn('Image not found in cache, attempting direct load:', src);
             return this.originalLoadImage(src);
         };
 
-        // Override loadAudio method to use cached assets  
         window.assetManager.originalLoadAudio = window.assetManager.loadAudio;
         window.assetManager.loadAudio = function(src) {
-            // If src is already a data URL or blob URL, use it directly
             if (src.startsWith('data:') || src.startsWith('blob:')) {
                 return this.originalLoadAudio(src);
             }
             
-            // Otherwise, try to find it in cache first
             const normalizedSrc = this.normalizePath(src);
             const pathVariations = [
-                src,
-                normalizedSrc,
-                src.replace(/^[\/\\\\]+/, ''),
-                normalizedSrc.replace(/^[\/\\\\]+/, ''),
-                '/' + src.replace(/^[\/\\\\]+/, ''),
-                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''),
-                decodeURIComponent(src),
-                decodeURIComponent(normalizedSrc),
-                src.split('/').pop(),
-                normalizedSrc.split('/').pop()
+                src, normalizedSrc, src.replace(/^[\/\\\\]+/, ''),
+                normalizedSrc.replace(/^[\/\\\\]+/, ''), '/' + src.replace(/^[\/\\\\]+/, ''),
+                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''), decodeURIComponent(src),
+                decodeURIComponent(normalizedSrc), src.split('/').pop(), normalizedSrc.split('/').pop()
             ];
             
             for (const variation of pathVariations) {
                 if (this.cache[variation]) {
-                    // console.log('Loading cached audio for:', src, 'found as:', variation);
                     return Promise.resolve(this.cache[variation]);
                 }
             }
             
-            // If not in cache, fall back to original method
-            // console.warn('Audio not found in cache, attempting direct load:', src);
             return this.originalLoadAudio(src);
         };` :
-                `// ZIP mode - set base path for assets
+        `// ZIP mode - set base path for assets
         window.assetManager.basePath = 'assets/';`
-            }
+    }
     
     // Initialize Global Prefab Manager
     window.prefabManager = {
         prefabs: new Map(),
         
-        // Load prefabs into the manager
         loadPrefabs: function(prefabsData) {
             if (!prefabsData) return;
             
             for (const [name, prefabData] of Object.entries(prefabsData)) {
                 this.prefabs.set(name, prefabData);
-                // console.log('Loaded prefab:', name);
+                console.log('Loaded prefab:', name);
             }
             
-            // console.log('Total prefabs loaded:', this.prefabs.size);
+            console.log('Total prefabs loaded:', this.prefabs.size);
         },
         
-        // Find a prefab by name
         findPrefabByName: function(name) {
             if (!name) return null;
             
-            // Try exact match first
             if (this.prefabs.has(name)) {
                 return this.prefabs.get(name);
             }
             
-            // Try case-insensitive search
             const lowerName = name.toLowerCase();
             for (const [key, value] of this.prefabs) {
                 if (key.toLowerCase() === lowerName) {
@@ -1229,34 +1230,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             return null;
         },
         
-        // Check if a prefab exists
         hasPrefab: function(name) {
             return this.findPrefabByName(name) !== null;
         },
         
-        // Get all prefab names
         getAllPrefabNames: function() {
             return Array.from(this.prefabs.keys());
         },
         
-        // Instantiate a prefab by name
         instantiatePrefabByName: function(name, position = null, parent = null) {
             const prefabData = this.findPrefabByName(name);
             if (!prefabData) {
-                // console.error('Prefab not found:', name);
+                console.error('Prefab not found:', name);
                 return null;
             }
             
             return this.instantiatePrefab(prefabData, position, parent);
         },
         
-        // Instantiate a prefab from data
         instantiatePrefab: function(prefabData, position = null, parent = null) {
             try {
-                // Create the main GameObject
                 const gameObject = new GameObject(prefabData.name);
                 
-                // Set position (use provided position or prefab's stored position)
                 if (position) {
                     gameObject.position.x = position.x;
                     gameObject.position.y = position.y;
@@ -1265,27 +1260,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     gameObject.position.y = prefabData.position.y;
                 }
 
-                // Set other properties
                 gameObject.angle = prefabData.angle || 0;
                 gameObject.scale.x = prefabData.scale?.x || 1;
                 gameObject.scale.y = prefabData.scale?.y || 1;
                 gameObject.active = prefabData.active !== false;
 
-                // Add modules
                 if (prefabData.modules && prefabData.modules.length > 0) {
                     prefabData.modules.forEach(moduleData => {
                         try {
-                            // Get the module class
                             const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.className);
                             if (!ModuleClass) {
-                                // console.warn('Module class not found:', moduleData.className);
+                                console.warn('Module class not found:', moduleData.className);
                                 return;
                             }
 
-                            // Create module instance
                             const moduleInstance = new ModuleClass();
                             
-                            // Set properties
                             if (moduleData.properties) {
                                 Object.keys(moduleData.properties).forEach(propName => {
                                     if (moduleInstance.hasOwnProperty(propName)) {
@@ -1294,16 +1284,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 });
                             }
 
-                            // Add to GameObject
                             gameObject.addModule(moduleInstance);
                             
                         } catch (error) {
-                            // console.error('Error adding module ' + moduleData.className + ':', error);
+                            console.error('Error adding module ' + moduleData.className + ':', error);
                         }
                     });
                 }
 
-                // Recursively instantiate children
                 if (prefabData.children && prefabData.children.length > 0) {
                     prefabData.children.forEach(childData => {
                         const childGameObject = this.instantiatePrefab(childData, null, gameObject);
@@ -1311,7 +1299,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
 
-                // Add to scene or parent
                 if (parent) {
                     parent.addChild(gameObject);
                 } else if (window.engine && window.engine.gameObjects) {
@@ -1321,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return gameObject;
 
             } catch (error) {
-                // console.error('Error instantiating prefab:', error);
+                console.error('Error instantiating prefab:', error);
                 throw error;
             }
         }
@@ -1336,7 +1323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             prefabs: ${prefabsData}
         };
     } catch (error) {
-        // console.error('Error parsing game data:', error);
+        console.error('Error parsing game data:', error);
         loadingScreen.innerHTML = '<div>Error loading game data: ' + error.message + '</div>';
         return;
     }
@@ -1344,20 +1331,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load prefabs into the global prefab manager
     if (gameData.prefabs) {
         window.prefabManager.loadPrefabs(gameData.prefabs);
-        // console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
+        console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
     }
     
     // Pre-load assets for standalone mode
     ${settings.standalone && settings.includeAssets ? `
     if (gameData.assets) {
-        // console.log('Pre-caching embedded assets...');
-        // console.log('Assets to cache:', Object.keys(gameData.assets));
+        console.log('Pre-caching embedded assets...');
+        console.log('Assets to cache:', Object.keys(gameData.assets));
         
-        // Use the enhanced embedded assets method
         window.assetManager.addEmbeddedAssets(gameData.assets);
         
-        // console.log('Asset caching completed.');
-        // console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
+        console.log('Asset caching completed.');
+        console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
     }` : ''}
     
     // Initialize engine
@@ -1366,6 +1352,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Make engine globally available for prefab instantiation
     window.engine = engine;
+    
+    // CRITICAL: Connect physics to engine properly
+    if (window.physicsManager) {
+        console.log('Connecting physics to engine...');
+        
+        // Store original methods
+        const originalEngineUpdate = engine.update.bind(engine);
+        const originalEngineDraw = engine.draw.bind(engine);
+        
+        // Override engine update to include physics
+        engine.update = function(deltaTime) {
+            // Update physics first
+            if (window.physicsManager && window.physicsManager.update) {
+                window.physicsManager.update(deltaTime);
+            }
+            
+            // Then update game objects
+            originalEngineUpdate(deltaTime);
+        };
+        
+        // Override engine draw to include physics debug
+        engine.draw = function() {
+            // Draw game objects
+            originalEngineDraw();
+            
+            // Draw physics debug if enabled
+            if (window.physicsManager && window.physicsManager.drawDebug && this.ctx) {
+                window.physicsManager.drawDebug(this.ctx);
+            }
+        };
+        
+        console.log('Physics connected to engine successfully');
+    } else {
+        console.error('Physics manager not found during engine setup');
+    }
     
     // Setup canvas scaling
     function resizeCanvas() {
@@ -1397,23 +1418,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     
-    // Connect physics to engine if available
-    if (window.physicsManager) {
-        const originalEngineUpdate = engine.update.bind(engine);
-        engine.update = function(deltaTime) {
-            window.physicsManager.update(deltaTime);
-            originalEngineUpdate(deltaTime);
-        };
-        
-        const originalEngineDraw = engine.draw.bind(engine);
-        engine.draw = function() {
-            originalEngineDraw();
-            if (window.physicsManager && this.ctx) {
-                window.physicsManager.drawDebug(this.ctx);
-            }
-        };
-    }
-    
     // Load scenes
     const scenes = gameData.scenes || [];
     const loadedScenes = [];
@@ -1432,61 +1436,86 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Function to create game object from serialized data
     function createGameObjectFromData(data) {
-        // console.log('Creating game object:', data.name, 'with', data.modules.length, 'modules');
+        console.log('Creating game object:', data.name, 'with', data.modules?.length || 0, 'modules');
         
         const obj = new GameObject(data.name);
-        obj.id = data.id;
+        if (data.id) obj.id = data.id;
+
         obj.position = new Vector2(data.position.x, data.position.y);
-        obj.rotation = data.rotation;
-        obj.scale = new Vector2(data.scale.x, data.scale.y);
-        obj.active = data.active;
-        obj.visible = data.visible;
+        obj.useCollisions = data.useCollisions || false;
+        obj.size = data.size ? new Vector2(data.size.width, data.size.height) : new Vector2(50, 50);
+
+        // Restore scale if available
+        if (data.scale) obj.scale = new Vector2(data.scale.x, data.scale.y);
+        obj.editorColor = data.editorColor || obj.generateRandomColor();
+
+        if (data.polygonPointCount !== undefined) {
+            obj.polygonPointCount = data.polygonPointCount;
+        }
+        if (data.polygonPoints && Array.isArray(data.polygonPoints)) {
+            obj.polygonPoints = data.polygonPoints.map(pt => new Vector2(pt.x, pt.y));
+            // Pass parent, position, ...points
+            obj.polygon = new Polygon(obj, obj.position.clone(), ...obj.polygonPoints.map(pt => pt.clone()));
+        }
+
+        if (data.usePolygonCollision !== undefined) {
+            obj.usePolygonCollision = data.usePolygonCollision;
+        }
+
+        obj.angle = data.angle;
         obj.depth = data.depth;
-        
+        obj.active = data.active;
+        if (data.visible !== undefined) obj.visible = data.visible;
+        obj.tags = Array.isArray(data.tags) ? [...data.tags] : [];
+
+        if (data.collisionEnabled !== undefined) obj.collisionEnabled = data.collisionEnabled;
+        if (data.collisionLayer !== undefined) obj.collisionLayer = data.collisionLayer;
+        if (data.collisionMask !== undefined) obj.collisionMask = data.collisionMask;
+
         // Add modules
-        data.modules.forEach(moduleData => {
-            // console.log('Adding module:', moduleData.type, 'to', data.name);
-            
-            const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.type);
-            if (ModuleClass) {
-                const module = new ModuleClass();
-                module.enabled = moduleData.enabled;
-                module.id = moduleData.id;
+        if (data.modules && data.modules.length > 0) {
+            data.modules.forEach(moduleData => {
+                console.log('Adding module:', moduleData.type, 'to', data.name);
                 
-                // Restore module data
-                if (moduleData.data) {
-                    if (typeof module.fromJSON === 'function') {
-                        try {
-                            module.fromJSON(moduleData.data);
-                            // console.log('Module data restored via fromJSON for:', moduleData.type);
-                        } catch (error) {
-                            // console.error('Error restoring module data via fromJSON:', error);
-                            // Fallback to property restoration
-                            if (moduleData.data.properties) {
-                                Object.keys(moduleData.data.properties).forEach(key => {
-                                    if (key in module) {
-                                        module[key] = moduleData.data.properties[key];
-                                    }
-                                });
+                const ModuleClass = window.moduleRegistry.getModuleClass(moduleData.type);
+                if (ModuleClass) {
+                    const module = new ModuleClass();
+                    module.enabled = moduleData.enabled;
+                    module.id = moduleData.id;
+                    
+                    // Restore module data
+                    if (moduleData.data) {
+                        if (typeof module.fromJSON === 'function') {
+                            try {
+                                module.fromJSON(moduleData.data);
+                                console.log('Module data restored via fromJSON for:', moduleData.type);
+                            } catch (error) {
+                                console.error('Error restoring module data via fromJSON:', error);
+                                if (moduleData.data.properties) {
+                                    Object.keys(moduleData.data.properties).forEach(key => {
+                                        if (key in module) {
+                                            module[key] = moduleData.data.properties[key];
+                                        }
+                                    });
+                                }
                             }
+                        } else {
+                            const sourceData = moduleData.data.properties || moduleData.data;
+                            Object.keys(sourceData).forEach(key => {
+                                if (key in module) {
+                                    module[key] = sourceData[key];
+                                }
+                            });
                         }
-                    } else {
-                        // Fallback: Set properties directly from data root or properties
-                        const sourceData = moduleData.data.properties || moduleData.data;
-                        Object.keys(sourceData).forEach(key => {
-                            if (key in module) {
-                                module[key] = sourceData[key];
-                            }
-                        });
                     }
+                    
+                    obj.addModule(module);
+                    console.log('Successfully added module:', moduleData.type);
+                } else {
+                    console.error('Module class not found:', moduleData.type);
                 }
-                
-                obj.addModule(module);
-                // console.log('Successfully added module:', moduleData.type);
-            } else {
-                // console.error('Module class not found:', moduleData.type);
-            }
-        });
+            });
+        }
         
         // Add children
         if (data.children) {
@@ -1504,22 +1533,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const startingSceneIndex = ${startingSceneIndex};
             const sceneToLoad = loadedScenes[startingSceneIndex] || loadedScenes[0];
-            // console.log('Loading starting scene:', sceneToLoad.name, 'at index:', startingSceneIndex);
+            console.log('Loading starting scene:', sceneToLoad.name, 'at index:', startingSceneIndex);
             
             engine.loadScene(sceneToLoad);
             await engine.start();
             loadingScreen.style.display = 'none';
-            // console.log('Game started successfully with scene:', sceneToLoad.name);
+            console.log('Game started successfully with scene:', sceneToLoad.name);
         } catch (error) {
-            // console.error('Failed to start game:', error);
+            console.error('Failed to start game:', error);
             loadingScreen.innerHTML = '<div>Error loading game: ' + error.message + '</div>';
         }
     } else {
         loadingScreen.innerHTML = '<div>No scenes found</div>';
     }
-});
+}
+
+// Wait for both DOM and Matter.js to be ready
+document.addEventListener('DOMContentLoaded', initializeGame);
+window.addEventListener('matter-loaded', initializeGame);
 `;
-    }
+}
 
     /**
      * Safely stringify JSON data for embedding in JavaScript code

@@ -415,7 +415,7 @@ class Engine {
                 }
 
                 // Call each module's start method
-                obj.modules.forEach(module => {
+                /*obj.modules.forEach(module => {
                     if (module.enabled && module.start) {
                         try {
                             module.start();
@@ -423,7 +423,7 @@ class Engine {
                             console.error(`Error starting module ${module.type || module.constructor.name}:`, error);
                         }
                     }
-                });
+                });*/
             }
         });
 

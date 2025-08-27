@@ -189,9 +189,9 @@ class RigidBody extends Module {
         let pos = this.gameObject.getWorldPosition();
 
         // If position is (0,0) and we have an initialPosition, use that instead
-        if ((pos.x === 0 && pos.y === 0) && this.initialPosition && (this.initialPosition.x !== 0 || this.initialPosition.y !== 0)) {
+        /*if ((pos.x === 0 && pos.y === 0) && this.initialPosition && (this.initialPosition.x !== 0 || this.initialPosition.y !== 0)) {
             pos = { ...this.initialPosition };
-        }
+        }*/
 
         const angle = this.gameObject.angle * (Math.PI / 180);
 
@@ -566,24 +566,24 @@ class RigidBody extends Module {
      */
     fromJSON(data) {
         super.fromJSON(data);
-        this.bodyType = data.bodyType || this.bodyType;
-        this.shape = data.shape || this.shape;
-        this.width = data.width || this.width;
-        this.height = data.height || this.height;
-        this.radius = data.radius || this.radius;
-        this.density = data.density || this.density;
-        this.friction = data.friction || this.friction;
-        this.restitution = data.restitution || this.restitution;
-        this.fixedRotation = data.fixedRotation || false;
-        this.isSensor = data.isSensor || false;
+        this.bodyType = data.bodyType ?? this.bodyType;
+        this.shape = data.shape ?? this.shape;
+        this.width = data.width ?? this.width;
+        this.height = data.height ?? this.height;
+        this.radius = data.radius ?? this.radius;
+        this.density = data.density ?? this.density;
+        this.friction = data.friction ?? this.friction;
+        this.restitution = data.restitution ?? this.restitution;
+        this.fixedRotation = data.fixedRotation ?? false;
+        this.isSensor = data.isSensor ?? false;
         this.collisionFilter = { ...this.collisionFilter, ...data.collisionFilter };
-        this.vertices = data.vertices || [];
+        this.vertices = data.vertices ?? [];
 
         // Update initial position and angle after deserialization
         if (this.gameObject) {
-            //const pos = this.gameObject.getWorldPosition();
-            //this.initialPosition = { x: pos.x, y: pos.y };
-            //this.initialAngle = this.gameObject.angle;
+            const pos = this.gameObject.getWorldPosition();
+            this.initialPosition = { x: pos.x, y: pos.y };
+            this.initialAngle = this.gameObject.angle;
             //this.createBody();
         }
     }
