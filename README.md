@@ -214,7 +214,7 @@ Dark Matter JS consists of several key components:
 - [x] Asset management system
 - [x] Particle effects
 - [x] HTML5 export
-- [ ] Physics engine integration
+- [x] Physics engine integration
 - [ ] Audio system
 - [ ] Animation system
 - [ ] WebGL functionality for better performance
