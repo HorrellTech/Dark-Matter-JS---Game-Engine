@@ -163,7 +163,7 @@ class RigidBody extends Module {
             this.initialAngle = this.gameObject.angle;
         }
 
-        this.createBody();
+        this.onStart();
 
         // Set up collision handlers
         Matter.Events.on(window.physicsManager.engine, 'collisionStart', this.boundOnCollisionStart);
@@ -504,17 +504,9 @@ class RigidBody extends Module {
         // If the game object has moved, we need to update static bodies
         if (this.body && this.body.isStatic && this.gameObject) {
             const pos = this.gameObject.getWorldPosition();
-            const currentPos = this.body.position;
             const angle = this.gameObject.angle * (Math.PI / 180);
-
-            // Check if position or rotation changed
-            if (Math.abs(pos.x - currentPos.x) > 0.01 ||
-                Math.abs(pos.y - currentPos.y) > 0.01 ||
-                Math.abs(angle - this.body.angle) > 0.01) {
-
-                Matter.Body.setPosition(this.body, { x: pos.x, y: pos.y });
-                Matter.Body.setAngle(this.body, angle);
-            }
+            Matter.Body.setPosition(this.body, { x: pos.x, y: pos.y });
+            Matter.Body.setAngle(this.body, angle);
         }
     }
 
@@ -523,8 +515,8 @@ class RigidBody extends Module {
      */
     onEnable() {
         if (this.pendingBodyCreation && !this.body && window.physicsManager) {
-            //this.createBody();
-            //this.pendingBodyCreation = false;
+            this.createBody();
+            this.pendingBodyCreation = false;
         }
     }
 
@@ -586,6 +578,8 @@ class RigidBody extends Module {
             this.initialAngle = this.gameObject.angle;
             //this.createBody();
         }
+
+        this.pendingBodyCreation = true; // Delay body creation until onEnable or start
     }
 }
 

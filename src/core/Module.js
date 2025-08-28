@@ -144,6 +144,16 @@ class Module {
         // Override in subclasses if needed
     }
 
+    onEnable() {
+        // Called when the module is enabled
+        // Override in subclasses if needed
+    }
+
+    onDisable() {
+        // Called when the module is disabled
+        // Override in subclasses if needed
+    }
+
     /**
      * Define required modules for this module
      * Modules listed here will be automatically added before this module
@@ -449,6 +459,7 @@ class Module {
      */
     enable() {
         this.enabled = true;
+        this.onEnable();
     }
 
     /**
@@ -456,6 +467,7 @@ class Module {
      */
     disable() {
         this.enabled = false;
+        this.onDisable();
     }
 
     /**
@@ -463,6 +475,12 @@ class Module {
      */
     toggle() {
         this.enabled = !this.enabled;
+
+        if (this.enabled) {
+            this.onEnable();
+        } else {
+            this.onDisable();
+        }
     }
 
     /**

@@ -1483,6 +1483,11 @@ async function initializeGame() {
                     module.enabled = moduleData.enabled;
                     module.id = moduleData.id;
                     
+                    // CRITICAL: Skip body creation during deserialization for RigidBody
+                    if (module.constructor.name === 'RigidBody') {
+                        module._skipRebuild = true;
+                    }
+                    
                     // Restore module data
                     if (moduleData.data) {
                         if (typeof module.fromJSON === 'function') {
@@ -1509,10 +1514,15 @@ async function initializeGame() {
                         }
                     }
                     
+                    // Re-enable body creation after data restoration
+                    if (module.constructor.name === 'RigidBody') {
+                        module._skipRebuild = false;
+                        // Ensure pending creation is set for later initialization
+                        module.pendingBodyCreation = true;
+                    }
+                    
                     obj.addModule(module);
                     console.log('Successfully added module:', moduleData.type);
-                } else {
-                    console.error('Module class not found:', moduleData.type);
                 }
             });
         }
