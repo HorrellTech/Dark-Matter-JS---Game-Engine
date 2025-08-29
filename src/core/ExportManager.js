@@ -153,8 +153,9 @@ class ExportManager {
             id: obj.id,
             name: obj.name,
             position: { x: obj.position.x, y: obj.position.y },
-            rotation: obj.rotation || 0,
+            angle: obj.angle || 0,
             scale: obj.scale ? { x: obj.scale.x, y: obj.scale.y } : { x: 1, y: 1 },
+            size: obj.size ? { width: obj.size.x, height: obj.size.y } : { width: 50, height: 50 },
             active: obj.active,
             visible: obj.visible !== false,
             depth: obj.depth || 0,
@@ -701,6 +702,7 @@ class ExportManager {
 
             // Physics and Collision Modules
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
+            'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
@@ -1074,10 +1076,7 @@ async function initializeGame() {
     console.log('Matter.js is available, proceeding with initialization...');
     
     // Initialize physics manager FIRST
-    if (!window.physicsManager) {
-        window.physicsManager = new PhysicsManager();
-        console.log('Physics manager initialized');
-    }
+    window.physicsManager = new PhysicsManager();
     
     // Initialize module registry
     if (!window.moduleRegistry) {
@@ -1350,6 +1349,8 @@ async function initializeGame() {
     const canvas = document.getElementById('gameCanvas');
     const engine = new Engine(canvas);
     
+    this.ctx = canvas.ctx;
+    
     // Make engine globally available for prefab instantiation
     window.engine = engine;
     
@@ -1383,7 +1384,7 @@ async function initializeGame() {
             }
         };
         
-        console.log('Physics connected to engine successfully');
+        console.log('Matter Physics connected to engine successfully');
     } else {
         console.error('Physics manager not found during engine setup');
     }
@@ -1442,6 +1443,8 @@ async function initializeGame() {
         if (data.id) obj.id = data.id;
 
         obj.position = new Vector2(data.position.x, data.position.y);
+        obj.angle = (typeof data.angle === 'number') ? data.angle : 0;
+        obj.depth = data.depth;
         obj.useCollisions = data.useCollisions || false;
         obj.size = data.size ? new Vector2(data.size.width, data.size.height) : new Vector2(50, 50);
 
@@ -1462,8 +1465,6 @@ async function initializeGame() {
             obj.usePolygonCollision = data.usePolygonCollision;
         }
 
-        obj.angle = data.angle;
-        obj.depth = data.depth;
         obj.active = data.active;
         if (data.visible !== undefined) obj.visible = data.visible;
         obj.tags = Array.isArray(data.tags) ? [...data.tags] : [];
@@ -1484,9 +1485,9 @@ async function initializeGame() {
                     module.id = moduleData.id;
                     
                     // CRITICAL: Skip body creation during deserialization for RigidBody
-                    if (module.constructor.name === 'RigidBody') {
-                        module._skipRebuild = true;
-                    }
+                    //if (module.constructor.name === 'RigidBody') {
+                    //    module._skipRebuild = false;
+                    //}
                     
                     // Restore module data
                     if (moduleData.data) {
@@ -1515,11 +1516,11 @@ async function initializeGame() {
                     }
                     
                     // Re-enable body creation after data restoration
-                    if (module.constructor.name === 'RigidBody') {
-                        module._skipRebuild = false;
+                    //if (module.constructor.name === 'RigidBody') {
+                    //    module._skipRebuild = false;
                         // Ensure pending creation is set for later initialization
-                        module.pendingBodyCreation = true;
-                    }
+                    //    module.pendingBodyCreation = true;
+                    //}
                     
                     obj.addModule(module);
                     console.log('Successfully added module:', moduleData.type);

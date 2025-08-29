@@ -521,6 +521,31 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
         </div>
     </section>
 
+    <section id="html5-example" class="section">
+        <h2 class="fade-in">HTML5 Game Examples</h2>
+        <div class="fade-in" style="display: flex; flex-direction: column; align-items: center;">
+            <ul id="game-example-list" style="list-style:none; display:flex; gap:1rem; margin-bottom:2rem; padding:0;">
+                <li>
+                    <a href="#" class="game-example-link" data-src="tutorial_images/matterjsexample1.html"
+                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.08); transition:background 0.2s;">MatterJS
+                        Example 1</a>
+                </li>
+                <!-- Add more examples here as needed -->
+            </ul>
+            <div id="game-embed-container" style="max-width: 800px; width: 100%; position: relative;">
+                <iframe id="game-iframe" src="tutorial_images/matterjsexample1.html" title="MatterJS Example Game"
+                    style="width: 100%; height: 600px; border-radius: 16px; border: 2px solid #333; background: #111; transition: box-shadow 0.3s;"
+                    allow="fullscreen"></iframe>
+                <button id="fullscreen-btn"
+                    style="position: absolute; top: 16px; right: 16px; z-index: 10; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(99,102,241,0.15);">
+                    ⛶ Fullscreen
+                </button>
+            </div>
+        </div>
+        <p style="text-align:center; color:#b0b0b0; margin-top:2rem;">Click the game to play. Use the fullscreen button
+            for an immersive experience!</p>
+    </section>
+
     <!-- Examples Section -->
     <section id="examples" class="section">
         <h2 class="fade-in">Built-in Modules & Examples</h2>
@@ -703,6 +728,115 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
             modal.addEventListener('click', () => {
                 modal.style.display = 'none';
                 modalImg.src = '';
+            });
+
+            const iframe = document.getElementById('game-iframe');
+            const btn = document.getElementById('fullscreen-btn');
+            const container = document.getElementById('game-embed-container');
+            const exampleLinks = document.querySelectorAll('.game-example-link');
+            let isFullscreen = false;
+            let prevStyle = { width: '', height: '' };
+
+            // Example switching
+            exampleLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    exampleLinks.forEach(l => l.style.background = 'rgba(99,102,241,0.08)');
+                    this.style.background = 'rgba(99,102,241,0.18)';
+                    const src = this.getAttribute('data-src');
+                    iframe.src = src;
+                });
+            });
+
+            // Fullscreen logic (container fullscreen)
+            function enterFullscreen() {
+                prevStyle.width = iframe.style.width;
+                prevStyle.height = iframe.style.height;
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else if (container.mozRequestFullScreen) {
+                    container.mozRequestFullScreen();
+                } else if (container.msRequestFullscreen) {
+                    container.msRequestFullscreen();
+                }
+                // Set iframe and container to fill screen, remove borders
+                setTimeout(() => {
+                    iframe.style.width = "100vw";
+                    iframe.style.height = "100vh";
+                    iframe.style.borderRadius = "0";
+                    iframe.style.border = "none";
+                    container.style.maxWidth = "100vw";
+                    container.style.padding = "0";
+                    container.style.margin = "0";
+                    container.style.border = "none";
+                    container.style.borderRadius = "0";
+                    container.style.background = "#111";
+                }, 200);
+                btn.textContent = '⏏ Exit Fullscreen';
+                isFullscreen = true;
+            }
+
+            function exitFullscreen() {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                // Restore iframe and container size/borders
+                setTimeout(() => {
+                    iframe.style.width = "100%";
+                    iframe.style.height = "600px";
+                    iframe.style.borderRadius = "16px";
+                    iframe.style.border = "2px solid #333";
+                    container.style.maxWidth = "800px";
+                    container.style.padding = "";
+                    container.style.margin = "";
+                    container.style.border = "";
+                    container.style.borderRadius = "";
+                    container.style.background = "#111";
+                }, 200);
+                btn.textContent = '⛶ Fullscreen';
+                isFullscreen = false;
+            }
+
+            btn.addEventListener('click', function () {
+                if (!isFullscreen) {
+                    enterFullscreen();
+                } else {
+                    exitFullscreen();
+                }
+            });
+
+            // Also allow clicking the game to toggle fullscreen
+            iframe.addEventListener('click', function () {
+                if (!isFullscreen) {
+                    enterFullscreen();
+                }
+            });
+
+            // Listen for fullscreen change to update button and resize
+            document.addEventListener('fullscreenchange', function () {
+                if (document.fullscreenElement === container) {
+                    btn.textContent = '⏏ Exit Fullscreen';
+                    isFullscreen = true;
+                    iframe.style.width = "100vw";
+                    iframe.style.height = "100vh";
+                    iframe.style.borderRadius = "0";
+                    container.style.maxWidth = "100vw";
+                } else {
+                    btn.textContent = '⛶ Fullscreen';
+                    isFullscreen = false;
+                    iframe.style.width = "100%";
+                    iframe.style.height = "480px";
+                    iframe.style.borderRadius = "16px";
+                    container.style.maxWidth = "800px";
+                }
             });
 
             // Example usage: addNavLink('API', 'api');

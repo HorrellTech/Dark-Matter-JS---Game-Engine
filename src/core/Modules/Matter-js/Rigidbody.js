@@ -241,7 +241,7 @@ class RigidBody extends Module {
 
         // Ensure static bodies are really static
         if (this.bodyType === "static") {
-            body.isStatic = true;
+            //body.isStatic = true;
             body.inertia = Infinity;
             body.inverseInertia = 0;
             body.inverseMass = 0;
@@ -250,17 +250,17 @@ class RigidBody extends Module {
             body.velocity.y = 0;
             body.angularVelocity = 0;
 
-            Matter.Body.setStatic(body, true);
+            //Matter.Body.setStatic(body, true);
         }
         else if (this.bodyType === "kinematic") {
-            body.isStatic = false;
+            //body.isStatic = false;
             body.inertia = Infinity;
             body.inverseInertia = 0;
             body.mass = Infinity;
             body.inverseMass = 0;
         }
         else {
-            body.isStatic = false;
+            //body.isStatic = false;
         }
 
         // Apply fixed rotation constraint
@@ -502,7 +502,7 @@ class RigidBody extends Module {
      */
     beginLoop() {
         // If the game object has moved, we need to update static bodies
-        if (this.body && this.body.isStatic && this.gameObject) {
+        if (this.body && this.bodyType === 'static' && this.gameObject) {
             const pos = this.gameObject.getWorldPosition();
             const angle = this.gameObject.angle * (Math.PI / 180);
             Matter.Body.setPosition(this.body, { x: pos.x, y: pos.y });

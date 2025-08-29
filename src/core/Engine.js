@@ -73,6 +73,7 @@ class Engine {
         // Set the input manager reference to this engine
         if (window.input) {
             window.input.setEngine(this);
+            window.input.useCanvasTarget();
         }
 
         if (!window.viewport) {
@@ -100,6 +101,9 @@ class Engine {
         // Track dynamically created objects for cleanup
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
+
+        canvas.tabIndex = 0; // Makes canvas focusable
+        canvas.focus(); // Give it focus
     }
 
     // Add viewport management methods
