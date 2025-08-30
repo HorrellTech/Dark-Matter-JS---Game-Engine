@@ -170,6 +170,17 @@ class Module {
     }
 
     /**
+     * Require a single module for this module
+     * @param {string} moduleName - The name of the module to require
+     */
+    requireModule(moduleName) {
+        if (!this._requirements) {
+            this._requirements = [];
+        }
+        this._requirements.push(moduleName);
+    }
+
+    /**
      * Get all required modules for this module
      * @returns {Array<string>} Array of required module names
      */

@@ -92,7 +92,7 @@ collisions.forEach(other => {
             }
         }
     },
-    
+
     // Prefab Functions
     Prefab: {
         group: "Core",
@@ -107,6 +107,51 @@ player.setPosition(new Vector2(100, 200));`,
                 { name: "parent", type: "GameObject|null", description: "Optional parent GameObject to attach the prefab to" }
                 ],
                 returns: { type: "GameObject", description: "The created prefab instance" }
+            }
+        }
+    },
+
+    Modules: {
+        group: "Modules",
+        functions: {
+            Module: {
+                description: "Base class for all modules. Modules extend GameObject functionality and can be attached, enabled/disabled, cloned, and serialized.",
+                example: `class MyModule extends Module {
+    constructor() {
+        super("MyModule");
+
+        this.speed = 100; // Movement speed
+
+        this.exposeProperty("speed", "number", 100, 
+        { min: 0, max: 1000, step: 10,
+          description: "Movement speed in pixels per second",
+          onChange: (value) => { this.speed = value; } // Important to update internal value
+        });
+    }
+    start() { /* Called when activated */ }
+    loop(dt) { /* Called every frame */ }
+    draw(ctx) { /* Custom rendering */ }
+}`,
+                methods: [
+                    { name: "preload()", description: "Load assets etc before game starts" },
+                    { name: "start()", description: "Called when module is activated" },
+                    { name: "beginLoop()", description: "Called at start of each frame" },
+                    { name: "loop(deltaTime)", description: "Main update logic" },
+                    { name: "endLoop()", description: "Called at end of each frame" },
+                    { name: "draw(ctx)", description: "Render module visuals" },
+                    { name: "onDestroy()", description: "Cleanup when destroyed" },
+                    { name: "enable()", description: "Enable the module" },
+                    { name: "disable()", description: "Disable the module" },
+                    { name: "toggle()", description: "Toggle enabled state" },
+                    { name: "getModule(type)", description: "Get another module by type" },
+                    { name: "exposeProperty(name, type, default, options)", description: "Expose property to inspector" },
+                    { name: "setProperty(name, value)", description: "Set property value" },
+                    { name: "getProperty(name, default)", description: "Get property value" },
+                    { name: "attachTo(gameObject)", description: "Attach module to GameObject" },
+                    { name: "clone(newGameObject)", description: "Clone module instance" },
+                    { name: "toJSON()", description: "Serialize module for saving module properties" },
+                    { name: "fromJSON(json)", description: "Deserialize module for loading module properties" }
+                ]
             }
         }
     },
@@ -173,33 +218,6 @@ gameObject.lookAt(mousePos);`,
     handlePinchZoom();
 }`,
                 returns: { type: "number", description: "Number of active touches" }
-            }
-        }
-    },
-
-    // Physics Functions
-    Physics: {
-        group: "Physics",
-        functions: {
-            raycast: {
-                description: "Cast a ray and check for collisions",
-                example: `const hit = Raycast.cast(origin, direction, 100);
-if(hit) console.log("Hit object:", hit.object.name);`,
-                params: [
-                    { name: "origin", type: "Vector2", description: "Starting point" },
-                    { name: "direction", type: "Vector2", description: "Direction to cast" },
-                    { name: "maxDistance", type: "number", description: "Maximum distance to check" }
-                ],
-                returns: { type: "RaycastHit|null", description: "Hit information if collision occurred" }
-            },
-
-            checkCollision: {
-                description: "Check if two objects are colliding",
-                example: `if(gameObject.collidesWith(otherObject)) {
-    handleCollision();
-}`,
-                params: [{ name: "other", type: "GameObject", description: "Other object to check against" }],
-                returns: { type: "boolean", description: "True if objects are colliding" }
             }
         }
     },
@@ -399,6 +417,49 @@ audio.play();`,
         }
     },
 
+    // Physics Modules
+    BasicPhysics: {
+        group: "Physics",
+        functions: {
+            addForce: {
+                description: "Apply a force to the physics object (affects velocity)",
+                example: `const physics = this.gameObject.getModule("BasicPhysics");
+physics.addForce(10, 0);`,
+                params: [
+                    { name: "x", type: "number", description: "Force in X direction" },
+                    { name: "y", type: "number", description: "Force in Y direction" }
+                ],
+                returns: { type: "void", description: "No return value" }
+            },
+            setVelocity: {
+                description: "Set the velocity of the physics object",
+                example: `const physics = this.gameObject.getModule("BasicPhysics");
+physics.setVelocity(0, 100);`,
+                params: [
+                    { name: "x", type: "number", description: "Velocity in X direction" },
+                    { name: "y", type: "number", description: "Velocity in Y direction" }
+                ],
+                returns: { type: "void", description: "No return value" }
+            },
+            setAngularVelocity: {
+                description: "Set the angular velocity (rotation speed)",
+                example: `const physics = this.gameObject.getModule("BasicPhysics");
+physics.setAngularVelocity(45);`,
+                params: [
+                    { name: "angVel", type: "number", description: "Angular velocity in degrees/sec" }
+                ],
+                returns: { type: "void", description: "No return value" }
+            },
+            getSpeed: {
+                description: "Get the current speed (magnitude of velocity)",
+                example: `const physics = this.gameObject.getModule("BasicPhysics");
+const speed = physics.getSpeed();`,
+                params: [],
+                returns: { type: "number", description: "Current speed" }
+            }
+        }
+    },
+
     // Logic Modules
     Logic: {
         group: "Logic",
@@ -498,22 +559,6 @@ keyboard.upKey = "w";`,
                 methods: [
                     { name: "resetControls()", description: "Reset all controls to default values" }
                 ]
-            },
-
-            SimpleMovementController: {
-                description: "Basic character movement controller for 2D games",
-                example: `const movement = gameObject.addModule(new SimpleMovementController());
-movement.speed = 200;
-movement.usePhysics = false;
-movement.controlScheme = "wasd";`,
-                properties: [
-                    { name: "speed", type: "number", description: "Movement speed in pixels per second" },
-                    { name: "usePhysics", type: "boolean", description: "Use physics-based movement (requires RigidBody)" },
-                    { name: "allowDiagonal", type: "boolean", description: "Enable diagonal movement" },
-                    { name: "acceleration", type: "number", description: "Acceleration factor (1 = instant)" },
-                    { name: "deceleration", type: "number", description: "Deceleration factor when no input" },
-                    { name: "controlScheme", type: "string", description: "Input control scheme (arrows, wasd, both)" }
-                ]
             }
         }
     },
@@ -580,35 +625,14 @@ poly.color = "#0000ff";`,
         }
     },
 
-    // Colliders Modules
-    Colliders: {
-        group: "Colliders",
-        functions: {
-            BoundingBoxCollider: {
-                description: "Custom bounding box collision detection",
-                example: `const collider = gameObject.addModule(new BoundingBoxCollider());
-collider.width = 50;
-collider.height = 50;
-collider.isTrigger = false;`,
-                properties: [
-                    { name: "width", type: "number", description: "Width of the collider" },
-                    { name: "height", type: "number", description: "Height of the collider" },
-                    { name: "offset", type: "Vector2", description: "Offset from the GameObject center" },
-                    { name: "showCollider", type: "boolean", description: "Whether to show the collider in the editor" },
-                    { name: "isTrigger", type: "boolean", description: "Trigger colliders don't cause physics responses" }
-                ]
-            }
-        }
-    },
-
     // Matter.js Physics Modules
     "Matter.js": {
         group: "Physics",
         functions: {
             RigidBody: {
-                description: "Physics component that adds a physical body to a GameObject\n" + 
-                "Uses the Matter.js physics engine for realistic simulation\n\n" +
-                "Rigidbody uses the GameObjects bounding box for collisions by default.",
+                description: "Physics component that adds a physical body to a GameObject\n" +
+                    "Uses the Matter.js physics engine for realistic simulation\n\n" +
+                    "Rigidbody uses the GameObjects bounding box for collisions by default.",
                 example: `const body = gameObject.addModule(new RigidBody());
 body.bodyType = "dynamic";
 body.density = 1;

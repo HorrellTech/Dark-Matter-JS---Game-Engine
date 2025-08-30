@@ -268,8 +268,7 @@ class Documentation {
                                 <p>Dark Matter JS includes several built-in modules:</p>
                                 <ul>
                                     <li><strong>SpriteRenderer</strong>: Displays images and animations</li>
-                                    <li><strong>RigidBody</strong>: Adds physics behavior (Coming soon)</li>
-                                    <li><strong>Collider</strong>: Handles collision detection (Coming soon)</li>
+                                    <li><strong>RigidBody</strong>: Adds physics behavior</li>
                                     <li><strong>AudioSource</strong>: Plays sound effects (Coming soon)</li>
                                 </ul>
                             </div>
@@ -812,6 +811,196 @@ stopSound() {
     }
 }</code></pre>
                             </div>
+                        `
+                    }
+                }
+            },
+            "Modules": {
+                icon: "fas fa-cubes",
+                description: "Learn about modules, their lifecycle, and how to extend GameObjects.",
+                topics: {
+                    "Overview": {
+                        content: `
+                    <h2>Modules Overview</h2>
+                    <p>Modules are components that extend the functionality of GameObjects. Each module can add behavior, properties, and rendering logic.</p>
+                    <ul>
+                        <li>Attach multiple modules to a GameObject</li>
+                        <li>Enable/disable modules individually</li>
+                        <li>Expose properties for editing in the Inspector</li>
+                        <li>Override lifecycle methods for custom logic</li>
+                    </ul>
+                `
+                    },
+                    "Default Properties": {
+                        content: `
+                    <h2>Important default properties</h2>
+                    <ul>
+                        <li><code>this.gameObject</code>: Reference to the parent GameObject</li>
+                        <li><code>this.type</code>: Type of the module</li>
+                        <li><code>this.name</code>: Name of the module</li>
+                        <li><code>this.enabled</code>: Whether the module should be updated</li>
+                        <li><code>this.ignoreGameObjectTransform</code>: If true, the module will not be affected by the GameObject's transform
+                        making it easier to position elements independently with drawing</li>
+                    </ul>
+                `
+                    },
+                    "Lifecycle Methods": {
+                        content: `
+                    <h2>Module Lifecycle</h2>
+                    <ul>
+                        <li><code>preload()</code>: Load assets before game starts</li>
+                        <li><code>start()</code>: Called when module is activated</li>
+                        <li><code>beginLoop()</code>: Called at start of each frame</li>
+                        <li><code>loop(deltaTime)</code>: Main update logic</li>
+                        <li><code>endLoop()</code>: Called at end of each frame</li>
+                        <li><code>draw(ctx)</code>: Render module visuals</li>
+                        <li><code>onDestroy()</code>: Cleanup when destroyed</li>
+                    </ul>
+                `
+                    },
+                    "Exposing Properties": {
+                        content: `
+                    <h2>Exposing Properties</h2>
+                    <p>Use <code>exposeProperty()</code> to make module properties editable in the Inspector:</p>
+                    <pre><code>this.exposeProperty("speed", "number", 100, {
+    min: 0, max: 500, description: "Movement speed",
+    onChange: (value) => { this.speed = value; } // Important to update internal value
+});</code></pre>
+                    <p>Supported types: <code>number</code>, <code>string</code>, <code>boolean</code>, <code>color</code>, <code>enum</code>, <code>vector2</code>, <code>asset</code>.</p>
+                `
+                    },
+                    "Dependencies": {
+                        content: `
+                    <h2>Module Dependencies</h2>
+                    <p>Use <code>this.requireModule(moduleName)</code> to specify other modules that this module depends on:</p>
+                    <pre><code>this.requireModule("RigidBody");</code></pre>
+                    <p>Dependencies will be loaded automatically when this module is activated.</p>
+                `
+                    },
+                    "Attaching & Cloning": {
+                        content: `
+                    <h2>Attaching and Cloning Modules</h2>
+                    <ul>
+                        <li><code>attachTo(gameObject)</code>: Attach module to a GameObject</li>
+                        <li><code>clone(newGameObject)</code>: Create a copy of the module</li>
+                    </ul>
+                `
+                    },
+                    "Serialization": {
+                        content: `
+                    <h2>Serialization</h2>
+                    <p>Modules can be serialized to JSON for saving/loading:</p>
+                    <pre><code>toJSON() {
+    return {
+        ...super.toJSON(), // Include base properties
+        type: this.type,
+        properties: {
+            speed: this.speed,
+            color: this.color
+        }   
+    };}</code></pre>
+                    <p>Implement <code>fromJSON(data)</code> to restore state from JSON.</p>
+                    <pre><code>fromJSON(data) {
+    super.fromJSON(data); // Restore base properties
+    this.type = data.type;
+    this.speed = data.properties.speed;
+    this.color = data.properties.color;
+}</code></pre>
+                    `
+                    },
+                    "Template Module": {
+                        content: `
+                    <h2>Module Template</h2>
+                    <p>Use this template to create new modules:</p>
+                    <pre><code>class MyModule extends Module {
+    static namespace = "Category";
+    static description = "Brief description";
+    static allowMultiple = false;
+    static iconClass = "fas fa-cube";
+
+    constructor() {
+        super("MyModule");
+
+        this.speed = 100; // Default speed
+        
+        // Expose properties for inspector
+        this.exposeProperty("speed", "number", 100, {
+            description: "Movement speed",
+            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
+                this.speed = val; // Update speed when property changes
+            }
+        });
+    }
+
+    // Style the exposed properties
+    style(style) {
+        style.startGroup("Movement Settings", false, { 
+            backgroundColor: 'rgba(100,150,255,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        
+        style.exposeProperty("speed", "number", this.speed, {
+            description: "Movement speed in pixels per second",
+            min: 0,
+            max: 1000,
+            step: 10,
+            style: {
+                label: "Movement Speed",
+                slider: true
+            }
+        });
+        
+        style.endGroup();
+        
+        style.addDivider();
+        
+        style.addHelpText("This is a helpful hint");
+    }
+
+    start() {
+        // Initialize when game starts
+    }
+
+    loop(deltaTime) {
+        // Update logic every frame
+        // deltaTime is in seconds
+        this.gameObject.position.x += this.speed * deltaTime;
+    }
+
+    draw(ctx) {
+        // Render to canvas
+        ctx.save();
+
+    }
+
+    drawGizmos(ctx) {
+        // Draw debug gizmos (optional)
+    }
+
+    onDestroy() {
+        // Clean up module
+    }
+
+    toJSON() { // Serialize module state
+        return {
+            ...super.toJSON(),
+
+            speed: this.speed
+        };
+    }
+
+    fromJSON(data) { // Deserialize module state
+        super.fromJSON(data);
+
+        if (!data) return;
+        
+        this.speed = data.speed || 100; // Default to 100 if not provided
+    }
+}
+
+window.MyModule = MyModule; // Expose globally for registration
+    </code></pre>
                         `
                     }
                 }
