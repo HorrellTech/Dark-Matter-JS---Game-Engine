@@ -72,6 +72,8 @@ class SpriteCode {
         this.gridSize = 16;
         this.snapEnabled = true;
 
+        this.isOpen = false;
+
         this.initializeEventListeners();
     }
 
@@ -447,6 +449,8 @@ class SpriteCode {
         this.initializeCanvas();
         this.updateFrameDisplay();
 
+        this.isOpen = true;
+
         // Add finish spline button if not present
         let btn = document.getElementById('finishSplineBtn-sprite');
         if (!btn) {
@@ -483,6 +487,8 @@ class SpriteCode {
         this.isResizing = false;
         this.selectedPoint = null;
         this.stopPreview();
+
+        this.isOpen = false;
     }
 
     // Animation Panel Methods

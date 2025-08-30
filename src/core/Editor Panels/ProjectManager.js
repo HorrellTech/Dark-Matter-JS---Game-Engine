@@ -951,12 +951,13 @@ class ProjectManager {
 
     _setupKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Check if any modal is open
             const scriptEditorOpen = window.scriptEditor && window.scriptEditor.isOpen;
+            const spriteCodeOpen = window.spriteCode && window.spriteCode.isOpen;
             const anyModalOpen = document.querySelector('.se-modal[style*="flex"]') ||
                 document.querySelector('.modal[style*="block"]') ||
                 document.querySelector('.modal[style*="flex"]') ||
-                scriptEditorOpen;
+                scriptEditorOpen ||
+                spriteCodeOpen;
 
             // Don't trigger shortcuts if any modal is open
             if (anyModalOpen) {

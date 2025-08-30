@@ -236,6 +236,19 @@ class Editor {
 
         // Add event listener for shift key
         document.addEventListener('keydown', (e) => {
+            const scriptEditorOpen = window.scriptEditor && window.scriptEditor.isOpen;
+            const spriteCodeOpen = window.spriteCode && window.spriteCode.isOpen;
+            const anyModalOpen = document.querySelector('.se-modal[style*="flex"]') ||
+                document.querySelector('.modal[style*="block"]') ||
+                document.querySelector('.modal[style*="flex"]') ||
+                scriptEditorOpen ||
+                spriteCodeOpen;
+
+            // Don't trigger shortcuts if any modal is open
+            if (anyModalOpen) {
+                return;
+            }
+
             if (e.key === 'Shift') {
                 this.shiftKeyDown = true;
 
@@ -533,7 +546,7 @@ class Editor {
         }
     }
 
-    refreshCanvas() {
+    _refreshCanvasInternal() {
         // Get the parent container dimensions directly
         const container = this.canvas.parentElement;
         if (!container) return;
@@ -601,6 +614,15 @@ class Editor {
         if (this.showMouseCoordinates) {
             this.drawMouseCoordinates();
         }
+    }
+
+    refreshCanvas() {
+        if (this._refreshScheduled) return;
+        this._refreshScheduled = true;
+        requestAnimationFrame(() => {
+            this._refreshScheduled = false;
+            this._refreshCanvasInternal();
+        });
     }
 
     /**

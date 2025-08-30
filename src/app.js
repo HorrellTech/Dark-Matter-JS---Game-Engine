@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeMobileSupport();
 
     // Setup mobile touch handling
-    //setupMobileTouchHandling();
+    setupMobileTouchHandling();
 
     // Tab functionality
     document.querySelectorAll('.tab-button').forEach(button => {
