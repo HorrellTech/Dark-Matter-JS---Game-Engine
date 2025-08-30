@@ -43,7 +43,7 @@ rigidBody.gravity = 500;`,
 
             getModule: {
                 description: "Get a module of a specific type from the GameObject",
-                example: `const rigidBody = gameObject.getModule("RigidBody");
+                example: `const rigidBody = this.gameObject.getModule("RigidBody");
 if(rigidBody) rigidBody.setVelocity(new Vector2(0, 10));`,
                 params: [{ name: "type", type: "string", description: "The type/name of the module to get" }],
                 returns: { type: "Module|null", description: "The found module or null" }
@@ -606,7 +606,9 @@ collider.isTrigger = false;`,
         group: "Physics",
         functions: {
             RigidBody: {
-                description: "Physics component that adds a physical body to a GameObject",
+                description: "Physics component that adds a physical body to a GameObject\n" + 
+                "Uses the Matter.js physics engine for realistic simulation\n\n" +
+                "Rigidbody uses the GameObjects bounding box for collisions by default.",
                 example: `const body = gameObject.addModule(new RigidBody());
 body.bodyType = "dynamic";
 body.density = 1;
@@ -629,22 +631,6 @@ body.setVelocity(new Vector2(0, -10));`,
                     { name: "getVelocity()", description: "Get the current linear velocity" },
                     { name: "setAngularVelocity(angularVelocity)", description: "Set the angular velocity" },
                     { name: "getAngularVelocity()", description: "Get the current angular velocity" }
-                ]
-            },
-
-            Collider: {
-                description: "A sensor-only collider for detecting overlaps without physics response",
-                example: `const collider = gameObject.addModule(new Collider());
-collider.shape = "rectangle";
-collider.width = 100;
-collider.height = 100;`,
-                properties: [
-                    { name: "shape", type: "string", description: "Collider shape (rectangle, circle, polygon)" },
-                    { name: "width", type: "number", description: "Width for rectangle" },
-                    { name: "height", type: "number", description: "Height for rectangle" },
-                    { name: "radius", type: "number", description: "Radius for circle" },
-                    { name: "vertices", type: "Array", description: "Vertices for polygon" },
-                    { name: "offset", type: "Vector2", description: "Offset from the game object's position" }
                 ]
             }
         }

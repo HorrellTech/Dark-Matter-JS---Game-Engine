@@ -63,6 +63,8 @@ class Module {
         /** @type {boolean} Whether this module is active */
         this.enabled = true;
 
+        this.ignoreGameObjectTransform = false; // If true, this module will not be affected by the gameObject's transform
+
         /** @type {Object} Custom properties for this module */
         this.properties = {};
 

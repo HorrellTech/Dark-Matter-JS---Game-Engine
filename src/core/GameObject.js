@@ -178,7 +178,16 @@ class GameObject {
         for (const module of this.modules) {
             if (module.enabled && typeof module.draw === 'function') {
                 try {
-                    module.draw(ctx);
+                    if (module.ignoreGameObjectTransform) {
+                        ctx.restore(); // Remove transform
+                        module.draw(ctx); // Draw in world space
+                        ctx.save();
+                        ctx.translate(worldPos.x, worldPos.y);
+                        ctx.rotate(worldAngle * Math.PI / 180);
+                        ctx.scale(worldScale.x, worldScale.y);
+                    } else {
+                        module.draw(ctx);
+                    }
                     moduleDidDraw = true;
                 } catch (error) {
                     console.error(`Error in module ${module.type || module.constructor.name} draw on ${this.name}:`, error);

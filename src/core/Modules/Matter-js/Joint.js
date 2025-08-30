@@ -9,6 +9,8 @@ class Joint extends Module {
     constructor() {
         super("Joint");
 
+        this.ignoreGameObjectTransform = true; // Joints are defined in local space
+
         // Constraint reference
         this.constraint = null;
 
@@ -493,79 +495,79 @@ class Joint extends Module {
      * Render debug visualization
      */
     draw(ctx) {
-        if (!this.showDebug || !this.constraint) return;
+    if (!this.showDebug || !this.constraint) return;
 
-        // Get world positions for both ends of the joint
-        const posA = { x: 0, y: 0 };
-        const posB = this.targetObject?.getWorldPosition() ?? { x: 0, y: 0 };
+    // Get world positions for both ends of the joint
+    const worldPosA = this.gameObject?.getWorldPosition() ?? { x: 0, y: 0 };
+    const worldPosB = this.targetObject?.getWorldPosition() ?? { x: 0, y: 0 };
 
-        // Add local offsets
-        const pointA = {
-            x: posA.x + this.pointA.x,
-            y: posA.y + this.pointA.y
-        };
-        const pointB = {
-            x: posB.x + this.pointB.x,
-            y: posB.y + this.pointB.y
-        };
+    // Add local offsets
+    const pointA = {
+        x: worldPosA.x + this.pointA.x,
+        y: worldPosA.y + this.pointA.y
+    };
+    const pointB = {
+        x: worldPosB.x + this.pointB.x,
+        y: worldPosB.y + this.pointB.y
+    };
 
-        ctx.save();
-        ctx.strokeStyle = this.debugColor;
-        ctx.globalAlpha = this.lineAlpha;
-        ctx.lineWidth = this.lineThickness;
+    ctx.save();
+    ctx.strokeStyle = this.debugColor;
+    ctx.globalAlpha = this.lineAlpha;
+    ctx.lineWidth = this.lineThickness;
 
-        if (this.jointType === "spring") {
-            // Draw a spring
-            const coils = this.springCoils;
-            const dx = pointB.x - pointA.x;
-            const dy = pointB.y - pointA.y;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx);
+    if (this.jointType === "spring") {
+        // Draw a spring
+        const coils = this.springCoils;
+        const dx = pointB.x - pointA.x;
+        const dy = pointB.y - pointA.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
 
-            // Spring parameters
-            const coilSpacing = length / coils;
-            const amplitude = Math.min(10, coilSpacing / 2);
+        // Spring parameters
+        const coilSpacing = length / coils;
+        const amplitude = Math.min(10, coilSpacing / 2);
 
-            ctx.beginPath();
-            for (let i = 0; i <= coils; i++) {
-                const t = i / coils;
-                const x = pointA.x + t * dx;
-                const y = pointA.y + t * dy;
-                // Offset perpendicular to the spring direction
-                const offset = (i % 2 === 0 ? 1 : -1) * amplitude;
-                const perpAngle = angle + Math.PI / 2;
-                const ox = Math.cos(perpAngle) * offset;
-                const oy = Math.sin(perpAngle) * offset;
-                if (i === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x + ox, y + oy);
-                }
+        ctx.beginPath();
+        for (let i = 0; i <= coils; i++) {
+            const t = i / coils;
+            const x = pointA.x + t * dx;
+            const y = pointA.y + t * dy;
+            // Offset perpendicular to the spring direction
+            const offset = (i % 2 === 0 ? 1 : -1) * amplitude;
+            const perpAngle = angle + Math.PI / 2;
+            const ox = Math.cos(perpAngle) * offset;
+            const oy = Math.sin(perpAngle) * offset;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x + ox, y + oy);
             }
-            ctx.lineTo(pointB.x, pointB.y);
-            ctx.stroke();
-        } else {
-            // Draw a straight line for normal joints
-            ctx.setLineDash([5, 5]);
-            ctx.beginPath();
-            ctx.moveTo(pointA.x, pointA.y);
-            ctx.lineTo(pointB.x, pointB.y);
-            ctx.stroke();
         }
-
-        // Draw connection points
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 1.0;
-        ctx.fillStyle = this.debugColor;
+        ctx.lineTo(pointB.x, pointB.y);
+        ctx.stroke();
+    } else {
+        // Draw a straight line for normal joints
+        ctx.setLineDash([5, 5]);
         ctx.beginPath();
-        ctx.arc(pointA.x, pointA.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(pointB.x, pointB.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.restore();
+        ctx.moveTo(pointA.x, pointA.y);
+        ctx.lineTo(pointB.x, pointB.y);
+        ctx.stroke();
     }
+
+    // Draw connection points
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = this.debugColor;
+    ctx.beginPath();
+    ctx.arc(pointA.x, pointA.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(pointB.x, pointB.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
 
     /**
      * Called when the module is destroyed
