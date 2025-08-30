@@ -1416,13 +1416,14 @@ class Engine {
         this.canvas.style.minWidth = '0';
         this.canvas.style.minHeight = '0';
         this.canvas.style.maxWidth = 'none';
-        this.canvas.style.maxHeight = 'none';
+        this.canvas.style.maxHeight = 'none';        
 
         // Set the drawing surface size (use viewport dimensions)
         this.canvas.width = viewportWidth * pixelRatio;
         this.canvas.height = viewportHeight * pixelRatio;
 
-        // Scale the context for high-DPI displays
+        // Reset transform before scaling
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         if (pixelRatio !== 1) {
             this.ctx.scale(pixelRatio, pixelRatio);
         }
@@ -1468,8 +1469,9 @@ class Engine {
             this.resizeObserver.disconnect();
         }
 
-        window.removeEventListener('resize', this.resizeCanvas);
-        window.removeEventListener('panel-resized', this.resizeCanvas);
+        this._resizeHandler = this.resizeCanvas.bind(this);
+        window.addEventListener('resize', this._resizeHandler);
+        window.addEventListener('panel-resized', this._resizeHandler);
 
         // Clear viewport callbacks
         this.viewportCallbacks = [];

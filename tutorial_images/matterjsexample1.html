@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>matterjsexample1</title>
+    <title>Dark Matter JS Game</title>
     <meta name="description" content="A game created with Dark Matter JS">
     
     <!-- External Dependencies -->
@@ -1727,27 +1727,39 @@ class PhysicsManager {
         this.engine = Matter.Engine.create({
             enableSleeping: true
         });
-        
+
         this.world = this.engine.world;
-        
+
         // Configure world properties
-        this.world.gravity.y = 1; // Default gravity
-        
+        this.world.gravity.y = 0; // Default gravity (Off, we will process gravity per RigidBody)
+        this.gravity = { x: 0, y: 1 }; // Custom gravity vector
+
         // Track all physics bodies and their associated game objects
         this.bodies = new Map(); // Maps Matter.js bodies to game objects
         this.gameObjectBodies = new Map(); // Maps game objects to physics bodies
-        
+
         // Debug drawing options
         this.debugDraw = false;
         this.wireframes = true;
-        
+
         // Performance settings
         this.fixedTimeStep = 1000 / 60; // 60 updates per second
         this.timeAccumulator = 0;
-        
+
+        // Wake up bodies without gravity on collision
+        Matter.Events.on(this.engine, 'collisionStart', event => {
+            event.pairs.forEach(pair => {
+                [pair.bodyA, pair.bodyB].forEach(body => {
+                    if (body.ignoreGravity && body.isSleeping) {
+                        Matter.Sleeping.set(body, false);
+                    }
+                });
+            });
+        });
+
         console.log("Physics manager initialized");
     }
-    
+
     /**
      * Set the gravity for the physics world
      * @param {number} x - X component of gravity
@@ -1757,7 +1769,7 @@ class PhysicsManager {
         this.world.gravity.x = x;
         this.world.gravity.y = y;
     }
-    
+
     /**
      * Update physics world - called every frame
      * @param {number} deltaTime - Time in seconds since last frame
@@ -1765,34 +1777,58 @@ class PhysicsManager {
     update(deltaTime) {
         // Use fixed timestep for more stable physics
         this.timeAccumulator += deltaTime * 1000; // Convert to ms
-        
-        while (this.timeAccumulator >= this.fixedTimeStep) {
+
+        // Clamp max steps per frame to avoid spiral of death
+        const maxSteps = 5;
+        let steps = 0;
+
+        while (this.timeAccumulator >= this.fixedTimeStep && steps < maxSteps) {
             Matter.Engine.update(this.engine, this.fixedTimeStep);
+
+            // Custom gravity application per body
+            const gravity = this.gravity;
+            this.bodies.forEach((gameObject, body) => {
+                // Only apply gravity if body is dynamic, not static, and not ignoring gravity
+                if (!body.isStatic && !body.ignoreGravity) {
+                    // Apply gravity force: F = m * g
+                    const force = {
+                        x: body.mass * gravity.x * 0.001,
+                        y: body.mass * gravity.y * 0.001
+                    };
+                    Matter.Body.applyForce(body, body.position, force);
+                }
+            });
             this.timeAccumulator -= this.fixedTimeStep;
+            steps++;
         }
-        
+
+        // If too much time accumulated, drop the remainder to avoid spiral
+        if (steps === maxSteps) {
+            this.timeAccumulator = 0;
+        }
+
         // Update game object positions based on physics bodies
         this.syncPhysicsBodies();
     }
-    
+
     /**
      * Synchronize game object transforms with physics body positions
      */
     syncPhysicsBodies() {
         if (!this.bodies || this.bodies.size === 0) return;
-        
+
         this.bodies.forEach((gameObject, body) => {
             if (!gameObject || !body) return;
-            
+
             // Skip colliders that are managed by their own module
             if (body.plugin && body.plugin.isCollider) return;
-            
+
             // Only update if the body is dynamic or kinematic
             if (!body.isStatic) {
                 // Update position from physics body
                 gameObject.position.x = body.position.x;
                 gameObject.position.y = body.position.y;
-                
+
                 // Update rotation (Matter.js uses radians)
                 gameObject.angle = body.angle * (180 / Math.PI);
             } else if (gameObject.rigidbody && gameObject.rigidbody.bodyNeedsUpdate) {
@@ -1803,7 +1839,7 @@ class PhysicsManager {
             }
         });
     }
-    
+
     /**
      * Register a body with the physics world and associate it with a game object
      * @param {Matter.Body} body - Physics body to register
@@ -1814,21 +1850,21 @@ class PhysicsManager {
             console.warn("PhysicsManager.registerBody: Missing body or gameObject");
             return;
         }
-        
+
         // Ensure maps are initialized
         if (!this.bodies) this.bodies = new Map();
         if (!this.gameObjectBodies) this.gameObjectBodies = new Map();
-        
+
         try {
             // Store the mapping between body and game object
             this.bodies.set(body, gameObject);
             this.gameObjectBodies.set(gameObject, body);
-            
+
             // Add body to the physics world if not already added
             if (this.engine && this.engine.world && !this.engine.world.bodies.includes(body)) {
                 Matter.Composite.add(this.engine.world, body);
             }
-            
+
             // Ensure static bodies are really static
             if (body.isStatic) {
                 Matter.Body.setStatic(body, true);
@@ -1837,7 +1873,7 @@ class PhysicsManager {
             console.error("Error in PhysicsManager.registerBody:", error);
         }
     }
-    
+
     /**
      * Remove a physics body from the world
      * @param {Matter.Body} body - The physics body to remove
@@ -1848,56 +1884,56 @@ class PhysicsManager {
             this.bodies.delete(body);
         }
     }
-    
+
     /**
      * Draw debug visualization of the physics world
      * @param {CanvasRenderingContext2D} ctx - The canvas rendering context
      */
     drawDebug(ctx) {
         if (!this.debugDraw) return;
-        
+
         // Save context state
         ctx.save();
-        
+
         // Render all bodies
         const bodies = Matter.Composite.allBodies(this.world);
-        
+
         ctx.beginPath();
-        
+
         for (let i = 0; i < bodies.length; i++) {
             const body = bodies[i];
             const vertices = body.vertices;
-            
+
             ctx.moveTo(vertices[0].x, vertices[0].y);
-            
+
             for (let j = 1; j < vertices.length; j++) {
                 ctx.lineTo(vertices[j].x, vertices[j].y);
             }
-            
+
             ctx.lineTo(vertices[0].x, vertices[0].y);
         }
-        
+
         ctx.lineWidth = 1;
         ctx.strokeStyle = '#22ff22';
         ctx.stroke();
-        
+
         // Render constraints
         const constraints = Matter.Composite.allConstraints(this.world);
-        
+
         ctx.beginPath();
-        
+
         for (let i = 0; i < constraints.length; i++) {
             const constraint = constraints[i];
             if (!constraint.render.visible) continue;
-            
+
             const bodyA = constraint.bodyA;
             const bodyB = constraint.bodyB;
             const pointA = constraint.pointA;
             const pointB = constraint.pointB;
-            
+
             // Point coordinates
             let pAx, pAy, pBx, pBy;
-            
+
             // Calculate points
             if (bodyA) {
                 pAx = bodyA.position.x + pointA.x;
@@ -1906,7 +1942,7 @@ class PhysicsManager {
                 pAx = pointA.x;
                 pAy = pointA.y;
             }
-            
+
             if (bodyB) {
                 pBx = bodyB.position.x + pointB.x;
                 pBy = bodyB.position.y + pointB.y;
@@ -1914,19 +1950,19 @@ class PhysicsManager {
                 pBx = pointB.x;
                 pBy = pointB.y;
             }
-            
+
             ctx.moveTo(pAx, pAy);
             ctx.lineTo(pBx, pBy);
         }
-        
+
         ctx.lineWidth = 1;
         ctx.strokeStyle = '#ff8822';
         ctx.stroke();
-        
+
         // Restore context state
         ctx.restore();
     }
-    
+
     /**
      * Reset the physics world
      */
@@ -1941,11 +1977,11 @@ class PhysicsManager {
                 originalRotation: gameObject.originalRotation || 0
             });
         });
-        
+
         // Clear all bodies and constraints
         Matter.Composite.clear(this.world);
         this.bodies.clear();
-        
+
         // Reset positions of affected game objects
         objectsToReset.forEach(data => {
             // Reset to original position and rotation if available
@@ -6442,12 +6478,14 @@ class Engine {
         return findInObjects(this.gameObjects);
     }
 
-    getAllObjects() {
+    getAllObjects(objects = this.gameObjects, visited = new Set()) {
         let result = [];
-        this.gameObjects.forEach(obj => {
+        objects.forEach(obj => {
+            if (visited.has(obj)) return;
+            visited.add(obj);
             result.push(obj);
             if (obj.children && obj.children.length) {
-                result = result.concat(this.getAllObjects(obj.children));
+                result = result.concat(this.getAllObjects(obj.children, visited));
             }
         });
         return result;
@@ -7523,7 +7561,7 @@ class Engine {
 
         // Prevent default touch actions on the canvas
         this.canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events for simplicity
             if (window.input) {
@@ -7543,7 +7581,7 @@ class Engine {
         }, { passive: false });
 
         this.canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events
             if (window.input) {
@@ -7562,7 +7600,7 @@ class Engine {
         }, { passive: false });
 
         this.canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events
             if (window.input) {
@@ -7649,13 +7687,14 @@ class Engine {
         this.canvas.style.minWidth = '0';
         this.canvas.style.minHeight = '0';
         this.canvas.style.maxWidth = 'none';
-        this.canvas.style.maxHeight = 'none';
+        this.canvas.style.maxHeight = 'none';        
 
         // Set the drawing surface size (use viewport dimensions)
         this.canvas.width = viewportWidth * pixelRatio;
         this.canvas.height = viewportHeight * pixelRatio;
 
-        // Scale the context for high-DPI displays
+        // Reset transform before scaling
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         if (pixelRatio !== 1) {
             this.ctx.scale(pixelRatio, pixelRatio);
         }
@@ -7701,8 +7740,9 @@ class Engine {
             this.resizeObserver.disconnect();
         }
 
-        window.removeEventListener('resize', this.resizeCanvas);
-        window.removeEventListener('panel-resized', this.resizeCanvas);
+        this._resizeHandler = this.resizeCanvas.bind(this);
+        window.addEventListener('resize', this._resizeHandler);
+        window.addEventListener('panel-resized', this._resizeHandler);
 
         // Clear viewport callbacks
         this.viewportCallbacks = [];
@@ -9108,6 +9148,11 @@ class RigidBody extends Module {
             group: 0                // Collision groups
         };
 
+        this.useGravity = true; // New property: reacts to gravity
+        this.frictionAir = 0.01; // Air resistance (linear damping)
+        this.sleepingAllowed = true; // Can the body sleep?
+        this.label = ""; // Custom label
+
         // Shape options
         this.shape = "rectangle";   // "rectangle", "circle", "polygon"
         this.width = 50;           // Used for rectangle
@@ -9166,6 +9211,36 @@ class RigidBody extends Module {
             min: 0,
             max: 1,
             onChange: (val) => { this.restitution = val; if (this.body) this.body.restitution = val; }
+        });
+
+        this.exposeProperty("useGravity", "boolean", this.useGravity, {
+            onChange: (val) => { 
+                this.useGravity = val; 
+                if (this.body) this.body.ignoreGravity = !val; // Custom flag, see below
+            }
+        });
+
+        this.exposeProperty("frictionAir", "number", this.frictionAir, {
+            min: 0,
+            max: 1,
+            onChange: (val) => { 
+                this.frictionAir = val; 
+                if (this.body) this.body.frictionAir = val; 
+            }
+        });
+
+        this.exposeProperty("sleepingAllowed", "boolean", this.sleepingAllowed, {
+            onChange: (val) => { 
+                this.sleepingAllowed = val; 
+                if (this.body) this.body.sleepThreshold = val ? 60 : -1; // Matter.js default is 60
+            }
+        });
+
+        this.exposeProperty("label", "string", this.label, {
+            onChange: (val) => { 
+                this.label = val; 
+                if (this.body) this.body.label = val; 
+            }
         });
 
         this.exposeProperty("fixedRotation", "boolean", false, {
@@ -9284,13 +9359,15 @@ class RigidBody extends Module {
 
         const options = {
             friction: this.friction,
+            frictionAir: this.frictionAir,
             restitution: this.restitution,
             density: this.density,
             isSensor: this.isSensor,
             isStatic: this.bodyType === "static",
             angle: angle,
-            label: this.gameObject.name || "Body",
-            collisionFilter: this.collisionFilter
+            label: this.label || this.gameObject.name || "Body",
+            collisionFilter: this.collisionFilter,
+            sleepThreshold: this.sleepingAllowed ? 60 : -1
         };
 
         try {
@@ -9349,6 +9426,11 @@ class RigidBody extends Module {
         if (this.fixedRotation) {
             body.inertia = Infinity;
             body.inverseInertia = 0;
+        }
+
+        // Gravity control (custom implementation)
+        if (body) {
+            body.ignoreGravity = !this.useGravity; // Custom flag, must be handled in your physicsManager update
         }
 
         // Register with physics manager - ensure this properly adds to the world
@@ -9626,9 +9708,13 @@ class RigidBody extends Module {
             radius: this.radius,
             density: this.density,
             friction: this.friction,
+            frictionAir: this.frictionAir,
             restitution: this.restitution,
             fixedRotation: this.fixedRotation,
             isSensor: this.isSensor,
+            useGravity: this.useGravity,
+            sleepingAllowed: this.sleepingAllowed,
+            label: this.label,
             collisionFilter: { ...this.collisionFilter },
             vertices: this.vertices
         };
@@ -9647,9 +9733,13 @@ class RigidBody extends Module {
         this.radius = data.radius ?? this.radius;
         this.density = data.density ?? this.density;
         this.friction = data.friction ?? this.friction;
+        this.frictionAir = data.frictionAir ?? this.frictionAir;
         this.restitution = data.restitution ?? this.restitution;
         this.fixedRotation = data.fixedRotation ?? false;
         this.isSensor = data.isSensor ?? false;
+        this.useGravity = data.useGravity ?? true;
+        this.sleepingAllowed = data.sleepingAllowed ?? true;
+        this.label = data.label ?? "";
         this.collisionFilter = { ...this.collisionFilter, ...data.collisionFilter };
         this.vertices = data.vertices ?? [];
 
@@ -9812,8 +9902,477 @@ class DrawCircle extends Module {
 
 window.DrawCircle = DrawCircle;
 
-// src/core/Modules/Ball.js
-// Could not load src/core/Modules/Ball.js: Failed to load src/core/Modules/Ball.js: 404
+// src/core/Modules/Matter-js/GravityFieldMatter.js
+/**
+ * GravityFieldMatter - A physics module that creates gravitational fields for Matter.js
+ * Can attract or repel dynamic RigidBody objects within a specified range
+ */
+class GravityFieldMatter extends Module {
+    static allowMultiple = false; // Only one GravityFieldMatter per GameObject
+    static namespace = "Matter.js";
+    static description = "Creates gravitational fields that can attract or repel dynamic RigidBody objects";
+
+    constructor() {
+        super("GravityFieldMatter");
+
+        // Core gravity field properties
+        this.fieldType = "pull";        // "pull" (attract) or "push" (repel)
+        this.strength = 100;            // Gravitational strength
+        this.range = 200;               // Maximum range of effect
+        this.falloffType = "linear";    // "linear", "quadratic", "none"
+        this.minRange = 0;              // Minimum range (dead zone)
+
+        // Performance and behavior settings
+        this.affectSelf = false;        // Should it affect its own RigidBody?
+        this.onlyAffectTagged = false;  // Only affect objects with specific tags
+        this.requiredTags = [];         // Tags that objects must have to be affected
+        this.excludedTags = [];         // Tags that prevent objects from being affected
+
+        // Visual and debugging
+        this.showGizmo = true;          // Show visual representation in editor
+        this.gizmoColor = "#00ff00";    // Color for the gizmo
+        this.gizmoAlpha = 0.3;          // Transparency of the gizmo
+
+        // Internal state
+        this.affectedBodies = new Set(); // Track currently affected bodies
+        this.updateInterval = 16;       // Update every 16ms (~60fps)
+        this.lastUpdateTime = 0;
+
+        this.showPulse = false; // Enable pulse visualization
+        this.pulseSpeed = 1.5;  // Speed of pulse animation
+        this.pulseAlpha = 0.5;  // Max alpha for pulse
+
+        // Expose properties to the inspector
+        this.exposeProperty("fieldType", "enum", this.fieldType, {
+            options: ["pull", "push"],
+            onChange: (val) => { this.fieldType = val; }
+        });
+
+        this.exposeProperty("strength", "number", this.strength, {
+            min: 0,
+            max: 1000,
+            step: 1,
+            onChange: (val) => { this.strength = val; }
+        });
+
+        this.exposeProperty("range", "number", this.range, {
+            min: 1,
+            max: 2000,
+            step: 1,
+            onChange: (val) => { this.range = val; }
+        });
+
+        this.exposeProperty("minRange", "number", this.minRange, {
+            min: 0,
+            max: 500,
+            step: 1,
+            onChange: (val) => {
+                this.minRange = Math.min(val, this.range - 1);
+            }
+        });
+
+        this.exposeProperty("falloffType", "enum", this.falloffType, {
+            options: ["none", "linear", "quadratic"],
+            onChange: (val) => { this.falloffType = val; }
+        });
+
+        this.exposeProperty("affectSelf", "boolean", this.affectSelf, {
+            onChange: (val) => { this.affectSelf = val; }
+        });
+
+        this.exposeProperty("onlyAffectTagged", "boolean", this.onlyAffectTagged, {
+            onChange: (val) => { this.onlyAffectTagged = val; }
+        });
+
+        this.exposeProperty("showPulse", "boolean", this.showPulse, {
+            onChange: (val) => { this.showPulse = val; }
+        });
+        this.exposeProperty("pulseSpeed", "number", this.pulseSpeed, {
+            min: 0.1,
+            max: 10,
+            step: 0.1,
+            onChange: (val) => { this.pulseSpeed = val; }
+        });
+        this.exposeProperty("pulseAlpha", "number", this.pulseAlpha, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => { this.pulseAlpha = val; }
+        });
+
+        this.exposeProperty("showGizmo", "boolean", this.showGizmo, {
+            onChange: (val) => { this.showGizmo = val; }
+        });
+
+        this.exposeProperty("gizmoColor", "color", this.gizmoColor, {
+            onChange: (val) => { this.gizmoColor = val; }
+        });
+
+        this.exposeProperty("gizmoAlpha", "number", this.gizmoAlpha, {
+            min: 0,
+            max: 1,
+            step: 0.1,
+            onChange: (val) => { this.gizmoAlpha = val; }
+        });
+    }
+
+    /**
+     * Initialize the gravity field when the component starts
+     */
+    start() {
+        if (!window.physicsManager) {
+            console.error("Physics manager not found. GravityFieldMatter requires a physics manager.");
+            return;
+        }
+
+        this.lastUpdateTime = performance.now();
+    }
+
+    /**
+     * Update the gravity field effects
+     */
+    loop(deltaTime) {
+        if (!window.physicsManager || !this.gameObject) return;
+
+        const currentTime = performance.now();
+        if (currentTime - this.lastUpdateTime < this.updateInterval) {
+            return;
+        }
+        this.lastUpdateTime = currentTime;
+
+        const fieldPosition = this.gameObject.getWorldPosition();
+        const allGameObjects = window.engine?.gameObjects || [];
+
+        // Clear previously affected bodies
+        this.affectedBodies.clear();
+
+        // Find and affect all valid RigidBody objects
+        for (const gameObject of allGameObjects) {
+            if (!this.isValidTarget(gameObject, fieldPosition)) {
+                continue;
+            }
+
+            const rigidBody = gameObject.getModule("RigidBody");
+            if (!rigidBody || !rigidBody.body) {
+                continue;
+            }
+
+            // Skip non-dynamic bodies
+            if (rigidBody.bodyType !== "dynamic") {
+                continue;
+            }
+
+            const targetPosition = gameObject.getWorldPosition();
+            const distance = this.calculateDistance(fieldPosition, targetPosition);
+
+            // Apply gravitational force
+            this.applyGravitationalForce(rigidBody, fieldPosition, targetPosition, distance);
+            this.affectedBodies.add(rigidBody.body);
+        }
+    }
+
+    /**
+ * Draws the pulse effect on the canvas context
+ */
+    draw(ctx) {
+        if (!this.showPulse || !this.gameObject) return;
+
+        const position = this.gameObject.getWorldPosition();
+        const now = performance.now() / 1000;
+        this._pulseTime = now * this.pulseSpeed;
+
+        // Pulse parameters
+        const pulseCount = 3;
+        const maxRadius = this.range;
+        const minRadius = this.minRange;
+        const pulseInterval = maxRadius / pulseCount;
+
+        for (let i = 0; i < pulseCount; i++) {
+            // Calculate pulse progress (0 to 1)
+            let progress = ((this._pulseTime + i * 0.5) % 1);
+            let radius;
+            if (this.fieldType === "push") {
+                // Outward pulse
+                radius = minRadius + progress * (maxRadius - minRadius);
+            } else {
+                // Inward pulse
+                radius = maxRadius - progress * (maxRadius - minRadius);
+            }
+
+            // Fade alpha as pulse grows/shrinks
+            const alpha = this.pulseAlpha * (1 - progress);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = this.gizmoColor;
+            ctx.globalAlpha = alpha;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    /**
+     * Check if a GameObject is a valid target for the gravity field
+     */
+    isValidTarget(gameObject, fieldPosition) {
+        if (!gameObject || gameObject === this.gameObject) {
+            return false;
+        }
+
+        // Check if we should affect ourselves
+        if (gameObject === this.gameObject && !this.affectSelf) {
+            return false;
+        }
+
+        const targetPosition = gameObject.getWorldPosition();
+        const distance = this.calculateDistance(fieldPosition, targetPosition);
+
+        // Check range
+        if (distance > this.range || distance < this.minRange) {
+            return false;
+        }
+
+        // Check tags if filtering is enabled
+        if (this.onlyAffectTagged && this.requiredTags.length > 0) {
+            const hasRequiredTag = this.requiredTags.some(tag => gameObject.tags?.includes(tag));
+            if (!hasRequiredTag) {
+                return false;
+            }
+        }
+
+        // Check excluded tags
+        if (this.excludedTags.length > 0) {
+            const hasExcludedTag = this.excludedTags.some(tag => gameObject.tags?.includes(tag));
+            if (hasExcludedTag) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Calculate distance between two points
+     */
+    calculateDistance(pos1, pos2) {
+        const dx = pos2.x - pos1.x;
+        const dy = pos2.y - pos1.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Apply gravitational force to a RigidBody
+     */
+    applyGravitationalForce(rigidBody, fieldPosition, targetPosition, distance) {
+        if (distance === 0) return;
+
+        // Calculate direction vector
+        let directionX = fieldPosition.x - targetPosition.x;
+        let directionY = fieldPosition.y - targetPosition.y;
+
+        // Normalize direction
+        const magnitude = Math.sqrt(directionX * directionX + directionY * directionY);
+        if (magnitude === 0) return;
+
+        directionX /= magnitude;
+        directionY /= magnitude;
+
+        // For push fields, reverse the direction
+        if (this.fieldType === "push") {
+            directionX = -directionX;
+            directionY = -directionY;
+        }
+
+        // Calculate force magnitude based on falloff type
+        let forceMagnitude = this.strength;
+
+        switch (this.falloffType) {
+            case "linear":
+                forceMagnitude *= (1 - (distance / this.range));
+                break;
+            case "quadratic":
+                const normalizedDistance = distance / this.range;
+                forceMagnitude *= (1 - normalizedDistance * normalizedDistance);
+                break;
+            case "none":
+                // No falloff, use full strength
+                break;
+        }
+
+        // Scale by mass for more realistic physics
+        const mass = rigidBody.body.mass;
+        forceMagnitude *= mass * 0.001; // Scale factor to make forces reasonable
+
+        // Apply the force
+        const force = {
+            x: directionX * forceMagnitude,
+            y: directionY * forceMagnitude
+        };
+
+        rigidBody.applyForce(force);
+    }
+
+    /**
+     * Add a required tag for filtering
+     */
+    addRequiredTag(tag) {
+        if (!this.requiredTags.includes(tag)) {
+            this.requiredTags.push(tag);
+        }
+    }
+
+    /**
+     * Remove a required tag
+     */
+    removeRequiredTag(tag) {
+        const index = this.requiredTags.indexOf(tag);
+        if (index > -1) {
+            this.requiredTags.splice(index, 1);
+        }
+    }
+
+    /**
+     * Add an excluded tag for filtering
+     */
+    addExcludedTag(tag) {
+        if (!this.excludedTags.includes(tag)) {
+            this.excludedTags.push(tag);
+        }
+    }
+
+    /**
+     * Remove an excluded tag
+     */
+    removeExcludedTag(tag) {
+        const index = this.excludedTags.indexOf(tag);
+        if (index > -1) {
+            this.excludedTags.splice(index, 1);
+        }
+    }
+
+    /**
+     * Get all currently affected bodies
+     */
+    getAffectedBodies() {
+        return Array.from(this.affectedBodies);
+    }
+
+    /**
+     * Check if a specific body is being affected
+     */
+    isAffectingBody(body) {
+        return this.affectedBodies.has(body);
+    }
+
+    /**
+     * Render debug gizmo (if supported by the engine)
+     */
+    drawGizmos() {
+        if (!this.showGizmo || !this.gameObject) return;
+
+        const position = this.gameObject.getWorldPosition();
+
+        // This would need to be implemented based on your rendering system
+        // Example pseudo-code for drawing the gravity field visualization
+        if (window.gizmoRenderer) {
+            // Draw outer range circle
+            window.gizmoRenderer.drawCircle(
+                position.x,
+                position.y,
+                this.range,
+                this.gizmoColor,
+                this.gizmoAlpha
+            );
+
+            // Draw inner dead zone circle if minRange > 0
+            if (this.minRange > 0) {
+                window.gizmoRenderer.drawCircle(
+                    position.x,
+                    position.y,
+                    this.minRange,
+                    "#ff0000",
+                    this.gizmoAlpha * 0.5
+                );
+            }
+
+            // Draw center point
+            window.gizmoRenderer.drawCircle(
+                position.x,
+                position.y,
+                5,
+                this.fieldType === "pull" ? "#00ff00" : "#ff0000",
+                1.0
+            );
+
+            // Draw direction indicators
+            const arrowLength = 20;
+            const arrowCount = 8;
+            for (let i = 0; i < arrowCount; i++) {
+                const angle = (i / arrowCount) * Math.PI * 2;
+                const startX = position.x + Math.cos(angle) * (this.minRange + 10);
+                const startY = position.y + Math.sin(angle) * (this.minRange + 10);
+
+                let endX, endY;
+                if (this.fieldType === "pull") {
+                    endX = position.x + Math.cos(angle) * (this.minRange + arrowLength);
+                    endY = position.y + Math.sin(angle) * (this.minRange + arrowLength);
+                } else {
+                    endX = position.x + Math.cos(angle) * (this.minRange - arrowLength);
+                    endY = position.y + Math.sin(angle) * (this.minRange - arrowLength);
+                }
+
+                window.gizmoRenderer?.drawArrow(startX, startY, endX, endY, "#ffffff", 0.8);
+            }
+        }
+    }
+
+    /**
+     * Serialize the module
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            fieldType: this.fieldType,
+            strength: this.strength,
+            range: this.range,
+            minRange: this.minRange,
+            falloffType: this.falloffType,
+            affectSelf: this.affectSelf,
+            onlyAffectTagged: this.onlyAffectTagged,
+            requiredTags: [...this.requiredTags],
+            excludedTags: [...this.excludedTags],
+            showGizmo: this.showGizmo,
+            gizmoColor: this.gizmoColor,
+            gizmoAlpha: this.gizmoAlpha,
+            updateInterval: this.updateInterval
+        };
+    }
+
+    /**
+     * Deserialize the module
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+        this.fieldType = data.fieldType ?? this.fieldType;
+        this.strength = data.strength ?? this.strength;
+        this.range = data.range ?? this.range;
+        this.minRange = data.minRange ?? this.minRange;
+        this.falloffType = data.falloffType ?? this.falloffType;
+        this.affectSelf = data.affectSelf ?? this.affectSelf;
+        this.onlyAffectTagged = data.onlyAffectTagged ?? this.onlyAffectTagged;
+        this.requiredTags = data.requiredTags ?? [];
+        this.excludedTags = data.excludedTags ?? [];
+        this.showGizmo = data.showGizmo ?? this.showGizmo;
+        this.gizmoColor = data.gizmoColor ?? this.gizmoColor;
+        this.gizmoAlpha = data.gizmoAlpha ?? this.gizmoAlpha;
+        this.updateInterval = data.updateInterval ?? this.updateInterval;
+    }
+}
+
+// Register the module
+window.GravityFieldMatter = GravityFieldMatter;
 
 // src/core/Modules/Drawing/DrawText.js
 class DrawText extends Module {
@@ -10519,773 +11078,6 @@ class DrawText extends Module {
 }
 
 window.DrawText = DrawText;
-
-// Ball.js
-class Ball extends Module {
-    static namespace = "Drawing";
-    static description = "Custom generated drawing module";
-    static allowMultiple = false;
-    static iconClass = "fas fa-paint-brush";
-    static iconColor = "#64B5F6";
-
-    constructor() {
-        super("Ball");
-
-        // Visual properties
-        this.scale = 1;
-        this.offsetX = 0;
-        this.offsetY = 0;
-        this.flipped = false;
-
-        this.animationRanges = [
-        {
-                "name": "idle",
-                "start": 0,
-                "end": 4
-        }
-];
-        this.currentAnimation = "idle";
-        
-        // Animation properties
-        this.isAnimated = false;
-        this.currentFrame = 0;
-        this.animationSpeed = 1;
-        this.isPlaying = true;
-        this.frameTimer = 0;
-        this.pingPong = false;
-        this.playDirection = 1;
-        this.totalFrames = 1;
-        this.enableTweening = false;
-        this.tweenType = "linear";
-
-        this.preGenerateImage = false;
-        this.generatedImage = null;
-        this.imageGenerated = false;
-        
-        // Frame data
-        this.frames = [
-        [
-                {
-                        "type": "circle",
-                        "startX": 400,
-                        "startY": 304,
-                        "endX": 432,
-                        "endY": 384,
-                        "fillColor": "#3b82f6",
-                        "strokeColor": "#000000",
-                        "strokeWidth": 2,
-                        "fill": true,
-                        "stroke": true,
-                        "visible": true,
-                        "rotation": 0,
-                        "scaleX": 1,
-                        "scaleY": 1,
-                        "gradient": {
-                                "enabled": true,
-                                "start": "#bd4200",
-                                "end": "#ef864e",
-                                "type": "linear",
-                                "angle": 162
-                        },
-                        "parentGroup": null,
-                        "children": [],
-                        "localRotation": 0,
-                        "worldRotation": 0,
-                        "localPosition": {
-                                "x": 400,
-                                "y": 304
-                        },
-                        "worldPosition": {
-                                "x": 400,
-                                "y": 304
-                        },
-                        "rotationHotspot": {
-                                "x": 0,
-                                "y": 0
-                        }
-                }
-        ]
-];
-        
-        // Initialize current animation range
-        this.currentAnimationRange = this.getCurrentAnimationRange();
-        
-        this.exposeProperties();
-    }
-
-    getCurrentAnimationRange() {
-        return this.animationRanges.find(r => r.name === this.currentAnimation) || 
-               { name: "default", start: 0, end: this.totalFrames - 1 };
-    }
-
-    exposeProperties() {
-        this.exposeProperty("scale", "number", this.scale, {
-            description: "Scale factor",
-            onChange: (val) => { this.scale = val; }
-        });
-        
-        this.exposeProperty("offsetX", "number", this.offsetX, {
-            description: "X offset",
-            onChange: (val) => { this.offsetX = val; }
-        });
-        
-        this.exposeProperty("offsetY", "number", this.offsetY, {
-            description: "Y offset", 
-            onChange: (val) => { this.offsetY = val; }
-        });
-        
-        this.exposeProperty("flipped", "boolean", this.flipped, {
-            description: "Flip horizontally",
-            onChange: (val) => { this.flipped = val; }
-        });
-
-        this.exposeProperty("preGenerateImage", "boolean", this.preGenerateImage, {
-            description: "Pre-generate image for better performance",
-            onChange: (val) => { 
-                this.preGenerateImage = val; 
-                if (val) {
-                    this.generateImage();
-                } else {
-                    this.generatedImage = null;
-                    this.imageGenerated = false;
-                }
-            }
-        });
-
-        if (this.isAnimated) {
-            this.exposeProperty("currentAnimation", "enum", this.currentAnimation, {
-                options: this.animationRanges.map(r => r.name),
-                description: "Current animation",
-                onChange: (val) => {
-                    this.setAnimation(val);
-                }
-            });
-
-            this.exposeProperty("animationSpeed", "number", this.animationSpeed, {
-                description: "Animation speed",
-                onChange: (val) => { this.animationSpeed = val; }
-            });
-            
-            this.exposeProperty("enableTweening", "boolean", this.enableTweening, {
-                description: "Enable tweening for smooth transitions",
-                onChange: (val) => { this.enableTweening = val; }
-            });
-
-            this.exposeProperty("tweenType", "enum", this.tweenType, {
-                options: ["linear", "ease-in", "ease-out", "ease-in-out"],
-                description: "Tweening type",
-                onChange: (val) => { this.tweenType = val; }
-            });
-            
-            this.exposeProperty("isPlaying", "boolean", this.isPlaying, {
-                description: "Is playing animation",
-                onChange: (val) => { this.isPlaying = val }
-            });
-        }
-    }
-
-    style(style) {
-        style.startGroup("Ball Appearance", false, { 
-            backgroundColor: 'rgba(59,130,246,0.1)',
-            borderRadius: '6px',
-            padding: '8px'
-        });
-        
-        style.exposeProperty("scale", "number", this.scale, {
-            min: 0.1,
-            max: 5,
-            step: 0.1,
-            style: { label: "Scale", slider: true }
-        });
-        
-        style.exposeProperty("offsetX", "number", this.offsetX, {
-            min: -200,
-            max: 200,
-            style: { label: "Offset X", slider: true }
-        });
-        
-        style.exposeProperty("offsetY", "number", this.offsetY, {
-            min: -200,
-            max: 200,
-            style: { label: "Offset Y", slider: true }
-        });
-        
-        style.exposeProperty("flipped", "boolean", this.flipped, {
-            style: { label: "Flip Horizontally" }
-        });
-
-        style.exposeProperty("preGenerateImage", "boolean", this.preGenerateImage, {
-            style: { label: "Pre-generate Image" }
-        });
-        
-        if (this.isAnimated) {
-            style.startGroup("Animation Controls", true);
-
-            style.exposeProperty("currentAnimation", "enum", this.currentAnimation, {
-                options: this.animationRanges.map(r => r.name),
-                style: { label: "Animation" }
-            });
-            
-            style.exposeProperty("animationSpeed", "number", this.animationSpeed, {
-                min: 0.1,
-                max: 5,
-                step: 0.1,
-                style: { label: "Speed", slider: true }
-            });
-
-            style.exposeProperty("enableTweening", "boolean", this.enableTweening, {
-                style: { label: "Enable Tweening" }
-            });
-
-            style.exposeProperty("tweenType", "enum", this.tweenType, {
-                options: ["linear", "ease-in", "ease-out", "ease-in-out"],
-                style: { label: "Tween Type" }
-            });
-            
-            style.exposeProperty("isPlaying", "boolean", this.isPlaying, {
-                style: { label: "Playing" }
-            });
-            
-            style.endGroup();
-        }
-        
-        style.endGroup();
-        style.addHelpText("Generated drawing module with animation support");
-        style.addHelpText(`Animation List: 
-${this.animationRanges.map(r => `${r.name} (frames ${r.start}-${r.end})`).join(", ")}`);
-    }
-
-    // Public API Methods
-    playAnimation(name) {
-        const range = this.animationRanges.find(r => r.name === name);
-        if (range) {
-            this.currentAnimation = name;
-            this.currentAnimationRange = range;
-            this.currentFrame = range.start;
-            this.isPlaying = true;
-            this.frameTimer = 0;
-            this.playDirection = 1;
-        }
-    }
-
-    setAnimation(name) {
-        const range = this.animationRanges.find(r => r.name === name);
-        if (range) {
-            this.currentAnimation = name;
-            this.currentAnimationRange = range;
-            this.currentFrame = range.start;
-            this.isPlaying = false;
-            this.frameTimer = 0;
-            this.playDirection = 1;
-        }
-    }
-
-    play() {
-        this.isPlaying = true;
-    }
-
-    pause() {
-        this.isPlaying = false;
-    }
-
-    stop() {
-        this.isPlaying = false;
-        const range = this.getCurrentAnimationRange();
-        this.currentFrame = range.start;
-        this.frameTimer = 0;
-        this.playDirection = 1;
-    }
-
-    setFrame(frameIndex) {
-        const range = this.getCurrentAnimationRange();
-        if (frameIndex >= range.start && frameIndex <= range.end) {
-            this.currentFrame = frameIndex;
-        }
-    }
-
-    setSpeed(speed) {
-        this.animationSpeed = Math.max(0.1, speed);
-        return this;
-    }
-
-    getCurrentFrame() {
-        return this.currentFrame;
-    }
-
-    getTotalFrames() {
-        return this.totalFrames;
-    }
-
-    getAnimationFrameCount() {
-        const range = this.getCurrentAnimationRange();
-        return range.end - range.start + 1;
-    }
-
-    start() {
-        if (this.preGenerateImage) {
-            this.generateImage();
-        }
-        // Initialize to first frame of current animation
-        const range = this.getCurrentAnimationRange();
-        this.currentFrame = range.start;
-    }
-
-    loop(deltaTime) {
-        if (!this.isAnimated || !this.isPlaying) return;
-
-        const range = this.getCurrentAnimationRange();
-        const frameCount = range.end - range.start + 1;
-
-        // If only one frame in range, nothing to animate
-        if (frameCount <= 1) {
-            this.currentFrame = range.start;
-            return;
-        }
-
-        this.frameTimer += deltaTime * this.animationSpeed;
-
-        // Use frame duration of 0.1 seconds (10 FPS)
-        const frameDuration = 0.1;
-        
-        if (this.frameTimer >= frameDuration) {
-            this.frameTimer = 0;
-
-            if (this.pingPong) {
-                // Ping pong animation within the range
-                this.currentFrame += this.playDirection;
-                
-                if (this.currentFrame >= range.end) {
-                    this.playDirection = -1;
-                    this.currentFrame = range.end;
-                } else if (this.currentFrame <= range.start) {
-                    this.playDirection = 1;
-                    this.currentFrame = range.start;
-                }
-            } else {
-                // Linear loop animation within the range
-                this.currentFrame++;
-                if (this.currentFrame > range.end) {
-                    this.currentFrame = range.start;
-                }
-            }
-        }
-    }
-
-    draw(ctx) {
-        if (this.preGenerateImage && this.generatedImage && this.imageGenerated) {
-            ctx.save();
-            ctx.scale(this.scale, this.scale);
-            if (this.flipped) {
-                ctx.scale(-1, 1);
-            }
-            ctx.translate(this.offsetX, this.offsetY);
-            
-            ctx.drawImage(this.generatedImage, -this.generatedImage.width/2, -this.generatedImage.height/2);
-            ctx.restore();
-            return;
-        }
-
-        ctx.save();
-        
-        // Apply transformations
-        ctx.scale(this.scale, this.scale);
-        if (this.flipped) {
-            ctx.scale(-1, 1);
-        }
-        ctx.translate(this.offsetX, this.offsetY);
-
-        // Calculate the center point of all shapes to use as origin
-        const shapeCenter = this.calculateShapesCenterPoint();
-        
-        // Translate so shapes center around 0,0
-        ctx.translate(-shapeCenter.centerX, -shapeCenter.centerY);
-
-        // Get current frame shapes
-        let shapes;
-        if (this.enableTweening && this.totalFrames > 1 && this.isPlaying) {
-            shapes = this.getTweenedShapes();
-        } else {
-            const frameIndex = Math.floor(this.currentFrame);
-            shapes = this.frames[frameIndex] || [];
-        }
-        shapes = shapes.filter(shape => shape && shape.visible !== false);
-
-        shapes.forEach((shape, index) => {
-            this.drawShape(ctx, shape);
-        });
-
-        ctx.restore();
-    }
-
-    getTweenedShapes() {
-        const range = this.getCurrentAnimationRange();
-        
-        // Ensure current frame is within animation range for tweening
-        let currentFrame = Math.floor(this.currentFrame);
-        let nextFrame = currentFrame + 1;
-        
-        // Handle range boundaries
-        if (nextFrame > range.end) {
-            if (this.pingPong && this.playDirection === -1) {
-                nextFrame = currentFrame - 1;
-            } else {
-                nextFrame = range.start; // Loop back to start
-            }
-        }
-        
-        // Ensure frames are valid
-        currentFrame = Math.max(range.start, Math.min(range.end, currentFrame));
-        nextFrame = Math.max(range.start, Math.min(range.end, nextFrame));
-        
-        const t = this.currentFrame - Math.floor(this.currentFrame);
-
-        const currentShapes = this.frames[currentFrame] || [];
-        const nextShapes = this.frames[nextFrame] || [];
-
-        return this.interpolateShapes(currentShapes, nextShapes, t);
-    }
-
-    interpolateShapes(shapes1, shapes2, t) {
-        const result = [];
-        const maxLength = Math.max(shapes1.length, shapes2.length);
-
-        for (let i = 0; i < maxLength; i++) {
-            const shape1 = shapes1[i];
-            const shape2 = shapes2[i];
-
-            if (shape1 && shape2 && shape1.type === shape2.type) {
-                result.push(this.interpolateShape(shape1, shape2, t));
-            } else if (shape1) {
-                result.push({ ...shape1 });
-            } else if (shape2) {
-                result.push({ ...shape2 });
-            }
-        }
-
-        return result;
-    }
-
-    interpolateShape(shape1, shape2, t) {
-        const eased = this.applyEasing(t, this.tweenType);
-        const interpolated = { ...shape1 };
-
-        // Interpolate basic properties
-        if (shape1.type === 'spline') {
-            interpolated.points = [];
-            const maxPoints = Math.max(shape1.points.length, shape2.points.length);
-            
-            for (let i = 0; i < maxPoints; i++) {
-                const p1 = shape1.points[i] || shape1.points[shape1.points.length - 1];
-                const p2 = shape2.points[i] || shape2.points[shape2.points.length - 1];
-                
-                interpolated.points.push({
-                    x: p1.x + (p2.x - p1.x) * eased,
-                    y: p1.y + (p2.y - p1.y) * eased
-                });
-            }
-        } else {
-            interpolated.startX = shape1.startX + (shape2.startX - shape1.startX) * eased;
-            interpolated.startY = shape1.startY + (shape2.startY - shape1.startY) * eased;
-            interpolated.endX = shape1.endX + (shape2.endX - shape1.endX) * eased;
-            interpolated.endY = shape1.endY + (shape2.endY - shape1.endY) * eased;
-        }
-
-        // Interpolate transform properties
-        interpolated.rotation = (shape1.rotation || 0) + ((shape2.rotation || 0) - (shape1.rotation || 0)) * eased;
-        interpolated.scaleX = (shape1.scaleX || 1) + ((shape2.scaleX || 1) - (shape1.scaleX || 1)) * eased;
-        interpolated.scaleY = (shape1.scaleY || 1) + ((shape2.scaleY || 1) - (shape1.scaleY || 1)) * eased;
-
-        return interpolated;
-    }
-
-    applyEasing(t, type) {
-        switch (type) {
-            case 'ease-in': return t * t;
-            case 'ease-out': return 1 - (1 - t) * (1 - t);
-            case 'ease-in-out': return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-            case 'bounce': return this.bounceEase(t);
-            default: return t; // linear
-        }
-    }
-
-    bounceEase(t) {
-        const n1 = 7.5625;
-        const d1 = 2.75;
-
-        if (t < 1 / d1) {
-            return n1 * t * t;
-        } else if (t < 2 / d1) {
-            return n1 * (t -= 1.5 / d1) * t + 0.75;
-        } else if (t < 2.5 / d1) {
-            return n1 * (t -= 2.25 / d1) * t + 0.9375;
-        } else {
-            return n1 * (t -= 2.625 / d1) * t + 0.984375;
-        }
-    }
-
-    generateImage() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 600;
-        const ctx = canvas.getContext('2d');
-        
-        // Calculate center point and translate
-        const shapeCenter = this.calculateShapesCenterPoint();
-        ctx.translate(canvas.width/2 - shapeCenter.centerX, canvas.height/2 - shapeCenter.centerY);
-        
-        // Draw all frames composited (or just frame 0 for static)
-        const shapes = this.frames[0] || [];
-        shapes.forEach((shape) => {
-            this.drawShape(ctx, shape);
-        });
-        
-        this.generatedImage = new Image();
-        this.generatedImage.src = canvas.toDataURL();
-        this.imageGenerated = true;
-    }
-
-    calculateShapesCenterPoint() {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        let hasShapes = false;
-
-        this.frames.forEach(frame => {
-            if (!frame) return;
-            frame.forEach(shape => {
-                hasShapes = true;
-                if (shape.type === 'spline') {
-                    shape.points.forEach(point => {
-                        minX = Math.min(minX, point.x);
-                        minY = Math.min(minY, point.y);
-                        maxX = Math.max(maxX, point.x);
-                        maxY = Math.max(maxY, point.y);
-                    });
-                } else if (shape.type === 'circle') {
-                    const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
-                    minX = Math.min(minX, shape.startX - radius);
-                    minY = Math.min(minY, shape.startY - radius);
-                    maxX = Math.max(maxX, shape.startX + radius);
-                    maxY = Math.max(maxY, shape.startY + radius);
-                } else {
-                    minX = Math.min(minX, shape.startX, shape.endX);
-                    minY = Math.min(minY, shape.startY, shape.endY);
-                    maxX = Math.max(maxX, shape.startX, shape.endX);
-                    maxY = Math.max(maxY, shape.startY, shape.endY);
-                }
-            });
-        });
-
-        if (!hasShapes) return { centerX: 0, centerY: 0 };
-        
-        return {
-            centerX: (minX + maxX) / 2,
-            centerY: (minY + maxY) / 2
-        };
-    }
-
-    createGradient(shape, ctx) {
-        if (!shape.gradient || !shape.gradient.enabled) return shape.fillColor;
-        
-        let gradient;
-        const bounds = this.getShapeBounds(shape);
-        
-        if (shape.gradient.type === 'radial') {
-            const centerX = bounds.x + bounds.width / 2;
-            const centerY = bounds.y + bounds.height / 2;
-            const radius = Math.max(bounds.width, bounds.height) / 2;
-            gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-        } else {
-            // Linear gradient
-            const angle = (shape.gradient.angle || 0) * Math.PI / 180;
-            const x1 = bounds.x + bounds.width / 2 - Math.cos(angle) * bounds.width / 2;
-            const y1 = bounds.y + bounds.height / 2 - Math.sin(angle) * bounds.height / 2;
-            const x2 = bounds.x + bounds.width / 2 + Math.cos(angle) * bounds.width / 2;
-            const y2 = bounds.y + bounds.height / 2 + Math.sin(angle) * bounds.height / 2;
-            gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-        }
-        
-        gradient.addColorStop(0, shape.gradient.start);
-        gradient.addColorStop(1, shape.gradient.end);
-        
-        return gradient;
-    }
-
-    getShapeBounds(shape) {
-        if (shape.type === 'spline') {
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            shape.points.forEach(pt => {
-                minX = Math.min(minX, pt.x);
-                minY = Math.min(minY, pt.y);
-                maxX = Math.max(maxX, pt.x);
-                maxY = Math.max(maxY, pt.y);
-            });
-            return {
-                x: minX,
-                y: minY,
-                width: maxX - minX,
-                height: maxY - minY
-            };
-        } else if (shape.type === 'circle') {
-            const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
-            return {
-                x: shape.startX - radius,
-                y: shape.startY - radius,
-                width: radius * 2,
-                height: radius * 2
-            };
-        } else {
-            const minX = Math.min(shape.startX, shape.endX);
-            const minY = Math.min(shape.startY, shape.endY);
-            const maxX = Math.max(shape.startX, shape.endX);
-            const maxY = Math.max(shape.startY, shape.endY);
-            return {
-                x: minX,
-                y: minY,
-                width: maxX - minX,
-                height: maxY - minY
-            };
-        }
-    }
-
-    drawShape(ctx, shape) {
-        if (!shape.visible) return;
-        
-        ctx.save();
-        
-        // Apply transformations
-        if (shape.rotation || shape.scaleX !== 1 || shape.scaleY !== 1) {
-            const bounds = this.getShapeBounds(shape);
-            const centerX = bounds.x + bounds.width / 2;
-            const centerY = bounds.y + bounds.height / 2;
-            
-            ctx.translate(centerX, centerY);
-            ctx.rotate((shape.rotation || 0) * Math.PI / 180);
-            ctx.scale(shape.scaleX || 1, shape.scaleY || 1);
-            ctx.translate(-centerX, -centerY);
-        }
-        
-        // Set up colors/gradients
-        ctx.fillStyle = shape.gradient ? this.createGradient(shape, ctx) : shape.fillColor;
-        ctx.strokeStyle = shape.strokeColor;
-        ctx.lineWidth = shape.strokeWidth;
-        ctx.setLineDash([]);
-
-        switch (shape.type) {
-            case 'rectangle':
-                this.drawRectangle(ctx, shape);
-                break;
-            case 'circle':
-                this.drawCircle(ctx, shape);
-                break;
-            case 'triangle':
-                this.drawTriangle(ctx, shape);
-                break;
-            case 'line':
-                this.drawLine(ctx, shape);
-                break;
-            case 'spline':
-                this.drawSpline(ctx, shape);
-                break;
-        }
-
-        ctx.restore();
-    }
-
-    drawRectangle(ctx, shape) {
-        const width = shape.endX - shape.startX;
-        const height = shape.endY - shape.startY;
-        if (shape.fill) ctx.fillRect(shape.startX, shape.startY, width, height);
-        if (shape.stroke) ctx.strokeRect(shape.startX, shape.startY, width, height);
-    }
-
-    drawCircle(ctx, shape) {
-        const radius = Math.sqrt((shape.endX - shape.startX) ** 2 + (shape.endY - shape.startY) ** 2);
-        ctx.beginPath();
-        ctx.arc(shape.startX, shape.startY, radius, 0, Math.PI * 2);
-        if (shape.fill) ctx.fill();
-        if (shape.stroke) ctx.stroke();
-    }
-
-    drawTriangle(ctx, shape) {
-        const midX = (shape.startX + shape.endX) / 2;
-        ctx.beginPath();
-        ctx.moveTo(midX, shape.startY);
-        ctx.lineTo(shape.startX, shape.endY);
-        ctx.lineTo(shape.endX, shape.endY);
-        ctx.closePath();
-        if (shape.fill) ctx.fill();
-        if (shape.stroke) ctx.stroke();
-    }
-
-    drawLine(ctx, shape) {
-        ctx.beginPath();
-        ctx.moveTo(shape.startX, shape.startY);
-        ctx.lineTo(shape.endX, shape.endY);
-        ctx.stroke();
-    }
-
-    drawSpline(ctx, shape) {
-        if (shape.points.length < 2) return;
-        ctx.beginPath();
-        if (shape.points.length === 2) {
-            ctx.moveTo(shape.points[0].x, shape.points[0].y);
-            ctx.lineTo(shape.points[1].x, shape.points[1].y);
-        } else {
-            // Use the original points without offset
-            this.drawSmoothSpline(shape.points, shape.curveIntensity, shape.closed, ctx);
-        }
-        if (shape.closed) ctx.closePath();
-        if (shape.fill && shape.closed) ctx.fill();
-        if (shape.stroke) ctx.stroke();
-    }
-
-    // Update drawSmoothSpline to accept ctx
-    drawSmoothSpline(points, intensity, closed, ctx = this.ctx) {
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-            const prev = points[i - 1];
-            const curr = points[i];
-            const next = points[(i + 1) % points.length];
-            const cp1x = prev.x + (curr.x - prev.x) * intensity;
-            const cp1y = prev.y + (curr.y - prev.y) * intensity;
-            const cp2x = curr.x - (next.x - prev.x) * intensity * 0.2;
-            const cp2y = curr.y - (next.y - prev.y) * intensity * 0.2;
-            ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, curr.x, curr.y);
-        }
-    }
-
-    toJSON() {
-        return {
-            ...super.toJSON(),
-            scale: this.scale,
-            offsetX: this.offsetX,
-            offsetY: this.offsetY,
-            flipped: this.flipped,
-            animationSpeed: this.animationSpeed,
-            isPlaying: this.isPlaying,
-            currentFrame: this.currentFrame,
-            currentAnimation: this.currentAnimation
-        };
-    }
-
-    fromJSON(data) {
-        super.fromJSON(data);
-        if (!data) return;
-
-        this.scale = data.scale || 1;
-        this.offsetX = data.offsetX || 0;
-        this.offsetY = data.offsetY || 0;
-        this.flipped = data.flipped || false;
-        this.animationSpeed = data.animationSpeed || 1;
-        this.isPlaying = data.isPlaying || false;
-        this.currentFrame = data.currentFrame || 0;
-        this.currentAnimation = data.currentAnimation || "idle";
-        
-        // Update animation range after loading
-        this.currentAnimationRange = this.getCurrentAnimationRange();
-    }
-}
-
-window.Ball = Ball;
 
 // BoxImage.js
 class BoxImage extends Module {
@@ -14894,11 +14686,11 @@ async function initializeGame() {
     } else {
         console.error('Module class not found: DrawCircle');
     }
-    if (typeof Ball !== 'undefined') {
-        window.moduleRegistry.register(Ball);
-        console.log('Registered module: Ball');
+    if (typeof GravityFieldMatter !== 'undefined') {
+        window.moduleRegistry.register(GravityFieldMatter);
+        console.log('Registered module: GravityFieldMatter');
     } else {
-        console.error('Module class not found: Ball');
+        console.error('Module class not found: GravityFieldMatter');
     }
     if (typeof DrawText !== 'undefined') {
         window.moduleRegistry.register(DrawText);
@@ -15127,8 +14919,8 @@ async function initializeGame() {
     let gameData;
     try {
         gameData = {
-            scenes: [{"name":"Main Scene","settings":{"viewportWidth":1280,"viewportHeight":720,"viewportX":-157.57417737045697,"viewportY":-153.53381384813756,"backgroundColor":"#06040c","gridEnabled":true,"gridSize":32,"snapToGrid":false,"gravity":{"x":0,"y":1},"physicsEnabled":true,"physicsDebugDraw":false},"gameObjects":[{"id":"c4cd810d-93fe-453c-9dd5-392c37cf3b33","name":"Starfield","position":{"x":-219.0734747744928,"y":-82.56277143311146},"angle":0,"scale":{"x":1,"y":1},"size":{"width":50,"height":50},"active":true,"visible":true,"depth":0,"modules":[{"type":"DrawInfiniteStarFieldParallax","id":"3bb98d18-923c-4800-a2ed-3ff9261f0835","enabled":true,"data":{"layerCount":4,"starsPerGrid":80,"gridSize":800,"seed":12345,"starColor":"#ffffff","minSize":0.25,"maxSize":3.5,"flickerRate":1.83,"parallaxStrength":0.6,"baseDepth":0.2,"brightness":1,"viewportMargin":200}}]},{"id":"8c2595a5-ed02-492f-a43d-6f8ed349a009","name":"Box","position":{"x":472.68278520220366,"y":-41.48623928047437},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"9d8a9ced-ac1b-4d35-96e8-8c24d52ecc85","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"e89029d6-4124-4a95-aacb-b0fb0387d7c9","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"8aa08ca6-7fa9-46f9-954d-7ae8acbebb63","name":"MetalSlab2","position":{"x":488.6031027040298,"y":511.46507418058314},"angle":0,"scale":{"x":1,"y":1},"size":{"width":800,"height":110},"active":true,"visible":true,"depth":0,"modules":[{"type":"MetalSlab2","id":"3da93ffc-0505-4fd4-867a-0a26af9897fd","enabled":true,"data":{"name":"MetalSlab2","type":"MetalSlab2","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}},{"type":"RigidBody","id":"6f281592-df37-4ce8-8091-e2b91256a9ac","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"static","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"static","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}}]},{"id":"7d8ea21b-d3db-4e3d-8337-bc97b40ab754","name":"Box (Copy)","position":{"x":411.6152108073091,"y":409.8283226003102},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"0d61219e-6e5c-44c6-b361-77a66180972c","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":1,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":1,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"a3c9e4d7-5b27-4fab-a785-8620c25fb1ed","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"1874d68c-2b1c-441d-87c9-af7c96c0b1a8","name":"Box (Copy)","position":{"x":438.2848554818777,"y":327.87273215449835},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"48af940b-eab8-41bb-8d22-f448d401bbc1","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"1d72e385-ef0b-4267-91a5-57f25ff2e0c8","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"1ae1d4d0-7a84-4053-96b1-2e3b5ba53c67","name":"Ball","position":{"x":679.2339136286027,"y":6.76451762261897},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"780cc5df-2f36-4dee-80f1-a3e111622a6e","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"circle","width":50,"height":50,"radius":160,"density":5,"friction":1,"restitution":1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"circle","width":50,"height":50,"radius":160,"density":5,"friction":1,"restitution":1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"DrawCircle","id":"45952c4e-efb3-47a9-86e9-c8841c642540","enabled":true,"data":{"name":"DrawCircle","type":"DrawCircle","enabled":true,"requirements":[],"properties":{},"exposedValues":{"radius":80,"offset":{"x":0,"y":0},"color":"#9a3232","fill":true,"outline":false,"outlineColor":"#000000","outlineWidth":2},"radius":80,"offset":{"x":0,"y":0},"color":"#9a3232","fill":true,"outline":false,"outlineColor":"#000000","outlineWidth":2}},{"type":"Ball","id":"49ee387d-e5c2-4d1e-8ebf-4c0a0a407d40","enabled":true,"data":{"name":"Ball","type":"Ball","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":0.92,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":0.92,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"637bc0d6-dee6-444e-b1e7-63e925fe6b64","name":"Box (Copy)","position":{"x":444.4776831302135,"y":157.2483855845516},"angle":-14.17989788171124,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"d6f95eea-1b0b-478d-a2ec-1eda2bec0146","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"f8491134-061b-40c6-b773-91ffed2aa2fb","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"f35bbe12-7d7a-4b8d-a382-79114889320e","name":"Box (Copy)","position":{"x":440.5887984325303,"y":65.35447265210803},"angle":91.41004127946775,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"03bdc034-bc78-4fb7-8dcb-612f4fed0971","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"fixedRotation":false,"isSensor":false,"collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"6bf9c660-25ed-447b-9ea3-134db5ab03c8","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"90ea0ccc-f761-4686-88fa-1cb5b63c06ec","name":"Text","position":{"x":-149.20778136645544,"y":-97.2828147699807},"angle":0,"scale":{"x":1,"y":1},"size":{"width":50,"height":50},"active":true,"visible":true,"depth":0,"modules":[{"type":"DrawText","id":"2f0f8690-016a-4447-b408-7c448b4c2b02","enabled":true,"data":{"name":"DrawText","type":"DrawText","enabled":true,"requirements":[],"properties":{},"exposedValues":{"text":"Matter.js   Rigidbodies","fontSize":64,"fontFamily":"Impact","fontWeight":"bold","fontStyle":"normal","fillColor":"#ffffff","useGradient":false,"gradientStartColor":"#bb00ff","gradientEndColor":"#0000ff","gradientAngle":0,"hasOutline":false,"outlineColor":"#000000","outlineWidth":2,"hasShadow":true,"shadowColor":"#4c00ff","shadowOffsetX":2,"shadowOffsetY":2,"shadowBlur":13,"textAlign":"left","textBaseline":"middle","lineHeight":1.2,"letterSpacing":2,"opacity":1,"rotation":0,"skewX":0,"skewY":0,"scaleX":1,"scaleY":1,"wave":true,"waveAmplitude":3,"waveFrequency":2,"waveSpeed":2,"rainbow":false,"rainbowSpeed":1,"maxWidth":0,"wordWrap":true,"hasBackground":false,"backgroundColor":"#000000","backgroundPadding":10,"backgroundRadius":0},"text":"Matter.js   Rigidbodies","fontSize":64,"fontFamily":"Impact","fontWeight":"bold","fontStyle":"normal","fillColor":"#ffffff","useGradient":false,"gradientStartColor":"#bb00ff","gradientEndColor":"#0000ff","gradientAngle":0,"hasOutline":false,"outlineColor":"#000000","outlineWidth":2,"hasShadow":true,"shadowColor":"#4c00ff","shadowOffsetX":2,"shadowOffsetY":2,"shadowBlur":13,"textAlign":"left","textBaseline":"middle","lineHeight":1.2,"letterSpacing":2,"wordSpacing":0,"opacity":1,"rotation":0,"skewX":0,"skewY":0,"scaleX":1,"scaleY":1,"wave":true,"waveAmplitude":3,"waveFrequency":2,"waveSpeed":2,"rainbow":false,"rainbowSpeed":1,"maxWidth":0,"wordWrap":true,"hasBackground":false,"backgroundColor":"#000000","backgroundPadding":10,"backgroundRadius":0}}]}]}],
-            assets: {"SpriteCode Projects/Ball.spritecode":{"content":"{\n  \"frames\": [\n    [\n      {\n        \"type\": \"circle\",\n        \"startX\": 400,\n        \"startY\": 304,\n        \"endX\": 432,\n        \"endY\": 384,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#bd4200\",\n          \"end\": \"#ef864e\",\n          \"type\": \"linear\",\n          \"angle\": 162\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 400,\n          \"y\": 304\n        },\n        \"worldPosition\": {\n          \"x\": 400,\n          \"y\": 304\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      }\n    ]\n  ],\n  \"animationRanges\": [\n    {\n      \"name\": \"idle\",\n      \"start\": 0,\n      \"end\": 4\n    }\n  ],\n  \"animationSettings\": {\n    \"enableTweening\": false,\n    \"animSpeed\": 1,\n    \"tweenType\": \"linear\",\n    \"pingPong\": false\n  }\n}","type":"file","binary":false},"SpriteCode Projects/Box1.spritecode":{"content":"{\n  \"frames\": [\n    [\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 320,\n        \"startY\": 224,\n        \"endX\": 480,\n        \"endY\": 384,\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 320,\n          \"y\": 224\n        },\n        \"worldPosition\": {\n          \"x\": 320,\n          \"y\": 224\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 384,\n        \"startY\": 224,\n        \"endX\": 416,\n        \"endY\": 384,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 384,\n          \"y\": 224\n        },\n        \"worldPosition\": {\n          \"x\": 384,\n          \"y\": 224\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 320,\n        \"startY\": 288,\n        \"endX\": 384,\n        \"endY\": 320,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 320,\n          \"y\": 288\n        },\n        \"worldPosition\": {\n          \"x\": 320,\n          \"y\": 288\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 416,\n        \"startY\": 288,\n        \"endX\": 480,\n        \"endY\": 320,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 416,\n          \"y\": 288\n        },\n        \"worldPosition\": {\n          \"x\": 416,\n          \"y\": 288\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 320,\n            \"y\": 224\n          },\n          {\n            \"x\": 384,\n            \"y\": 288\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 288\n          },\n          {\n            \"x\": 480,\n            \"y\": 224\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 320\n          },\n          {\n            \"x\": 480,\n            \"y\": 384\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 384,\n            \"y\": 320\n          },\n          {\n            \"x\": 320,\n            \"y\": 384\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 384,\n            \"y\": 288\n          },\n          {\n            \"x\": 416,\n            \"y\": 320\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#1b1713\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 288\n          },\n          {\n            \"x\": 384,\n            \"y\": 320\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#1b1713\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      }\n    ]\n  ],\n  \"animationRanges\": [\n    {\n      \"name\": \"idle\",\n      \"start\": 0,\n      \"end\": 4\n    }\n  ],\n  \"animationSettings\": {\n    \"enableTweening\": false,\n    \"animSpeed\": 1,\n    \"tweenType\": \"linear\",\n    \"pingPong\": false\n  }\n}","type":"file","binary":false},"SpriteCode Projects/MetalSlab.spritecode":{"content":"{\n  \"frames\": [\n    [\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 0,\n        \"startY\": 240,\n        \"endX\": 800,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 0,\n        \"startY\": 240,\n        \"endX\": 112,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 112,\n        \"startY\": 352,\n        \"endX\": 224,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 112,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 112,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 224,\n        \"startY\": 240,\n        \"endX\": 336,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 224,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 224,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 336,\n        \"startY\": 352,\n        \"endX\": 448,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 336,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 336,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 448,\n        \"startY\": 240,\n        \"endX\": 560,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 448,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 448,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 560,\n        \"startY\": 352,\n        \"endX\": 688,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 560,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 560,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 688,\n        \"startY\": 240,\n        \"endX\": 800,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 688,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 688,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      }\n    ]\n  ],\n  \"animationRanges\": [\n    {\n      \"name\": \"idle\",\n      \"start\": 0,\n      \"end\": 4\n    }\n  ],\n  \"animationSettings\": {\n    \"enableTweening\": false,\n    \"animSpeed\": 1,\n    \"tweenType\": \"linear\",\n    \"pingPong\": false\n  }\n}","type":"file","binary":false}},
+            scenes: [{"name":"Main Scene","settings":{"viewportWidth":1280,"viewportHeight":720,"viewportX":-157.57417737045697,"viewportY":-153.53381384813756,"backgroundColor":"#06040c","gridEnabled":true,"gridSize":32,"snapToGrid":false,"gravity":{"x":0,"y":1},"physicsEnabled":true,"physicsDebugDraw":false},"gameObjects":[{"id":"c4cd810d-93fe-453c-9dd5-392c37cf3b33","name":"Starfield","position":{"x":-219.0734747744928,"y":-82.56277143311146},"angle":0,"scale":{"x":1,"y":1},"size":{"width":50,"height":50},"active":true,"visible":true,"depth":0,"modules":[{"type":"DrawInfiniteStarFieldParallax","id":"3bb98d18-923c-4800-a2ed-3ff9261f0835","enabled":true,"data":{"layerCount":4,"starsPerGrid":80,"gridSize":800,"seed":12345,"starColor":"#ffffff","minSize":0.25,"maxSize":3.5,"flickerRate":1.83,"parallaxStrength":0.6,"baseDepth":0.2,"brightness":1,"viewportMargin":200}}]},{"id":"8c2595a5-ed02-492f-a43d-6f8ed349a009","name":"Box","position":{"x":700.7147520664192,"y":50.71799079940415},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"9d8a9ced-ac1b-4d35-96e8-8c24d52ecc85","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"e89029d6-4124-4a95-aacb-b0fb0387d7c9","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"8aa08ca6-7fa9-46f9-954d-7ae8acbebb63","name":"MetalSlab2","position":{"x":488.6031027040298,"y":511.46507418058314},"angle":0,"scale":{"x":1,"y":1},"size":{"width":800,"height":110},"active":true,"visible":true,"depth":0,"modules":[{"type":"MetalSlab2","id":"3da93ffc-0505-4fd4-867a-0a26af9897fd","enabled":true,"data":{"name":"MetalSlab2","type":"MetalSlab2","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}},{"type":"RigidBody","id":"6f281592-df37-4ce8-8091-e2b91256a9ac","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"static","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"static","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}}]},{"id":"7d8ea21b-d3db-4e3d-8337-bc97b40ab754","name":"Box (Copy)","position":{"x":411.6152108073091,"y":409.8283226003102},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"0d61219e-6e5c-44c6-b361-77a66180972c","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":1,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":1,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"a3c9e4d7-5b27-4fab-a785-8620c25fb1ed","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"1874d68c-2b1c-441d-87c9-af7c96c0b1a8","name":"Box (Copy)","position":{"x":438.2848554818777,"y":327.87273215449835},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"48af940b-eab8-41bb-8d22-f448d401bbc1","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"1d72e385-ef0b-4267-91a5-57f25ff2e0c8","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"1ae1d4d0-7a84-4053-96b1-2e3b5ba53c67","name":"Ball","position":{"x":687.1654603021407,"y":290.3173112016002},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"780cc5df-2f36-4dee-80f1-a3e111622a6e","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"circle","width":50,"height":50,"radius":160,"density":1,"friction":0.7,"restitution":1,"useGravity":false,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"circle","width":50,"height":50,"radius":160,"density":1,"friction":0.7,"frictionAir":0.01,"restitution":1,"fixedRotation":false,"isSensor":false,"useGravity":false,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"DrawCircle","id":"45952c4e-efb3-47a9-86e9-c8841c642540","enabled":true,"data":{"name":"DrawCircle","type":"DrawCircle","enabled":true,"requirements":[],"properties":{},"exposedValues":{"radius":80,"offset":{"x":0,"y":0},"color":"#9a3232","fill":true,"outline":false,"outlineColor":"#000000","outlineWidth":2},"radius":80,"offset":{"x":0,"y":0},"color":"#9a3232","fill":true,"outline":false,"outlineColor":"#000000","outlineWidth":2}},{"type":"GravityFieldMatter","id":"5eb988fd-85fe-4d01-9709-6fe8cfb4036f","enabled":true,"data":{"name":"GravityFieldMatter","type":"GravityFieldMatter","enabled":true,"requirements":[],"properties":{},"exposedValues":{"fieldType":"push","strength":10,"range":200,"minRange":0,"falloffType":"linear","affectSelf":false,"onlyAffectTagged":false,"showPulse":true,"pulseSpeed":1,"pulseAlpha":0.5,"showGizmo":true,"gizmoColor":"#c13e3e","gizmoAlpha":0.3},"fieldType":"push","strength":10,"range":200,"minRange":0,"falloffType":"linear","affectSelf":false,"onlyAffectTagged":false,"requiredTags":[],"excludedTags":[],"showGizmo":true,"gizmoColor":"#c13e3e","gizmoAlpha":0.3,"updateInterval":16}}]},{"id":"637bc0d6-dee6-444e-b1e7-63e925fe6b64","name":"Box (Copy)","position":{"x":444.4776831302135,"y":157.2483855845516},"angle":-14.17989788171124,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"d6f95eea-1b0b-478d-a2ec-1eda2bec0146","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"f8491134-061b-40c6-b773-91ffed2aa2fb","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"f35bbe12-7d7a-4b8d-a382-79114889320e","name":"Box (Copy)","position":{"x":440.5887984325303,"y":65.35447265210803},"angle":91.41004127946775,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"03bdc034-bc78-4fb7-8dcb-612f4fed0971","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"6bf9c660-25ed-447b-9ea3-134db5ab03c8","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"90ea0ccc-f761-4686-88fa-1cb5b63c06ec","name":"Text","position":{"x":-149.20778136645544,"y":-116.32375473402347},"angle":0,"scale":{"x":1,"y":1},"size":{"width":50,"height":50},"active":true,"visible":true,"depth":0,"modules":[{"type":"DrawText","id":"2f0f8690-016a-4447-b408-7c448b4c2b02","enabled":true,"data":{"name":"DrawText","type":"DrawText","enabled":true,"requirements":[],"properties":{},"exposedValues":{"text":"Matter.js Rigidbodies","fontSize":64,"fontFamily":"Impact","fontWeight":"bold","fontStyle":"normal","fillColor":"#ffffff","useGradient":false,"gradientStartColor":"#bb00ff","gradientEndColor":"#0000ff","gradientAngle":0,"hasOutline":false,"outlineColor":"#000000","outlineWidth":2,"hasShadow":true,"shadowColor":"#4c00ff","shadowOffsetX":2,"shadowOffsetY":2,"shadowBlur":13,"textAlign":"left","textBaseline":"middle","lineHeight":1.2,"letterSpacing":2,"opacity":1,"rotation":0,"skewX":0,"skewY":0,"scaleX":1,"scaleY":1,"wave":true,"waveAmplitude":1,"waveFrequency":2,"waveSpeed":2,"rainbow":false,"rainbowSpeed":1,"maxWidth":0,"wordWrap":true,"hasBackground":false,"backgroundColor":"#000000","backgroundPadding":10,"backgroundRadius":0},"text":"Matter.js Rigidbodies","fontSize":64,"fontFamily":"Impact","fontWeight":"bold","fontStyle":"normal","fillColor":"#ffffff","useGradient":false,"gradientStartColor":"#bb00ff","gradientEndColor":"#0000ff","gradientAngle":0,"hasOutline":false,"outlineColor":"#000000","outlineWidth":2,"hasShadow":true,"shadowColor":"#4c00ff","shadowOffsetX":2,"shadowOffsetY":2,"shadowBlur":13,"textAlign":"left","textBaseline":"middle","lineHeight":1.2,"letterSpacing":2,"wordSpacing":0,"opacity":1,"rotation":0,"skewX":0,"skewY":0,"scaleX":1,"scaleY":1,"wave":true,"waveAmplitude":1,"waveFrequency":2,"waveSpeed":2,"rainbow":false,"rainbowSpeed":1,"maxWidth":0,"wordWrap":true,"hasBackground":false,"backgroundColor":"#000000","backgroundPadding":10,"backgroundRadius":0}}]},{"id":"ddfac167-1c2e-4f45-98bc-2c9fe89b01c9","name":"Box (Copy)","position":{"x":472.68278520220366,"y":-41.48623928047437},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"0f441247-6f7a-485d-9e90-cc5d34d78e93","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"91c17626-e9f4-47e1-9a8f-07a715f8bf45","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"9286e002-9cd5-426c-ba42-85f0634f3a48","name":"Box (Copy)","position":{"x":683.8602153851512,"y":-57.34933262755025},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"ed7ef7db-f066-4d10-adb0-e63e303aa93c","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"1aa8a999-8eaa-4c1f-bad8-47cfba024a4e","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]},{"id":"3ae2aba6-ffe2-4bbd-8b7a-73fc4fd548f6","name":"Box (Copy)","position":{"x":758.2184654495693,"y":-58.34077596174249},"angle":0,"scale":{"x":0.5,"y":0.5},"size":{"width":160,"height":160},"active":true,"visible":true,"depth":0,"modules":[{"type":"RigidBody","id":"dc6d9bc0-2553-47f0-abde-fd363942f890","enabled":true,"data":{"name":"RigidBody","type":"RigidBody","enabled":true,"requirements":[],"properties":{},"exposedValues":{"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"restitution":0.1,"useGravity":true,"frictionAir":0.01,"sleepingAllowed":true,"label":"","fixedRotation":false,"isSensor":false},"bodyType":"dynamic","shape":"rectangle","width":50,"height":50,"radius":25,"density":1,"friction":0.8,"frictionAir":0.01,"restitution":0.1,"fixedRotation":false,"isSensor":false,"useGravity":true,"sleepingAllowed":true,"label":"","collisionFilter":{"category":1,"mask":4294967295,"group":0},"vertices":[]}},{"type":"BoxImage","id":"6a7fba99-30ee-481f-8ab6-13d0955c5e51","enabled":true,"data":{"name":"BoxImage","type":"BoxImage","enabled":true,"requirements":[],"properties":{},"exposedValues":{"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"preGenerateImage":false},"scale":1,"offsetX":0,"offsetY":0,"flipped":false,"animationSpeed":1,"isPlaying":true,"currentFrame":0,"currentAnimation":"idle"}}]}]}],
+            assets: {"SpriteCode Projects/Box1.spritecode":{"content":"{\n  \"frames\": [\n    [\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 320,\n        \"startY\": 224,\n        \"endX\": 480,\n        \"endY\": 384,\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 320,\n          \"y\": 224\n        },\n        \"worldPosition\": {\n          \"x\": 320,\n          \"y\": 224\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 384,\n        \"startY\": 224,\n        \"endX\": 416,\n        \"endY\": 384,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 384,\n          \"y\": 224\n        },\n        \"worldPosition\": {\n          \"x\": 384,\n          \"y\": 224\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 320,\n        \"startY\": 288,\n        \"endX\": 384,\n        \"endY\": 320,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 320,\n          \"y\": 288\n        },\n        \"worldPosition\": {\n          \"x\": 320,\n          \"y\": 288\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 416,\n        \"startY\": 288,\n        \"endX\": 480,\n        \"endY\": 320,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 416,\n          \"y\": 288\n        },\n        \"worldPosition\": {\n          \"x\": 416,\n          \"y\": 288\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 320,\n            \"y\": 224\n          },\n          {\n            \"x\": 384,\n            \"y\": 288\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 288\n          },\n          {\n            \"x\": 480,\n            \"y\": 224\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 320\n          },\n          {\n            \"x\": 480,\n            \"y\": 384\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 384,\n            \"y\": 320\n          },\n          {\n            \"x\": 320,\n            \"y\": 384\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#362f26\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 384,\n            \"y\": 288\n          },\n          {\n            \"x\": 416,\n            \"y\": 320\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#1b1713\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      },\n      {\n        \"type\": \"spline\",\n        \"points\": [\n          {\n            \"x\": 416,\n            \"y\": 288\n          },\n          {\n            \"x\": 384,\n            \"y\": 320\n          }\n        ],\n        \"fillColor\": \"#818fa7\",\n        \"strokeColor\": \"#1b1713\",\n        \"strokeWidth\": 2,\n        \"curveIntensity\": 0.5,\n        \"closed\": false,\n        \"fill\": false,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#755e3e\",\n          \"end\": \"#454035\",\n          \"type\": \"linear\",\n          \"angle\": 47\n        }\n      }\n    ]\n  ],\n  \"animationRanges\": [\n    {\n      \"name\": \"idle\",\n      \"start\": 0,\n      \"end\": 4\n    }\n  ],\n  \"animationSettings\": {\n    \"enableTweening\": false,\n    \"animSpeed\": 1,\n    \"tweenType\": \"linear\",\n    \"pingPong\": false\n  }\n}","type":"file","binary":false},"SpriteCode Projects/MetalSlab.spritecode":{"content":"{\n  \"frames\": [\n    [\n      {\n        \"type\": \"rectangle\",\n        \"startX\": 0,\n        \"startY\": 240,\n        \"endX\": 800,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 0,\n        \"startY\": 240,\n        \"endX\": 112,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 0,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 112,\n        \"startY\": 352,\n        \"endX\": 224,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 112,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 112,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 224,\n        \"startY\": 240,\n        \"endX\": 336,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 224,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 224,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 336,\n        \"startY\": 352,\n        \"endX\": 448,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 336,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 336,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 448,\n        \"startY\": 240,\n        \"endX\": 560,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 448,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 448,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 560,\n        \"startY\": 352,\n        \"endX\": 688,\n        \"endY\": 240,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 560,\n          \"y\": 352\n        },\n        \"worldPosition\": {\n          \"x\": 560,\n          \"y\": 352\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      },\n      {\n        \"type\": \"triangle\",\n        \"startX\": 688,\n        \"startY\": 240,\n        \"endX\": 800,\n        \"endY\": 352,\n        \"fillColor\": \"#3b82f6\",\n        \"strokeColor\": \"#000000\",\n        \"strokeWidth\": 2,\n        \"fill\": true,\n        \"stroke\": true,\n        \"visible\": true,\n        \"rotation\": 0,\n        \"scaleX\": 1,\n        \"scaleY\": 1,\n        \"gradient\": {\n          \"enabled\": true,\n          \"start\": \"#a0acba\",\n          \"end\": \"#6b7076\",\n          \"type\": \"linear\",\n          \"angle\": 89\n        },\n        \"parentGroup\": null,\n        \"children\": [],\n        \"localRotation\": 0,\n        \"worldRotation\": 0,\n        \"localPosition\": {\n          \"x\": 688,\n          \"y\": 240\n        },\n        \"worldPosition\": {\n          \"x\": 688,\n          \"y\": 240\n        },\n        \"rotationHotspot\": {\n          \"x\": 0,\n          \"y\": 0\n        },\n        \"isParent\": false,\n        \"isGrouped\": false,\n        \"parentShape\": null\n      }\n    ]\n  ],\n  \"animationRanges\": [\n    {\n      \"name\": \"idle\",\n      \"start\": 0,\n      \"end\": 4\n    }\n  ],\n  \"animationSettings\": {\n    \"enableTweening\": false,\n    \"animSpeed\": 1,\n    \"tweenType\": \"linear\",\n    \"pingPong\": false\n  }\n}","type":"file","binary":false}},
             prefabs: {}
         };
     } catch (error) {

@@ -16,22 +16,26 @@ class GravityFieldMatter extends Module {
         this.range = 200;               // Maximum range of effect
         this.falloffType = "linear";    // "linear", "quadratic", "none"
         this.minRange = 0;              // Minimum range (dead zone)
-        
+
         // Performance and behavior settings
         this.affectSelf = false;        // Should it affect its own RigidBody?
         this.onlyAffectTagged = false;  // Only affect objects with specific tags
         this.requiredTags = [];         // Tags that objects must have to be affected
         this.excludedTags = [];         // Tags that prevent objects from being affected
-        
+
         // Visual and debugging
         this.showGizmo = true;          // Show visual representation in editor
         this.gizmoColor = "#00ff00";    // Color for the gizmo
         this.gizmoAlpha = 0.3;          // Transparency of the gizmo
-        
+
         // Internal state
         this.affectedBodies = new Set(); // Track currently affected bodies
         this.updateInterval = 16;       // Update every 16ms (~60fps)
         this.lastUpdateTime = 0;
+
+        this.showPulse = false; // Enable pulse visualization
+        this.pulseSpeed = 1.5;  // Speed of pulse animation
+        this.pulseAlpha = 0.5;  // Max alpha for pulse
 
         // Expose properties to the inspector
         this.exposeProperty("fieldType", "enum", this.fieldType, {
@@ -57,8 +61,8 @@ class GravityFieldMatter extends Module {
             min: 0,
             max: 500,
             step: 1,
-            onChange: (val) => { 
-                this.minRange = Math.min(val, this.range - 1); 
+            onChange: (val) => {
+                this.minRange = Math.min(val, this.range - 1);
             }
         });
 
@@ -73,6 +77,22 @@ class GravityFieldMatter extends Module {
 
         this.exposeProperty("onlyAffectTagged", "boolean", this.onlyAffectTagged, {
             onChange: (val) => { this.onlyAffectTagged = val; }
+        });
+
+        this.exposeProperty("showPulse", "boolean", this.showPulse, {
+            onChange: (val) => { this.showPulse = val; }
+        });
+        this.exposeProperty("pulseSpeed", "number", this.pulseSpeed, {
+            min: 0.1,
+            max: 10,
+            step: 0.1,
+            onChange: (val) => { this.pulseSpeed = val; }
+        });
+        this.exposeProperty("pulseAlpha", "number", this.pulseAlpha, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => { this.pulseAlpha = val; }
         });
 
         this.exposeProperty("showGizmo", "boolean", this.showGizmo, {
@@ -106,7 +126,7 @@ class GravityFieldMatter extends Module {
     /**
      * Update the gravity field effects
      */
-    update() {
+    loop(deltaTime) {
         if (!window.physicsManager || !this.gameObject) return;
 
         const currentTime = performance.now();
@@ -116,7 +136,7 @@ class GravityFieldMatter extends Module {
         this.lastUpdateTime = currentTime;
 
         const fieldPosition = this.gameObject.getWorldPosition();
-        const allGameObjects = window.game?.gameObjects || [];
+        const allGameObjects = window.engine?.gameObjects || [];
 
         // Clear previously affected bodies
         this.affectedBodies.clear();
@@ -143,6 +163,48 @@ class GravityFieldMatter extends Module {
             // Apply gravitational force
             this.applyGravitationalForce(rigidBody, fieldPosition, targetPosition, distance);
             this.affectedBodies.add(rigidBody.body);
+        }
+    }
+
+    /**
+ * Draws the pulse effect on the canvas context
+ */
+    draw(ctx) {
+        if (!this.showPulse || !this.gameObject) return;
+
+        const position = this.gameObject.getWorldPosition();
+        const now = performance.now() / 1000;
+        this._pulseTime = now * this.pulseSpeed;
+
+        // Pulse parameters
+        const pulseCount = 3;
+        const maxRadius = this.range;
+        const minRadius = this.minRange;
+        const pulseInterval = maxRadius / pulseCount;
+
+        for (let i = 0; i < pulseCount; i++) {
+            // Calculate pulse progress (0 to 1)
+            let progress = ((this._pulseTime + i * 0.5) % 1);
+            let radius;
+            if (this.fieldType === "push") {
+                // Outward pulse
+                radius = minRadius + progress * (maxRadius - minRadius);
+            } else {
+                // Inward pulse
+                radius = maxRadius - progress * (maxRadius - minRadius);
+            }
+
+            // Fade alpha as pulse grows/shrinks
+            const alpha = this.pulseAlpha * (1 - progress);
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = this.gizmoColor;
+            ctx.globalAlpha = alpha;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.restore();
         }
     }
 
@@ -302,40 +364,40 @@ class GravityFieldMatter extends Module {
     /**
      * Render debug gizmo (if supported by the engine)
      */
-    onDrawGizmos() {
+    drawGizmos() {
         if (!this.showGizmo || !this.gameObject) return;
 
         const position = this.gameObject.getWorldPosition();
-        
+
         // This would need to be implemented based on your rendering system
         // Example pseudo-code for drawing the gravity field visualization
         if (window.gizmoRenderer) {
             // Draw outer range circle
             window.gizmoRenderer.drawCircle(
-                position.x, 
-                position.y, 
-                this.range, 
-                this.gizmoColor, 
+                position.x,
+                position.y,
+                this.range,
+                this.gizmoColor,
                 this.gizmoAlpha
             );
 
             // Draw inner dead zone circle if minRange > 0
             if (this.minRange > 0) {
                 window.gizmoRenderer.drawCircle(
-                    position.x, 
-                    position.y, 
-                    this.minRange, 
-                    "#ff0000", 
+                    position.x,
+                    position.y,
+                    this.minRange,
+                    "#ff0000",
                     this.gizmoAlpha * 0.5
                 );
             }
 
             // Draw center point
             window.gizmoRenderer.drawCircle(
-                position.x, 
-                position.y, 
-                5, 
-                this.fieldType === "pull" ? "#00ff00" : "#ff0000", 
+                position.x,
+                position.y,
+                5,
+                this.fieldType === "pull" ? "#00ff00" : "#ff0000",
                 1.0
             );
 
@@ -346,7 +408,7 @@ class GravityFieldMatter extends Module {
                 const angle = (i / arrowCount) * Math.PI * 2;
                 const startX = position.x + Math.cos(angle) * (this.minRange + 10);
                 const startY = position.y + Math.sin(angle) * (this.minRange + 10);
-                
+
                 let endX, endY;
                 if (this.fieldType === "pull") {
                     endX = position.x + Math.cos(angle) * (this.minRange + arrowLength);

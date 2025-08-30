@@ -704,6 +704,7 @@ class ExportManager {
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
             'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
+            'GravityFieldMatter': 'src/core/Modules/Matter-js/GravityFieldMatter.js',
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
             'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',

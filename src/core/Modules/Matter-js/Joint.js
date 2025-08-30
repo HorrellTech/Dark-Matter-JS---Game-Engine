@@ -16,75 +16,78 @@ class Joint extends Module {
         this.jointType = "distance";        // "distance", "spring", "revolute", "prismatic", "weld", "mouse"
         this.targetObjectName = "";         // Name of the GameObject to connect to
         this.targetObject = null;           // Reference to the target GameObject
-        
+
         // Connection points (relative to each object's center)
         this.pointA = { x: 0, y: 0 };      // Connection point on this object
         this.pointB = { x: 0, y: 0 };      // Connection point on target object
-        
+
         // Joint parameters
         this.length = 100;                  // Rest length for distance/spring joints
         this.stiffness = 0.8;              // Spring stiffness (0-1)
         this.damping = 0.1;                // Spring damping (0-1)
         this.strength = 1.0;               // Overall constraint strength
-        
+
         // Limits and constraints
         this.enableLimits = false;         // Enable angle/distance limits
         this.minLength = 50;               // Minimum distance/angle
         this.maxLength = 200;              // Maximum distance/angle
-        
+
         // Revolute joint specific
         this.enableMotor = false;          // Enable motor for revolute joints
         this.motorSpeed = 0;               // Motor speed (degrees/second)
         this.maxMotorTorque = 1000;        // Maximum motor torque
-        
+
         // Prismatic joint specific
         this.axis = { x: 1, y: 0 };        // Movement axis for prismatic joints
-        
+
         // Visual debug options
-        this.showDebug = false;            // Show visual debug lines
-        this.debugColor = "#ff0000";       // Debug line color
-        
+        this.showDebug = false;
+        this.debugColor = "#ff0000";
+        this.lineAlpha = 1.0;         // New: Line transparency (0-1)
+        this.lineThickness = 2;       // New: Line thickness
+        this.springCoils = 8;
+
         // Connection state
         this.isConnected = false;
         this.autoConnect = true;           // Automatically find and connect to target
-        
+
         this._skipRebuild = true;          // Internal flag to skip rebuilds during bulk updates
 
         // Expose properties to the inspector
         this.exposeProperty("jointType", "enum", this.jointType, {
             options: ["distance", "spring", "revolute", "prismatic", "weld", "mouse"],
-            onChange: (val) => { 
-                this.jointType = val; 
-                if (!this._skipRebuild) this.rebuildConstraint(); 
+            onChange: (val) => {
+                this.jointType = val;
+                if (!this._skipRebuild) this.rebuildConstraint();
             }
         });
 
         this.exposeProperty("targetObjectName", "string", this.targetObjectName, {
-            onChange: (val) => { 
-                this.targetObjectName = val; 
-                if (!this._skipRebuild) this.findAndConnectTarget(); 
+            onChange: (val) => {
+                this.targetObjectName = val;
+                if (!this._skipRebuild) this.findAndConnectTarget();
             }
         });
 
         this.exposeProperty("pointA", "vector2", this.pointA, {
-            onChange: (val) => { 
-                this.pointA = val; 
-                if (!this._skipRebuild) this.updateConstraintPoints(); 
+            onChange: (val) => {
+                this.pointA = val;
+                if (!this._skipRebuild) this.updateConstraintPoints();
             }
         });
 
         this.exposeProperty("pointB", "vector2", this.pointB, {
-            onChange: (val) => { 
-                this.pointB = val; 
-                if (!this._skipRebuild) this.updateConstraintPoints(); 
+            onChange: (val) => {
+                this.pointB = val;
+                if (!this._skipRebuild) this.updateConstraintPoints();
             }
         });
 
         this.exposeProperty("length", "number", this.length, {
             min: 0,
-            onChange: (val) => { 
-                this.length = val; 
-                if (this.constraint) this.constraint.length = val; 
+            onChange: (val) => {
+                this.length = val;
+                if (this.constraint) this.constraint.length = val;
             }
         });
 
@@ -92,9 +95,9 @@ class Joint extends Module {
             min: 0,
             max: 1,
             step: 0.01,
-            onChange: (val) => { 
-                this.stiffness = val; 
-                if (this.constraint) this.constraint.stiffness = val; 
+            onChange: (val) => {
+                this.stiffness = val;
+                if (this.constraint) this.constraint.stiffness = val;
             }
         });
 
@@ -102,9 +105,9 @@ class Joint extends Module {
             min: 0,
             max: 1,
             step: 0.01,
-            onChange: (val) => { 
-                this.damping = val; 
-                if (this.constraint) this.constraint.damping = val; 
+            onChange: (val) => {
+                this.damping = val;
+                if (this.constraint) this.constraint.damping = val;
             }
         });
 
@@ -112,8 +115,8 @@ class Joint extends Module {
             min: 0,
             max: 1,
             step: 0.01,
-            onChange: (val) => { 
-                this.strength = val; 
+            onChange: (val) => {
+                this.strength = val;
                 if (this.constraint) {
                     this.constraint.stiffness = val;
                 }
@@ -121,9 +124,9 @@ class Joint extends Module {
         });
 
         this.exposeProperty("enableLimits", "boolean", this.enableLimits, {
-            onChange: (val) => { 
-                this.enableLimits = val; 
-                if (!this._skipRebuild) this.rebuildConstraint(); 
+            onChange: (val) => {
+                this.enableLimits = val;
+                if (!this._skipRebuild) this.rebuildConstraint();
             }
         });
 
@@ -138,9 +141,9 @@ class Joint extends Module {
         });
 
         this.exposeProperty("enableMotor", "boolean", this.enableMotor, {
-            onChange: (val) => { 
-                this.enableMotor = val; 
-                if (!this._skipRebuild) this.rebuildConstraint(); 
+            onChange: (val) => {
+                this.enableMotor = val;
+                if (!this._skipRebuild) this.rebuildConstraint();
             }
         });
 
@@ -150,7 +153,30 @@ class Joint extends Module {
             onChange: (val) => { this.motorSpeed = val; }
         });
 
-        this.exposeProperty("showDebug", "boolean", this.showDebug);
+        this.exposeProperty("showDebug", "boolean", this.showDebug, {
+            onChange: (val) => { this.showDebug = val; }
+        });
+        this.exposeProperty("debugColor", "string", this.debugColor, {
+            onChange: (val) => { this.debugColor = val; }
+        });
+        this.exposeProperty("lineAlpha", "number", this.lineAlpha, {
+            min: 0,
+            max: 1,
+            step: 0.01,
+            onChange: (val) => { this.lineAlpha = val; }
+        });
+        this.exposeProperty("lineThickness", "number", this.lineThickness, {
+            min: 1,
+            max: 10,
+            step: 1,
+            onChange: (val) => { this.lineThickness = val; }
+        });
+        this.exposeProperty("springCoils", "number", this.springCoils, {
+            min: 2,
+            max: 32,
+            step: 1,
+            onChange: (val) => { this.springCoils = val; }
+        });
         this.exposeProperty("autoConnect", "boolean", this.autoConnect);
     }
 
@@ -171,9 +197,13 @@ class Joint extends Module {
     loop() {
         this.update();
 
-        if(!this.constraint) {
+        if (!this.constraint) {
             this.createConstraint();
         }
+
+        //if (this.autoConnect) {
+            this.findAndConnectTarget();
+        //}
     }
 
     /**
@@ -181,10 +211,11 @@ class Joint extends Module {
      */
     findAndConnectTarget() {
         if (!this.targetObjectName || !this.gameObject) return;
+        if(this.targetObject && this.targetObject.name === this.targetObjectName) return;
 
         // Find target object in the scene
         this.targetObject = this.findGameObjectByName(this.targetObjectName);
-        
+
         if (this.targetObject) {
             this.createConstraint();
         } else {
@@ -264,7 +295,7 @@ class Joint extends Module {
                         length: 0,
                         stiffness: 1
                     });
-                    
+
                     // Add motor if enabled
                     if (this.enableMotor) {
                         this.constraint.angularStiffness = 0.1;
@@ -309,10 +340,10 @@ class Joint extends Module {
                 // Add to physics world
                 Matter.World.add(window.physicsManager.engine.world, this.constraint);
                 this.isConnected = true;
-                
+
                 // Store reference
                 this.constraint.module = this;
-                
+
                 console.log(`Joint created: ${this.jointType} between ${this.gameObject.name} and ${this.targetObject.name}`);
             }
 
@@ -357,10 +388,10 @@ class Joint extends Module {
     connectTo(targetGameObject, pointA = null, pointB = null) {
         this.targetObject = targetGameObject;
         this.targetObjectName = targetGameObject.name;
-        
+
         if (pointA) this.pointA = pointA;
         if (pointB) this.pointB = pointB;
-        
+
         this.createConstraint();
     }
 
@@ -382,11 +413,11 @@ class Joint extends Module {
             const targetAngularVelocity = speed * (Math.PI / 180); // Convert to radians
             const currentAngularVelocity = this.constraint.bodyA.angularVelocity - this.constraint.bodyB.angularVelocity;
             const torque = (targetAngularVelocity - currentAngularVelocity) * this.maxMotorTorque;
-            
+
             // Apply torque to bodies
-            Matter.Body.setAngularVelocity(this.constraint.bodyA, 
+            Matter.Body.setAngularVelocity(this.constraint.bodyA,
                 this.constraint.bodyA.angularVelocity + torque / this.constraint.bodyA.inertia);
-            Matter.Body.setAngularVelocity(this.constraint.bodyB, 
+            Matter.Body.setAngularVelocity(this.constraint.bodyB,
                 this.constraint.bodyB.angularVelocity - torque / this.constraint.bodyB.inertia);
         }
     }
@@ -429,14 +460,14 @@ class Joint extends Module {
             const bodyB = this.constraint.bodyB;
             if (bodyA && bodyB) {
                 // Get world positions of attachment points
-                const pointA = Matter.Vector.add(bodyA.position, 
+                const pointA = Matter.Vector.add(bodyA.position,
                     Matter.Vector.rotate(this.constraint.pointA, bodyA.angle));
-                const pointB = Matter.Vector.add(bodyB.position, 
+                const pointB = Matter.Vector.add(bodyB.position,
                     Matter.Vector.rotate(this.constraint.pointB, bodyB.angle));
-                
+
                 const delta = Matter.Vector.sub(pointB, pointA);
                 const dist = Matter.Vector.magnitude(delta);
-                
+
                 if (dist > 0) {
                     const dir = Matter.Vector.normalise(delta);
 
@@ -448,7 +479,7 @@ class Joint extends Module {
                     const springForce = -this.stiffness * stretch * 0.001; // Scale down
                     const dampingForce = -this.damping * relVelAlongDir * 0.01; // Scale down
                     const totalForce = springForce + dampingForce;
-                    
+
                     const force = Matter.Vector.mult(dir, totalForce);
 
                     Matter.Body.applyForce(bodyA, pointA, force);
@@ -464,31 +495,71 @@ class Joint extends Module {
     draw(ctx) {
         if (!this.showDebug || !this.constraint) return;
 
-        const bodyA = this.constraint.bodyA;
-        const bodyB = this.constraint.bodyB;
-        
-        if (!bodyA || !bodyB) return;
+        // Get world positions for both ends of the joint
+        const posA = { x: 0, y: 0 };
+        const posB = this.targetObject?.getWorldPosition() ?? { x: 0, y: 0 };
+
+        // Add local offsets
+        const pointA = {
+            x: posA.x + this.pointA.x,
+            y: posA.y + this.pointA.y
+        };
+        const pointB = {
+            x: posB.x + this.pointB.x,
+            y: posB.y + this.pointB.y
+        };
 
         ctx.save();
         ctx.strokeStyle = this.debugColor;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.globalAlpha = this.lineAlpha;
+        ctx.lineWidth = this.lineThickness;
 
-        // Draw line between connection points
-        const pointA = Matter.Vector.add(bodyA.position, this.constraint.pointA);
-        const pointB = Matter.Vector.add(bodyB.position, this.constraint.pointB);
+        if (this.jointType === "spring") {
+            // Draw a spring
+            const coils = this.springCoils;
+            const dx = pointB.x - pointA.x;
+            const dy = pointB.y - pointA.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
 
-        ctx.beginPath();
-        ctx.moveTo(pointA.x, pointA.y);
-        ctx.lineTo(pointB.x, pointB.y);
-        ctx.stroke();
+            // Spring parameters
+            const coilSpacing = length / coils;
+            const amplitude = Math.min(10, coilSpacing / 2);
+
+            ctx.beginPath();
+            for (let i = 0; i <= coils; i++) {
+                const t = i / coils;
+                const x = pointA.x + t * dx;
+                const y = pointA.y + t * dy;
+                // Offset perpendicular to the spring direction
+                const offset = (i % 2 === 0 ? 1 : -1) * amplitude;
+                const perpAngle = angle + Math.PI / 2;
+                const ox = Math.cos(perpAngle) * offset;
+                const oy = Math.sin(perpAngle) * offset;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x + ox, y + oy);
+                }
+            }
+            ctx.lineTo(pointB.x, pointB.y);
+            ctx.stroke();
+        } else {
+            // Draw a straight line for normal joints
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(pointA.x, pointA.y);
+            ctx.lineTo(pointB.x, pointB.y);
+            ctx.stroke();
+        }
 
         // Draw connection points
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = this.debugColor;
         ctx.beginPath();
         ctx.arc(pointA.x, pointA.y, 3, 0, Math.PI * 2);
         ctx.fill();
-        
         ctx.beginPath();
         ctx.arc(pointB.x, pointB.y, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -526,6 +597,10 @@ class Joint extends Module {
             axis: { ...this.axis },
             showDebug: this.showDebug,
             debugColor: this.debugColor,
+            debugColor: this.debugColor,
+            lineAlpha: this.lineAlpha,
+            lineThickness: this.lineThickness,
+            springCoils: this.springCoils,
             autoConnect: this.autoConnect
         };
     }
@@ -535,7 +610,7 @@ class Joint extends Module {
      */
     fromJSON(data) {
         super.fromJSON(data);
-        
+
         this.jointType = data.jointType ?? this.jointType;
         this.targetObjectName = data.targetObjectName ?? this.targetObjectName;
         this.pointA = { ...this.pointA, ...data.pointA };
@@ -554,6 +629,10 @@ class Joint extends Module {
         this.showDebug = data.showDebug ?? false;
         this.debugColor = data.debugColor ?? this.debugColor;
         this.autoConnect = data.autoConnect !== undefined ? data.autoConnect : this.autoConnect;
+        this.debugColor = data.debugColor ?? this.debugColor;
+        this.lineAlpha = data.lineAlpha ?? this.lineAlpha;
+        this.lineThickness = data.lineThickness ?? this.lineThickness;
+        this.springCoils = data.springCoils ?? this.springCoils;
     }
 }
 
