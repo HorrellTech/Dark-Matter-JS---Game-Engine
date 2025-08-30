@@ -4,7 +4,7 @@ class FileBrowser {
         this.currentPath = '';
         this.items = [];
         this.selectedItems = new Set();
-        this.dbName = 'DARKMATTERJSDB_001';// + Math.random().toString(36).substring(2, 15);
+        this.dbName = 'DARKMATTERJSDB_001' + Math.random().toString(36).substring(2, 15);
         this.dbVersion = 1;
         this.fileTypes = {}; // Initialize fileTypes object first
         this.isInitializing = false; // Track initialization state

@@ -207,12 +207,14 @@ class Engine {
         return findInObjects(this.gameObjects);
     }
 
-    getAllObjects() {
+    getAllObjects(objects = this.gameObjects, visited = new Set()) {
         let result = [];
-        this.gameObjects.forEach(obj => {
+        objects.forEach(obj => {
+            if (visited.has(obj)) return;
+            visited.add(obj);
             result.push(obj);
             if (obj.children && obj.children.length) {
-                result = result.concat(this.getAllObjects(obj.children));
+                result = result.concat(this.getAllObjects(obj.children, visited));
             }
         });
         return result;
@@ -1288,7 +1290,7 @@ class Engine {
 
         // Prevent default touch actions on the canvas
         this.canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events for simplicity
             if (window.input) {
@@ -1308,7 +1310,7 @@ class Engine {
         }, { passive: false });
 
         this.canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events
             if (window.input) {
@@ -1327,7 +1329,7 @@ class Engine {
         }, { passive: false });
 
         this.canvas.addEventListener('touchend', (e) => {
-            e.preventDefault();
+            //e.preventDefault();
 
             // Convert touch to mouse events
             if (window.input) {

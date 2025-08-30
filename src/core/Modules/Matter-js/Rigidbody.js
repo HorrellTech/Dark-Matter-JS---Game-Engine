@@ -26,6 +26,11 @@ class RigidBody extends Module {
             group: 0                // Collision groups
         };
 
+        this.useGravity = true; // New property: reacts to gravity
+        this.frictionAir = 0.01; // Air resistance (linear damping)
+        this.sleepingAllowed = true; // Can the body sleep?
+        this.label = ""; // Custom label
+
         // Shape options
         this.shape = "rectangle";   // "rectangle", "circle", "polygon"
         this.width = 50;           // Used for rectangle
@@ -84,6 +89,36 @@ class RigidBody extends Module {
             min: 0,
             max: 1,
             onChange: (val) => { this.restitution = val; if (this.body) this.body.restitution = val; }
+        });
+
+        this.exposeProperty("useGravity", "boolean", this.useGravity, {
+            onChange: (val) => { 
+                this.useGravity = val; 
+                if (this.body) this.body.ignoreGravity = !val; // Custom flag, see below
+            }
+        });
+
+        this.exposeProperty("frictionAir", "number", this.frictionAir, {
+            min: 0,
+            max: 1,
+            onChange: (val) => { 
+                this.frictionAir = val; 
+                if (this.body) this.body.frictionAir = val; 
+            }
+        });
+
+        this.exposeProperty("sleepingAllowed", "boolean", this.sleepingAllowed, {
+            onChange: (val) => { 
+                this.sleepingAllowed = val; 
+                if (this.body) this.body.sleepThreshold = val ? 60 : -1; // Matter.js default is 60
+            }
+        });
+
+        this.exposeProperty("label", "string", this.label, {
+            onChange: (val) => { 
+                this.label = val; 
+                if (this.body) this.body.label = val; 
+            }
         });
 
         this.exposeProperty("fixedRotation", "boolean", false, {
@@ -202,13 +237,15 @@ class RigidBody extends Module {
 
         const options = {
             friction: this.friction,
+            frictionAir: this.frictionAir,
             restitution: this.restitution,
             density: this.density,
             isSensor: this.isSensor,
             isStatic: this.bodyType === "static",
             angle: angle,
-            label: this.gameObject.name || "Body",
-            collisionFilter: this.collisionFilter
+            label: this.label || this.gameObject.name || "Body",
+            collisionFilter: this.collisionFilter,
+            sleepThreshold: this.sleepingAllowed ? 60 : -1
         };
 
         try {
@@ -267,6 +304,11 @@ class RigidBody extends Module {
         if (this.fixedRotation) {
             body.inertia = Infinity;
             body.inverseInertia = 0;
+        }
+
+        // Gravity control (custom implementation)
+        if (body) {
+            body.ignoreGravity = !this.useGravity; // Custom flag, must be handled in your physicsManager update
         }
 
         // Register with physics manager - ensure this properly adds to the world
@@ -544,9 +586,13 @@ class RigidBody extends Module {
             radius: this.radius,
             density: this.density,
             friction: this.friction,
+            frictionAir: this.frictionAir,
             restitution: this.restitution,
             fixedRotation: this.fixedRotation,
             isSensor: this.isSensor,
+            useGravity: this.useGravity,
+            sleepingAllowed: this.sleepingAllowed,
+            label: this.label,
             collisionFilter: { ...this.collisionFilter },
             vertices: this.vertices
         };
@@ -565,9 +611,13 @@ class RigidBody extends Module {
         this.radius = data.radius ?? this.radius;
         this.density = data.density ?? this.density;
         this.friction = data.friction ?? this.friction;
+        this.frictionAir = data.frictionAir ?? this.frictionAir;
         this.restitution = data.restitution ?? this.restitution;
         this.fixedRotation = data.fixedRotation ?? false;
         this.isSensor = data.isSensor ?? false;
+        this.useGravity = data.useGravity ?? true;
+        this.sleepingAllowed = data.sleepingAllowed ?? true;
+        this.label = data.label ?? "";
         this.collisionFilter = { ...this.collisionFilter, ...data.collisionFilter };
         this.vertices = data.vertices ?? [];
 

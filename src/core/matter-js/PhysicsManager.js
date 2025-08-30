@@ -11,7 +11,8 @@ class PhysicsManager {
         this.world = this.engine.world;
         
         // Configure world properties
-        this.world.gravity.y = 1; // Default gravity
+        this.world.gravity.y = 0; // Default gravity (Off, we will process gravity per RigidBody)
+        this.gravity = { x: 0, y: 1 }; // Custom gravity vector
         
         // Track all physics bodies and their associated game objects
         this.bodies = new Map(); // Maps Matter.js bodies to game objects
@@ -24,6 +25,17 @@ class PhysicsManager {
         // Performance settings
         this.fixedTimeStep = 1000 / 60; // 60 updates per second
         this.timeAccumulator = 0;
+
+        // Wake up bodies without gravity on collision
+        Matter.Events.on(this.engine, 'collisionStart', event => {
+            event.pairs.forEach(pair => {
+                [pair.bodyA, pair.bodyB].forEach(body => {
+                    if (body.ignoreGravity && body.isSleeping) {
+                        Matter.Sleeping.set(body, false);
+                    }
+                });
+            });
+        });
         
         console.log("Physics manager initialized");
     }
@@ -45,12 +57,26 @@ class PhysicsManager {
     update(deltaTime) {
         // Use fixed timestep for more stable physics
         this.timeAccumulator += deltaTime * 1000; // Convert to ms
-        
+
         while (this.timeAccumulator >= this.fixedTimeStep) {
             Matter.Engine.update(this.engine, this.fixedTimeStep);
+
+            // Custom gravity application per body
+            const gravity = this.gravity;
+            this.bodies.forEach((gameObject, body) => {
+                // Only apply gravity if body is dynamic, not static, and not ignoring gravity
+                if (!body.isStatic && !body.ignoreGravity) {
+                    // Apply gravity force: F = m * g
+                    const force = {
+                        x: body.mass * gravity.x * 0.001,
+                        y: body.mass * gravity.y * 0.001
+                    };
+                    Matter.Body.applyForce(body, body.position, force);
+                }
+            });
             this.timeAccumulator -= this.fixedTimeStep;
         }
-        
+
         // Update game object positions based on physics bodies
         this.syncPhysicsBodies();
     }

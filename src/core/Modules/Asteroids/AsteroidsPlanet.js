@@ -1006,37 +1006,30 @@ class AsteroidsPlanet extends Module {
     applyGravityToObjects(deltaTime) {
         if (!window.engine || !window.engine.gameObjects || this.gravitationalRange === 0) return;
 
-        // Get effective radius and range considering GameObject scale
         const gameObjectScale = this.gameObject.scale || 1;
         const effectiveRadius = this.radius * gameObjectScale;
         const effectiveGravRange = this.gravitationalRange * gameObjectScale;
 
         for (const obj of window.engine.gameObjects) {
             if (obj === this.gameObject) continue;
+            if (!this.shouldApplyGravityTo(obj)) continue;
 
-            const dx = obj.position.x - this.gameObject.position.x;
-            const dy = obj.position.y - this.gameObject.position.y;
+            const dx = this.gameObject.position.x - obj.position.x;
+            const dy = this.gameObject.position.y - obj.position.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance > effectiveGravRange + 50) continue; // Quick skip for distant objects
+            if (distance > effectiveGravRange + 50) continue;
 
             if (distance > 0 && distance <= effectiveGravRange) {
-                // Check for collision with planet surface (using scaled radius)
+                // Check for collision with planet surface
                 if (distance <= effectiveRadius + this.getObjectRadius(obj)) {
-                    this.handlePlanetCollision(obj, dx, dy, distance, effectiveRadius);
+                    this.handlePlanetCollision(obj, -dx, -dy, distance, effectiveRadius);
                     continue;
                 }
 
-                // Calculate gravitational force (fixed formula - removed extra mass term)
-                const force = (this.gravitationalConstant * this.mass) / Math.max(distance * distance, 100); // Prevent division by zero
-                const forceX = -(dx / distance) * force * deltaTime;
-                const forceY = -(dy / distance) * force * deltaTime;
-
-                // Apply to objects with velocity - EXPANDED MODULE DETECTION
+                // Find module with velocity property
                 let targetModule = null;
                 let hasVelocity = false;
-
-                // Check for common module types that should have physics
                 const moduleTypes = [
                     "PlayerShip", "EnemyShip", "BasicPhysics", "AsteroidsBullet",
                     "Asteroid", "Ship", "Projectile", "Physics", "Movement"
@@ -1050,15 +1043,11 @@ class AsteroidsPlanet extends Module {
                         break;
                     }
                 }
-
-                // Fallback: check if object itself has velocity
                 if (!hasVelocity && obj.velocity) {
                     targetModule = obj;
                     hasVelocity = true;
                 }
-
-                // Fallback: try to find ANY module with velocity property
-                if (!hasVelocity && obj.modules) {
+                /*if (!hasVelocity && obj.modules) {
                     for (const module of obj.modules) {
                         if (module && typeof module.velocity === 'object' && module.velocity.x !== undefined) {
                             targetModule = module;
@@ -1066,26 +1055,23 @@ class AsteroidsPlanet extends Module {
                             break;
                         }
                     }
-                }
+                }*/
 
                 if (hasVelocity && targetModule) {
                     const mass = targetModule.mass || 1;
-
-                    // Ensure velocity object exists
                     if (!targetModule.velocity) {
                         targetModule.velocity = { x: 0, y: 0 };
                     }
 
-                    // Apply gravitational force
+                    // Calculate gravitational force (toward planet center)
+                    const force = (this.gravitationalConstant * this.mass) / Math.max(distance * distance, 100);
+                    const forceX = (dx / distance) * force;
+                    const forceY = (dy / distance) * force;
+
                     targetModule.velocity.x += forceX / mass;
                     targetModule.velocity.y += forceY / mass;
 
                     this.affectedObjects.add(obj);
-
-                    // Debug logging (remove in production)
-                    //if (window.engine) {
-                        console.log(`Applying gravity to ${obj.name || obj.constructor.name}: force=${force.toFixed(2)}, distance=${distance.toFixed(2)}`);
-                    //}
                 }
             }
         }
