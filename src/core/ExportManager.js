@@ -12,7 +12,8 @@ class ExportManager {
                 width: 800,
                 height: 600,
                 scalable: true
-            }
+            },
+            maxFPS: 60
         };
     }
 
@@ -1043,6 +1044,7 @@ html {
 
     // Get the starting scene index from settings, default to 0
     const startingSceneIndex = settings.startingSceneIndex || 0;
+    const maxFPS = settings.maxFPS !== undefined ? settings.maxFPS : 60;
 
     return `
 // Game Initialization - Fixed for Physics
@@ -1349,6 +1351,7 @@ async function initializeGame() {
     // Initialize engine
     const canvas = document.getElementById('gameCanvas');
     const engine = new Engine(canvas);
+    engine.updateFPSLimit(${maxFPS});
     
     this.ctx = canvas.ctx;
     
@@ -1803,6 +1806,15 @@ window.addEventListener('matter-loaded', initializeGame);
                     </select>
                 </div>
                 <div class="export-group">
+                    <label>Maximum FPS:</label>
+                    <select id="export-max-fps">
+                        <option value="30" ${this.exportSettings.maxFPS === 30 ? 'selected' : ''}>30 FPS</option>
+                        <option value="60" ${this.exportSettings.maxFPS === 60 ? 'selected' : ''}>60 FPS</option>
+                        <option value="120" ${this.exportSettings.maxFPS === 120 ? 'selected' : ''}>120 FPS</option>
+                        <option value="0" ${this.exportSettings.maxFPS === 0 ? 'selected' : ''}>Unlimited</option>
+                    </select>
+                </div>
+                <div class="export-group">
                     <label>Export Format:</label>
                     <select id="export-format">
                         <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
@@ -1845,6 +1857,7 @@ window.addEventListener('matter-loaded', initializeGame);
                 customTitle: modal.querySelector('#export-title').value,
                 customDescription: modal.querySelector('#export-description').value,
                 startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
+                maxFPS: parseInt(modal.querySelector('#export-max-fps').value) || 60,
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
                 minifyCode: false //modal.querySelector('#export-minify').checked

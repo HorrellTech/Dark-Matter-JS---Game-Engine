@@ -408,6 +408,10 @@ class SettingsModal {
         this.settings.enableConsoleLogging = this.modal.querySelector('#setting-console-logging').checked;
 
         this.saveSettings();
+
+        if (window.engine) {
+            window.engine.updateFPSLimit(this.settings.maxFPS);
+        }
         this.close();
 
         // Show confirmation

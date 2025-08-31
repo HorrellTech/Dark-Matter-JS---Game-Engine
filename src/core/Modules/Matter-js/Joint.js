@@ -55,6 +55,8 @@ class Joint extends Module {
 
         this._skipRebuild = true;          // Internal flag to skip rebuilds during bulk updates
 
+        this.requireModule("RigidBody"); // Ensure RigidBody module is present
+
         // Expose properties to the inspector
         this.exposeProperty("jointType", "enum", this.jointType, {
             options: ["distance", "spring", "revolute", "prismatic", "weld", "mouse"],

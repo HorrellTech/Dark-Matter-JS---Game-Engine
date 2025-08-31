@@ -102,6 +102,10 @@ class Engine {
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
 
+        this.maxFPS = 60; // Default, will be updated from settings
+        this._minFrameInterval = 1000 / this.maxFPS;
+        this._lastFrameTime = 0;
+
         canvas.tabIndex = 0; // Makes canvas focusable
         canvas.focus(); // Give it focus
     }
@@ -762,10 +766,24 @@ class Engine {
         return totalUpdated > 0;
     }
 
+    updateFPSLimit(newMaxFPS) {
+        this.maxFPS = newMaxFPS;
+        this._minFrameInterval = this.maxFPS > 0 ? 1000 / this.maxFPS : 0;
+    }
+
     gameLoop(timestamp) {
         if (!this.running) return;
 
-        const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1); // Cap at 100ms to prevent large jumps
+        // FPS limiting logic
+        if (this.maxFPS > 0) {
+            if (timestamp - this._lastFrameTime < this._minFrameInterval) {
+                this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
+                return;
+            }
+        }
+        this._lastFrameTime = timestamp;
+
+        const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1);
         this.lastTime = timestamp;
 
         // Update input manager at the start of the frame

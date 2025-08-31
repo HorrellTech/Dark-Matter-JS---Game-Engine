@@ -2807,32 +2807,71 @@ class Inspector {
      * Populate the dropdown with available modules, structured as a hierarchical tree.
      */
     populateModuleDropdown() {
-        this.moduleDropdown.innerHTML = ''; // Clear previous content
+    this.moduleDropdown.innerHTML = ''; // Clear previous content
 
-        if (!this.availableModules || this.availableModules.length === 0) {
+    // --- Add search box ---
+    const searchContainer = document.createElement('div');
+    searchContainer.style.padding = '8px';
+    searchContainer.style.background = '#23272b';
+    searchContainer.style.borderBottom = '1px solid #444';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search modules...';
+    searchInput.style.width = '100%';
+    searchInput.style.padding = '6px 10px';
+    searchInput.style.borderRadius = '4px';
+    searchInput.style.border = '1px solid #444';
+    searchInput.style.background = '#23272b';
+    searchInput.style.color = '#e0e6f0';
+    searchInput.style.fontSize = '1em';
+
+    searchContainer.appendChild(searchInput);
+    this.moduleDropdown.appendChild(searchContainer);
+
+    // --- Filtering logic ---
+    let filterText = '';
+    searchInput.addEventListener('input', () => {
+        filterText = searchInput.value.trim().toLowerCase();
+        renderFilteredModules();
+    });
+
+    // --- Render modules with filter ---
+    const renderFilteredModules = () => {
+        // Remove previous module items (keep search box)
+        Array.from(this.moduleDropdown.children).forEach((child, i) => {
+            if (i > 0) this.moduleDropdown.removeChild(child);
+        });
+
+        // Filter modules by name or description
+        let filteredModules = this.availableModules;
+        if (filterText) {
+            filteredModules = filteredModules.filter(m =>
+                m.moduleClass.name.toLowerCase().includes(filterText) ||
+                (m.moduleClass.description && m.moduleClass.description.toLowerCase().includes(filterText))
+            );
+        }
+
+        if (filteredModules.length === 0) {
             const message = document.createElement('div');
             message.className = 'dropdown-message';
-            message.textContent = 'No modules available';
+            message.textContent = 'No modules found';
             this.moduleDropdown.appendChild(message);
             return;
         }
 
-        // 1. Build the hierarchical tree data structure
+        // Group by namespace
         const namespaceTree = {};
         const generalModules = [];
-
-        this.availableModules.forEach(moduleInfo => {
+        filteredModules.forEach(moduleInfo => {
             const namespace = moduleInfo.namespace;
             const moduleClass = moduleInfo.moduleClass;
-
             if (!namespace || namespace.toLowerCase() === 'general') {
                 generalModules.push(moduleClass);
                 return;
             }
-
             const parts = namespace.split('/');
             let currentLevel = namespaceTree;
-
             parts.forEach(part => {
                 if (!currentLevel[part]) {
                     currentLevel[part] = { _children: {}, _modules: [] };
@@ -2842,11 +2881,9 @@ class Inspector {
             currentLevel._modules.push(moduleClass);
         });
 
-        // 2. Render the tree
+        // Render tree (same as before)
         const renderNode = (node, parentElement, level, pathPrefix = '') => {
-            // Sort folder names alphabetically
             const folderNames = Object.keys(node._children || {}).sort();
-
             folderNames.forEach(folderName => {
                 const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
                 const folderElement = document.createElement('div');
@@ -2885,39 +2922,6 @@ class Inspector {
                 renderNode(node._children[folderName], content, level + 1, currentPath);
             });
 
-            // Sort modules within this folder/namespace alphabetically
-            // UNCOMMENT TO ENABLE COINSTANT DESCRIPTION DISPLAY
-            /*(node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
-                const item = document.createElement('div');
-                item.className = 'module-dropdown-item';
-                item.style.paddingLeft = `${(level * 15) + 15}px`; // Indent module items further
-
-                // Get description if available
-                const description = moduleClass.description || '';
-
-                // Module name
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'module-dropdown-item-name';
-                nameSpan.textContent = moduleClass.name;
-
-                item.appendChild(nameSpan);
-
-                // If description exists, add it as a smaller text below the name
-                if (description) {
-                    const descSpan = document.createElement('span');
-                    descSpan.className = 'module-dropdown-item-description';
-                    descSpan.textContent = description;
-                    item.appendChild(descSpan);
-                }
-
-                item.addEventListener('click', () => {
-                    const module = this.addModuleToGameObject(moduleClass);
-                    if (module) {
-                        this.moduleDropdown.style.display = 'none';
-                    }
-                });
-                parentElement.appendChild(item);
-            });*/
             (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
                 const item = document.createElement('div');
                 item.className = 'module-dropdown-item';
@@ -2925,11 +2929,9 @@ class Inspector {
 
                 // Get description if available
                 const description = moduleClass.description || '';
-
                 let iconHtml = '';
                 const iconClass = moduleClass.iconClass;
                 const iconColor = moduleClass.iconColor || '';
-
                 if (iconClass) {
                     if (iconClass.startsWith('fa-')) {
                         iconHtml = `<i class="fas ${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
@@ -2939,24 +2941,17 @@ class Inspector {
                 } else {
                     iconHtml = `<i class="fas fa-puzzle-piece" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
                 }
-
-                // Module name
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'module-dropdown-item-name';
                 nameSpan.textContent = moduleClass.name;
-
                 item.innerHTML = `${iconHtml}`;
                 item.appendChild(nameSpan);
-
-                // If description exists, add it as a smaller text below the name
                 if (description) {
                     const descSpan = document.createElement('span');
                     descSpan.className = 'module-dropdown-item-description';
                     descSpan.textContent = description;
-                    descSpan.style.display = 'none'; // Hide by default
+                    descSpan.style.display = 'none';
                     item.appendChild(descSpan);
-
-                    // Show description on hover
                     item.addEventListener('mouseenter', () => {
                         descSpan.style.display = 'block';
                     });
@@ -2964,7 +2959,6 @@ class Inspector {
                         descSpan.style.display = 'none';
                     });
                 }
-
                 item.addEventListener('click', () => {
                     const module = this.addModuleToGameObject(moduleClass);
                     if (module) {
@@ -2975,29 +2969,27 @@ class Inspector {
             });
         };
 
-        // Create a root node for rendering
         const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
         renderNode(rootNodeForRendering, this.moduleDropdown, 0);
 
-        // Add "General" modules at the end, if any
+        // General modules
         if (generalModules.length > 0) {
-            if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) { // Add separator if there were other namespaces
+            if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) {
                 const separator = document.createElement('hr');
                 separator.className = 'module-dropdown-separator';
                 this.moduleDropdown.appendChild(separator);
             }
             const generalHeader = document.createElement('div');
-            generalHeader.className = 'module-dropdown-namespace'; // Use existing style or create a new one
+            generalHeader.className = 'module-dropdown-namespace';
             generalHeader.textContent = 'General';
-            generalHeader.style.paddingLeft = `5px`; // Minimal indent for top-level group
+            generalHeader.style.paddingLeft = `5px`;
             this.moduleDropdown.appendChild(generalHeader);
 
             generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
                 const item = document.createElement('div');
                 item.className = 'module-dropdown-item';
                 item.textContent = moduleClass.name;
-                item.style.paddingLeft = `20px`; // Indent items under "General"
-
+                item.style.paddingLeft = `20px`;
                 item.addEventListener('click', () => {
                     const module = this.addModuleToGameObject(moduleClass);
                     if (module) {
@@ -3007,8 +2999,11 @@ class Inspector {
                 this.moduleDropdown.appendChild(item);
             });
         }
-        console.log('Namespace tree:', namespaceTree, 'General modules:', generalModules);
-    }
+    };
+
+    // Initial render
+    renderFilteredModules();
+}
 
     saveFolderCollapseState(folderPath, isCollapsed) {
         try {
