@@ -25,6 +25,9 @@ class Engine {
         this.running = false;
         this.preloaded = false;
 
+        this.usePixi = false; // Set to true to enable Pixi.js
+        this.pixiRenderer = null;
+
         // Track viewport settings
         this.viewport = {
             width: 800,
@@ -108,6 +111,25 @@ class Engine {
 
         canvas.tabIndex = 0; // Makes canvas focusable
         canvas.focus(); // Give it focus
+    }
+
+    initializePixiRenderer() {
+        if (this.usePixi && window.PixiRenderer) {
+            this.pixiRenderer = new PixiRenderer(this.canvas, this.viewport.width, this.viewport.height, {
+                backgroundColor: this.scene.settings.backgroundColor || 0x000000,
+                antialias: true
+            });
+
+            this.pixiRenderer.Init().then(success => {
+                if (success) {
+                    console.log("PixiRenderer initialized");
+                } else {
+                    console.error("Failed to initialize PixiRenderer");
+                    this.pixiRenderer = null;
+                    this.usePixi = false;
+                }
+            });
+        }
     }
 
     // Add viewport management methods
@@ -388,6 +410,10 @@ class Engine {
     }
 
     async start() {
+        if (this.usePixi && !this.pixiRenderer) {
+            this.initializePixiRenderer();
+        }
+
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null; // Ensure no stale frame
@@ -880,6 +906,33 @@ class Engine {
 
     draw() {
         if (!this.canvas || !this.ctx || !this.running) return;
+
+        if (this.usePixi && this.pixiRenderer) {
+            // Sync GameObjects to Pixi
+            const allObjects = this.getAllObjects(this.gameObjects);
+            allObjects.forEach(obj => {
+                if (!obj.pixiDisplayObject) {
+                    const pixiObj = obj.createPixiDisplayObject();
+                    this.pixiRenderer.addDisplayObject(pixiObj);
+                }
+                obj.updatePixiDisplayObject();
+            });
+
+            // Draw each active and visible object using pixiRenderer as context
+            allObjects
+                .filter(obj => obj.active && obj.visible !== false)
+                .sort((a, b) => b.depth - a.depth)
+                .forEach(obj => {
+                    try {
+                        obj.draw(this.pixiRenderer); // Pass pixiRenderer as context
+                    } catch (error) {
+                        console.error(`Error drawing object ${obj.name}:`, error);
+                    }
+                });
+
+            this.pixiRenderer.render();
+            return;
+        }
 
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);

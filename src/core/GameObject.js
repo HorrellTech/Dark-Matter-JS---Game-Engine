@@ -157,6 +157,37 @@ class GameObject {
     draw(ctx) {
         if (!this.active || !this.visible) return;
 
+        // PIXI rendering path
+        if (window.engine && window.engine.usePixi && window.engine.pixiRenderer && ctx === window.engine.pixiRenderer) {
+            // Ensure Pixi display object exists
+            if (!this.pixiDisplayObject) {
+                this.createPixiDisplayObject();
+                window.engine.pixiRenderer.addDisplayObject(this.pixiDisplayObject);
+            }
+            this.updatePixiDisplayObject();
+
+            // Draw modules that support Pixi rendering
+            for (const module of this.modules) {
+                if (module.enabled && typeof module.draw === 'function') {
+                    try {
+                        // If module supports Pixi, pass pixiDisplayObject or pixiRenderer
+                        module.draw(ctx, this.pixiDisplayObject);
+                    } catch (error) {
+                        console.error(`Error in module ${module.type || module.constructor.name} draw (Pixi) on ${this.name}:`, error);
+                    }
+                }
+            }
+
+            // Draw children
+            this.children.forEach(child => {
+                if (child.active && child.visible) {
+                    child.draw(ctx);
+                }
+            });
+
+            return;
+        }
+
         ctx.save();
 
         // Apply local transform
@@ -1005,6 +1036,31 @@ class GameObject {
         }
 
         return scale;
+    }
+
+    createPixiDisplayObject() {
+        // Example: create a simple rectangle using PIXI.Graphics
+        const graphics = new PIXI.Graphics();
+        graphics.beginFill(0xffffff); // White fill
+        graphics.drawRect(-this.size.x / 2, -this.size.y / 2, this.size.x, this.size.y);
+        graphics.endFill();
+        graphics.pivot.set(0, 0);
+        graphics.x = this.position.x;
+        graphics.y = this.position.y;
+        graphics.rotation = this.angle * Math.PI / 180;
+        graphics.scale.set(this.scale.x, this.scale.y);
+        graphics.visible = this.visible;
+        this.pixiDisplayObject = graphics;
+        return graphics;
+    }
+
+    updatePixiDisplayObject() {
+        if (!this.pixiDisplayObject) return;
+        this.pixiDisplayObject.x = this.position.x;
+        this.pixiDisplayObject.y = this.position.y;
+        this.pixiDisplayObject.rotation = this.angle * Math.PI / 180;
+        this.pixiDisplayObject.scale.set(this.scale.x, this.scale.y);
+        this.pixiDisplayObject.visible = this.visible;
     }
 
     /**

@@ -78,8 +78,40 @@ class DrawCircle extends Module {
      * Draw the circle centered at the GameObject,
      * then translated by offset.
      */
-    draw(ctx) {
+    draw(ctx, pixiDisplayObject) {
         if (!this.enabled) return;
+
+        // PIXI path
+        if (window.engine && window.engine.usePixi && ctx instanceof window.PixiRenderer) {
+            const graphics = pixiDisplayObject || ctx.graphics;
+            graphics.clear();
+
+            // Helper to convert color string to hex
+            function toHex(color) {
+                if (window.PIXI && window.PIXI.utils && window.PIXI.utils.string2hex) {
+                    return window.PIXI.utils.string2hex(color);
+                }
+                // Fallback: handle #RRGGBB or #RGB
+                if (typeof color === "string" && color.startsWith("#")) {
+                    return parseInt(color.slice(1), 16);
+                }
+                // Default to white
+                return 0xffffff;
+            }
+
+            // Fill
+            if (this.fill) {
+                graphics.beginFill(toHex(this.color));
+            }
+            // Outline
+            if (this.outline) {
+                graphics.lineStyle(this.outlineWidth, toHex(this.outlineColor));
+            }
+            graphics.drawCircle(this.offset.x, this.offset.y, this.radius);
+            graphics.endFill();
+            ctx.render();
+            return;
+        }
 
         ctx.save();
         ctx.translate(this.offset.x, this.offset.y);

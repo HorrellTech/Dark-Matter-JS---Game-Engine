@@ -19,7 +19,4 @@
 
 - Make sure we have editor ability to edit modules with gizmos, so points can be dragged around to position for point arrays etc.
 
-- Update documentation to better reflect the app. Update templates for modules to use JSON serialization properly, make a keywords 
-    specific documentation modal for script editor that references keywords, update keywords
-
-- Fix SpriteCode not changing to tool and selecting the newly created shape, also, when selecting tool, it should deselect the shape.
+- Update documentation to better reflect the app. Update templates for modules to use JSON serialization properly
