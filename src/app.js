@@ -944,16 +944,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Track simple taps to synthesize click on UI elements
         let touchStartPos = null;
-        /*document.addEventListener('touchstart', (e) => {
+        document.addEventListener('touchstart', (e) => {
             const target = e.target;
             if (isCanvas(target) && e.cancelable) {
                 e.preventDefault(); // keep canvas gestures smooth; don’t block UI elsewhere
             }
             const t = e.touches[0];
             touchStartPos = t ? { x: t.clientX, y: t.clientY, time: performance.now() } : null;
-        }, { passive: false, capture: true });*/
+        }, { passive: false, capture: true });
 
-        /*document.addEventListener('touchend', (e) => {
+        document.addEventListener('touchend', (e) => {
             const target = e.target.closest('button, a, input, select, textarea, [role="button"], .toolbar-button, .tab-button, .canvas-tab');
             if (!target || !touchStartPos) return;
 
@@ -972,8 +972,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
             touchStartPos = null;
-        }, { passive: false });*/
+        }, { passive: false });
     }
+
+    enableGlobalTouchCompat();
 
     // Utility to delete all DARKMATTERJS_001* databases
     async function cleanupDarkMatterDatabases() {

@@ -2807,203 +2807,209 @@ class Inspector {
      * Populate the dropdown with available modules, structured as a hierarchical tree.
      */
     populateModuleDropdown() {
-    this.moduleDropdown.innerHTML = ''; // Clear previous content
+        this.moduleDropdown.innerHTML = ''; // Clear previous content
 
-    // --- Add search box ---
-    const searchContainer = document.createElement('div');
-    searchContainer.style.padding = '8px';
-    searchContainer.style.background = '#23272b';
-    searchContainer.style.borderBottom = '1px solid #444';
+        // --- Add search box ---
+        const searchContainer = document.createElement('div');
+        searchContainer.style.padding = '8px';
+        searchContainer.style.background = '#23272b';
+        searchContainer.style.borderBottom = '1px solid #444';
+        searchContainer.className = 'module-dropdown-search-sticky';
 
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search modules...';
-    searchInput.style.width = '100%';
-    searchInput.style.padding = '6px 10px';
-    searchInput.style.borderRadius = '4px';
-    searchInput.style.border = '1px solid #444';
-    searchInput.style.background = '#23272b';
-    searchInput.style.color = '#e0e6f0';
-    searchInput.style.fontSize = '1em';
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search modules...';
+        searchInput.style.width = '100%';
+        searchInput.style.padding = '6px 10px';
+        searchInput.style.borderRadius = '4px';
+        searchInput.style.border = '1px solid #444';
+        searchInput.style.background = '#23272b';
+        searchInput.style.color = '#e0e6f0';
+        searchInput.style.fontSize = '1em';
 
-    searchContainer.appendChild(searchInput);
-    this.moduleDropdown.appendChild(searchContainer);
+        searchContainer.appendChild(searchInput);
+        this.moduleDropdown.appendChild(searchContainer);
 
-    // --- Filtering logic ---
-    let filterText = '';
-    searchInput.addEventListener('input', () => {
-        filterText = searchInput.value.trim().toLowerCase();
-        renderFilteredModules();
-    });
+        // --- Create a container for the modules list ---
+        const modulesListContainer = document.createElement('div');
+        modulesListContainer.className = 'module-dropdown-list';
+        this.moduleDropdown.appendChild(modulesListContainer);
 
-    // --- Render modules with filter ---
-    const renderFilteredModules = () => {
-        // Remove previous module items (keep search box)
-        Array.from(this.moduleDropdown.children).forEach((child, i) => {
-            if (i > 0) this.moduleDropdown.removeChild(child);
+        // --- Filtering logic ---
+        let filterText = '';
+        searchInput.addEventListener('input', () => {
+            filterText = searchInput.value.trim().toLowerCase();
+            renderFilteredModules();
         });
 
-        // Filter modules by name or description
-        let filteredModules = this.availableModules;
-        if (filterText) {
-            filteredModules = filteredModules.filter(m =>
-                m.moduleClass.name.toLowerCase().includes(filterText) ||
-                (m.moduleClass.description && m.moduleClass.description.toLowerCase().includes(filterText))
-            );
-        }
+        // --- Render modules with filter ---
+        const renderFilteredModules = () => {
+            // Remove previous module items (keep search box)
+            Array.from(this.moduleDropdown.children).forEach((child, i) => {
+                if (i > 0) this.moduleDropdown.removeChild(child);
+            });
 
-        if (filteredModules.length === 0) {
-            const message = document.createElement('div');
-            message.className = 'dropdown-message';
-            message.textContent = 'No modules found';
-            this.moduleDropdown.appendChild(message);
-            return;
-        }
+            // Filter modules by name or description
+            let filteredModules = this.availableModules;
+            if (filterText) {
+                filteredModules = filteredModules.filter(m =>
+                    m.moduleClass.name.toLowerCase().includes(filterText) ||
+                    (m.moduleClass.description && m.moduleClass.description.toLowerCase().includes(filterText))
+                );
+            }
 
-        // Group by namespace
-        const namespaceTree = {};
-        const generalModules = [];
-        filteredModules.forEach(moduleInfo => {
-            const namespace = moduleInfo.namespace;
-            const moduleClass = moduleInfo.moduleClass;
-            if (!namespace || namespace.toLowerCase() === 'general') {
-                generalModules.push(moduleClass);
+            if (filteredModules.length === 0) {
+                const message = document.createElement('div');
+                message.className = 'dropdown-message';
+                message.textContent = 'No modules found';
+                this.moduleDropdown.appendChild(message);
                 return;
             }
-            const parts = namespace.split('/');
-            let currentLevel = namespaceTree;
-            parts.forEach(part => {
-                if (!currentLevel[part]) {
-                    currentLevel[part] = { _children: {}, _modules: [] };
+
+            // Group by namespace
+            const namespaceTree = {};
+            const generalModules = [];
+            filteredModules.forEach(moduleInfo => {
+                const namespace = moduleInfo.namespace;
+                const moduleClass = moduleInfo.moduleClass;
+                if (!namespace || namespace.toLowerCase() === 'general') {
+                    generalModules.push(moduleClass);
+                    return;
                 }
-                currentLevel = currentLevel[part];
+                const parts = namespace.split('/');
+                let currentLevel = namespaceTree;
+                parts.forEach(part => {
+                    if (!currentLevel[part]) {
+                        currentLevel[part] = { _children: {}, _modules: [] };
+                    }
+                    currentLevel = currentLevel[part];
+                });
+                currentLevel._modules.push(moduleClass);
             });
-            currentLevel._modules.push(moduleClass);
-        });
 
-        // Render tree (same as before)
-        const renderNode = (node, parentElement, level, pathPrefix = '') => {
-            const folderNames = Object.keys(node._children || {}).sort();
-            folderNames.forEach(folderName => {
-                const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
-                const folderElement = document.createElement('div');
-                folderElement.className = 'module-dropdown-folder';
-                folderElement.style.paddingLeft = `${level * 15}px`;
+            // Render tree (same as before)
+            const renderNode = (node, parentElement, level, pathPrefix = '') => {
+                const folderNames = Object.keys(node._children || {}).sort();
+                folderNames.forEach(folderName => {
+                    const currentPath = pathPrefix ? `${pathPrefix}/${folderName}` : folderName;
+                    const folderElement = document.createElement('div');
+                    folderElement.className = 'module-dropdown-folder';
+                    folderElement.style.paddingLeft = `${level * 15}px`;
 
-                const header = document.createElement('div');
-                header.className = 'module-dropdown-folder-header';
+                    const header = document.createElement('div');
+                    header.className = 'module-dropdown-folder-header';
 
-                const icon = document.createElement('i');
-                const isCollapsed = this.getFolderCollapseState(currentPath);
-                icon.className = `fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
+                    const icon = document.createElement('i');
+                    const isCollapsed = this.getFolderCollapseState(currentPath);
+                    icon.className = `fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}`;
 
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = folderName;
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = folderName;
 
-                header.appendChild(icon);
-                header.appendChild(nameSpan);
-                folderElement.appendChild(header);
+                    header.appendChild(icon);
+                    header.appendChild(nameSpan);
+                    folderElement.appendChild(header);
 
-                const content = document.createElement('div');
-                content.className = 'module-dropdown-folder-content';
-                if (isCollapsed) {
-                    content.style.display = 'none';
-                }
-                folderElement.appendChild(content);
-                parentElement.appendChild(folderElement);
+                    const content = document.createElement('div');
+                    content.className = 'module-dropdown-folder-content';
+                    if (isCollapsed) {
+                        content.style.display = 'none';
+                    }
+                    folderElement.appendChild(content);
+                    parentElement.appendChild(folderElement);
 
-                header.addEventListener('click', () => {
-                    const currentlyCollapsed = content.style.display === 'none';
-                    content.style.display = currentlyCollapsed ? 'block' : 'none';
-                    icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
-                    this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
+                    header.addEventListener('click', () => {
+                        const currentlyCollapsed = content.style.display === 'none';
+                        content.style.display = currentlyCollapsed ? 'block' : 'none';
+                        icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
+                        this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
+                    });
+
+                    renderNode(node._children[folderName], content, level + 1, currentPath);
                 });
 
-                renderNode(node._children[folderName], content, level + 1, currentPath);
-            });
+                (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                    const item = document.createElement('div');
+                    item.className = 'module-dropdown-item';
+                    item.style.paddingLeft = `${(level * 15) + 15}px`;
 
-            (node._modules || []).sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
-                const item = document.createElement('div');
-                item.className = 'module-dropdown-item';
-                item.style.paddingLeft = `${(level * 15) + 15}px`;
-
-                // Get description if available
-                const description = moduleClass.description || '';
-                let iconHtml = '';
-                const iconClass = moduleClass.iconClass;
-                const iconColor = moduleClass.iconColor || '';
-                if (iconClass) {
-                    if (iconClass.startsWith('fa-')) {
-                        iconHtml = `<i class="fas ${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                    // Get description if available
+                    const description = moduleClass.description || '';
+                    let iconHtml = '';
+                    const iconClass = moduleClass.iconClass;
+                    const iconColor = moduleClass.iconColor || '';
+                    if (iconClass) {
+                        if (iconClass.startsWith('fa-')) {
+                            iconHtml = `<i class="fas ${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                        } else {
+                            iconHtml = `<i class="${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                        }
                     } else {
-                        iconHtml = `<i class="${iconClass}" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
+                        iconHtml = `<i class="fas fa-puzzle-piece" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
                     }
-                } else {
-                    iconHtml = `<i class="fas fa-puzzle-piece" style="margin-right:8px;${iconColor ? `color:${iconColor};` : ''}"></i>`;
-                }
-                const nameSpan = document.createElement('span');
-                nameSpan.className = 'module-dropdown-item-name';
-                nameSpan.textContent = moduleClass.name;
-                item.innerHTML = `${iconHtml}`;
-                item.appendChild(nameSpan);
-                if (description) {
-                    const descSpan = document.createElement('span');
-                    descSpan.className = 'module-dropdown-item-description';
-                    descSpan.textContent = description;
-                    descSpan.style.display = 'none';
-                    item.appendChild(descSpan);
-                    item.addEventListener('mouseenter', () => {
-                        descSpan.style.display = 'block';
-                    });
-                    item.addEventListener('mouseleave', () => {
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'module-dropdown-item-name';
+                    nameSpan.textContent = moduleClass.name;
+                    item.innerHTML = `${iconHtml}`;
+                    item.appendChild(nameSpan);
+                    if (description) {
+                        const descSpan = document.createElement('span');
+                        descSpan.className = 'module-dropdown-item-description';
+                        descSpan.textContent = description;
                         descSpan.style.display = 'none';
-                    });
-                }
-                item.addEventListener('click', () => {
-                    const module = this.addModuleToGameObject(moduleClass);
-                    if (module) {
-                        this.moduleDropdown.style.display = 'none';
+                        item.appendChild(descSpan);
+                        item.addEventListener('mouseenter', () => {
+                            descSpan.style.display = 'block';
+                        });
+                        item.addEventListener('mouseleave', () => {
+                            descSpan.style.display = 'none';
+                        });
                     }
+                    item.addEventListener('click', () => {
+                        const module = this.addModuleToGameObject(moduleClass);
+                        if (module) {
+                            this.moduleDropdown.style.display = 'none';
+                        }
+                    });
+                    parentElement.appendChild(item);
                 });
-                parentElement.appendChild(item);
-            });
+            };
+
+            const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
+            renderNode(rootNodeForRendering, this.moduleDropdown, 0);
+
+            // General modules
+            if (generalModules.length > 0) {
+                if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) {
+                    const separator = document.createElement('hr');
+                    separator.className = 'module-dropdown-separator';
+                    this.moduleDropdown.appendChild(separator);
+                }
+                const generalHeader = document.createElement('div');
+                generalHeader.className = 'module-dropdown-namespace';
+                generalHeader.textContent = 'General';
+                generalHeader.style.paddingLeft = `5px`;
+                this.moduleDropdown.appendChild(generalHeader);
+
+                generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
+                    const item = document.createElement('div');
+                    item.className = 'module-dropdown-item';
+                    item.textContent = moduleClass.name;
+                    item.style.paddingLeft = `20px`;
+                    item.addEventListener('click', () => {
+                        const module = this.addModuleToGameObject(moduleClass);
+                        if (module) {
+                            this.moduleDropdown.style.display = 'none';
+                        }
+                    });
+                    this.moduleDropdown.appendChild(item);
+                });
+            }
         };
 
-        const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
-        renderNode(rootNodeForRendering, this.moduleDropdown, 0);
-
-        // General modules
-        if (generalModules.length > 0) {
-            if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) {
-                const separator = document.createElement('hr');
-                separator.className = 'module-dropdown-separator';
-                this.moduleDropdown.appendChild(separator);
-            }
-            const generalHeader = document.createElement('div');
-            generalHeader.className = 'module-dropdown-namespace';
-            generalHeader.textContent = 'General';
-            generalHeader.style.paddingLeft = `5px`;
-            this.moduleDropdown.appendChild(generalHeader);
-
-            generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
-                const item = document.createElement('div');
-                item.className = 'module-dropdown-item';
-                item.textContent = moduleClass.name;
-                item.style.paddingLeft = `20px`;
-                item.addEventListener('click', () => {
-                    const module = this.addModuleToGameObject(moduleClass);
-                    if (module) {
-                        this.moduleDropdown.style.display = 'none';
-                    }
-                });
-                this.moduleDropdown.appendChild(item);
-            });
-        }
-    };
-
-    // Initial render
-    renderFilteredModules();
-}
+        // Initial render
+        renderFilteredModules();
+    }
 
     saveFolderCollapseState(folderPath, isCollapsed) {
         try {
@@ -4930,6 +4936,62 @@ class Inspector {
             cursor: pointer;
             font-size: 12px;
         }
+
+        /* Make property text smaller and reduce gaps */
+    .property-row {
+        margin-bottom: 6px !important;
+        padding: 4px 0 !important;
+        font-size: 0.92em !important;
+    }
+    .property-row label,
+    .property-header,
+    .property-help,
+    .group-label {
+        font-size: 0.92em !important;
+        line-height: 1.2 !important;
+    }
+    .property-input,
+    .property-slider,
+    .property-row select {
+        font-size: 0.92em !important;
+        padding: 4px 8px !important;
+    }
+    .property-header {
+        margin-bottom: 4px !important;
+    }
+    .property-help {
+        margin: 4px 0 2px 0 !important;
+        padding: 3px 6px !important;
+        font-size: 0.85em !important;
+    }
+    .property-group {
+        padding: 8px 12px 8px 12px !important;
+        margin-bottom: 10px !important;
+    }
+    .module-container {
+        margin-bottom: 10px !important;
+    }
+    /* Reduce gap for vector components */
+    .vector-components {
+        gap: 4px !important;
+        padding: 6px !important;
+    }
+    .vector-component label {
+        font-size: 0.85em !important;
+        margin-bottom: 2px !important;
+    }
+
+    .module-dropdown-search-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #23272b;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.module-dropdown {
+    overflow-y: auto;
+    max-height: 400px;
+}
         `;
 
         document.head.appendChild(styleElement);
