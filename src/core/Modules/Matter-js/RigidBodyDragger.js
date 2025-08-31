@@ -3,7 +3,7 @@
  */
 class RigidBodyDragger extends Module {
     static allowMultiple = false; // Only one Draggable per GameObject
-    static namespace = "Physics";
+    static namespace = "Matter.js";
     static description = "Allows dragging RigidBody objects with mouse and touch input";
 
     constructor() {
@@ -35,22 +35,30 @@ class RigidBodyDragger extends Module {
         this.rigidBody = null;
         this.originalPosition = null;
 
+        this.require("RigidBody");
+
         // Expose properties to inspector
-        this.exposeProperty("enabled", "boolean", this.enabled);
+        this.exposeProperty("enabled", "boolean", this.enabled, {
+            onChange: (val) => { this.setEnabled(val); }
+        });
         this.exposeProperty("dragButton", "enum", this.dragButton, {
             options: ["left", "middle", "right"],
             onChange: (val) => { this.dragButton = val; }
         });
-        this.exposeProperty("maintainVelocity", "boolean", this.maintainVelocity);
+        this.exposeProperty("maintainVelocity", "boolean", this.maintainVelocity, {
+            onChange: (val) => { this.maintainVelocity = val; }
+        });
         this.exposeProperty("damping", "number", this.damping, {
             min: 0.01,
             max: 1.0,
-            step: 0.01
+            step: 0.01,
+            onChange: (val) => { this.damping = val; }
         });
         this.exposeProperty("force", "number", this.force, {
             min: 0.001,
             max: 1.0,
-            step: 0.001
+            step: 0.001,
+            onChange: (val) => { this.force = val; }
         });
         this.exposeProperty("showDragIndicator", "boolean", this.showDragIndicator);
     }
@@ -80,6 +88,11 @@ class RigidBodyDragger extends Module {
     loop() {
         if(!this.rigidBody) {
             this.rigidBody = this.gameObject.getModule("RigidBody");
+            
+            if(!this.rigidBody) {
+                console.warn(`RigidBodyDragger: No RigidBody component found on ${this.gameObject.name}`);
+                return;
+            }
         }
 
         this.handleMouseInput();
@@ -97,16 +110,21 @@ class RigidBodyDragger extends Module {
         }
 
         const mousePos = window.input.getMousePosition(true); // Get world coordinates
-        
+
         // Start dragging
-        if (!this.isDragging && window.input.mousePressed(0)) {
+        if (window.input.mousePressed(0) && !this.isDragging && this.enabled) {
+            console.log('Mouse pressed at', mousePos);
             if (this.isPointOverObject(mousePos)) {
                 this.startDragging(mousePos);
             }
         }
 
+        // Map dragButton string to index
+        const buttonMap = { left: 0, middle: 1, right: 2 };
+        const dragButtonIndex = buttonMap[this.dragButton] ?? 0;
+
         // Stop dragging
-        if (this.isDragging && window.input.mouseReleased(this.dragButton)) {
+        if (this.isDragging && window.input.mouseReleased(dragButtonIndex)) {
             this.stopDragging();
         }
 
@@ -154,7 +172,10 @@ class RigidBodyDragger extends Module {
      * @param {Vector2} point - The point to check
      * @returns {boolean} True if point is over the object
      */
-    isPointOverObject(point) {
+    isPointOverObject(point) {    
+        // Avoid logging the whole body object (circular structure)
+        console.log('isPointOverObject called', point, this.rigidBody?.body?.position, this.rigidBody?.body?.id);
+
         if (!this.rigidBody) {
             console.warn("RigidBodyDragger: No RigidBody component found");
             return false;
@@ -162,7 +183,7 @@ class RigidBodyDragger extends Module {
 
         // Use Matter.js collision detection
         const bodies = Matter.Query.point([this.rigidBody.body], point);
-        console.log('Bodies under point:', bodies);
+        console.log('Bodies under point:', bodies.map(b => b.id));
         return bodies.length > 0;
     }
 

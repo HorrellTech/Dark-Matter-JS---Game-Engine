@@ -13,11 +13,11 @@
 
 /* Viewport dragging */
 .viewport-dragging {
-    user-select: none;
+    /*user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
-    cursor: move !important;
+    cursor: move !important;*/
 }
 
 /* Make sure we capture all drag events */
@@ -177,7 +177,7 @@ body.game-loading .loading-overlay {
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: auto;
+    overflow: hidden !important;
     position: relative;
     background: #000;
 }

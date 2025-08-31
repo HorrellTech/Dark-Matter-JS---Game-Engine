@@ -180,6 +180,10 @@ class Module {
         this._requirements.push(moduleName);
     }
 
+    require(moduleName) {
+        this.requireModule(moduleName);
+    }
+
     /**
      * Get all required modules for this module
      * @returns {Array<string>} Array of required module names

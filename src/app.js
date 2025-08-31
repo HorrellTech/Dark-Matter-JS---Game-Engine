@@ -28,6 +28,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("Connected ModuleReloader to ModuleRegistry");
     }
 
+    if(!window.input) {
+        window.input = new InputManager();
+    }
+
     const startScreen = new StartScreen('0.2.5');
 
     initializeMobileSupport();

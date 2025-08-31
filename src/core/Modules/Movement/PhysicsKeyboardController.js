@@ -36,11 +36,11 @@ class PhysicsKeyboardController extends Module {
         this.animWalk = "walk";
 
         // Input mapping
-        this.upKey = "arrowup";
+        this.upKey = window.input.keys.up || "arrowup";
         this.downKey = "arrowdown";
         this.leftKey = "arrowleft";
         this.rightKey = "arrowright";
-        this.actionKey = "space";
+        this.actionKey = " ";
         this.rotateLeftKey = "q";
         this.rotateRightKey = "e";
 
@@ -184,6 +184,7 @@ class PhysicsKeyboardController extends Module {
         });
 
         this.exposeProperty("downKey", "string", this.downKey, {
+            //options: Object.values(window.input.keys).map(key => ({ value: key, label: key })),
             description: "Key for downward movement",
             style: {
                 label: "Down Key"

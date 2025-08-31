@@ -72,27 +72,27 @@ class InputManager {
         window.addEventListener('keyup', this._handleKeyUp);
 
         // Mouse events
-        /*this.targetElement.addEventListener('mousemove', this._handleMouseMove);
+        this.targetElement.addEventListener('mousemove', this._handleMouseMove);
         this.targetElement.addEventListener('mousedown', this._handleMouseDown);
         this.targetElement.addEventListener('mouseup', this._handleMouseUp);
         this.targetElement.addEventListener('wheel', this._handleWheel);
         this.targetElement.addEventListener('contextmenu', (e) => {
             if (this.preventContextMenu) e.preventDefault();
-        });*/
+        });
 
         // Touch events
-        /*this.targetElement.addEventListener('touchstart', this._handleTouchStart);
+        this.targetElement.addEventListener('touchstart', this._handleTouchStart);
         this.targetElement.addEventListener('touchmove', this._handleTouchMove);
         this.targetElement.addEventListener('touchend', this._handleTouchEnd);
-        this.targetElement.addEventListener('touchcancel', this._handleTouchEnd);*/
+        this.targetElement.addEventListener('touchcancel', this._handleTouchEnd);
 
-        window.addEventListener('mousedown', this._handleMouseDown);
+        /*window.addEventListener('mousedown', this._handleMouseDown);
         window.addEventListener('mouseup', this._handleMouseUp);
         window.addEventListener('mousemove', this._handleMouseMove);
         window.addEventListener('wheel', this._handleWheel);
         window.addEventListener('contextmenu', (e) => {
             if (this.preventContextMenu) e.preventDefault();
-        });
+        });*/
 
         console.log('InputManager initialized');
     }
@@ -126,6 +126,11 @@ class InputManager {
     endFrame() {
         // Update pressed keys (held down)
         this.keysPressed = Object.assign({}, this.keys);
+        // Update pressed mouse buttons (held down)
+        //this.mouseButtonsPressed = Object.assign({}, this.mouseButtons);
+        // Clear ended touches
+        //this.touchesEnded = {};
+        //this.touchesStarted = {};
 
         // Update world mouse position if engine is available
         if (this.engine && this.engine.ctx) {
@@ -170,7 +175,7 @@ class InputManager {
      * @returns {boolean} True if the key is down
      */
     keyDown(keyCode) {
-        return this.keys[keyCode] === true;
+        return this.keys[keyCode.toLowerCase()] === true;
     }
 
     /**
@@ -179,7 +184,7 @@ class InputManager {
      * @returns {boolean} True if the key was pressed this frame
      */
     keyPressed(keyCode) {
-        return this.keysDown[keyCode] === true;
+        return this.keysDown[keyCode.toLowerCase()] === true;
     }
 
     /**
@@ -188,7 +193,7 @@ class InputManager {
      * @returns {boolean} True if the key was released this frame
      */
     keyReleased(keyCode) {
-        return this.keysUp[keyCode] === true;
+        return this.keysUp[keyCode.toLowerCase()] === true;
     }
 
     /**
@@ -320,6 +325,8 @@ class InputManager {
      */
     _handleMouseDown(e) {
         if (!this.enabled) return;
+
+        //console.log('Mouse Down:' + e.button + ' at ' + e.clientX + ',' + e.clientY + ' World Position: ' + this.worldMousePosition.x + ',' + this.worldMousePosition.y);
 
         switch (e.button) {
             case 0: // Left

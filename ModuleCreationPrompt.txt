@@ -22,6 +22,8 @@ class MyModule extends Module {
     constructor() {
         super("MyModule");
 
+        this.ignoreGameObjectTransform = false;
+
         this.speed = 100; // Default speed
         
         // Expose properties for inspector

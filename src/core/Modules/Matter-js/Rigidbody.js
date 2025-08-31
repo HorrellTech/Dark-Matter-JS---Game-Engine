@@ -418,6 +418,14 @@ class RigidBody extends Module {
         }
     }
 
+    setAngularVelocity(angularVelocity) {
+        if (this.body) {
+            // Convert from degrees/sec to radians/sec
+            const radians = angularVelocity * (Math.PI / 180);
+            Matter.Body.setAngularVelocity(this.body, radians);
+        }
+    }
+
     /**
      * Set the linear velocity of the body
      * @param {Vector2} velocity - The velocity to set

@@ -627,7 +627,7 @@ class Inspector {
                     <input type="number" class="scale-y" value="${this.inspectedObject.scale.y}" step="0.1" title="Y scale factor">
                 </div>
                 <div class="property-row">
-                    <label title="Rotation angle in degrees">Rotation</label>
+                    <label title="Rotation angle in degrees">Angle</label>
                     <input type="number" class="rotation" value="${this.inspectedObject.angle}" step="1" title="Rotation angle in degrees">
                 </div>
                 <div class="property-row">
@@ -2470,6 +2470,26 @@ class Inspector {
                     ${helpHtml}
                 </div>
             `;
+            case 'keys':
+            case 'keycode': {
+                let keyOptions = window.input?.keys;
+                // Ensure keyOptions is always an array
+                if (!Array.isArray(keyOptions)) {
+                    if (keyOptions && typeof keyOptions === 'object') {
+                        keyOptions = Object.values(keyOptions);
+                    } else {
+                        keyOptions = [];
+                    }
+                }
+                return `
+        <div class="property-row">
+            <label for="${inputId}" title="${tooltip}">${this.formatPropertyName(prop.name)}</label>
+            <select id="${inputId}" class="property-input" data-prop-name="${prop.name}">
+                ${keyOptions.map(opt => `<option value="${opt.value}" ${value == opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+            </select>
+        </div>
+    `;
+            }
             case 'vector2':
                 return this.generateVectorUI(prop, module, value);
             case 'vector3':
@@ -3221,6 +3241,23 @@ class Inspector {
                     // Update UI
                     this.refreshModuleUI(module);
                     updateGameObject();
+                });
+            }
+        });
+
+        // Handle keys/keycode dropdowns
+        container.querySelectorAll('.property-input[data-prop-name]').forEach(input => {
+            if ((input.dataset.propName === 'keys' || input.dataset.propName === 'keycode')) {
+                input.addEventListener('change', () => {
+                    const propName = input.dataset.propName;
+                    const value = input.value;
+                    this.updateModuleProperty(module, propName, value);
+                    if (typeof module.style === 'function') {
+                        this.refreshModuleUI(module);
+                    }
+                    if (this.editor && this.editor.refreshCanvas) {
+                        this.editor.refreshCanvas();
+                    }
                 });
             }
         });
