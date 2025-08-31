@@ -2809,7 +2809,7 @@ class Inspector {
     populateModuleDropdown() {
         this.moduleDropdown.innerHTML = ''; // Clear previous content
 
-        // --- Add search box ---
+        // --- Add search box at the top ---
         const searchContainer = document.createElement('div');
         searchContainer.style.padding = '8px';
         searchContainer.style.background = '#23272b';
@@ -2844,10 +2844,7 @@ class Inspector {
 
         // --- Render modules with filter ---
         const renderFilteredModules = () => {
-            // Remove previous module items (keep search box)
-            Array.from(this.moduleDropdown.children).forEach((child, i) => {
-                if (i > 0) this.moduleDropdown.removeChild(child);
-            });
+            modulesListContainer.innerHTML = ''; // Only clear the modules list
 
             // Filter modules by name or description
             let filteredModules = this.availableModules;
@@ -2862,7 +2859,7 @@ class Inspector {
                 const message = document.createElement('div');
                 message.className = 'dropdown-message';
                 message.textContent = 'No modules found';
-                this.moduleDropdown.appendChild(message);
+                modulesListContainer.appendChild(message);
                 return;
             }
 
@@ -2976,20 +2973,20 @@ class Inspector {
             };
 
             const rootNodeForRendering = { _children: namespaceTree, _modules: [] };
-            renderNode(rootNodeForRendering, this.moduleDropdown, 0);
+            renderNode(rootNodeForRendering, modulesListContainer, 0);
 
             // General modules
             if (generalModules.length > 0) {
                 if (Object.keys(namespaceTree).length > 0 && generalModules.length > 0) {
                     const separator = document.createElement('hr');
                     separator.className = 'module-dropdown-separator';
-                    this.moduleDropdown.appendChild(separator);
+                    modulesListContainer.appendChild(separator);
                 }
                 const generalHeader = document.createElement('div');
                 generalHeader.className = 'module-dropdown-namespace';
                 generalHeader.textContent = 'General';
                 generalHeader.style.paddingLeft = `5px`;
-                this.moduleDropdown.appendChild(generalHeader);
+                modulesListContainer.appendChild(generalHeader);
 
                 generalModules.sort((a, b) => a.name.localeCompare(b.name)).forEach(moduleClass => {
                     const item = document.createElement('div');
@@ -3002,7 +2999,7 @@ class Inspector {
                             this.moduleDropdown.style.display = 'none';
                         }
                     });
-                    this.moduleDropdown.appendChild(item);
+                    modulesListContainer.appendChild(item);
                 });
             }
         };

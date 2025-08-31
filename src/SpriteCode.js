@@ -108,6 +108,16 @@ class SpriteCode {
                 e.target.classList.add('active');
                 this.currentTool = e.target.dataset.tool;
                 this.updateToolOptions();
+
+                // Deselect shapes when changing tools
+                this.selectedShapeIndices = [];
+                this.selectedShape = null;
+                this.selectedShapeIndex = -1;
+                this.updateShapesList();
+                this.updateTransformControls();
+                this.updateShapeToolbarButtons();
+                this.updateUIFromSelectedShape();
+                this.redrawCanvas();
             }
         });
 
@@ -1796,7 +1806,7 @@ window.${moduleName} = ${moduleName};`;
     }
 
     createGradient(shape, ctx) {
-        if (!this.enableGradient || !shape.gradient) return shape.fillColor;
+        if (!shape.gradient || !shape.gradient.enabled) return shape.fillColor;
 
         let gradient;
         const bounds = this.getShapeBounds(shape);
@@ -1852,7 +1862,19 @@ window.${moduleName} = ${moduleName};`;
         };
 
         this.shapes.push(shape);
+
+        // Auto-select the new shape and switch to pointer tool
+        this.selectedShapeIndices = [this.shapes.length - 1];
+        this.selectedShapeIndex = this.shapes.length - 1;
+        this.selectedShape = shape;
+        this.currentTool = 'select';
+        document.querySelectorAll('.tool-btn-sprite').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('.tool-btn-sprite[data-tool="select"]')?.classList.add('active');
+        this.updateToolOptions();
         this.updateShapesList();
+        this.updateTransformControls();
+        this.updateShapeToolbarButtons();
+        this.updateUIFromSelectedShape();
         this.redrawCanvas();
     }
 
@@ -2051,7 +2073,7 @@ window.${moduleName} = ${moduleName};`;
             document.getElementById('enableGradient-sprite').checked = false;
         }
 
-        this.enableGradient = document.getElementById('enableGradient-sprite').checked;
+        //this.enableGradient = document.getElementById('enableGradient-sprite').checked;
         this.toggleGradientOptions();
     }
 
@@ -2539,6 +2561,18 @@ window.${moduleName} = ${moduleName};`;
                 pt.x = bounds.x + (pt.x - oldBounds.x) * scaleX;
                 pt.y = bounds.y + (pt.y - oldBounds.y) * scaleY;
             });
+        } else if (shape.type === 'circle') {
+            // For circles, keep center at startX/startY, update endX/endY to match new radius
+            // Calculate new radius from bounds
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            // Use the farthest corner from center as new endX/endY
+            const dx = (bounds.width) / 2;
+            const dy = (bounds.height) / 2;
+            shape.startX = centerX;
+            shape.startY = centerY;
+            shape.endX = centerX + dx;
+            shape.endY = centerY + dy;
         } else {
             shape.startX = bounds.x;
             shape.startY = bounds.y;
