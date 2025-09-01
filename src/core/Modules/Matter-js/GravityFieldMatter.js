@@ -5,7 +5,7 @@
 class GravityFieldMatter extends Module {
     static allowMultiple = false; // Only one GravityFieldMatter per GameObject
     static namespace = "Matter.js";
-    static description = "Creates gravitational fields that can attract or repel dynamic RigidBody objects";
+    static description = "Creates gravitational fields that can attract or repel dynamic RigidBody objects for Matter.js";
 
     constructor() {
         super("GravityFieldMatter");

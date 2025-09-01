@@ -4,7 +4,7 @@
 class RigidBodyDragger extends Module {
     static allowMultiple = false; // Only one Draggable per GameObject
     static namespace = "Matter.js";
-    static description = "Allows dragging RigidBody objects with mouse and touch input";
+    static description = "Allows dragging RigidBody objects with mouse and touch input for Matter.js";
 
     constructor() {
         super("RigidBodyDragger");

@@ -4,7 +4,7 @@
 class Joint extends Module {
     static allowMultiple = true; // Allow multiple joints per GameObject
     static namespace = "Matter.js";
-    static description = "Physics component that creates constraints/joints between GameObjects";
+    static description = "Physics component that creates constraints/joints between GameObjects for Matter.js";
 
     constructor() {
         super("Joint");

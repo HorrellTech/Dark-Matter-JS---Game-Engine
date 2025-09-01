@@ -4,7 +4,7 @@
 class RigidBody extends Module {
     static allowMultiple = false; // Only one RigidBody per GameObject
     static namespace = "Matter.js";
-    static description = "Physics component that adds a physical body to a GameObject";
+    static description = "Physics component that adds a physical body to a GameObject for Matter.js";
 
     constructor() {
         super("RigidBody");
@@ -298,6 +298,7 @@ class RigidBody extends Module {
         }
         else {
             //body.isStatic = false;
+            body.mass = (this.density * body.area) || 1;
         }
 
         // Apply fixed rotation constraint
@@ -334,6 +335,14 @@ class RigidBody extends Module {
         }
 
         return body;
+    }
+
+    updateMass(weight = 1) {
+        if (this.body && this.bodyType === "dynamic") {
+            const area = this.body.area || 1;
+            const newMass = this.density * area * weight;
+            Matter.Body.setMass(this.body, newMass);
+        }
     }
 
     /**

@@ -162,6 +162,12 @@ class Vector2 {
         return { x: this.x, y: this.y };
     }
 
+    // Public API methods
+    static up() { return new Vector2(0, 1); }
+    static down() { return new Vector2(0, -1); }
+    static left() { return new Vector2(-1, 0); }
+    static right() { return new Vector2(1, 0); }
+
     static fromJSON(data) {
         if (!data) return Vector2.zero();
         return new Vector2(data.x ?? 0, data.y ?? 0);
