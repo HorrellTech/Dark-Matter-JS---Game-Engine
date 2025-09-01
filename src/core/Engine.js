@@ -109,6 +109,8 @@ class Engine {
         this._minFrameInterval = 1000 / this.maxFPS;
         this._lastFrameTime = 0;
 
+        this.prefabs = {}; // Store loaded prefabs by name or ID
+
         canvas.tabIndex = 0; // Makes canvas focusable
         canvas.focus(); // Give it focus
     }
@@ -1189,44 +1191,8 @@ class Engine {
 
         try {
             // Create GameObject
-            const gameObject = new GameObject(prefabData.name || "PrefabInstance", this || null);
-
-            // Set position
-            gameObject.position.x = x;
-            gameObject.position.y = y;
-
-            // Apply prefab properties
-            if (prefabData.position) {
-                gameObject.position.x += prefabData.position.x || 0;
-                gameObject.position.y += prefabData.position.y || 0;
-            }
-
-            if (prefabData.scale) {
-                gameObject.scale.x = prefabData.scale.x || 1;
-                gameObject.scale.y = prefabData.scale.y || 1;
-            }
-
-            if (prefabData.angle !== undefined) {
-                gameObject.angle = prefabData.angle;
-            }
-
-            // Add modules
-            if (prefabData.modules && Array.isArray(prefabData.modules)) {
-                for (const moduleData of prefabData.modules) {
-                    const ModuleClass = window[moduleData.type];
-                    if (ModuleClass) {
-                        const module = new ModuleClass();
-                        if (module.fromJSON && moduleData.data) {
-                            module.fromJSON(moduleData.data);
-                        }
-                        gameObject.addModule(module);
-                    } else {
-                        console.warn(`Module class not found: ${moduleData.type}`);
-                    }
-                }
-            }
-
-            console.log(`Successfully created GameObject from prefab`);
+            const gameObject = GameObject.fromJSON(prefabData);
+            gameObject.position.set(x, y);
             return gameObject;
 
         } catch (error) {

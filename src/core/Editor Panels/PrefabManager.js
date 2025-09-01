@@ -78,6 +78,13 @@ class PrefabManager {
             }
         }
 
+        // Try contains match
+        for (const [key, value] of this.prefabs) {
+            if (key.toLowerCase().includes(lowerName)) {
+                return value;
+            }
+        }
+
         return null;
     }
 
