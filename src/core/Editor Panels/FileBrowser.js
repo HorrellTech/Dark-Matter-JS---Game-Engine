@@ -2110,6 +2110,57 @@ window.${pascalCaseName} = ${pascalCaseName};
 
         const fileName = file.name.toLowerCase();
 
+        // --- Prefab file handling ---
+        if (fileName.endsWith('.prefab')) {
+            // Deselect all objects in hierarchy
+            if (window.editor && window.editor.hierarchy) {
+                window.editor.hierarchy.selectedObject = null;
+                window.editor.hierarchy.selectedObjects = [];
+                document.querySelectorAll('.hierarchy-item.selected').forEach(el => el.classList.remove('selected'));
+            }
+
+            // Load prefab data and show in inspector
+            try {
+                const prefabData = JSON.parse(file.content);
+                // Support both old and new prefab formats
+                const prefabModules = (prefabData.gameObject?.modules) || prefabData.modules || [];
+                // Create a temporary object to hold prefab modules for editing
+                const tempPrefabObject = GameObject.fromJSON(prefabData);
+
+                // Instantiate module classes from prefab data
+                /*for (const mod of prefabModules) {
+                    let ModuleClass = window[mod.type];
+                    let moduleInstance;
+                    if (ModuleClass && typeof ModuleClass === 'function') {
+                        moduleInstance = new ModuleClass();
+                        // Copy properties
+                        if (mod.properties) {
+                            Object.assign(moduleInstance, mod.properties);
+                        }
+                    } else {
+                        // Placeholder module if class not found
+                        moduleInstance = {
+                            type: mod.type,
+                            isPlaceholder: true,
+                            _originalData: mod.properties || {},
+                            id: Math.random().toString(36).substr(2, 9),
+                            enabled: true
+                        };
+                    }
+                    tempPrefabObject.modules.push(moduleInstance);
+                }*/
+
+                // Show in inspector
+                if (window.editor && window.editor.inspector) {
+                    window.editor.inspector.inspectObject(tempPrefabObject);
+                }
+            } catch (err) {
+                this.showNotification('Failed to load prefab for editing', 'error');
+                console.error(err);
+            }
+            return;
+        }
+
         if (fileName.endsWith('.scene')) {
             await this.openSceneFile(file);
         } else if (fileName.endsWith('.spritecode')) {

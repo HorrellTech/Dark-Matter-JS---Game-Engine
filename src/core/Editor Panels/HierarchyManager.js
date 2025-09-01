@@ -1131,9 +1131,9 @@ class HierarchyManager {
         this.editor.activeScene.markDirty();
 
         // Trigger auto-save if available
-        if (window.autoSaveManager) {
-            window.autoSaveManager.autoSave();
-        }
+        //if (window.autoSaveManager) {
+        //    window.autoSaveManager.autoSave();
+        //}
     }
 
     /**

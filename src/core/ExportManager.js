@@ -575,6 +575,7 @@ class ExportManager {
             'src/core/ModuleManager.js',
             'src/core/GameObject.js',
             'src/core/InputManager.js',
+            //'src/core/Editor Panels/PrefabManager.js'
             'src/core/Scene.js',
             'src/core/Engine.js',
 
@@ -703,9 +704,10 @@ class ExportManager {
 
             // Physics and Collision Modules
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
-            'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
+            //'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
             'GravityFieldMatter': 'src/core/Modules/Matter-js/GravityFieldMatter.js',
+            'VehiclePhysics': 'src/core/Modules/Matter-js/VehiclePhysics.js',
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
             'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',

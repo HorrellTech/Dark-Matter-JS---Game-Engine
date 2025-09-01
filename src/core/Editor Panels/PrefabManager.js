@@ -178,49 +178,7 @@ class PrefabManager {
      * @returns {Object} Serialized prefab data
      */
     serializeGameObjectForPrefab(gameObject) {
-        const prefabData = {
-            name: gameObject.name,
-            position: {
-                x: gameObject.position.x,
-                y: gameObject.position.y
-            },
-            angle: gameObject.angle,
-            scale: {
-                x: gameObject.scale.x,
-                y: gameObject.scale.y
-            },
-            active: gameObject.active,
-            modules: [],
-            children: []
-        };
-
-        // Serialize modules
-        if (gameObject.modules && gameObject.modules.length > 0) {
-            gameObject.modules.forEach(module => {
-                const moduleData = {
-                    className: module.constructor.name,
-                    properties: {}
-                };
-
-                // Copy all exposed properties
-                if (module.exposedProperties) {
-                    module.exposedProperties.forEach(prop => {
-                        moduleData.properties[prop.name] = module[prop.name];
-                    });
-                }
-
-                prefabData.modules.push(moduleData);
-            });
-        }
-
-        // Recursively serialize children
-        if (gameObject.children && gameObject.children.length > 0) {
-            gameObject.children.forEach(child => {
-                prefabData.children.push(this.serializeGameObjectForPrefab(child));
-            });
-        }
-
-        return prefabData;
+        return gameObject.toJSON();
     }
 
     /**
@@ -233,123 +191,12 @@ class PrefabManager {
     instantiatePrefab(prefabData, position = null, parent = null) {
         try {
             // Create the main GameObject
-            const gameObject = new GameObject(prefabData.name);
+            const cloned = GameObject.fromJSON(prefabData);
 
-            // Set position (use provided position or prefab's stored position)
-            if (position) {
-                gameObject.position.x = position.x;
-                gameObject.position.y = position.y;
-            } else {
-                gameObject.position.x = prefabData.position?.x || 0;
-                gameObject.position.y = prefabData.position?.y || 0;
-            }
+            // Generate a new unique ID for the cloned GameObject
+            cloned.id = crypto.randomUUID ? crypto.randomUUID() : `go-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-            // Set other properties
-            gameObject.angle = prefabData.angle || 0;
-            gameObject.scale.x = prefabData.scale?.x || 1;
-            gameObject.scale.y = prefabData.scale?.y || 1;
-            gameObject.active = prefabData.active !== false;
-
-            // Add modules
-            if (prefabData.modules && prefabData.modules.length > 0) {
-                prefabData.modules.forEach(moduleData => {
-                    try {
-                        console.log(`Creating module: ${moduleData.className}`);
-
-                        // Get the module class - try different ways
-                        let ModuleClass = window[moduleData.className];
-
-                        // If not found, try the type field
-                        if (!ModuleClass && moduleData.type) {
-                            ModuleClass = window[moduleData.type];
-                        }
-
-                        if (!ModuleClass) {
-                            console.warn(`Module class not found: ${moduleData.className || moduleData.type}`);
-                            return;
-                        }
-
-                        // Create module instance with error handling
-                        let moduleInstance;
-                        try {
-                            moduleInstance = new ModuleClass();
-                            console.log(`Successfully created ${moduleData.className} instance`);
-                        } catch (constructorError) {
-                            console.error(`Error in ${moduleData.className} constructor:`, constructorError);
-                            return;
-                        }
-
-                        // Set properties using different methods
-                        if (moduleData.properties) {
-                            Object.keys(moduleData.properties).forEach(propName => {
-                                try {
-                                    if (typeof moduleInstance.setProperty === 'function') {
-                                        moduleInstance.setProperty(propName, moduleData.properties[propName]);
-                                    } else if (moduleInstance.hasOwnProperty(propName)) {
-                                        moduleInstance[propName] = moduleData.properties[propName];
-                                    }
-                                    console.log(`Set property ${propName} = ${moduleData.properties[propName]}`);
-                                } catch (propError) {
-                                    console.warn(`Error setting property ${propName}:`, propError);
-                                }
-                            });
-                        }
-
-                        // If there's a data field (from newer prefab format), use fromJSON
-                        if (moduleData.data && typeof moduleInstance.fromJSON === 'function') {
-                            try {
-                                moduleInstance.fromJSON(moduleData.data);
-                                console.log(`Applied JSON data to ${moduleData.className}`);
-                            } catch (jsonError) {
-                                console.error(`Error applying JSON data to ${moduleData.className}:`, jsonError);
-                            }
-                        }
-
-                        // Add to GameObject using the proper method
-                        gameObject.addModule(moduleInstance);
-                        console.log(`Successfully added ${moduleData.className} to ${gameObject.name}`);
-
-                    } catch (error) {
-                        console.error(`Error adding module ${moduleData.className || moduleData.type}:`, error);
-                    }
-                });
-            }
-
-            // Recursively instantiate children
-            if (prefabData.children && prefabData.children.length > 0) {
-                prefabData.children.forEach(childData => {
-                    const childGameObject = this.instantiatePrefab(childData, null, gameObject);
-                    if (childGameObject) {
-                        gameObject.addChild(childGameObject);
-                    }
-                });
-            }
-
-            // IMPORTANT: Add to scene or parent AFTER all modules and children are set up
-            if (parent) {
-                parent.addChild(gameObject);
-            } else {
-                // Check if we're in the editor
-                if (this.editor && this.editor.activeScene) {
-                    // Add to the active scene
-                    this.editor.activeScene.gameObjects.push(gameObject);
-                    
-                    // IMPORTANT: Also refresh the hierarchy to show the new object
-                    if (this.hierarchy) {
-                        this.hierarchy.refreshHierarchy();
-                    }
-                    
-                    // Refresh the canvas to show the object
-                    this.editor.refreshCanvas();
-                    
-                } else if (window.engine && window.engine.gameObjects) {
-                    // Add to the engine's gameObjects array for runtime
-                    window.engine.gameObjects.push(gameObject);
-                }
-            }
-
-            console.log(`Successfully instantiated prefab: ${prefabData.metadata?.name || prefabData.name}`);
-            return gameObject;
+            return cloned;
 
         } catch (error) {
             console.error('Error instantiating prefab:', error);

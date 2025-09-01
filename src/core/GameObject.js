@@ -1079,6 +1079,8 @@ class GameObject {
             usePolygonCollision: this.usePolygonCollision,
             polygon: this.polygon ? this.polygon.toJSON() : null,
             size: this.size ? { width: this.size.x, height: this.size.y } : { width: 50, height: 50 },
+            colliderWidth: this.colliderWidth || 0,
+            colliderHeight: this.colliderHeight || 0,
             angle: this.angle,
             depth: this.depth,
             active: this.active,
@@ -1106,6 +1108,9 @@ class GameObject {
         const obj = new GameObject(json.name);
         // Restore ID if available
         if (json.id) obj.id = json.id;
+
+        obj.colliderWidth = json.colliderWidth || 0;
+        obj.colliderHeight = json.colliderHeight || 0;
 
         obj.position = new Vector2(json.position.x, json.position.y);
         obj.useCollisions = json.useCollisions || false;
@@ -1538,10 +1543,17 @@ class GameObject {
         if (addNameCopySuffix && !newName.trim().endsWith("(Copy)")) {
             newName += " (Copy)";
         }
-        const cloned = new GameObject(newName, this.engine);
+        const cloned = GameObject.fromJSON(this.toJSON());
+
+        cloned.name = newName;
+
+        // Generate a new unique ID for the cloned GameObject
+        cloned.id = crypto.randomUUID ? crypto.randomUUID() : `go-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+        return cloned;
 
         // Copy basic properties
-        cloned.position = this.position.clone();
+        /*cloned.position = this.position.clone();
         cloned.scale = this.scale.clone();
         cloned.size = this.size.clone();
         cloned.origin = this.origin.clone();
@@ -1631,7 +1643,7 @@ class GameObject {
                     module[key] = cloned;
                 }
             }
-        }
+        }*/
 
         return cloned;
     }

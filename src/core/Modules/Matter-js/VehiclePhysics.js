@@ -597,7 +597,7 @@ class VehiclePhysics extends Module {
         }
 
         // --- Add roll force in wheel direction when not accelerating ---
-        if (!this.isAccelerating && this.isMoving() && !this.isDrifting) {
+        if (!this.isAccelerating && this.isMoving()) {
             // Calculate wheel direction vector
             const wheelAngleRad = (this.currentWheelAngle * Math.PI / 180);
             const wheelDirection = currentAngle + wheelAngleRad;
