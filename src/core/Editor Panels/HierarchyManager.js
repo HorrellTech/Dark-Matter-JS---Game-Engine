@@ -1177,56 +1177,8 @@ class HierarchyManager {
      * @returns {Object} Serialized GameObject data
      */
     serializeGameObject(gameObject) {
-        const serializedData = {
-            name: gameObject.name,
-            position: {
-                x: gameObject.position.x,
-                y: gameObject.position.y
-            },
-            rotation: gameObject.rotation,
-            scale: {
-                x: gameObject.scale.x,
-                y: gameObject.scale.y
-            },
-            active: gameObject.active,
-            editorColor: gameObject.editorColor,
-            modules: [],
-            children: []
-        };
-
-        // Serialize modules
-        if (gameObject.modules && gameObject.modules.length > 0) {
-            gameObject.modules.forEach(module => {
-                try {
-                    const moduleData = {
-                        type: module.constructor.name,
-                        properties: {}
-                    };
-
-                    // Get all exposed properties
-                    if (module.exposedProperties) {
-                        Object.keys(module.exposedProperties).forEach(propName => {
-                            if (module.hasOwnProperty(propName)) {
-                                moduleData.properties[propName] = module[propName];
-                            }
-                        });
-                    }
-
-                    serializedData.modules.push(moduleData);
-                } catch (error) {
-                    console.warn(`Failed to serialize module ${module.constructor.name}:`, error);
-                }
-            });
-        }
-
-        // Serialize children recursively
-        if (gameObject.children && gameObject.children.length > 0) {
-            gameObject.children.forEach(child => {
-                serializedData.children.push(this.serializeGameObject(child));
-            });
-        }
-
-        return serializedData;
+        
+        return gameObject.toJSON();
     }
 
     /**
@@ -1236,53 +1188,7 @@ class HierarchyManager {
  */
     deserializeGameObject(data) {
         // Create new GameObject
-        const gameObject = new GameObject(data.name);
-
-        // Set basic properties
-        gameObject.position.x = data.position?.x || 0;
-        gameObject.position.y = data.position?.y || 0;
-        gameObject.rotation = data.rotation || 0;
-        gameObject.scale.x = data.scale?.x || 1;
-        gameObject.scale.y = data.scale?.y || 1;
-        gameObject.active = data.active !== undefined ? data.active : true;
-        gameObject.editorColor = data.editorColor || '#ffffff';
-
-        // Deserialize modules
-        if (data.modules && data.modules.length > 0) {
-            data.modules.forEach(moduleData => {
-                try {
-                    const ModuleClass = window[moduleData.type];
-                    if (ModuleClass && typeof ModuleClass === 'function') {
-                        const module = new ModuleClass();
-
-                        // Set properties
-                        if (moduleData.properties) {
-                            Object.keys(moduleData.properties).forEach(propName => {
-                                if (module.hasOwnProperty(propName)) {
-                                    module[propName] = moduleData.properties[propName];
-                                }
-                            });
-                        }
-
-                        gameObject.addModule(module);
-                    } else {
-                        console.warn(`Module class not found: ${moduleData.type}`);
-                    }
-                } catch (error) {
-                    console.error(`Error deserializing module ${moduleData.type}:`, error);
-                }
-            });
-        }
-
-        // Deserialize children recursively
-        if (data.children && data.children.length > 0) {
-            data.children.forEach(childData => {
-                const child = this.deserializeGameObject(childData);
-                gameObject.addChild(child);
-            });
-        }
-
-        return gameObject;
+        return GameObject.fromJSON(data);
     }
 
     /**
