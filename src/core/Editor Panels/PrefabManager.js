@@ -1,5 +1,5 @@
 class PrefabManager {
-    constructor(hierarchyManager) {
+    constructor(hierarchyManager = null) {
         this.hierarchy = hierarchyManager || null;
         this.editor = hierarchyManager.editor || null;
         this.prefabs = new Map(); // Store prefabs in memory
@@ -202,6 +202,12 @@ class PrefabManager {
 
             // Generate a new unique ID for the cloned GameObject
             cloned.id = crypto.randomUUID ? crypto.randomUUID() : `go-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            cloned.position = position ? position.clone() : new Vector2(0, 0);
+            if (parent) {
+                parent.addChild(cloned);
+            } else {
+                window.engine.gameObjects.push(cloned);
+            }
 
             return cloned;
 
@@ -390,4 +396,8 @@ class PrefabManager {
         }
         return exportData;
     }
+}
+
+if(!window.prefabManager) {
+    window.prefabManager = new PrefabManager();
 }

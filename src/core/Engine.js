@@ -25,6 +25,23 @@ class Engine {
         this.running = false;
         this.preloaded = false;
 
+        this.decalCanvas = document.createElement('canvas');
+        this.decalCanvas.width = 800;
+        this.decalCanvas.height = 600;
+        this.decalCanvas.style.position = 'absolute';
+        this.decalCanvas.style.left = '0px';
+        this.decalCanvas.style.top = '0px';
+        this.decalCanvas.style.pointerEvents = 'none';
+
+        this.decalCtx = this.decalCanvas.getContext('2d');
+        this.decalChunks = new Map(); // Map of chunks by key (e.g., "x_y")
+
+        this.debugDecals = true;
+
+        // Decal chunk settings
+        this.chunkSize = 512; // World units per chunk (configurable)
+        this.preloadChunkRadius = 1; // Number of chunks to preload in each direction around viewport
+
         this.usePixi = false; // Set to true to enable Pixi.js
         this.pixiRenderer = null;
 
@@ -82,6 +99,10 @@ class Engine {
         if (!window.viewport) {
             window.viewport = this.viewport;
         }
+
+        //if(!window.prefabManager) {
+        //    window.prefabManager = new PrefabManager();
+        //}
 
         window.engine = this; // Global reference for easy access
 
@@ -167,6 +188,9 @@ class Engine {
                 this.viewport.shake.y = (Math.random() - 0.5) * intensity;
             }
         }
+
+        // Preload decal chunks around the new viewport position
+        this.preloadChunks();
 
         // Mark as clean
         this.viewport.dirty = false;
@@ -420,7 +444,7 @@ class Engine {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null; // Ensure no stale frame
         }
-        
+
         if (!this.scene) {
             console.error('No scene loaded');
             return;
@@ -471,6 +495,8 @@ class Engine {
         this.running = true;
         this.lastTime = performance.now();
         this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
+
+        await window.prefabManager.loadExistingPrefabs()
     }
 
     pause() {
@@ -500,6 +526,8 @@ class Engine {
             cancelAnimationFrame(this.animationFrameId);
             this.animationFrameId = null; // Ensure no stale frame
         }
+
+        this.clearDecals();
 
         // Preserve shake object structure when resetting viewport
         this.viewport = {
@@ -824,6 +852,9 @@ class Engine {
             this.updateViewport();
         }
 
+        // Update decal chunks for fading
+        this.decalChunks.forEach(chunk => chunk.update(deltaTime));
+
         this.update(deltaTime);
         this.draw();
 
@@ -857,13 +888,13 @@ class Engine {
         });
 
         // Update collision system
-        if (window.collisionSystem) {
+        /*if (window.collisionSystem) {
             // Get all active objects
             const allObjects = this.getAllObjects(this.gameObjects).filter(obj => obj.active);
 
             // Update collision detection
             window.collisionSystem.update(allObjects);
-        }
+        }*/
 
         // Main loop phase
         this.traverseGameObjects(this.gameObjects, obj => {
@@ -960,6 +991,22 @@ class Engine {
             this.ctx.restore();
         }
 
+        // Draw decal canvas (in world space, before objects)
+        if (this.decalCanvas) {
+            this.ctx.save();
+            this.ctx.globalAlpha = 1.0;
+            // Render only visible chunks
+            this.decalChunks.forEach(chunk => {
+                if (chunk.isVisible(this.viewport)) {
+                    this.ctx.save();
+                    this.ctx.translate(chunk.x, chunk.y); // Position chunk in world space
+                    chunk.draw(this.ctx, this.viewport, this.debugDecals); // Pass debug flag
+                    this.ctx.restore();
+                }
+            });
+            this.ctx.restore();
+        }
+
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
 
@@ -1036,6 +1083,7 @@ class Engine {
 
         // Clone the scene to avoid modifying the editor version
         this.scene = scene;
+        this.clearDecals();
 
         // Copy viewport settings and validate them
         if (scene.settings) {
@@ -1045,6 +1093,12 @@ class Engine {
             this.viewport.y = scene.settings.viewportY || 0;
             this.viewport.zoom = Math.max(0.1, scene.settings.viewportZoom || 1);
             this.viewport.angle = scene.settings.viewportAngle || 0;
+        }
+
+        // Load chunk settings from scene if available
+        if (scene.settings) {
+            this.chunkSize = scene.settings.chunkSize || this.chunkSize;
+            this.preloadChunkRadius = scene.settings.preloadChunkRadius || this.preloadChunkRadius;
         }
 
         // Mark viewport as dirty to force update
@@ -1279,6 +1333,127 @@ class Engine {
     }
 
     /**
+     * Add a decal at world coordinates (x, y)
+     * @param {number} x - World X position
+     * @param {number} y - World Y position
+     * @param {Image|Function} imageOrDrawFunction - The decal image or a function(ctx) to draw custom graphics
+     * @param {Object} options - Optional: {rotation, scale, alpha, width, height} (width/height for drawing functions)
+     */
+    addDecal(x, y, imageOrDrawFunction, options = {}) {
+        const chunkX = Math.floor(x / this.chunkSize) * this.chunkSize;
+        const chunkY = Math.floor(y / this.chunkSize) * this.chunkSize;
+        const key = `${chunkX}_${chunkY}`;
+
+        // Validate chunk bounds (ensure decal is within chunk)
+        const localX = x - chunkX;
+        const localY = y - chunkY;
+        if (localX < 0 || localX >= this.chunkSize || localY < 0 || localY >= this.chunkSize) {
+            console.warn(`Decal at (${x}, ${y}) is outside chunk bounds (${chunkX}, ${chunkY}) - adjusting.`);
+            // Optional: Adjust position to fit within chunk (or skip addition)
+        }
+
+        if (!this.decalChunks.has(key)) {
+            this.decalChunks.set(key, new DecalChunk(chunkX, chunkY, this.chunkSize));
+        }
+
+        if (this.debugDecals) {
+            console.log(`Adding decal to chunk: ${key} at local (${localX}, ${localY})`);
+        }
+
+        this.decalChunks.get(key).addDecal(x, y, imageOrDrawFunction, options);
+    }
+
+    /**
+     * Clear all decals or decals in a specific chunk
+     * @param {number} x - Optional: World X to clear chunk
+     * @param {number} y - Optional: World Y to clear chunk
+     */
+    clearDecals(x = null, y = null) {
+        if (x !== null && y !== null) {
+            const chunkX = Math.floor(x / this.chunkSize) * this.chunkSize;
+            const chunkY = Math.floor(y / this.chunkSize) * this.chunkSize;
+            const key = `${chunkX}_${chunkY}`;
+            if (this.decalChunks.has(key)) {
+                this.decalChunks.get(key).clear();
+            }
+        } else {
+            this.decalChunks.forEach(chunk => chunk.clear());
+        }
+    }
+
+    /**
+     * Get or create a chunk for a world position
+     * @param {number} x - World X
+     * @param {number} y - World Y
+     * @returns {DecalChunk}
+     */
+    getChunk(x, y) {
+        const chunkX = Math.floor(x / this.chunkSize) * this.chunkSize;
+        const chunkY = Math.floor(y / this.chunkSize) * this.chunkSize;
+        const key = `${chunkX}_${chunkY}`;
+        if (!this.decalChunks.has(key)) {
+            this.decalChunks.set(key, new DecalChunk(chunkX, chunkY, this.chunkSize));
+        }
+        return this.decalChunks.get(key);
+    }
+
+    /**
+     * Preload decal chunks around the viewport to ensure persistence
+     */
+    preloadChunks() {
+    // Calculate viewport bounds in world space correctly
+    // Visible world width/height is viewport dimensions divided by zoom
+    const halfVisibleWidth = (this.viewport.width / 2) / this.viewport.zoom;
+    const halfVisibleHeight = (this.viewport.height / 2) / this.viewport.zoom;
+    
+    const viewLeft = this.viewport.x - halfVisibleWidth;
+    const viewRight = this.viewport.x + halfVisibleWidth;
+    const viewTop = this.viewport.y - halfVisibleHeight;
+    const viewBottom = this.viewport.y + halfVisibleHeight;
+
+    // Add buffer chunks around the viewport for safety
+    const buffer = this.preloadChunkRadius * this.chunkSize; // Use preloadChunkRadius as buffer distance
+    const minChunkX = Math.floor((viewLeft - buffer) / this.chunkSize) * this.chunkSize;
+    const maxChunkX = Math.floor((viewRight + buffer) / this.chunkSize) * this.chunkSize;
+    const minChunkY = Math.floor((viewTop - buffer) / this.chunkSize) * this.chunkSize;
+    const maxChunkY = Math.floor((viewBottom + buffer) / this.chunkSize) * this.chunkSize;
+
+    if (this.debugDecals) {
+        console.log(`Preloading chunks: view bounds (${viewLeft}, ${viewTop}) to (${viewRight}, ${viewBottom}), buffer: ${buffer}`);
+    }
+
+    // Preload all chunks that intersect or are near the viewport
+    for (let x = minChunkX; x <= maxChunkX; x += this.chunkSize) {
+        for (let y = minChunkY; y <= maxChunkY; y += this.chunkSize) {
+            const key = `${x}_${y}`;
+            if (!this.decalChunks.has(key)) {
+                this.decalChunks.set(key, new DecalChunk(x, y, this.chunkSize));
+                if (this.debugDecals) {
+                    console.log(`Preloaded chunk: ${key}`);
+                }
+            }
+        }
+    }
+
+    // Optional: Unload distant chunks to prevent memory bloat
+    const unloadBuffer = buffer * 2; // Unload beyond 2x the buffer
+    const unloadMinX = minChunkX - unloadBuffer;
+    const unloadMaxX = maxChunkX + unloadBuffer;
+    const unloadMinY = minChunkY - unloadBuffer;
+    const unloadMaxY = maxChunkY + unloadBuffer;
+
+    for (const [key, chunk] of this.decalChunks) {
+        const [cx, cy] = key.split('_').map(Number);
+        if (cx < unloadMinX || cx > unloadMaxX || cy < unloadMinY || cy > unloadMaxY) {
+            if (this.debugDecals) {
+                console.log(`Unloading distant chunk: ${key}`);
+            }
+            this.decalChunks.delete(key);
+        }
+    }
+}
+
+    /**
  * Store original positions on objects before cloning for runtime
  * @param {Array} gameObjects - Array of game objects to process
  */
@@ -1453,7 +1628,7 @@ class Engine {
         this.canvas.style.minWidth = '0';
         this.canvas.style.minHeight = '0';
         this.canvas.style.maxWidth = 'none';
-        this.canvas.style.maxHeight = 'none';        
+        this.canvas.style.maxHeight = 'none';
 
         // Set the drawing surface size (use viewport dimensions)
         this.canvas.width = viewportWidth * pixelRatio;
@@ -1480,6 +1655,16 @@ class Engine {
             const bgCtx = this.backgroundCanvas.getContext('2d');
             if (pixelRatio !== 1) {
                 bgCtx.scale(pixelRatio, pixelRatio);
+            }
+        }
+
+        // Update decal canvas size to match main canvas
+        if (this.decalCanvas) {
+            this.decalCanvas.width = this.canvas.width;
+            this.decalCanvas.height = this.canvas.height;
+            const decalCtx = this.decalCanvas.getContext('2d');
+            if (pixelRatio !== 1) {
+                decalCtx.scale(pixelRatio, pixelRatio);
             }
         }
 

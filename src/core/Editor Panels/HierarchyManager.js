@@ -8,7 +8,11 @@ class HierarchyManager {
         this.dropIndicator = null; // Element to show where item will be dropped
         this.selectedObject = null;
         this.selectedObjects = [];
-        this.prefabManager = new PrefabManager(this); // Add prefab manager
+
+        if(!window.prefabManager)
+        {
+            this.prefabManager = new PrefabManager(this); // Add prefab manager
+        }
 
         this.initializeUI();
         this.createDropIndicator();
@@ -1168,7 +1172,7 @@ class HierarchyManager {
             gameObject: this.serializeGameObject(gameObject)
         };
 
-        return prefabData;
+        return this.serializeGameObject(gameObject);//prefabData;
     }
 
     /**
@@ -1351,9 +1355,9 @@ class HierarchyManager {
             this.editor.activeScene.markDirty();
 
             // Trigger auto-save if available
-            if (window.autoSaveManager) {
-                window.autoSaveManager.autoSave();
-            }
+            //if (window.autoSaveManager) {
+            //    window.autoSaveManager.autoSave();
+            //}
 
             this.showNotification(`Instantiated prefab: ${prefabData.metadata?.name || prefabData.name}`, 'success');
 

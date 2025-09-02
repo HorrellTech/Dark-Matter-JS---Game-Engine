@@ -43,6 +43,19 @@ class VehiclePhysics extends Module {
         this.differentialStrength = 0.6;       // How much wheels stick together (0-1)
         this.antiRoll = 0.3;                   // Prevents excessive body roll
 
+        // Tire mark properties
+        this.tireMarkEnabled = true; // Enable/disable tire marks
+        this.tireMarkScale = 1.0; // Scale of tire marks
+        this.tireMarkOpacity = 0.2; // Initial opacity
+        this.tireMarkDistanceApart = 40; // Distance between left and right tire marks
+        this.tireMarkLifetime = 10; // Seconds before fading out (0 = no fade)
+        this.tireMarkOffsetX = -40; // Offset from center X (positive = right, negative = left)
+        this.tireMarkOffsetY = 0; // Offset from center Y (positive = back, negative = front)
+
+        this.lastLeftMarkPos = null; // {x, y} - Last world position of left tire mark
+        this.lastRightMarkPos = null; // {x, y} - Last world position of right tire mark
+        this.minMarkSpacing = 32; // Minimum distance (pixels) between marks to prevent overlap
+
         // NEW: Drift and traction system
         this.handbrakeForce = 6;             // How much handbrake reduces rear grip (0-1)
         this.driftThreshold = 0.8;             // Speed threshold for drift to begin (0-1 of max speed)
@@ -254,6 +267,67 @@ class VehiclePhysics extends Module {
 
         style.endGroup();
 
+        style.startGroup("Tire Marks", false, {
+            backgroundColor: 'rgba(100, 100, 100, 0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("tireMarkEnabled", "boolean", this.tireMarkEnabled, {
+            description: "Enable tire mark decals",
+            style: { label: "Enabled" }
+        });
+
+        style.exposeProperty("tireMarkScale", "number", this.tireMarkScale, {
+            description: "Scale of tire marks",
+            min: 0.1,
+            max: 5.0,
+            step: 0.1,
+            style: { label: "Scale", slider: true }
+        });
+
+        style.exposeProperty("tireMarkOpacity", "number", this.tireMarkOpacity, {
+            description: "Initial opacity of tire marks",
+            min: 0.1,
+            max: 1.0,
+            step: 0.1,
+            style: { label: "Opacity", slider: true }
+        });
+
+        style.exposeProperty("tireMarkDistanceApart", "number", this.tireMarkDistanceApart, {
+            description: "Distance between left and right tire marks",
+            min: 10,
+            max: 100,
+            step: 5,
+            style: { label: "Distance Apart", slider: true }
+        });
+
+        style.exposeProperty("tireMarkLifetime", "number", this.tireMarkLifetime, {
+            description: "Lifetime in seconds before fading (0 = no fade)",
+            min: 0,
+            max: 60,
+            step: 1,
+            style: { label: "Lifetime (s)", slider: true }
+        });
+
+        style.exposeProperty("tireMarkOffsetX", "number", this.tireMarkOffsetX, {
+            description: "Offset from center X (positive = right)",
+            min: -50,
+            max: 50,
+            step: 5,
+            style: { label: "Offset X", slider: true }
+        });
+
+        style.exposeProperty("tireMarkOffsetY", "number", this.tireMarkOffsetY, {
+            description: "Offset from center Y (positive = back)",
+            min: -50,
+            max: 50,
+            step: 5,
+            style: { label: "Offset Y", slider: true }
+        });
+
+        style.endGroup();
+
         style.startGroup("Drift System", false, {
             backgroundColor: 'rgba(200, 100, 255, 0.1)',
             borderRadius: '6px',
@@ -438,6 +512,15 @@ class VehiclePhysics extends Module {
             if (window.input.keyDown(this.handbrakeKey)) {
                 this.isHandbraking = true;
             }
+        }
+
+        // Create tire marks when losing traction
+        if (this.tireMarkEnabled && this.isLosingTraction()) {
+            this.createTireMarks();
+        } else {
+            // Reset last tire mark positions when traction is regained to prevent connecting old marks
+            this.lastLeftMarkPos = null;
+            this.lastRightMarkPos = null;
         }
 
         // Update physics systems
@@ -891,6 +974,122 @@ class VehiclePhysics extends Module {
         }
 
         ctx.restore();
+    }
+
+    isLosingTraction() {
+        // Detect traction loss: low traction, drifting, wheel spin, or handbraking
+        return this.currentTraction < 0.8 || this.isDrifting || this.wheelSpinAmount > 0.3 || this.isHandbraking;
+    }
+
+    createTireMarks() {
+        if (!window.engine) return;
+
+        const pos = this.gameObject.getWorldPosition();
+        const angle = this.gameObject.angle * (Math.PI / 180);
+
+        // Calculate current offset position (vehicle's tire position)
+        const offsetX = this.tireMarkOffsetX;
+        const offsetY = this.tireMarkOffsetY;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const currentLeftX = pos.x + offsetX * cos - offsetY * sin - (this.tireMarkDistanceApart / 2) * sin;
+        const currentLeftY = pos.y + offsetX * sin + offsetY * cos + (this.tireMarkDistanceApart / 2) * cos;
+        const currentRightX = pos.x + offsetX * cos - offsetY * sin + (this.tireMarkDistanceApart / 2) * sin;
+        const currentRightY = pos.y + offsetX * sin + offsetY * cos - (this.tireMarkDistanceApart / 2) * cos;
+
+        // Dynamic spacing based on speed to reduce lag
+        const dynamicSpacing = Math.max(1, this.minMarkSpacing - this.currentSpeed * 0.05);
+
+        // Check if we need to create new marks (based on distance from last marks)
+        const shouldCreateLeft = !this.lastLeftMarkPos || this.distance(this.lastLeftMarkPos, { x: currentLeftX, y: currentLeftY }) >= dynamicSpacing;
+        const shouldCreateRight = !this.lastRightMarkPos || this.distance(this.lastRightMarkPos, { x: currentRightX, y: currentRightY }) >= dynamicSpacing;
+
+        if (!shouldCreateLeft && !shouldCreateRight) return; // Skip if too close
+
+        // Calculate aligned positions and angles
+        let leftMarkX, leftMarkY, leftRotation;
+        let rightMarkX, rightMarkY, rightRotation;
+
+        if (this.lastLeftMarkPos) {
+            // Align left mark: Use direction from last to current
+            const dirX = currentLeftX - this.lastLeftMarkPos.x;
+            const dirY = currentLeftY - this.lastLeftMarkPos.y;
+            const dist = Math.sqrt(dirX * dirX + dirY * dirY);
+            if (dist > 0) {
+                leftMarkX = this.lastLeftMarkPos.x + (dirX / dist) * dynamicSpacing;
+                leftMarkY = this.lastLeftMarkPos.y + (dirY / dist) * dynamicSpacing;
+                leftRotation = Math.atan2(dirY, dirX);
+            } else {
+                leftMarkX = currentLeftX;
+                leftMarkY = currentLeftY;
+                leftRotation = angle;
+            }
+        } else {
+            // First mark: Use current position
+            leftMarkX = currentLeftX;
+            leftMarkY = currentLeftY;
+            leftRotation = angle;
+        }
+
+        if (this.lastRightMarkPos) {
+            // Align right mark: Use direction from last to current
+            const dirX = currentRightX - this.lastRightMarkPos.x;
+            const dirY = currentRightY - this.lastRightMarkPos.y;
+            const dist = Math.sqrt(dirX * dirX + dirY * dirY);
+            if (dist > 0) {
+                rightMarkX = this.lastRightMarkPos.x + (dirX / dist) * dynamicSpacing;
+                rightMarkY = this.lastRightMarkPos.y + (dirY / dist) * dynamicSpacing;
+                rightRotation = Math.atan2(dirY, dirX);
+            } else {
+                rightMarkX = currentRightX;
+                rightMarkY = currentRightY;
+                rightRotation = angle;
+            }
+        } else {
+            // First mark: Use current position
+            rightMarkX = currentRightX;
+            rightMarkY = currentRightY;
+            rightRotation = angle;
+        }
+
+        // Create left tire mark
+        if (shouldCreateLeft) {
+            window.engine.addDecal(leftMarkX, leftMarkY, this.drawTireMark.bind(this), {
+                scale: this.tireMarkScale,
+                alpha: this.tireMarkOpacity,
+                rotation: leftRotation,
+                lifetime: this.tireMarkLifetime,
+                width: 32,
+                height: 8
+            });
+            this.lastLeftMarkPos = { x: leftMarkX, y: leftMarkY };
+        }
+
+        // Create right tire mark
+        if (shouldCreateRight) {
+            window.engine.addDecal(rightMarkX, rightMarkY, this.drawTireMark.bind(this), {
+                scale: this.tireMarkScale,
+                alpha: this.tireMarkOpacity,
+                rotation: rightRotation,
+                lifetime: this.tireMarkLifetime,
+                width: 32,
+                height: 8
+            });
+            this.lastRightMarkPos = { x: rightMarkX, y: rightMarkY };
+        }
+    }
+
+    // Utility function to calculate distance between two points
+    distance(pos1, pos2) {
+        const dx = pos1.x - pos2.x;
+        const dy = pos1.y - pos2.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    drawTireMark(ctx) {
+        // Draw a simple tire mark (black rectangle)
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, 32, 8);
     }
 
     drawGizmos(ctx) {

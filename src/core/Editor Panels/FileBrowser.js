@@ -2112,51 +2112,39 @@ window.${pascalCaseName} = ${pascalCaseName};
 
         // --- Prefab file handling ---
         if (fileName.endsWith('.prefab')) {
-            // Deselect all objects in hierarchy
-            if (window.editor && window.editor.hierarchy) {
-                window.editor.hierarchy.selectedObject = null;
-                window.editor.hierarchy.selectedObjects = [];
-                document.querySelectorAll('.hierarchy-item.selected').forEach(el => el.classList.remove('selected'));
-            }
-
-            // Load prefab data and show in inspector
+            // Open prefab file in Script Editor (like scripts)
             try {
-                const prefabData = JSON.parse(file.content);
-                // Support both old and new prefab formats
-                const prefabModules = (prefabData.gameObject?.modules) || prefabData.modules || [];
-                // Create a temporary object to hold prefab modules for editing
-                const tempPrefabObject = GameObject.fromJSON(prefabData);
-
-                // Instantiate module classes from prefab data
-                /*for (const mod of prefabModules) {
-                    let ModuleClass = window[mod.type];
-                    let moduleInstance;
-                    if (ModuleClass && typeof ModuleClass === 'function') {
-                        moduleInstance = new ModuleClass();
-                        // Copy properties
-                        if (mod.properties) {
-                            Object.assign(moduleInstance, mod.properties);
+                // Check if ScriptEditor.js is loaded first
+                if (!window.ScriptEditor) {
+                    console.log("ScriptEditor not found, attempting to load it dynamically...");
+                    try {
+                        await this.loadScriptFromUrl('/src/core/ScriptEditor.js');
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        if (!window.ScriptEditor) {
+                            throw new Error("ScriptEditor class still not available after loading");
                         }
-                    } else {
-                        // Placeholder module if class not found
-                        moduleInstance = {
-                            type: mod.type,
-                            isPlaceholder: true,
-                            _originalData: mod.properties || {},
-                            id: Math.random().toString(36).substr(2, 9),
-                            enabled: true
-                        };
+                    } catch (err) {
+                        console.error("Failed to load ScriptEditor.js:", err);
+                        this.showNotification("Cannot load Script Editor. Please check console for details.", "error");
+                        return;
                     }
-                    tempPrefabObject.modules.push(moduleInstance);
-                }*/
-
-                // Show in inspector
-                if (window.editor && window.editor.inspector) {
-                    window.editor.inspector.inspectObject(tempPrefabObject);
                 }
-            } catch (err) {
-                this.showNotification('Failed to load prefab for editing', 'error');
-                console.error(err);
+
+                if (!window.scriptEditor) {
+                    try {
+                        window.scriptEditor = new window.ScriptEditor();
+                        console.log("ScriptEditor initialized on demand");
+                    } catch (err) {
+                        console.error("Error instantiating ScriptEditor:", err);
+                        this.showNotification("Failed to initialize Script Editor", "error");
+                        return;
+                    }
+                }
+
+                window.scriptEditor.loadFile(path, file.content);
+            } catch (error) {
+                console.error("Failed to initialize ScriptEditor:", error);
+                this.showNotification("Failed to initialize script editor", "error");
             }
             return;
         }

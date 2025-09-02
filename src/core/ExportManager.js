@@ -576,6 +576,7 @@ class ExportManager {
             'src/core/GameObject.js',
             'src/core/InputManager.js',
             'src/core/Editor Panels/PrefabManager.js',
+            'src/core/DecalChunk.js',
             'src/core/Scene.js',
             'src/core/Engine.js',
 
