@@ -36,7 +36,7 @@ class Engine {
         this.decalCtx = this.decalCanvas.getContext('2d');
         this.decalChunks = new Map(); // Map of chunks by key (e.g., "x_y")
 
-        this.debugDecals = true;
+        this.debugDecals = false;
 
         // Decal chunk settings
         this.chunkSize = 512; // World units per chunk (configurable)
