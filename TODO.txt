@@ -24,3 +24,5 @@
 - Fix mouse pressed input issues
 
 - Fix ground decal chunk system to reach the edges of the viewport correctly
+
+- Fix infinite texture generator not chunking correctly

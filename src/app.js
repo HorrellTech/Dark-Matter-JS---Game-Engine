@@ -821,7 +821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const maintainAspectRatio = document.getElementById('maintainAspectRatio');
         const pixelPerfect = document.getElementById('pixelPerfect');
         const smoothingEnabled = document.getElementById('smoothingEnabled');
-        const fpsCounter = document.getElementById('fpsCounter');
+        const fpsCounter = document.getElementById('fpsDisplay');
         const resolutionDisplay = document.getElementById('resolutionDisplay');
         const gameView = document.getElementById('gameView');
 
@@ -879,17 +879,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            const now = performance.now();
-            frameCount++;
+            //const now = performance.now();
+            //frameCount++;
 
-            if (now - lastTime >= 1000) {
-                const fps = Math.round((frameCount * 1000) / (now - lastTime));
+            //if (now - lastTime >= 1000) {
+                const fps = window.engine.fps;//Math.round((frameCount * 1000) / (now - lastTime));
                 fpsCounter.textContent = `${fps} FPS`;
-                frameCount = 0;
-                lastTime = now;
-            }
+               // frameCount = 0;
+                //lastTime = now;
+            //}
 
-            requestAnimationFrame(updateFPS);
+            //requestAnimationFrame(updateFPS);
         }
 
         // Start FPS counter
@@ -1256,7 +1256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Global touch-to-click handler for interactive UI elements
-    document.addEventListener('touchend', function (e) {
+    /*document.addEventListener('touchend', function (e) {
         // Only handle single-finger taps
         if (e.touches && e.touches.length > 0) return;
 
@@ -1273,7 +1273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
             target.click();
         }
-    }, { passive: false });
+    }, { passive: false });*/
 
     setTimeout(() => {
         if (window.editor) {

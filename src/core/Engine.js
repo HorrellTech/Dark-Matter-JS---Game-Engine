@@ -126,9 +126,15 @@ class Engine {
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
 
-        this.maxFPS = 60; // Default, will be updated from settings
+        this.maxFPS = 120; // Default, will be updated from settings
         this._minFrameInterval = 1000 / this.maxFPS;
         this._lastFrameTime = 0;
+        this.fps = 0;
+
+        this.enableVSync = true;
+
+        this.frameCount = 0; // Tracks frames since last FPS update
+        this.lastFpsUpdate = 0; // Timestamp of last FPS calculation
 
         this.prefabs = {}; // Store loaded prefabs by name or ID
 
@@ -155,7 +161,7 @@ class Engine {
         }
     }
 
-    // Add viewport management methods
+    
     initializeViewport() {
         // Ensure viewport is properly initialized
         this.viewport.dirty = true;
@@ -496,7 +502,7 @@ class Engine {
         this.lastTime = performance.now();
         this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
 
-        await window.prefabManager.loadExistingPrefabs()
+        //await window.prefabManager.loadExistingPrefabs()
     }
 
     pause() {
@@ -827,11 +833,16 @@ class Engine {
         this._minFrameInterval = this.maxFPS > 0 ? 1000 / this.maxFPS : 0;
     }
 
+    setVSync(enabled) {
+        this.enableVSync = enabled;
+        console.log(`VSync ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
     gameLoop(timestamp) {
         if (!this.running) return;
 
-        // FPS limiting logic
-        if (this.maxFPS > 0) {
+        // FPS limiting logic - only apply when VSync is disabled
+        if (!this.enableVSync && this.maxFPS > 0) {
             if (timestamp - this._lastFrameTime < this._minFrameInterval) {
                 this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
                 return;
@@ -841,6 +852,13 @@ class Engine {
 
         const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.1);
         this.lastTime = timestamp;
+
+        this.frameCount++;
+        if (timestamp - this.lastFpsUpdate >= 1000) { // Update every 1 second
+            this.fps = this.frameCount; // Set FPS to frames in the last second
+            this.frameCount = 0; // Reset frame count
+            this.lastFpsUpdate = timestamp; // Update timestamp
+        }
 
         // Update input manager at the start of the frame
         if (window.input) {
@@ -969,6 +987,27 @@ class Engine {
 
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Always fill with a solid color to prevent transparency issues
+        // Use scene background color if available, otherwise default to black
+        const fillColor = (this.scene && this.scene.settings && this.scene.settings.backgroundColor) 
+            ? this.scene.settings.backgroundColor 
+            : '#000000'; // Default fallback
+        this.ctx.fillStyle = fillColor;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        if (this.backgroundCanvas) {
+            const bgCtx = this.backgroundCanvas.getContext('2d');
+            bgCtx.clearRect(0, 0, this.backgroundCanvas.width, this.backgroundCanvas.height);
+        }
+        if (this.guiCanvas) {
+            const guiCtx = this.guiCanvas.getContext('2d');
+            guiCtx.clearRect(0, 0, this.guiCanvas.width, this.guiCanvas.height);
+        }
+        if (this.decalCanvas) {
+            const decalCtx = this.decalCanvas.getContext('2d');
+            decalCtx.clearRect(0, 0, this.decalCanvas.width, this.decalCanvas.height);
+        }
 
         // Fill with scene background color
         if (this.scene && this.scene.settings && this.scene.settings.backgroundColor) {

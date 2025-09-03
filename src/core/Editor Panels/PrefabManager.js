@@ -12,7 +12,7 @@ class PrefabManager {
      */
     async initializePrefabStorage() {
         // Create prefabs folder if it doesn't exist
-        if (this.editor.fileBrowser) {
+        if (this.editor && this.editor.fileBrowser) {
             try {
                 const prefabsPath = '/Prefabs';
                 const exists = await this.editor.fileBrowser.exists(prefabsPath);
@@ -30,7 +30,7 @@ class PrefabManager {
      * Load all existing prefabs into memory
      */
     async loadExistingPrefabs() {
-        if (!this.editor.fileBrowser) return;
+        if (!this.editor || !this.editor.fileBrowser) return;
 
         try {
             const files = await this.editor.fileBrowser.getAllFiles();
@@ -223,6 +223,11 @@ class PrefabManager {
      */
     async instantiatePrefabFromFile(file) {
         try {
+            if(!this.editor || !this.hierarchy) {
+                console.error('Editor or HierarchyManager not available');
+                return;
+            }
+
             let prefabData;
 
             if (typeof file.content === 'string') {

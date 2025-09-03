@@ -27,7 +27,7 @@ class SettingsModal {
             touchPanEnabled: true,
 
             // Performance settings
-            maxFPS: 60,
+            maxFPS: 120,
             enableVSync: true,
 
             // Export settings
@@ -77,6 +77,7 @@ class SettingsModal {
         if (window.engine) {
             window.engine.renderConfig.smoothing = this.settings.smoothing;
             window.engine.renderConfig.pixelPerfect = this.settings.pixelPerfect;
+            window.engine.setVSync(this.settings.enableVSync);
         }
 
         // Apply auto-save settings
