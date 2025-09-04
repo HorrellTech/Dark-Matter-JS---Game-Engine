@@ -675,7 +675,42 @@ class ScriptEditor {
             return;
         }
 
+        let html = '';
+
+        // If we have multiple matches (partial matches), show them as a list
+        if (doc.matches && doc.matches.length > 0) {
+            html += `<h3>Functions starting with "${doc.searchTerm}":</h3>`;
+            html += '<div class="se-keyword-list">';
+
+            doc.matches.forEach(match => {
+                html += `<div class="se-keyword-item" onclick="window.scriptEditor.insertKeyword('${match.fullName}')">
+                      <div class="se-keyword-name">${match.fullName}</div>
+                      <div class="se-keyword-category">${match.category}</div>
+                      <div class="se-keyword-desc">${match.description || 'No description available'}</div>
+                    </div>`;
+            });
+
+            html += '</div>';
+
+            // If there's also an exact match, show its details below
+            if (doc.exact) {
+                html += '<hr><h3>Exact Match:</h3>';
+                html += this.formatDocumentation(doc.exact);
+            }
+        } else if (doc.exact) {
+            // Only exact match found
+            html += this.formatDocumentation(doc.exact);
+        }
+
+        hintContent.innerHTML = html;
+    }
+
+    formatDocumentation(doc) {
         let html = `<h3>${doc.name || 'Documentation'}</h3>`;
+
+        if (doc.category) {
+            html += `<div class="se-doc-category">${doc.category}</div>`;
+        }
 
         if (doc.description) {
             html += `<p>${doc.description}</p>`;
@@ -683,76 +718,174 @@ class ScriptEditor {
 
         if (doc.example) {
             html += `<p><strong>Example:</strong></p>
-                     <code>${doc.example}</code>`;
+                 <pre><code>${doc.example}</code></pre>`;
         }
 
         if (doc.params && doc.params.length > 0) {
             html += `<p><strong>Parameters:</strong></p>`;
             doc.params.forEach(param => {
                 html += `<div class="param">
-                          <span class="param-name">${param.name}</span>
-                          <span class="param-type">${param.type ? `: ${param.type}` : ''}</span>
-                          <div>${param.description || ''}</div>
-                        </div>`;
+                      <span class="param-name">${param.name}</span>
+                      <span class="param-type">${param.type ? `: ${param.type}` : ''}</span>
+                      <div>${param.description || ''}</div>
+                    </div>`;
+            });
+        }
+
+        if (doc.properties && doc.properties.length > 0) {
+            html += `<p><strong>Properties:</strong></p>`;
+            doc.properties.forEach(prop => {
+                html += `<div class="param">
+                      <span class="param-name">${prop.name}</span>
+                      <span class="param-type">${prop.type ? `: ${prop.type}` : ''}</span>
+                      <div>${prop.description || ''}</div>
+                    </div>`;
+            });
+        }
+
+        if (doc.methods && doc.methods.length > 0) {
+            html += `<p><strong>Methods:</strong></p>`;
+            doc.methods.forEach(method => {
+                html += `<div class="param">
+                      <span class="param-name">${method.name}</span>
+                      <div>${method.description || ''}</div>
+                    </div>`;
             });
         }
 
         if (doc.returns) {
             html += `<p><strong>Returns:</strong></p>
-                    <div class="param">
-                      <span class="param-type">${doc.returns.type || ''}</span>
-                      <div>${doc.returns.description || ''}</div>
-                    </div>`;
+                <div class="param">
+                  <span class="param-type">${doc.returns.type || ''}</span>
+                  <div>${doc.returns.description || ''}</div>
+                </div>`;
         }
 
-        hintContent.innerHTML = html;
+        return html;
     }
 
     getDocumentationForCursor() {
-        if (!this.editor) return null;
+        if (!this.editor || !window.DarkMatterDocs) return null;
 
         const cursor = this.editor.getCursor();
         const line = this.editor.getLine(cursor.line);
 
-        // Check if the cursor is inside a function call parentheses
-        const leftPart = line.substring(0, cursor.ch);
-        const rightPart = line.substring(cursor.ch);
-
-        // If we're inside parentheses, check for a function name before them
-        const insideParenMatch = /([a-zA-Z0-9_$]+)\s*\([^()]*$/.exec(leftPart);
-        if (insideParenMatch && rightPart.match(/^[^()]*\)/)) {
-            const functionName = insideParenMatch[1];
-
-            // Try to find documentation for this function
-            for (const category in window.DarkMatterDocs) {
-                if (window.DarkMatterDocs[category].functions &&
-                    window.DarkMatterDocs[category].functions[functionName]) {
-                    return {
-                        name: functionName,
-                        ...window.DarkMatterDocs[category].functions[functionName]
-                    };
-                }
+        // Strategy 1: Check word under cursor
+        const token = this.editor.getTokenAt(cursor);
+        if (token && token.string && token.string.trim()) {
+            const wordUnderCursor = token.string.trim();
+            const result = this.searchDocumentation(wordUnderCursor);
+            if (result.exact || result.matches.length > 0) {
+                return result;
             }
         }
 
-        // If not in parentheses, or function not found, check word under cursor
-        const token = this.editor.getTokenAt(cursor);
-        if (token && token.type && (token.type.includes('variable') || token.type.includes('property'))) {
-            const word = token.string;
+        // Strategy 2: Check if cursor is inside parentheses and get function name
+        const leftPart = line.substring(0, cursor.ch);
+        const rightPart = line.substring(cursor.ch);
 
-            // Look for the word in the documentation
-            for (const category in window.DarkMatterDocs) {
-                if (window.DarkMatterDocs[category].functions &&
-                    window.DarkMatterDocs[category].functions[word]) {
-                    return {
-                        name: word,
-                        ...window.DarkMatterDocs[category].functions[word]
-                    };
-                }
+        // Look for function call pattern: functionName(...cursor...)
+        const insideParenMatch = /([a-zA-Z0-9_$\.]+)\s*\([^()]*$/.exec(leftPart);
+        if (insideParenMatch && rightPart.match(/^[^()]*\)/)) {
+            const functionCall = insideParenMatch[1];
+
+            // Handle object.method() calls - check both full path and just method name
+            const parts = functionCall.split('.');
+            const methodName = parts[parts.length - 1];
+
+            // Try full path first, then just method name
+            let result = this.searchDocumentation(functionCall);
+            if (!result.exact && !result.matches.length && parts.length > 1) {
+                result = this.searchDocumentation(methodName);
+            }
+
+            if (result.exact || result.matches.length > 0) {
+                return result;
+            }
+        }
+
+        // Strategy 3: Check keyword at start of current line
+        const lineStart = line.trim();
+        const firstWordMatch = /^([a-zA-Z0-9_$\.]+)/.exec(lineStart);
+        if (firstWordMatch) {
+            const firstWord = firstWordMatch[1];
+            const result = this.searchDocumentation(firstWord);
+            if (result.exact || result.matches.length > 0) {
+                return result;
             }
         }
 
         return null;
+    }
+
+    searchDocumentation(searchTerm) {
+        const result = {
+            searchTerm: searchTerm,
+            exact: null,
+            matches: []
+        };
+
+        if (!window.DarkMatterDocs) return result;
+
+        // Search through all categories
+        for (const category in window.DarkMatterDocs) {
+            const categoryData = window.DarkMatterDocs[category];
+
+            if (categoryData.functions) {
+                for (const funcName in categoryData.functions) {
+                    const funcData = categoryData.functions[funcName];
+
+                    // Check for exact match
+                    if (funcName.toLowerCase() === searchTerm.toLowerCase()) {
+                        result.exact = {
+                            name: funcName,
+                            category: category,
+                            ...funcData
+                        };
+                    }
+
+                    // Check for partial match (starts with search term)
+                    else if (funcName.toLowerCase().startsWith(searchTerm.toLowerCase()) && searchTerm.length >= 2) {
+                        result.matches.push({
+                            fullName: funcName,
+                            category: category,
+                            description: funcData.description || 'No description available'
+                        });
+                    }
+                }
+            }
+        }
+
+        // Sort matches alphabetically
+        result.matches.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+        // Limit matches to prevent overwhelming UI
+        if (result.matches.length > 10) {
+            result.matches = result.matches.slice(0, 10);
+        }
+
+        return result;
+    }
+
+    insertKeyword(keyword) {
+        if (!this.editor) return;
+
+        // Get current cursor position
+        const cursor = this.editor.getCursor();
+        const token = this.editor.getTokenAt(cursor);
+
+        // If there's a partial word under cursor, replace it
+        if (token && token.string && token.string.trim()) {
+            const start = { line: cursor.line, ch: token.start };
+            const end = { line: cursor.line, ch: token.end };
+            this.editor.replaceRange(keyword, start, end);
+        } else {
+            // Otherwise just insert at cursor
+            this.editor.replaceSelection(keyword);
+        }
+
+        // Focus back to editor
+        this.editor.focus();
     }
 
     formatCode() {

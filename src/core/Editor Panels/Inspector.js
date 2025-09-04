@@ -1326,11 +1326,16 @@ class Inspector {
                     return styleHelper;
                 },
                 addButton: (label, onClick, options = {}) => {
-                    const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
-                    styleHelper.html += `<button id="${btnId}" class="property-btn">${label}</button>`;
-                    if (!styleHelper._buttons) styleHelper._buttons = [];
-                    styleHelper._buttons.push({ btnId, onClick });
-                    return styleHelper;
+                    const buttonId = `btn-${module.id}-${Date.now()}`;
+                    const customStyle = options.style || '';
+                    
+                    // Store the button handler for later use
+                    if (!module._styleButtonHandlers) {
+                        module._styleButtonHandlers = {};
+                    }
+                    module._styleButtonHandlers[buttonId] = onClick;
+                    
+                    styleHelper.html += `<button id="${buttonId}" class="property-btn" style="margin: 4px 0; padding: 6px 12px; ${customStyle}">${label}</button>`;
                 },
                 addHelpText: (text, options = {}) => {
                     let color = options?.color || '';
@@ -2523,22 +2528,16 @@ class Inspector {
             `;
 
             case 'button':
-                const btnId = `btn-${Math.random().toString(36).substr(2, 8)}`;
-                const btnClass = prop.options?.style || 'primary';
-                const btnIcon = prop.options?.icon ? `<i class="${prop.options.icon}"></i> ` : '';
-                const buttonStyle = prop.options?.buttonStyle || inputStyle;
                 return `
-                <div class="property-row" style="${rowStyle}">
-                    <div class="property-button-container">
-                        <button id="${btnId}" class="property-button ${btnClass}" 
-                            data-prop-name="${prop.name}" data-btn-id="${btnId}"
-                            title="${tooltip}" style="${buttonStyle}">
-                            ${btnIcon}${prop.options?.label || prop.name}
+                    <div class="property-row" style="${rowStyle}">
+                        <button id="${inputId}" class="property-button" 
+                            data-prop-name="${prop.name}"
+                            title="${tooltip}" style="${inputStyle}">
+                            ${prop.options?.label || this.formatPropertyName(prop.name)}
                         </button>
+                        ${helpHtml}
                     </div>
-                    ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
-                </div>
-            `;
+                `;
 
             case 'range':
             case 'slider':
@@ -3301,6 +3300,41 @@ class Inspector {
 
                 // Save state
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
+            });
+        });
+
+        // Handle button clicks
+        container.querySelectorAll('.property-button, .property-btn').forEach(button => {
+            button.addEventListener('click', () => {
+                const buttonId = button.id;
+                const propName = button.dataset.propName || buttonId;
+                
+                // Look for the onClick handler in the module's exposed properties
+                if (module.getExposedProperties) {
+                    const exposedProps = module.getExposedProperties();
+                    const buttonProp = exposedProps.find(prop => 
+                        prop.name === propName || 
+                        prop.name === buttonId ||
+                        (prop.type === 'button' && prop.label === button.textContent)
+                    );
+                    
+                    if (buttonProp && buttonProp.options && buttonProp.options.onClick) {
+                        try {
+                            buttonProp.options.onClick();
+                        } catch (error) {
+                            console.error('Error executing button onClick handler:', error);
+                        }
+                    }
+                }
+                
+                // Also check for style-based buttons
+                if (module._styleButtonHandlers && module._styleButtonHandlers[buttonId]) {
+                    try {
+                        module._styleButtonHandlers[buttonId]();
+                    } catch (error) {
+                        console.error('Error executing style button handler:', error);
+                    }
+                }
             });
         });
 

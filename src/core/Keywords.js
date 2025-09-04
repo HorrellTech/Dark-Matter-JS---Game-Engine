@@ -152,6 +152,79 @@ player.setPosition(new Vector2(100, 200));`,
                     { name: "toJSON()", description: "Serialize module for saving module properties" },
                     { name: "fromJSON(json)", description: "Deserialize module for loading module properties" }
                 ]
+            },
+            ExposeProperties: {
+                description: "Expose properties to the inspector panel",
+                example: `this.exposeProperty("speed", "number", 100,
+{ min: 0, max: 1000, step: 10,
+    description: "Movement speed in pixels per second",
+    onChange: (value) => { this.speed = value; } // Important to update internal value
+});`,
+                methods: [  
+                    { name: "exposeProperty(name, type, default, options)", description: "Expose property to inspector" }
+                ]
+            },
+            style: {
+                description: "Define custom inspector UI for the module",
+                example: `style(style) {
+    style.startGroup("Movement Settings", false, { backgroundColor: 'rgba(180,220,180,0.07)', padding: 8, borderRadius: 6 });
+    style.exposeProperty("speed", "number", this.speed, { label: "Speed" });
+    style.exposeProperty("jumpHeight", "number", this.jumpHeight, { label: "Jump Height" });
+    style.endGroup();
+    
+    style.addDivider();
+
+    style.addButton("Reset Position", () => {
+        this.gameObject.setPosition(new Vector2(0, 0));
+    }, { style: "background-color: #f44336; color: white;" });
+
+    style.addHelpText("Adjust movement parameters above. Use the button to reset position.", { color: "#888" });
+}`,
+            }
+        }
+    },
+
+    Drawing: {
+        group: "Drawing",
+        functions: {
+            getMainCanvas: {
+                description: "Get the main canvas element for drawing to",
+                example: `draw(ctx) {
+    ctx = window.engine.getMainCanvas();
+
+    ctx.save();
+
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 100, 100);
+    ctx.restore();
+}`,
+                returns: { type: "HTMLCanvasElement", description: "The main canvas element" }
+            },
+            getGuiCanvas: {
+                description: "Get the GUI canvas element for drawing to",
+                example: `draw(ctx) {
+    ctx = window.engine.getGuiCanvas();
+
+    ctx.save();
+
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 100, 100);
+    ctx.restore();
+}`,
+                returns: { type: "HTMLCanvasElement", description: "The GUI canvas element" }
+            },
+            getBackgroundCanvas: {
+                description: "Get the background canvas element for drawing to",
+                example: `draw(ctx) {
+    ctx = window.engine.getBackgroundCanvas();
+
+    ctx.save();
+
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 100, 100);
+    ctx.restore();
+}`,
+                returns: { type: "HTMLCanvasElement", description: "The background canvas element" }
             }
         }
     },

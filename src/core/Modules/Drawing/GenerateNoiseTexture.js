@@ -1,13 +1,11 @@
-class DrawInfiniteGeneratedTexture extends Module {
+class GenerateNoiseTexture extends Module {
     static namespace = "Drawing";
     static description = "Generates an infinitely tiled noise-based texture (chunked) with per-point color variation";
     static allowMultiple = false;
     static iconClass = "fas fa-th";
 
     constructor() {
-        super("DrawInfiniteGeneratedTexture");
-
-        //this.ignoreGameObjectTransform = true;
+        super("GenerateNoiseTexture");
 
         // Exposed properties - increased defaults for more visible noise
         this.seed = 12345;
@@ -21,7 +19,8 @@ class DrawInfiniteGeneratedTexture extends Module {
         this.colorB = "#6b923fff"; // secondary color
         this.colorVariation = 0.25; // increased for more variation
         this.paddingChunks = 1; // extra chunks beyond viewport for smoothness
-        this.singleChunk = false; // new property for single square mode
+        this.singleChunk = true; // new property for single square mode
+        this.fileName = "generated_texture"; // name for the generated file
 
         // Update ignoreGameObjectTransform based on singleChunk
         this.ignoreGameObjectTransform = !this.singleChunk;
@@ -30,6 +29,7 @@ class DrawInfiniteGeneratedTexture extends Module {
         this._chunkCache = new Map(); // key "cx,cy" => canvas
         this._prngState = this.seed;
         this._lastViewportKey = "";
+        this._hasGenerated = false; // Track if we've generated a texture
 
         // Expose inspector properties
         this.exposeProperty("seed", "number", this.seed, { onChange: (v) => { this.seed = Math.floor(v); this._resetCache(); } });
@@ -44,18 +44,19 @@ class DrawInfiniteGeneratedTexture extends Module {
         this.exposeProperty("colorVariation", "number", this.colorVariation, { min: 0, max: 1, step: 0.01, onChange: (v) => { this.colorVariation = Math.max(0, Math.min(1, v)); this._resetCache(); } });
         this.exposeProperty("paddingChunks", "number", this.paddingChunks, { min: 0, max: 4, step: 1, onChange: (v) => { this.paddingChunks = Math.max(0, Math.floor(v)); } });
         this.exposeProperty("singleChunk", "boolean", this.singleChunk, { label: "Single Chunk", onChange: (v) => { this.singleChunk = v; this.ignoreGameObjectTransform = !v; this._resetCache(); } });
+        this.exposeProperty("fileName", "text", this.fileName, { label: "File Name", onChange: (v) => { this.fileName = v; } });
     }
 
     style(style) {
-        style.startGroup("Infinite Texture", false, { backgroundColor: 'rgba(180,220,180,0.07)', padding: 8, borderRadius: 6 });
+        style.startGroup("Noise Image Generator", false, { backgroundColor: 'rgba(180,220,180,0.07)', padding: 8, borderRadius: 6 });
         style.exposeProperty("seed", "number", this.seed, { label: "Seed" });
-        style.exposeProperty("chunkSize", "number", this.chunkSize, { label: "Chunk Size" });
+        //style.exposeProperty("chunkSize", "number", this.chunkSize, { label: "Chunk Size" });
         style.exposeProperty("pixelScale", "number", this.pixelScale, { label: "Pixel Scale" });
         style.exposeProperty("frequency", "number", this.frequency, { label: "Frequency" });
         style.exposeProperty("octaves", "number", this.octaves, { label: "Octaves" });
         style.exposeProperty("persistence", "number", this.persistence, { label: "Persistence" });
         style.exposeProperty("lacunarity", "number", this.lacunarity, { label: "Lacunarity" });
-        style.exposeProperty("singleChunk", "boolean", this.singleChunk, { label: "Single Chunk" });
+        //style.exposeProperty("singleChunk", "boolean", this.singleChunk, { label: "Single Chunk" });
         style.endGroup();
 
         style.addDivider();
@@ -65,13 +66,22 @@ class DrawInfiniteGeneratedTexture extends Module {
         style.exposeProperty("colorB", "color", this.colorB, { label: "Color B" });
         style.exposeProperty("colorVariation", "number", this.colorVariation, { label: "Color Variation" });
         style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Generation", false, { backgroundColor: 'rgba(255,220,180,0.04)', padding: 8, borderRadius: 6 });
+        style.exposeProperty("fileName", "text", this.fileName, { label: "File Name" });
+        style.addButton("Generate Texture", () => this.generateAndSaveTexture(), { 
+            style: "background: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;",
+            label: "Generate & Save to File Browser"
+        });
+        style.endGroup();
     }
 
-    // Called before game starts - generate initial chunk(s)
+    // Called before game starts - no longer auto-generate
     preload() {
         this._resetPRNG();
-        // generate origin chunk so preview shows immediately
-        this._ensureChunkAt(0, 0);
+        // Don't auto-generate anymore
     }
 
     start() {
@@ -79,6 +89,9 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 
     loop(deltaTime) {
+        // Only show preview if we have generated content
+        if (!this._hasGenerated) return;
+
         if (!window.engine || !window.engine.viewport) return;
         const vp = window.engine.viewport;
         if (this.singleChunk) {
@@ -89,32 +102,27 @@ class DrawInfiniteGeneratedTexture extends Module {
 
         this.ignoreGameObjectTransform = true;
         // Infinite mode logic
-        const worldTop = vp.y - vp.height / 2; // extend top/bottom for aspect ratio
+        const worldTop = vp.y - vp.height / 2;
         const worldLeft = vp.x - vp.width / 2;
         const worldRight = vp.x + vp.width / 2;
         const worldBottom = vp.y + vp.height / 2;
 
-        // Anchor texture around viewport center for infinite centering
         const anchor = { x: vp.x, y: vp.y };
         const originX = Math.floor(anchor.x);
         const originY = Math.floor(anchor.y);
 
-        // Compute absolute origin offsets for chunks
         const absoluteOriginCx = Math.floor(originX / this.chunkSize);
         const absoluteOriginCy = Math.floor(originY / this.chunkSize);
 
         const chunkWorldSize = this.chunkSize * this.pixelScale;
 
-        // Calculate relative min/max cx/cy (unchanged)
         const minCx = Math.floor((worldLeft - originX) / chunkWorldSize) - this.paddingChunks;
         const maxCx = Math.floor((worldRight - originX) / chunkWorldSize) + this.paddingChunks;
         const minCy = Math.floor((worldTop - originY) / chunkWorldSize) - this.paddingChunks;
         const maxCy = Math.floor((worldBottom - originY) / chunkWorldSize) + this.paddingChunks;
 
-        // Track current absolute chunk keys for removal
         const currentKeys = new Set();
 
-        // Create necessary chunks using absolute coordinates
         for (let cx = minCx; cx <= maxCx; cx++) {
             for (let cy = minCy; cy <= maxCy; cy++) {
                 const absoluteCx = absoluteOriginCx + cx;
@@ -125,7 +133,6 @@ class DrawInfiniteGeneratedTexture extends Module {
             }
         }
 
-        // Remove chunks outside the current view
         for (const key of this._chunkCache.keys()) {
             if (!currentKeys.has(key)) {
                 this._chunkCache.delete(key);
@@ -134,14 +141,21 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 
     draw(ctx) {
+        // Only draw if we have generated content
+        if (!this._hasGenerated) {
+            // Draw a placeholder message
+            ctx.save();
+            ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("Click 'Generate Texture' to create content", 0, 0);
+            ctx.restore();
+            return;
+        }
+
         if (!window.engine || !window.engine.viewport) return;
         const vp = window.engine.viewport;
         if (this.singleChunk) {
-            // Draw single chunk at game object's position (relative to object, since transform is applied)
-            const objX = this.gameObject.position.x;
-            const objY = this.gameObject.position.y;
-            const cx = Math.floor(objX / this.chunkSize);
-            const cy = Math.floor(objY / this.chunkSize);
             const key = this._chunkKey(0, 0);
             if (this._chunkCache.has(key)) {
                 const canvas = this._chunkCache.get(key);
@@ -150,22 +164,18 @@ class DrawInfiniteGeneratedTexture extends Module {
             }
             return;
         }
-        // Infinite mode drawing
-        // Anchor texture around viewport center for infinite centering (consistent with loop)
+
         const anchor = { x: vp.x, y: vp.y };
         const originX = Math.floor(anchor.x);
         const originY = Math.floor(anchor.y);
 
-        // Compute absolute origin offsets (consistent with loop)
         const absoluteOriginCx = Math.floor(originX / this.chunkSize);
         const absoluteOriginCy = Math.floor(originY / this.chunkSize);
 
         const chunkWorldSize = this.chunkSize * this.pixelScale;
 
-        // Iterate chunks that we have cached
         for (const [key, canvas] of this._chunkCache.entries()) {
             const [absoluteCx, absoluteCy] = key.split(",").map(Number);
-            // Compute absolute world position of the chunk
             const worldX = absoluteCx * this.chunkSize;
             const worldY = absoluteCy * this.chunkSize;
 
@@ -176,17 +186,101 @@ class DrawInfiniteGeneratedTexture extends Module {
 
             ctx = window.engine.getBackgroundCanvas();
 
-            // Draw scaled to pixelScale -> world pixels
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(canvas, sx, sy, sw, sh);
         }
     }
 
+    /**
+     * Generate texture and save it to the file browser
+     */
+    async generateAndSaveTexture() {
+        try {
+            // Generate the texture
+            this._resetPRNG();
+            this._resetCache();
+            
+            // Generate a single chunk for the texture
+            const canvas = this._generateChunkCanvas(0, 0);
+            
+            // Convert canvas to data URL
+            const dataURL = canvas.toDataURL('image/png');
+            
+            // Get file browser instance
+            const fileBrowser = window.editor?.fileBrowser || window.fileBrowser;
+            if (!fileBrowser) {
+                console.error('File browser not available');
+                this.showNotification?.('File browser not available', 'error');
+                return;
+            }
+            
+            // Ensure file name has .png extension
+            let fileName = this.fileName || 'generated_texture';
+            if (!fileName.endsWith('.png')) {
+                fileName += '.png';
+            }
+            
+            // Create file path in current directory
+            const currentPath = fileBrowser.currentPath || '/';
+            const filePath = currentPath === '/' ? `/${fileName}` : `${currentPath}/${fileName}`;
+            
+            // Save to file browser
+            const success = await fileBrowser.createFile(filePath, dataURL, true); // Allow overwrite
+            
+            if (success) {
+                // Mark that we've generated content
+                this._hasGenerated = true;
+                
+                // Show success message
+                if (this.showNotification) {
+                    this.showNotification(`Texture saved as ${fileName}`, 'success');
+                } else {
+                    console.log(`Texture saved as ${fileName}`);
+                }
+                
+                // Refresh file browser to show new file
+                await fileBrowser.refreshFiles();
+            } else {
+                if (this.showNotification) {
+                    this.showNotification('Failed to save texture', 'error');
+                } else {
+                    console.error('Failed to save texture');
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error generating and saving texture:', error);
+            if (this.showNotification) {
+                this.showNotification('Error generating texture', 'error');
+            }
+        }
+    }
+
+    /**
+     * Helper method to show notifications (tries multiple notification systems)
+     */
+    showNotification(message, type = 'info') {
+        // Try multiple notification systems
+        if (window.editor?.fileBrowser?.showNotification) {
+            window.editor.fileBrowser.showNotification(message, type);
+        } else if (window.fileBrowser?.showNotification) {
+            window.fileBrowser.showNotification(message, type);
+        } else {
+            // Fallback to console
+            console.log(`${type.toUpperCase()}: ${message}`);
+        }
+    }
+
     drawGizmos(ctx) {
         // Draw bounding box of single chunk at game object's position
+        if (!this.singleChunk) return;
         ctx.strokeStyle = "rgba(0,0,255,0.5)";
         ctx.lineWidth = 1;
-        ctx.strokeRect(0, 0, this.chunkSize * this.pixelScale, this.chunkSize * this.pixelScale);
+        if(this.ignoreGameObjectTransform) {
+            ctx.strokeRect(this.gameObject.position.x, this.gameObject.position.y, this.chunkSize * this.pixelScale, this.chunkSize * this.pixelScale);
+        } else {
+            ctx.strokeRect(0, 0, this.chunkSize * this.pixelScale, this.chunkSize * this.pixelScale);
+        }
     }
 
     onDestroy() {
@@ -207,7 +301,8 @@ class DrawInfiniteGeneratedTexture extends Module {
             colorB: this.colorB,
             colorVariation: this.colorVariation,
             paddingChunks: this.paddingChunks,
-            singleChunk: this.singleChunk
+            singleChunk: this.singleChunk,
+            fileName: this.fileName
         };
     }
 
@@ -226,19 +321,19 @@ class DrawInfiniteGeneratedTexture extends Module {
         this.colorVariation = data.colorVariation ?? this.colorVariation;
         this.paddingChunks = data.paddingChunks ?? this.paddingChunks;
         this.singleChunk = data.singleChunk ?? this.singleChunk;
+        this.fileName = data.fileName ?? this.fileName;
         this.ignoreGameObjectTransform = !this.singleChunk;
         this._resetCache();
     }
 
     // ------------------------- 
-    // Internal helpers
+    // Internal helpers (unchanged)
     // ------------------------- 
     _resetPRNG() {
         this._prngState = (this.seed >>> 0) || 0xDEADBEEF;
     }
 
     _prng() {
-        // xorshift32
         let x = this._prngState;
         x ^= (x << 13);
         x ^= (x >>> 17);
@@ -250,15 +345,14 @@ class DrawInfiniteGeneratedTexture extends Module {
     _resetCache() {
         this._chunkCache.clear();
         this._resetPRNG();
+        this._hasGenerated = false; // Reset generation flag when cache is reset
     }
 
     _chunkKey(cx, cy) {
-        // Now cx/cy are absolute
         return `${cx},${cy}`;
     }
 
     _ensureChunkAt(cx, cy) {
-        // cx/cy are now absolute
         const key = this._chunkKey(cx, cy);
         if (this._chunkCache.has(key)) return;
         const canvas = this._generateChunkCanvas(cx, cy);
@@ -266,7 +360,6 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 
     _generateChunkCanvas(cx, cy) {
-        // create offscreen canvas sized to world pixels
         const width = this.chunkSize * this.pixelScale;
         const height = this.chunkSize * this.pixelScale;
         const canvas = document.createElement("canvas");
@@ -276,7 +369,6 @@ class DrawInfiniteGeneratedTexture extends Module {
         const img = ctx.createImageData(width, height);
         const data = img.data;
 
-        // For deterministic results per chunk, create a local PRNG seeded by seed + absolute cx,cy
         const seed = this._hashInts(this.seed, cx, cy);
         let local = seed;
         const localRand = () => {
@@ -284,22 +376,18 @@ class DrawInfiniteGeneratedTexture extends Module {
             return local / 4294967295;
         };
 
-        // color parsing
         const ca = this._parseColor(this.colorA);
         const cb = this._parseColor(this.colorB);
 
-        // Iterate pixels
         for (let py = 0; py < height; py++) {
             for (let px = 0; px < width; px++) {
-                // Use absolute world coordinates for noise
                 const worldX = cx * this.chunkSize + Math.floor(px / this.pixelScale);
                 const worldY = cy * this.chunkSize + Math.floor(py / this.pixelScale);
 
                 const n = this._fractalNoise2D(worldX, worldY, this.frequency, this.octaves, this.persistence, this.lacunarity, seed);
                 const t = (n + 1) * 0.5;
 
-                // add tiny random variation per pixel (deterministic)
-                const variation = (localRand() - 0.5) * 2 * this.colorVariation; // [-var,var]
+                const variation = (localRand() - 0.5) * 2 * this.colorVariation;
                 const tt = Math.max(0, Math.min(1, t + variation));
 
                 const col = this._lerpColor(ca, cb, tt);
@@ -340,7 +428,6 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 
     _valueNoise2D(x, y, seedOffset) {
-        // grid corners
         const xi = Math.floor(x);
         const yi = Math.floor(y);
         const xf = x - xi;
@@ -355,12 +442,11 @@ class DrawInfiniteGeneratedTexture extends Module {
         const v = this._smoothstep(yf);
 
         const ix0 = this._lerp(v00, v10, u);
-        const ix1 = this._lerp(v01, v11, u);
-        return this._lerp(ix0, ix1, v) * 2 - 1; // map [0,1] to [-1,1]
+        const ix1 = this._lerp(v01, v11, v);
+        return this._lerp(ix0, ix1, v) * 2 - 1;
     }
 
     _pseudoRandom2D(x, y, seedOffset) {
-        // deterministic hash to [0,1]
         let h = x >>> 0;
         h = (h * 374761393) ^ (y * 668265263);
         h = (h + (seedOffset >>> 0)) >>> 0;
@@ -377,7 +463,6 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 
     _parseColor(col) {
-        // support "#rrggbb" and "#rgb"
         if (!col) return { r: 0, g: 0, b: 0 };
         let c = col.trim();
         if (c[0] === "#") {
@@ -391,7 +476,6 @@ class DrawInfiniteGeneratedTexture extends Module {
                 return { r: parseInt(c.slice(0, 2), 16), g: parseInt(c.slice(2, 4), 16), b: parseInt(c.slice(4, 6), 16) };
             }
         }
-        // fallback: attempt "rgb(r,g,b)"
         const m = c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         if (m) return { r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) };
         return { r: 0, g: 0, b: 0 };
@@ -406,4 +490,4 @@ class DrawInfiniteGeneratedTexture extends Module {
     }
 }
 
-window.DrawInfiniteGeneratedTexture = DrawInfiniteGeneratedTexture;
+window.GenerateNoiseTexture = GenerateNoiseTexture;

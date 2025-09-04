@@ -1855,14 +1855,42 @@ window.${pascalCaseName} = ${pascalCaseName};
         // Create a temporary notification element
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        notification.textContent = message;
+        
+        // Create notification content with close button
+        notification.innerHTML = `
+            <span class="notification-message">${message}</span>
+            <button class="notification-close" aria-label="Close notification">&times;</button>
+        `;
+        
         document.body.appendChild(notification);
 
-        // Remove after a delay
-        setTimeout(() => {
+        // Add click handler for close button
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
             notification.classList.add('fade-out');
-            setTimeout(() => document.body.removeChild(notification), 500);
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    document.body.removeChild(notification);
+                }
+            }, 300);
+        });
+
+        // Auto-remove after a delay
+        const autoRemoveTimer = setTimeout(() => {
+            if (notification.parentNode) {
+                notification.classList.add('fade-out');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        document.body.removeChild(notification);
+                    }
+                }, 500);
+            }
         }, 3000);
+
+        // Clear the auto-remove timer if manually closed
+        closeBtn.addEventListener('click', () => {
+            clearTimeout(autoRemoveTimer);
+        });
     }
 
     /**

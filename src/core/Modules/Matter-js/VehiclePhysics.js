@@ -46,7 +46,7 @@ class VehiclePhysics extends Module {
         // Tire mark properties
         this.tireMarkEnabled = true; // Enable/disable tire marks
         this.tireMarkScale = 1.0; // Scale of tire marks
-        this.tireMarkOpacity = 0.2; // Initial opacity
+        this.tireMarkOpacity = 0.7; // Initial opacity
         this.tireMarkDistanceApart = 40; // Distance between left and right tire marks
         this.tireMarkLifetime = 10; // Seconds before fading out (0 = no fade)
         this.tireMarkOffsetX = -40; // Offset from center X (positive = right, negative = left)
@@ -1252,8 +1252,15 @@ class VehiclePhysics extends Module {
             downKey: this.downKey,
             leftKey: this.leftKey,
             rightKey: this.rightKey,
-            handbrakeKey: this.handbrakeKey
-        };
+            handbrakeKey: this.handbrakeKey,
+            tireMarkOpacity: this.tireMarkOpacity,
+            tireMarkScale: this.tireMarkScale,
+            tireMarkLifetime: this.tireMarkLifetime,
+            tireMarkDistanceApart: this.tireMarkDistanceApart,
+            tireMarkEnabled: this.tireMarkEnabled,
+            tireMarkOffsetX: this.tireMarkOffsetX,
+            tireMarkOffsetY: this.tireMarkOffsetY       
+         };
     }
 
     fromJSON(data) {
@@ -1297,6 +1304,14 @@ class VehiclePhysics extends Module {
         this.leftKey = data.leftKey || "arrowleft";
         this.rightKey = data.rightKey || "arrowright";
         this.handbrakeKey = data.handbrakeKey || " ";
+        this.tireMarkOpacity = data.tireMarkOpacity !== undefined ? data.tireMarkOpacity : 0.5;
+        this.tireMarkScale = data.tireMarkScale || 1.0;
+        this.tireMarkLifetime = data.tireMarkLifetime || 8000;
+        this.tireMarkDistanceApart = data.tireMarkDistanceApart || 12;
+        this.tireMarkEnabled = data.tireMarkEnabled !== undefined ? data.tireMarkEnabled : true;
+        this.tireMarkOffsetX = data.tireMarkOffsetX || 0;
+        this.tireMarkOffsetY = data.tireMarkOffsetY || 0;
+        
     }
 }
 
