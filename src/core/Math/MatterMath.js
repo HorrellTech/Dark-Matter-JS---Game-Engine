@@ -348,4 +348,5 @@ class MatterMath {
     }
 }
 
-window.MatterMath = MatterMath; // Make available globally
+window.MatterMath = new MatterMath(); // Make available globally
+window.matterMath = new MatterMath(); // Make available globally

@@ -765,12 +765,62 @@ class ScriptEditor {
     }
 
     getDocumentationForCursor() {
-        if (!this.editor || !window.DarkMatterDocs) return null;
+        if (!this.editor) return null;
 
         const cursor = this.editor.getCursor();
         const line = this.editor.getLine(cursor.line);
 
-        // Strategy 1: Check word under cursor
+        // Strategy 1: Check for "this." prefix
+        const leftPart = line.substring(0, cursor.ch);
+        const thisMatch = /this\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (thisMatch) {
+            const partialProperty = thisMatch[1];
+            return this.getThisPropertyDocumentation(partialProperty);
+        }
+
+        // Strategy 2: Check for "this.gameObject." prefix
+        const gameObjectMatch = /this\.gameObject\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (gameObjectMatch) {
+            const partialProperty = gameObjectMatch[1];
+            return this.getGameObjectPropertyDocumentation(partialProperty);
+        }
+
+        // Strategy 3: Check for "this.gameObject.getModule(" pattern
+        const getModuleMatch = /this\.gameObject\.getModule\s*\(\s*["']([a-zA-Z0-9_$]*)["']?\s*\)\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (getModuleMatch) {
+            const moduleName = getModuleMatch[1];
+            const partialProperty = getModuleMatch[2];
+            return this.getModulePropertyDocumentation(moduleName, partialProperty);
+        }
+
+        // Strategy 4: Check for "matterMath." prefix
+        const matterMathMatch = /matterMath\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (matterMathMatch) {
+            const partialFunction = matterMathMatch[1];
+            return this.getMatterMathDocumentation(partialFunction);
+        }
+
+        // Strategy 5: Check for "window.input." prefix
+        const inputMatch = /window\.input\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (inputMatch) {
+            const partialFunction = inputMatch[1];
+            return this.getInputDocumentation(partialFunction);
+        }
+
+        // Strategy 6: Check for "window.engine." prefix
+        const engineMatch = /window\.engine\.([a-zA-Z0-9_$]*)$/.exec(leftPart);
+
+        if (engineMatch) {
+            const partialFunction = engineMatch[1];
+            return this.getEngineDocumentation(partialFunction);
+        }
+
+        // Strategy 7: Check word under cursor (existing functionality)
         const token = this.editor.getTokenAt(cursor);
         if (token && token.string && token.string.trim()) {
             const wordUnderCursor = token.string.trim();
@@ -780,20 +830,14 @@ class ScriptEditor {
             }
         }
 
-        // Strategy 2: Check if cursor is inside parentheses and get function name
-        const leftPart = line.substring(0, cursor.ch);
+        // Strategy 8: Check if cursor is inside parentheses and get function name (existing)
         const rightPart = line.substring(cursor.ch);
-
-        // Look for function call pattern: functionName(...cursor...)
         const insideParenMatch = /([a-zA-Z0-9_$\.]+)\s*\([^()]*$/.exec(leftPart);
         if (insideParenMatch && rightPart.match(/^[^()]*\)/)) {
             const functionCall = insideParenMatch[1];
-
-            // Handle object.method() calls - check both full path and just method name
             const parts = functionCall.split('.');
             const methodName = parts[parts.length - 1];
 
-            // Try full path first, then just method name
             let result = this.searchDocumentation(functionCall);
             if (!result.exact && !result.matches.length && parts.length > 1) {
                 result = this.searchDocumentation(methodName);
@@ -804,7 +848,7 @@ class ScriptEditor {
             }
         }
 
-        // Strategy 3: Check keyword at start of current line
+        // Strategy 9: Check keyword at start of current line (existing)
         const lineStart = line.trim();
         const firstWordMatch = /^([a-zA-Z0-9_$\.]+)/.exec(lineStart);
         if (firstWordMatch) {
@@ -816,6 +860,1131 @@ class ScriptEditor {
         }
 
         return null;
+    }
+
+    getMatterMathDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `matterMath.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Define all matterMath functions
+        const matterMathFunctions = [
+            {
+                name: 'pi',
+                description: 'Returns the value of PI (3.14159...)',
+                type: 'function',
+                example: 'const circumference = 2 * matterMath.pi() * radius;',
+                returns: { type: 'number', description: 'The value of PI' }
+            },
+            {
+                name: 'pi2',
+                description: 'Returns 2 * PI (6.28318...)',
+                type: 'function',
+                example: 'const fullCircle = matterMath.pi2();',
+                returns: { type: 'number', description: '2 * PI' }
+            },
+            {
+                name: 'time',
+                description: 'Returns current timestamp in milliseconds',
+                type: 'function',
+                example: 'const startTime = matterMath.time();',
+                returns: { type: 'number', description: 'Current timestamp in ms' }
+            },
+            {
+                name: 'dt',
+                description: 'Returns delta time scaled by rate',
+                type: 'function',
+                example: 'const scaledDelta = matterMath.dt(0.5); // Half speed',
+                params: [{ name: 'rate', type: 'number', description: 'Rate to scale delta time by' }],
+                returns: { type: 'number', description: 'Scaled delta time' }
+            },
+            {
+                name: 'setTimescale',
+                description: 'Sets the timescale for calculations',
+                type: 'function',
+                example: 'matterMath.setTimescale(2.0); // Double speed',
+                params: [{ name: 'timescale', type: 'number', description: 'New timescale value' }]
+            },
+            {
+                name: 'getTimescale',
+                description: 'Gets the current timescale',
+                type: 'function',
+                example: 'const currentScale = matterMath.getTimescale();',
+                returns: { type: 'number', description: 'Current timescale' }
+            },
+            {
+                name: 'ts',
+                description: 'Alias for getTimescale()',
+                type: 'function',
+                example: 'const scale = matterMath.ts();',
+                returns: { type: 'number', description: 'Current timescale' }
+            },
+            {
+                name: 'listCreate',
+                description: 'Creates a new array/list',
+                type: 'function',
+                example: 'const myList = matterMath.listCreate();',
+                returns: { type: 'Array', description: 'New empty array' }
+            },
+            {
+                name: 'listAdd',
+                description: 'Adds a value to a list',
+                type: 'function',
+                example: 'matterMath.listAdd(myList, "item");',
+                params: [
+                    { name: 'id', type: 'Array', description: 'The list to add to' },
+                    { name: 'value', type: 'any', description: 'Value to add' }
+                ]
+            },
+            {
+                name: 'listSet',
+                description: 'Sets a value at a position in a list',
+                type: 'function',
+                example: 'matterMath.listSet(myList, 0, "new value");',
+                params: [
+                    { name: 'id', type: 'Array', description: 'The list to modify' },
+                    { name: 'pos', type: 'number', description: 'Position to set' },
+                    { name: 'value', type: 'any', description: 'Value to set' }
+                ]
+            },
+            {
+                name: 'listGet',
+                description: 'Gets a value from a list at a position',
+                type: 'function',
+                example: 'const item = matterMath.listGet(myList, 0);',
+                params: [
+                    { name: 'id', type: 'Array', description: 'The list to get from' },
+                    { name: 'pos', type: 'number', description: 'Position to get' }
+                ],
+                returns: { type: 'any', description: 'Value at position' }
+            },
+            {
+                name: 'array2dCreate',
+                description: 'Creates a 2D array initialized with a value',
+                type: 'function',
+                example: 'const grid = matterMath.array2dCreate(10, 10, 0);',
+                params: [
+                    { name: 'w', type: 'number', description: 'Width of array' },
+                    { name: 'h', type: 'number', description: 'Height of array' },
+                    { name: 'val', type: 'any', description: 'Initial value' }
+                ],
+                returns: { type: 'Array[]', description: '2D array' }
+            },
+            {
+                name: 'array2dSet',
+                description: 'Sets a value in a 2D array',
+                type: 'function',
+                example: 'matterMath.array2dSet(grid, 5, 3, 1);',
+                params: [
+                    { name: 'array', type: 'Array[]', description: '2D array' },
+                    { name: 'x', type: 'number', description: 'X coordinate' },
+                    { name: 'y', type: 'number', description: 'Y coordinate' },
+                    { name: 'value', type: 'any', description: 'Value to set' }
+                ]
+            },
+            {
+                name: 'array2dGet',
+                description: 'Gets a value from a 2D array',
+                type: 'function',
+                example: 'const value = matterMath.array2dGet(grid, 5, 3);',
+                params: [
+                    { name: 'array', type: 'Array[]', description: '2D array' },
+                    { name: 'x', type: 'number', description: 'X coordinate' },
+                    { name: 'y', type: 'number', description: 'Y coordinate' }
+                ],
+                returns: { type: 'any', description: 'Value at coordinates' }
+            },
+            {
+                name: 'array3dCreate',
+                description: 'Creates a 3D array initialized with a value',
+                type: 'function',
+                example: 'const cube = matterMath.array3dCreate(5, 5, 5, 0);',
+                params: [
+                    { name: 'w', type: 'number', description: 'Width of array' },
+                    { name: 'h', type: 'number', description: 'Height of array' },
+                    { name: 'd', type: 'number', description: 'Depth of array' },
+                    { name: 'val', type: 'any', description: 'Initial value' }
+                ],
+                returns: { type: 'Array[][]', description: '3D array' }
+            },
+            {
+                name: 'array3dSet',
+                description: 'Sets a value in a 3D array',
+                type: 'function',
+                example: 'matterMath.array3dSet(cube, 2, 3, 1, 5);',
+                params: [
+                    { name: 'array', type: 'Array[][]', description: '3D array' },
+                    { name: 'x', type: 'number', description: 'X coordinate' },
+                    { name: 'y', type: 'number', description: 'Y coordinate' },
+                    { name: 'z', type: 'number', description: 'Z coordinate' },
+                    { name: 'value', type: 'any', description: 'Value to set' }
+                ]
+            },
+            {
+                name: 'array3dGet',
+                description: 'Gets a value from a 3D array',
+                type: 'function',
+                example: 'const value = matterMath.array3dGet(cube, 2, 3, 1);',
+                params: [
+                    { name: 'array', type: 'Array[][]', description: '3D array' },
+                    { name: 'x', type: 'number', description: 'X coordinate' },
+                    { name: 'y', type: 'number', description: 'Y coordinate' },
+                    { name: 'z', type: 'number', description: 'Z coordinate' }
+                ],
+                returns: { type: 'any', description: 'Value at coordinates' }
+            },
+            {
+                name: 'arrayClear',
+                description: 'Clears an array',
+                type: 'function',
+                example: 'matterMath.arrayClear(myArray);',
+                params: [{ name: 'array', type: 'Array', description: 'Array to clear' }]
+            },
+            {
+                name: 'dcos',
+                description: 'Returns cosine of x degrees',
+                type: 'function',
+                example: 'const x = matterMath.dcos(45); // cos(45°)',
+                params: [{ name: 'x', type: 'number', description: 'Angle in degrees' }],
+                returns: { type: 'number', description: 'Cosine value' }
+            },
+            {
+                name: 'degtorad',
+                description: 'Converts degrees to radians',
+                type: 'function',
+                example: 'const radians = matterMath.degtorad(180); // π',
+                params: [{ name: 'x', type: 'number', description: 'Angle in degrees' }],
+                returns: { type: 'number', description: 'Angle in radians' }
+            },
+            {
+                name: 'radtodeg',
+                description: 'Converts radians to degrees',
+                type: 'function',
+                example: 'const degrees = matterMath.radtodeg(Math.PI); // 180',
+                params: [{ name: 'x', type: 'number', description: 'Angle in radians' }],
+                returns: { type: 'number', description: 'Angle in degrees' }
+            },
+            {
+                name: 'snap',
+                description: 'Snaps a position to grid size',
+                type: 'function',
+                example: 'const snapped = matterMath.snap(127, 32); // 128',
+                params: [
+                    { name: 'pos', type: 'number', description: 'Position to snap' },
+                    { name: 'grid', type: 'number', description: 'Grid size' }
+                ],
+                returns: { type: 'number', description: 'Snapped position' }
+            },
+            {
+                name: 'pointDistance',
+                description: 'Distance between two points',
+                type: 'function',
+                example: 'const dist = matterMath.pointDistance(0, 0, 3, 4); // 5',
+                params: [
+                    { name: 'x1', type: 'number', description: 'First point X' },
+                    { name: 'y1', type: 'number', description: 'First point Y' },
+                    { name: 'x2', type: 'number', description: 'Second point X' },
+                    { name: 'y2', type: 'number', description: 'Second point Y' }
+                ],
+                returns: { type: 'number', description: 'Distance between points' }
+            },
+            {
+                name: 'pointDirection',
+                description: 'Angle from one point to another',
+                type: 'function',
+                example: 'const angle = matterMath.pointDirection(0, 0, 1, 1);',
+                params: [
+                    { name: 'x1', type: 'number', description: 'First point X' },
+                    { name: 'y1', type: 'number', description: 'First point Y' },
+                    { name: 'x2', type: 'number', description: 'Second point X' },
+                    { name: 'y2', type: 'number', description: 'Second point Y' }
+                ],
+                returns: { type: 'number', description: 'Angle in degrees' }
+            },
+            {
+                name: 'angleDifference',
+                description: 'Smallest difference between two angles',
+                type: 'function',
+                example: 'const diff = matterMath.angleDifference(350, 10); // 20',
+                params: [
+                    { name: 'a1', type: 'number', description: 'First angle' },
+                    { name: 'a2', type: 'number', description: 'Second angle' }
+                ],
+                returns: { type: 'number', description: 'Angle difference' }
+            },
+            {
+                name: 'lengthDirX',
+                description: 'X offset for length/direction',
+                type: 'function',
+                example: 'const x = matterMath.lengthDirX(100, 45);',
+                params: [
+                    { name: 'len', type: 'number', description: 'Length/magnitude' },
+                    { name: 'dir', type: 'number', description: 'Direction in degrees' }
+                ],
+                returns: { type: 'number', description: 'X component' }
+            },
+            {
+                name: 'lengthDirY',
+                description: 'Y offset for length/direction',
+                type: 'function',
+                example: 'const y = matterMath.lengthDirY(100, 45);',
+                params: [
+                    { name: 'len', type: 'number', description: 'Length/magnitude' },
+                    { name: 'dir', type: 'number', description: 'Direction in degrees' }
+                ],
+                returns: { type: 'number', description: 'Y component' }
+            },
+            {
+                name: 'lerp',
+                description: 'Linear interpolation between two values',
+                type: 'function',
+                example: 'const middle = matterMath.lerp(0, 100, 0.5); // 50',
+                params: [
+                    { name: 'from', type: 'number', description: 'Start value' },
+                    { name: 'to', type: 'number', description: 'End value' },
+                    { name: 'amt', type: 'number', description: 'Amount (0-1)' }
+                ],
+                returns: { type: 'number', description: 'Interpolated value' }
+            },
+            {
+                name: 'random',
+                description: 'Random float between 1 and max',
+                type: 'function',
+                example: 'const num = matterMath.random(10); // 1-10',
+                params: [{ name: 'max', type: 'number', description: 'Maximum value' }],
+                returns: { type: 'number', description: 'Random float' }
+            },
+            {
+                name: 'randomRange',
+                description: 'Random float between min and max',
+                type: 'function',
+                example: 'const num = matterMath.randomRange(5, 15);',
+                params: [
+                    { name: 'min', type: 'number', description: 'Minimum value' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Random float' }
+            },
+            {
+                name: 'irandom',
+                description: 'Random integer between 1 and max',
+                type: 'function',
+                example: 'const dice = matterMath.irandom(6); // 1-6',
+                params: [{ name: 'max', type: 'number', description: 'Maximum value' }],
+                returns: { type: 'number', description: 'Random integer' }
+            },
+            {
+                name: 'irandomRange',
+                description: 'Random integer between min and max',
+                type: 'function',
+                example: 'const num = matterMath.irandomRange(10, 20);',
+                params: [
+                    { name: 'min', type: 'number', description: 'Minimum value' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Random integer' }
+            },
+            {
+                name: 'randomBool',
+                description: 'Random true or false',
+                type: 'function',
+                example: 'const coinFlip = matterMath.randomBool();',
+                returns: { type: 'boolean', description: 'Random boolean' }
+            },
+            {
+                name: 'choose',
+                description: 'Randomly chooses one of the items',
+                type: 'function',
+                example: 'const item = matterMath.choose("red", "blue", "green");',
+                params: [{ name: '...items', type: 'any', description: 'Items to choose from' }],
+                returns: { type: 'any', description: 'Randomly chosen item' }
+            },
+            {
+                name: 'stringReplaceAll',
+                description: 'Replaces all occurrences in a string',
+                type: 'function',
+                example: 'const result = matterMath.stringReplaceAll("hello world", "l", "x");',
+                params: [
+                    { name: 'str', type: 'string', description: 'Original string' },
+                    { name: 'find', type: 'string', description: 'String to find' },
+                    { name: 'replace', type: 'string', description: 'Replacement string' }
+                ],
+                returns: { type: 'string', description: 'Modified string' }
+            },
+            {
+                name: 'toString',
+                description: 'Converts a value to string',
+                type: 'function',
+                example: 'const str = matterMath.toString(123);',
+                params: [{ name: 'val', type: 'any', description: 'Value to convert' }],
+                returns: { type: 'string', description: 'String representation' }
+            },
+            {
+                name: 'toInt',
+                description: 'Converts a value to integer',
+                type: 'function',
+                example: 'const num = matterMath.toInt("123");',
+                params: [{ name: 'val', type: 'any', description: 'Value to convert' }],
+                returns: { type: 'number', description: 'Integer value' }
+            },
+            {
+                name: 'sine',
+                description: 'Returns a pulsing value using sine',
+                type: 'function',
+                example: 'const pulse = matterMath.sine(1000, 10);',
+                params: [
+                    { name: 'delay', type: 'number', description: 'Delay/period' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Sine wave value' }
+            },
+            {
+                name: 'sinePositive',
+                description: 'Returns a positive pulsing value',
+                type: 'function',
+                example: 'const pulse = matterMath.sinePositive(1000, 10);',
+                params: [
+                    { name: 'delay', type: 'number', description: 'Delay/period' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Positive sine wave value' }
+            },
+            {
+                name: 'sineNegative',
+                description: 'Returns a negative pulsing value',
+                type: 'function',
+                example: 'const pulse = matterMath.sineNegative(1000, 10);',
+                params: [
+                    { name: 'delay', type: 'number', description: 'Delay/period' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Negative sine wave value' }
+            },
+            {
+                name: 'interpolate',
+                description: 'Linear interpolation',
+                type: 'function',
+                example: 'const value = matterMath.interpolate(0, 100, 0.5);',
+                params: [
+                    { name: 'start', type: 'number', description: 'Start value' },
+                    { name: 'end', type: 'number', description: 'End value' },
+                    { name: 't', type: 'number', description: 'Interpolation factor (0-1)' }
+                ],
+                returns: { type: 'number', description: 'Interpolated value' }
+            },
+            {
+                name: 'smoothstep',
+                description: 'Smoothstep interpolation',
+                type: 'function',
+                example: 'const smooth = matterMath.smoothstep(0.5);',
+                params: [{ name: 't', type: 'number', description: 'Input value (0-1)' }],
+                returns: { type: 'number', description: 'Smoothed value' }
+            },
+            {
+                name: 'sineInterpolation',
+                description: 'Sine-based interpolation',
+                type: 'function',
+                example: 'const smooth = matterMath.sineInterpolation(0.5);',
+                params: [{ name: 't', type: 'number', description: 'Input value (0-1)' }],
+                returns: { type: 'number', description: 'Sine interpolated value' }
+            },
+            {
+                name: 'clamp',
+                description: 'Clamps a value between min and max',
+                type: 'function',
+                example: 'const clamped = matterMath.clamp(150, 0, 100); // 100',
+                params: [
+                    { name: 'val', type: 'number', description: 'Value to clamp' },
+                    { name: 'min', type: 'number', description: 'Minimum value' },
+                    { name: 'max', type: 'number', description: 'Maximum value' }
+                ],
+                returns: { type: 'number', description: 'Clamped value' }
+            },
+            {
+                name: 'keepPositive',
+                description: 'Returns absolute value',
+                type: 'function',
+                example: 'const positive = matterMath.keepPositive(-5); // 5',
+                params: [{ name: 'x', type: 'number', description: 'Input value' }],
+                returns: { type: 'number', description: 'Absolute value' }
+            },
+            {
+                name: 'keepNegative',
+                description: 'Returns negative absolute value',
+                type: 'function',
+                example: 'const negative = matterMath.keepNegative(5); // -5',
+                params: [{ name: 'x', type: 'number', description: 'Input value' }],
+                returns: { type: 'number', description: 'Negative absolute value' }
+            },
+            {
+                name: 'rotateSmooth',
+                description: 'Smoothly rotates an angle toward another',
+                type: 'function',
+                example: 'const newAngle = matterMath.rotateSmooth(currentAngle, targetAngle, 0.1);',
+                params: [
+                    { name: 'dir', type: 'number', description: 'Current direction' },
+                    { name: 'target', type: 'number', description: 'Target direction' },
+                    { name: 'speed', type: 'number', description: 'Rotation speed (0-1)' }
+                ],
+                returns: { type: 'number', description: 'New direction' }
+            },
+            {
+                name: 'executeString',
+                description: 'Executes JS code from a string',
+                type: 'function',
+                example: 'matterMath.executeString("console.log(\'Hello\')");',
+                params: [{ name: 'str', type: 'string', description: 'JavaScript code to execute' }]
+            },
+            {
+                name: 'rgb',
+                description: 'Returns an RGB color string',
+                type: 'function',
+                example: 'const color = matterMath.rgb(255, 0, 0); // "rgb(255,0,0)"',
+                params: [
+                    { name: 'r', type: 'number', description: 'Red component (0-255)' },
+                    { name: 'g', type: 'number', description: 'Green component (0-255)' },
+                    { name: 'b', type: 'number', description: 'Blue component (0-255)' }
+                ],
+                returns: { type: 'string', description: 'RGB color string' }
+            },
+            {
+                name: 'hsl',
+                description: 'Returns an HSL color string',
+                type: 'function',
+                example: 'const color = matterMath.hsl(120, 100, 50); // "hsl(120,100%,50%)"',
+                params: [
+                    { name: 'h', type: 'number', description: 'Hue (0-360)' },
+                    { name: 's', type: 'number', description: 'Saturation (0-100)' },
+                    { name: 'l', type: 'number', description: 'Lightness (0-100)' }
+                ],
+                returns: { type: 'string', description: 'HSL color string' }
+            }
+        ];
+
+        for (const func of matterMathFunctions) {
+            if (func.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `matterMath.${func.name}`,
+                    category: 'MatterMath',
+                    description: func.description,
+                    type: func.type,
+                    example: func.example,
+                    params: func.params,
+                    returns: func.returns
+                };
+            } else if (func.name.toLowerCase().startsWith(searchTerm.toLowerCase()) || searchTerm.length === 0) {
+                // Changed this line: show ALL functions if searchTerm is empty, or partial matches
+                result.matches.push({
+                    fullName: `matterMath.${func.name}`,
+                    category: 'MatterMath',
+                    description: func.description
+                });
+            }
+        }
+
+        // Sort matches alphabetically for better user experience
+        result.matches.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+        // Limit to prevent UI overflow when showing all functions
+        if (result.matches.length > 20) {
+            result.matches = result.matches.slice(0, 20);
+        }
+
+        return result;
+    }
+
+    getInputDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `window.input.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Define common input functions
+        const inputFunctions = [
+            {
+                name: 'keyDown',
+                description: 'Check if a key is currently being held down',
+                type: 'function',
+                example: 'if (window.input.keyDown("w")) { /* move up */ }',
+                params: [{ name: 'key', type: 'string', description: 'Key name to check' }],
+                returns: { type: 'boolean', description: 'True if key is down' }
+            },
+            {
+                name: 'keyPressed',
+                description: 'Check if a key was just pressed this frame',
+                type: 'function',
+                example: 'if (window.input.keyPressed("Space")) { /* jump */ }',
+                params: [{ name: 'key', type: 'string', description: 'Key name to check' }],
+                returns: { type: 'boolean', description: 'True if key was just pressed' }
+            },
+            {
+                name: 'mouseDown',
+                description: 'Check if a mouse button is currently pressed',
+                type: 'function',
+                example: 'if (window.input.mouseDown("left")) { /* fire */ }',
+                params: [{ name: 'button', type: 'string', description: 'Mouse button (left, right, middle)' }],
+                returns: { type: 'boolean', description: 'True if button is down' }
+            },
+            {
+                name: 'mousePressed',
+                description: 'Check if a mouse button was just pressed this frame',
+                type: 'function',
+                example: 'if (window.input.mousePressed("left")) { /* click */ }',
+                params: [{ name: 'button', type: 'string', description: 'Mouse button to check' }],
+                returns: { type: 'boolean', description: 'True if button was just pressed' }
+            },
+            {
+                name: 'mousePosition',
+                description: 'Current mouse position in world coordinates',
+                type: 'property',
+                example: 'const pos = window.input.mousePosition;',
+                returns: { type: 'Vector2', description: 'Mouse position' }
+            },
+            {
+                name: 'getMousePosition',
+                description: 'Get mouse position with optional world space conversion',
+                type: 'function',
+                example: 'const worldPos = window.input.getMousePosition(true);',
+                params: [{ name: 'worldSpace', type: 'boolean', description: 'Convert to world coordinates' }],
+                returns: { type: 'Vector2', description: 'Mouse position' }
+            }
+        ];
+
+        for (const func of inputFunctions) {
+            if (func.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `window.input.${func.name}`,
+                    category: 'Input',
+                    description: func.description,
+                    type: func.type,
+                    example: func.example,
+                    params: func.params,
+                    returns: func.returns
+                };
+            } else if (func.name.toLowerCase().startsWith(searchTerm.toLowerCase()) || searchTerm.length === 0) {
+                // Show all input functions if searchTerm is empty
+                result.matches.push({
+                    fullName: `window.input.${func.name}`,
+                    category: 'Input',
+                    description: func.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getEngineDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `window.engine.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Define common engine functions and properties
+        const engineMembers = [
+            {
+                name: 'viewport',
+                description: 'Current viewport information',
+                type: 'property',
+                example: 'const centerX = window.engine.viewport.x;\nconst centerY = window.engine.viewport.y;',
+                properties: [
+                    { name: 'x', type: 'number', description: 'Viewport center X coordinate' },
+                    { name: 'y', type: 'number', description: 'Viewport center Y coordinate' },
+                    { name: 'width', type: 'number', description: 'Viewport width' },
+                    { name: 'height', type: 'number', description: 'Viewport height' }
+                ]
+            },
+            {
+                name: 'instantiatePrefab',
+                description: 'Create a new instance of a prefab',
+                type: 'function',
+                example: 'const enemy = window.engine.instantiatePrefab("Enemy", 100, 200);',
+                params: [
+                    { name: 'name', type: 'string', description: 'Prefab name' },
+                    { name: 'x', type: 'number', description: 'X position (optional)' },
+                    { name: 'y', type: 'number', description: 'Y position (optional)' }
+                ],
+                returns: { type: 'GameObject', description: 'Created prefab instance' }
+            },
+            {
+                name: 'getMainCanvas',
+                description: 'Get the main rendering canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getMainCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'Main canvas context' }
+            },
+            {
+                name: 'getGuiCanvas',
+                description: 'Get the GUI canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getGuiCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'GUI canvas context' }
+            },
+            {
+                name: 'getBackgroundCanvas',
+                description: 'Get the background canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getBackgroundCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'Background canvas context' }
+            }
+        ];
+
+        for (const member of engineMembers) {
+            if (member.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `window.engine.${member.name}`,
+                    category: 'Engine',
+                    description: member.description,
+                    type: member.type,
+                    example: member.example,
+                    params: member.params,
+                    returns: member.returns,
+                    properties: member.properties
+                };
+            } else if (member.name.toLowerCase().startsWith(searchTerm.toLowerCase()) || searchTerm.length === 0) {
+                // Show all engine members if searchTerm is empty
+                result.matches.push({
+                    fullName: `window.engine.${member.name}`,
+                    category: 'Engine',
+                    description: member.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getEngineDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `window.engine.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Define common engine functions and properties
+        const engineMembers = [
+            {
+                name: 'viewport',
+                description: 'Current viewport information',
+                type: 'property',
+                example: 'const centerX = window.engine.viewport.x;\nconst centerY = window.engine.viewport.y;',
+                properties: [
+                    { name: 'x', type: 'number', description: 'Viewport center X coordinate' },
+                    { name: 'y', type: 'number', description: 'Viewport center Y coordinate' },
+                    { name: 'width', type: 'number', description: 'Viewport width' },
+                    { name: 'height', type: 'number', description: 'Viewport height' }
+                ]
+            },
+            {
+                name: 'instantiatePrefab',
+                description: 'Create a new instance of a prefab',
+                type: 'function',
+                example: 'const enemy = window.engine.instantiatePrefab("Enemy", 100, 200);',
+                params: [
+                    { name: 'name', type: 'string', description: 'Prefab name' },
+                    { name: 'x', type: 'number', description: 'X position (optional)' },
+                    { name: 'y', type: 'number', description: 'Y position (optional)' }
+                ],
+                returns: { type: 'GameObject', description: 'Created prefab instance' }
+            },
+            {
+                name: 'getMainCanvas',
+                description: 'Get the main rendering canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getMainCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'Main canvas context' }
+            },
+            {
+                name: 'getGuiCanvas',
+                description: 'Get the GUI canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getGuiCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'GUI canvas context' }
+            },
+            {
+                name: 'getBackgroundCanvas',
+                description: 'Get the background canvas context',
+                type: 'function',
+                example: 'const ctx = window.engine.getBackgroundCanvas();',
+                returns: { type: 'CanvasRenderingContext2D', description: 'Background canvas context' }
+            }
+        ];
+
+        for (const member of engineMembers) {
+            if (member.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `window.engine.${member.name}`,
+                    category: 'Engine',
+                    description: member.description,
+                    type: member.type,
+                    example: member.example,
+                    params: member.params,
+                    returns: member.returns,
+                    properties: member.properties
+                };
+            } else if (member.name.toLowerCase().startsWith(searchTerm.toLowerCase()) && searchTerm.length >= 1) {
+                result.matches.push({
+                    fullName: `window.engine.${member.name}`,
+                    category: 'Engine',
+                    description: member.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getThisPropertyDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `this.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Common module properties
+        const moduleProperties = [
+            {
+                name: 'gameObject',
+                description: 'Reference to the GameObject this module is attached to',
+                type: 'GameObject',
+                example: 'this.gameObject.position.x += 10;'
+            },
+            {
+                name: 'enabled',
+                description: 'Whether this module is currently enabled',
+                type: 'boolean',
+                example: 'this.enabled = false;'
+            },
+            {
+                name: 'name',
+                description: 'The name of this module',
+                type: 'string',
+                example: 'console.log(this.name);'
+            }
+        ];
+
+        // Add custom properties based on common module patterns
+        const commonModuleProps = [
+            { name: 'speed', description: 'Movement speed property', type: 'number' },
+            { name: 'health', description: 'Health value property', type: 'number' },
+            { name: 'damage', description: 'Damage value property', type: 'number' },
+            { name: 'force', description: 'Force value property', type: 'number' },
+            { name: 'timer', description: 'Timer value property', type: 'number' },
+            { name: 'target', description: 'Target reference property', type: 'GameObject' },
+            { name: 'color', description: 'Color property', type: 'string' },
+            { name: 'size', description: 'Size property', type: 'Vector2' },
+            { name: 'offset', description: 'Offset property', type: 'Vector2' }
+        ];
+
+        const allProperties = [...moduleProperties, ...commonModuleProps];
+
+        for (const prop of allProperties) {
+            if (prop.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `this.${prop.name}`,
+                    category: 'Module Property',
+                    description: prop.description,
+                    type: prop.type,
+                    example: prop.example
+                };
+            } else if (prop.name.toLowerCase().startsWith(searchTerm.toLowerCase()) && searchTerm.length >= 1) {
+                result.matches.push({
+                    fullName: `this.${prop.name}`,
+                    category: 'Module Property',
+                    description: prop.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getGameObjectPropertyDocumentation(searchTerm) {
+        const result = {
+            searchTerm: `this.gameObject.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // GameObject properties and methods
+        const gameObjectMembers = [
+            {
+                name: 'position',
+                description: 'The local position of the GameObject as a Vector2',
+                type: 'Vector2',
+                example: 'this.gameObject.position.x += 10;\nthis.gameObject.position = new Vector2(100, 200);'
+            },
+            {
+                name: 'scale',
+                description: 'The scale of the GameObject as a Vector2',
+                type: 'Vector2',
+                example: 'this.gameObject.scale = new Vector2(2, 2);'
+            },
+            {
+                name: 'angle',
+                description: 'The rotation angle of the GameObject in degrees',
+                type: 'number',
+                example: 'this.gameObject.angle += 90;'
+            },
+            {
+                name: 'size',
+                description: 'The collision size of the GameObject as a Vector2',
+                type: 'Vector2',
+                example: 'this.gameObject.size = new Vector2(64, 64);'
+            },
+            {
+                name: 'active',
+                description: 'Whether the GameObject is active in the scene',
+                type: 'boolean',
+                example: 'this.gameObject.active = false;'
+            },
+            {
+                name: 'visible',
+                description: 'Whether the GameObject is visible',
+                type: 'boolean',
+                example: 'this.gameObject.visible = true;'
+            },
+            {
+                name: 'name',
+                description: 'The name of the GameObject',
+                type: 'string',
+                example: 'console.log(this.gameObject.name);'
+            },
+            {
+                name: 'addModule',
+                description: 'Add a module to the GameObject',
+                type: 'function',
+                example: 'const sprite = this.gameObject.addModule(new SpriteRenderer());',
+                params: [{ name: 'module', type: 'Module', description: 'The module to add' }],
+                returns: { type: 'Module', description: 'The added module' }
+            },
+            {
+                name: 'getModule',
+                description: 'Get a module by its type name',
+                type: 'function',
+                example: 'const sprite = this.gameObject.getModule("SpriteRenderer");',
+                params: [{ name: 'type', type: 'string', description: 'The module type name' }],
+                returns: { type: 'Module|null', description: 'The module or null if not found' }
+            },
+            {
+                name: 'removeModule',
+                description: 'Remove a module from the GameObject',
+                type: 'function',
+                example: 'this.gameObject.removeModule("SpriteRenderer");',
+                params: [{ name: 'type', type: 'string', description: 'The module type name' }]
+            },
+            {
+                name: 'hasTag',
+                description: 'Check if the GameObject has a specific tag',
+                type: 'function',
+                example: 'if (this.gameObject.hasTag("enemy")) { /* damage player */ }',
+                params: [{ name: 'tag', type: 'string', description: 'The tag to check' }],
+                returns: { type: 'boolean', description: 'True if the tag exists' }
+            },
+            {
+                name: 'addTag',
+                description: 'Add a tag to the GameObject',
+                type: 'function',
+                example: 'this.gameObject.addTag("player");',
+                params: [{ name: 'tag', type: 'string', description: 'The tag to add' }]
+            },
+            {
+                name: 'setPosition',
+                description: 'Set the position of the GameObject',
+                type: 'function',
+                example: 'this.gameObject.setPosition(new Vector2(100, 200));',
+                params: [{ name: 'position', type: 'Vector2', description: 'The new position' }]
+            },
+            {
+                name: 'getWorldPosition',
+                description: 'Get the world position of the GameObject',
+                type: 'function',
+                example: 'const worldPos = this.gameObject.getWorldPosition();',
+                returns: { type: 'Vector2', description: 'The world position' }
+            },
+            {
+                name: 'checkForCollisions',
+                description: 'Check for collisions with other GameObjects',
+                type: 'function',
+                example: 'const collisions = this.gameObject.checkForCollisions();\ncollisions.forEach(other => { /* handle collision */ });',
+                returns: { type: 'Array<GameObject>', description: 'Array of collided GameObjects' }
+            },
+            {
+                name: 'checkPolygonCollisions',
+                description: 'Check for polygon-based collisions',
+                type: 'function',
+                example: 'const collisions = this.gameObject.checkPolygonCollisions();',
+                returns: { type: 'Array<GameObject>', description: 'Array of collided GameObjects' }
+            },
+            {
+                name: 'addChild',
+                description: 'Add a child GameObject',
+                type: 'function',
+                example: 'this.gameObject.addChild(childObject);',
+                params: [{ name: 'child', type: 'GameObject', description: 'The child to add' }]
+            }
+        ];
+
+        for (const member of gameObjectMembers) {
+            if (member.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `this.gameObject.${member.name}`,
+                    category: 'GameObject',
+                    description: member.description,
+                    type: member.type,
+                    example: member.example,
+                    params: member.params,
+                    returns: member.returns,
+                    methods: member.methods
+                };
+            } else if (member.name.toLowerCase().startsWith(searchTerm.toLowerCase()) && searchTerm.length >= 1) {
+                result.matches.push({
+                    fullName: `this.gameObject.${member.name}`,
+                    category: 'GameObject',
+                    description: member.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getModulePropertyDocumentation(moduleName, searchTerm) {
+        const result = {
+            searchTerm: `${moduleName}.${searchTerm}`,
+            exact: null,
+            matches: []
+        };
+
+        // Common module properties and methods that most modules have
+        const commonModuleMembers = [
+            {
+                name: 'enabled',
+                description: 'Whether the module is enabled',
+                type: 'boolean',
+                example: `const module = this.gameObject.getModule("${moduleName}");\nmodule.enabled = false;`
+            },
+            {
+                name: 'gameObject',
+                description: 'Reference to the GameObject this module is attached to',
+                type: 'GameObject',
+                example: `const module = this.gameObject.getModule("${moduleName}");\nmodule.gameObject.position.x += 10;`
+            }
+        ];
+
+        // Module-specific properties based on common module types
+        const moduleSpecificMembers = this.getModuleSpecificMembers(moduleName);
+
+        const allMembers = [...commonModuleMembers, ...moduleSpecificMembers];
+
+        for (const member of allMembers) {
+            if (member.name.toLowerCase() === searchTerm.toLowerCase()) {
+                result.exact = {
+                    name: `${moduleName}.${member.name}`,
+                    category: `${moduleName} Module`,
+                    description: member.description,
+                    type: member.type,
+                    example: member.example,
+                    params: member.params,
+                    returns: member.returns
+                };
+            } else if (member.name.toLowerCase().startsWith(searchTerm.toLowerCase()) && searchTerm.length >= 1) {
+                result.matches.push({
+                    fullName: `${moduleName}.${member.name}`,
+                    category: `${moduleName} Module`,
+                    description: member.description
+                });
+            }
+        }
+
+        return result;
+    }
+
+    getModuleSpecificMembers(moduleName) {
+        const moduleMembers = {
+            'SpriteRenderer': [
+                { name: 'imageAsset', description: 'The image asset to render', type: 'AssetReference' },
+                { name: 'width', description: 'Width of the sprite', type: 'number' },
+                { name: 'height', description: 'Height of the sprite', type: 'number' },
+                { name: 'scaleMode', description: 'How the image should be scaled', type: 'string' },
+                { name: 'color', description: 'Tint color for the sprite', type: 'color' },
+                { name: 'flipX', description: 'Flip sprite horizontally', type: 'boolean' },
+                { name: 'flipY', description: 'Flip sprite vertically', type: 'boolean' }
+            ],
+            'RigidBody': [
+                { name: 'bodyType', description: 'Type of physics body (dynamic, static, kinematic)', type: 'string' },
+                { name: 'density', description: 'Density of the body', type: 'number' },
+                { name: 'friction', description: 'Friction coefficient', type: 'number' },
+                { name: 'restitution', description: 'Bounciness (0 to 1)', type: 'number' },
+                {
+                    name: 'setVelocity',
+                    description: 'Set the linear velocity',
+                    type: 'function',
+                    params: [{ name: 'velocity', type: 'Vector2', description: 'The velocity vector' }],
+                    example: 'rigidBody.setVelocity(new Vector2(0, -10));'
+                },
+                {
+                    name: 'applyForce',
+                    description: 'Apply a force to the body',
+                    type: 'function',
+                    params: [{ name: 'force', type: 'Vector2', description: 'The force vector' }],
+                    example: 'rigidBody.applyForce(new Vector2(100, 0));'
+                }
+            ],
+            'AudioPlayer': [
+                { name: 'audioAsset', description: 'Audio file to play', type: 'AssetReference' },
+                { name: 'volume', description: 'Playback volume (0-1)', type: 'number' },
+                { name: 'loop', description: 'Loop the audio', type: 'boolean' },
+                {
+                    name: 'play',
+                    description: 'Play the audio',
+                    type: 'function',
+                    example: 'audioPlayer.play();'
+                },
+                {
+                    name: 'stop',
+                    description: 'Stop audio playback',
+                    type: 'function',
+                    example: 'audioPlayer.stop();'
+                }
+            ],
+            'KeyboardController': [
+                { name: 'speed', description: 'Movement speed', type: 'number' },
+                { name: 'useAcceleration', description: 'Enable smooth acceleration', type: 'boolean' },
+                { name: 'upKey', description: 'Key for upward movement', type: 'string' },
+                { name: 'downKey', description: 'Key for downward movement', type: 'string' },
+                { name: 'leftKey', description: 'Key for leftward movement', type: 'string' },
+                { name: 'rightKey', description: 'Key for rightward movement', type: 'string' }
+            ],
+            'SimpleHealth': [
+                { name: 'maxHealth', description: 'Maximum health', type: 'number' },
+                { name: 'currentHealth', description: 'Current health', type: 'number' },
+                { name: 'showHealthBar', description: 'Display health bar', type: 'boolean' },
+                {
+                    name: 'applyDamage',
+                    description: 'Apply damage to this object',
+                    type: 'function',
+                    params: [
+                        { name: 'amount', type: 'number', description: 'Damage amount' },
+                        { name: 'source', type: 'GameObject', description: 'Source of damage' }
+                    ],
+                    example: 'health.applyDamage(25, attackerObject);'
+                },
+                {
+                    name: 'heal',
+                    description: 'Heal this object',
+                    type: 'function',
+                    params: [{ name: 'amount', type: 'number', description: 'Heal amount' }],
+                    example: 'health.heal(50);'
+                }
+            ]
+        };
+
+        return moduleMembers[moduleName] || [];
     }
 
     searchDocumentation(searchTerm) {

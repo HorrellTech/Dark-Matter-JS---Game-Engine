@@ -160,7 +160,7 @@ player.setPosition(new Vector2(100, 200));`,
     description: "Movement speed in pixels per second",
     onChange: (value) => { this.speed = value; } // Important to update internal value
 });`,
-                methods: [  
+                methods: [
                     { name: "exposeProperty(name, type, default, options)", description: "Expose property to inspector" }
                 ]
             },
@@ -180,6 +180,25 @@ player.setPosition(new Vector2(100, 200));`,
 
     style.addHelpText("Adjust movement parameters above. Use the button to reset position.", { color: "#888" });
 }`,
+            },
+            allowMultiple: {
+                description: "Set whether multiple instances of this module type can be added to a single GameObject",
+                example: `class MyModule extends Module {
+                static allowMultiple = false; // Only one instance allowed
+
+    constructor() {
+        super("MyModule");
+    }
+}`
+            },
+            namespace: {
+                description: "Set a custom namespace for the module to avoid name conflicts",
+                example: `class MyModule extends Module {
+    static namespace = "Custom"; // Custom namespace
+    constructor() {
+        super("MyModule");
+    }
+}`
             }
         }
     },
@@ -318,6 +337,403 @@ gameObject.position = smoothedPosition;`,
                     { name: "end", type: "number|Vector2", description: "Target value" },
                     { name: "t", type: "number", description: "Interpolation factor (0-1)" }
                 ]
+            }
+        }
+    },
+
+    MatterMath: {
+        group: "Math & Utility",
+        functions: {
+            pi: {
+                description: "Returns the value of PI (3.14159...)",
+                example: "const circumference = 2 * matterMath.pi() * radius;",
+                returns: { type: "number", description: "The value of PI" }
+            },
+            pi2: {
+                description: "Returns 2 * PI (6.28318...)",
+                example: "const fullCircle = matterMath.pi2();",
+                returns: { type: "number", description: "2 * PI" }
+            },
+            time: {
+                description: "Returns current timestamp in milliseconds",
+                example: "const startTime = matterMath.time();",
+                returns: { type: "number", description: "Current timestamp in ms" }
+            },
+            dt: {
+                description: "Returns delta time scaled by rate",
+                example: "const scaledDelta = matterMath.dt(0.5); // Half speed",
+                params: [{ name: "rate", type: "number", description: "Rate to scale delta time by (default: 0.1)" }],
+                returns: { type: "number", description: "Scaled delta time" }
+            },
+            setTimescale: {
+                description: "Sets the timescale for calculations",
+                example: "matterMath.setTimescale(2.0); // Double speed",
+                params: [{ name: "timescale", type: "number", description: "New timescale value" }]
+            },
+            getTimescale: {
+                description: "Gets the current timescale",
+                example: "const currentScale = matterMath.getTimescale();",
+                returns: { type: "number", description: "Current timescale" }
+            },
+            ts: {
+                description: "Alias for getTimescale()",
+                example: "const scale = matterMath.ts();",
+                returns: { type: "number", description: "Current timescale" }
+            },
+            listCreate: {
+                description: "Creates a new array/list",
+                example: "const myList = matterMath.listCreate();",
+                returns: { type: "Array", description: "New empty array" }
+            },
+            listAdd: {
+                description: "Adds a value to a list",
+                example: "matterMath.listAdd(myList, \"item\");",
+                params: [
+                    { name: "id", type: "Array", description: "The list to add to" },
+                    { name: "value", type: "any", description: "Value to add" }
+                ]
+            },
+            listSet: {
+                description: "Sets a value at a position in a list",
+                example: "matterMath.listSet(myList, 0, \"new value\");",
+                params: [
+                    { name: "id", type: "Array", description: "The list to modify" },
+                    { name: "pos", type: "number", description: "Position to set" },
+                    { name: "value", type: "any", description: "Value to set" }
+                ]
+            },
+            listGet: {
+                description: "Gets a value from a list at a position",
+                example: "const item = matterMath.listGet(myList, 0);",
+                params: [
+                    { name: "id", type: "Array", description: "The list to get from" },
+                    { name: "pos", type: "number", description: "Position to get" }
+                ],
+                returns: { type: "any", description: "Value at position" }
+            },
+            array2dCreate: {
+                description: "Creates a 2D array initialized with a value",
+                example: "const grid = matterMath.array2dCreate(10, 10, 0);",
+                params: [
+                    { name: "width", type: "number", description: "Width of array" },
+                    { name: "height", type: "number", description: "Height of array" },
+                    { name: "defaultValue", type: "any", description: "Initial value for all cells" }
+                ],
+                returns: { type: "Array[]", description: "2D array" }
+            },
+            array2dSet: {
+                description: "Sets a value in a 2D array",
+                example: "matterMath.array2dSet(grid, 5, 3, 1);",
+                params: [
+                    { name: "array", type: "Array[]", description: "2D array" },
+                    { name: "x", type: "number", description: "X coordinate" },
+                    { name: "y", type: "number", description: "Y coordinate" },
+                    { name: "value", type: "any", description: "Value to set" }
+                ]
+            },
+            array2dGet: {
+                description: "Gets a value from a 2D array",
+                example: "const value = matterMath.array2dGet(grid, 5, 3);",
+                params: [
+                    { name: "array", type: "Array[]", description: "2D array" },
+                    { name: "x", type: "number", description: "X coordinate" },
+                    { name: "y", type: "number", description: "Y coordinate" }
+                ],
+                returns: { type: "any", description: "Value at coordinates" }
+            },
+            array3dCreate: {
+                description: "Creates a 3D array initialized with a value",
+                example: "const cube = matterMath.array3dCreate(5, 5, 5, 0);",
+                params: [
+                    { name: "width", type: "number", description: "Width of array" },
+                    { name: "height", type: "number", description: "Height of array" },
+                    { name: "depth", type: "number", description: "Depth of array" },
+                    { name: "defaultValue", type: "any", description: "Initial value for all cells" }
+                ],
+                returns: { type: "Array[][]", description: "3D array" }
+            },
+            array3dSet: {
+                description: "Sets a value in a 3D array",
+                example: "matterMath.array3dSet(cube, 2, 3, 1, 5);",
+                params: [
+                    { name: "array", type: "Array[][]", description: "3D array" },
+                    { name: "x", type: "number", description: "X coordinate" },
+                    { name: "y", type: "number", description: "Y coordinate" },
+                    { name: "z", type: "number", description: "Z coordinate" },
+                    { name: "value", type: "any", description: "Value to set" }
+                ]
+            },
+            array3dGet: {
+                description: "Gets a value from a 3D array",
+                example: "const value = matterMath.array3dGet(cube, 2, 3, 1);",
+                params: [
+                    { name: "array", type: "Array[][]", description: "3D array" },
+                    { name: "x", type: "number", description: "X coordinate" },
+                    { name: "y", type: "number", description: "Y coordinate" },
+                    { name: "z", type: "number", description: "Z coordinate" }
+                ],
+                returns: { type: "any", description: "Value at coordinates" }
+            },
+            arrayClear: {
+                description: "Clears an array",
+                example: "const cleared = matterMath.arrayClear(myArray);",
+                params: [{ name: "array", type: "Array", description: "Array to clear" }],
+                returns: { type: "Array", description: "Empty array" }
+            },
+            dcos: {
+                description: "Returns cosine of x degrees",
+                example: "const x = matterMath.dcos(45); // cos(45°)",
+                params: [{ name: "x", type: "number", description: "Angle in degrees" }],
+                returns: { type: "number", description: "Cosine value" }
+            },
+            degtorad: {
+                description: "Converts degrees to radians",
+                example: "const radians = matterMath.degtorad(180); // π",
+                params: [{ name: "x", type: "number", description: "Angle in degrees" }],
+                returns: { type: "number", description: "Angle in radians" }
+            },
+            radtodeg: {
+                description: "Converts radians to degrees",
+                example: "const degrees = matterMath.radtodeg(Math.PI); // 180",
+                params: [{ name: "x", type: "number", description: "Angle in radians" }],
+                returns: { type: "number", description: "Angle in degrees" }
+            },
+            snap: {
+                description: "Snaps a position to grid size",
+                example: "const snapped = matterMath.snap(127, 32); // 128",
+                params: [
+                    { name: "position", type: "number", description: "Position to snap" },
+                    { name: "grid_size", type: "number", description: "Grid size" }
+                ],
+                returns: { type: "number", description: "Snapped position" }
+            },
+            pointDistance: {
+                description: "Distance between two points",
+                example: "const dist = matterMath.pointDistance(0, 0, 3, 4); // 5",
+                params: [
+                    { name: "x1", type: "number", description: "First point X" },
+                    { name: "y1", type: "number", description: "First point Y" },
+                    { name: "x2", type: "number", description: "Second point X" },
+                    { name: "y2", type: "number", description: "Second point Y" }
+                ],
+                returns: { type: "number", description: "Distance between points" }
+            },
+            pointDirection: {
+                description: "Angle from one point to another",
+                example: "const angle = matterMath.pointDirection(0, 0, 1, 1);",
+                params: [
+                    { name: "x1", type: "number", description: "First point X" },
+                    { name: "y1", type: "number", description: "First point Y" },
+                    { name: "x2", type: "number", description: "Second point X" },
+                    { name: "y2", type: "number", description: "Second point Y" }
+                ],
+                returns: { type: "number", description: "Angle in degrees" }
+            },
+            angleDifference: {
+                description: "Smallest difference between two angles",
+                example: "const diff = matterMath.angleDifference(350, 10); // 20",
+                params: [
+                    { name: "angle1", type: "number", description: "First angle" },
+                    { name: "angle2", type: "number", description: "Second angle" }
+                ],
+                returns: { type: "number", description: "Angle difference (0-180)" }
+            },
+            lengthDirX: {
+                description: "X offset for length/direction",
+                example: "const x = matterMath.lengthDirX(100, 45);",
+                params: [
+                    { name: "length", type: "number", description: "Length/magnitude" },
+                    { name: "direction", type: "number", description: "Direction in degrees" }
+                ],
+                returns: { type: "number", description: "X component" }
+            },
+            lengthDirY: {
+                description: "Y offset for length/direction",
+                example: "const y = matterMath.lengthDirY(100, 45);",
+                params: [
+                    { name: "length", type: "number", description: "Length/magnitude" },
+                    { name: "direction", type: "number", description: "Direction in degrees" }
+                ],
+                returns: { type: "number", description: "Y component" }
+            },
+            lerp: {
+                description: "Linear interpolation between two values",
+                example: "const middle = matterMath.lerp(0, 100, 0.5); // 50",
+                params: [
+                    { name: "from", type: "number", description: "Start value" },
+                    { name: "to", type: "number", description: "End value" },
+                    { name: "amount", type: "number", description: "Amount (0-1)" }
+                ],
+                returns: { type: "number", description: "Interpolated value" }
+            },
+            random: {
+                description: "Random float between 1 and max",
+                example: "const num = matterMath.random(10); // 1-10",
+                params: [{ name: "max", type: "number", description: "Maximum value" }],
+                returns: { type: "number", description: "Random float" }
+            },
+            randomRange: {
+                description: "Random float between min and max",
+                example: "const num = matterMath.randomRange(5, 15);",
+                params: [
+                    { name: "min", type: "number", description: "Minimum value" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Random float" }
+            },
+            irandom: {
+                description: "Random integer between 1 and max",
+                example: "const dice = matterMath.irandom(6); // 1-6",
+                params: [{ name: "max", type: "number", description: "Maximum value" }],
+                returns: { type: "number", description: "Random integer" }
+            },
+            irandomRange: {
+                description: "Random integer between min and max",
+                example: "const num = matterMath.irandomRange(10, 20);",
+                params: [
+                    { name: "min", type: "number", description: "Minimum value" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Random integer" }
+            },
+            randomBool: {
+                description: "Random true or false",
+                example: "const coinFlip = matterMath.randomBool();",
+                returns: { type: "boolean", description: "Random boolean" }
+            },
+            choose: {
+                description: "Randomly chooses one of the items",
+                example: "const item = matterMath.choose(\"red\", \"blue\", \"green\");",
+                params: [{ name: "...items", type: "any", description: "Items to choose from" }],
+                returns: { type: "any", description: "Randomly chosen item" }
+            },
+            stringReplaceAll: {
+                description: "Replaces all occurrences in a string",
+                example: "const result = matterMath.stringReplaceAll(\"hello world\", \"l\", \"x\");",
+                params: [
+                    { name: "str", type: "string", description: "Original string" },
+                    { name: "find", type: "string", description: "String to find" },
+                    { name: "replace", type: "string", description: "Replacement string" }
+                ],
+                returns: { type: "string", description: "Modified string" }
+            },
+            toString: {
+                description: "Converts a value to string",
+                example: "const str = matterMath.toString(123);",
+                params: [{ name: "val", type: "any", description: "Value to convert" }],
+                returns: { type: "string", description: "String representation" }
+            },
+            toInt: {
+                description: "Converts a string to an integer",
+                example: "const num = matterMath.toInt(\"123\");",
+                params: [{ name: "val", type: "string", description: "Value to convert" }],
+                returns: { type: "number", description: "Integer value" }
+            },
+            sine: {
+                description: "Returns a pulsing value using sine",
+                example: "const pulse = matterMath.sine(1000, 10);",
+                params: [
+                    { name: "delay", type: "number", description: "Delay/period" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Sine wave value" }
+            },
+            sinePositive: {
+                description: "Returns a positive pulsing value",
+                example: "const pulse = matterMath.sinePositive(1000, 10);",
+                params: [
+                    { name: "delay", type: "number", description: "Delay/period" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Positive sine wave value" }
+            },
+            sineNegative: {
+                description: "Returns a negative pulsing value",
+                example: "const pulse = matterMath.sineNegative(1000, 10);",
+                params: [
+                    { name: "delay", type: "number", description: "Delay/period" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Negative sine wave value" }
+            },
+            interpolate: {
+                description: "Linear interpolation",
+                example: "const value = matterMath.interpolate(0, 100, 0.5);",
+                params: [
+                    { name: "start", type: "number", description: "Start value" },
+                    { name: "end", type: "number", description: "End value" },
+                    { name: "t", type: "number", description: "Interpolation factor (0-1)" }
+                ],
+                returns: { type: "number", description: "Interpolated value" }
+            },
+            smoothstep: {
+                description: "Smoothstep interpolation",
+                example: "const smooth = matterMath.smoothstep(0.5);",
+                params: [{ name: "t", type: "number", description: "Input value (0-1)" }],
+                returns: { type: "number", description: "Smoothed value" }
+            },
+            sineInterpolation: {
+                description: "Sine-based interpolation",
+                example: "const smooth = matterMath.sineInterpolation(0.5);",
+                params: [{ name: "t", type: "number", description: "Input value (0-1)" }],
+                returns: { type: "number", description: "Sine interpolated value" }
+            },
+            clamp: {
+                description: "Clamps a value between min and max",
+                example: "const clamped = matterMath.clamp(150, 0, 100); // 100",
+                params: [
+                    { name: "value", type: "number", description: "Value to clamp" },
+                    { name: "min", type: "number", description: "Minimum value" },
+                    { name: "max", type: "number", description: "Maximum value" }
+                ],
+                returns: { type: "number", description: "Clamped value" }
+            },
+            keepPositive: {
+                description: "Returns absolute value",
+                example: "const positive = matterMath.keepPositive(-5); // 5",
+                params: [{ name: "x", type: "number", description: "Input value" }],
+                returns: { type: "number", description: "Absolute value" }
+            },
+            keepNegative: {
+                description: "Returns negative absolute value",
+                example: "const negative = matterMath.keepNegative(5); // -5",
+                params: [{ name: "x", type: "number", description: "Input value" }],
+                returns: { type: "number", description: "Negative absolute value" }
+            },
+            rotateSmooth: {
+                description: "Smoothly rotates an angle toward another",
+                example: "const newAngle = matterMath.rotateSmooth(currentAngle, targetAngle, 5);",
+                params: [
+                    { name: "direction", type: "number", description: "Current direction" },
+                    { name: "targetDirection", type: "number", description: "Target direction" },
+                    { name: "speed", type: "number", description: "Rotation speed" }
+                ],
+                returns: { type: "number", description: "New direction" }
+            },
+            executeString: {
+                description: "Executes JS code from a string",
+                example: "matterMath.executeString(\"console.log('Hello')\");",
+                params: [{ name: "string", type: "string", description: "JavaScript code to execute" }]
+            },
+            rgb: {
+                description: "Returns an RGB color string",
+                example: "const color = matterMath.rgb(255, 0, 0); // \"rgb(255,0,0)\"",
+                params: [
+                    { name: "r", type: "number", description: "Red component (0-255)" },
+                    { name: "g", type: "number", description: "Green component (0-255)" },
+                    { name: "b", type: "number", description: "Blue component (0-255)" }
+                ],
+                returns: { type: "string", description: "RGB color string" }
+            },
+            hsl: {
+                description: "Returns an HSL color string",
+                example: "const color = matterMath.hsl(120, 1, 0.5); // \"hsl(120,100%,50%)\"",
+                params: [
+                    { name: "h", type: "number", description: "Hue (0-360)" },
+                    { name: "s", type: "number", description: "Saturation (0-1)" },
+                    { name: "l", type: "number", description: "Lightness (0-1)" }
+                ],
+                returns: { type: "string", description: "HSL color string" }
             }
         }
     },
