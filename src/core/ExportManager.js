@@ -668,6 +668,7 @@ class ExportManager {
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Drawing/DrawInfiniteStarFieldParallax.js',
             'DrawHeart': 'src/core/Modules/Drawing/DrawHeart.js',
             'DrawShield': 'src/core/Modules/Drawing/DrawShield.js',
+            'DrawCapsule': 'src/core/Modules/Drawing/DrawCapsule.js',
             'DrawStar': 'src/core/Modules/Drawing/DrawStar.js',
             'DrawIcon': 'src/core/Modules/Drawing/DrawIcon.js',
             'DrawText': 'src/core/Modules/Drawing/DrawText.js',
@@ -709,6 +710,7 @@ class ExportManager {
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
             'GravityFieldMatter': 'src/core/Modules/Matter-js/GravityFieldMatter.js',
             'VehiclePhysics': 'src/core/Modules/Matter-js/VehiclePhysics.js',
+            'PlatformControllerMatter': 'src/core/Modules/Matter-js/PlatformControllerMatter.js',
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
             'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',

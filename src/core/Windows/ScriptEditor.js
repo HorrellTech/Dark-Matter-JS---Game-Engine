@@ -1421,6 +1421,14 @@ class ScriptEditor {
                 returns: { type: 'boolean', description: 'True if key was just pressed' }
             },
             {
+                name: 'keyReleased',
+                description: 'Check if a key was just released this frame',
+                type: 'function',
+                example: 'if (window.input.keyReleased(" ")) { /* landed */ }',
+                params: [{ name: 'key', type: 'string', description: 'Key name to check' }],
+                returns: { type: 'boolean', description: 'True if key was just released' }
+            }
+            {
                 name: 'mouseDown',
                 description: 'Check if a mouse button is currently pressed',
                 type: 'function',
@@ -1435,6 +1443,14 @@ class ScriptEditor {
                 example: 'if (window.input.mousePressed("left")) { /* click */ }',
                 params: [{ name: 'button', type: 'string', description: 'Mouse button to check' }],
                 returns: { type: 'boolean', description: 'True if button was just pressed' }
+            },
+            {
+                name: 'mouseReleased',
+                description: 'Check if a mouse button was just released this frame',
+                type: 'function',
+                example: 'if (window.input.mouseReleased("left")) { /* stop firing */ }',
+                params: [{ name: 'button', type: 'string', description: 'Mouse button to check' }],
+                returns: { type: 'boolean', description: 'True if button was just released' }
             },
             {
                 name: 'mousePosition',

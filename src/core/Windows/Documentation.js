@@ -1005,6 +1005,200 @@ window.MyModule = MyModule; // Expose globally for registration
                     }
                 }
             },
+            "Physics": {
+                icon: "fas fa-vector-square",
+                description: "Physics simulation and collision detection",
+                topics: {
+                    "Raycast System": {
+                        content: `
+                            <h2>Raycast System</h2>
+                            <p>The raycast system allows you to cast rays through the scene to detect collisions and gather information about objects.</p>
+                            
+                            <div class="doc-section">
+                                <h3>Basic Raycasting</h3>
+                                <p>Cast a ray from a point in a direction to find the first object it hits:</p>
+                                <pre><code>// Cast a ray from player position towards mouse
+const mousePos = window.input.getMousePosition(true);
+const direction = mousePos.subtract(this.gameObject.position).normalize();
+
+const hit = Raycast.cast(
+    this.gameObject.position,   // origin
+    direction,                  // direction
+    200,                        // max distance
+    scene.gameObjects          // objects to check
+);
+
+if (hit) {
+    console.log("Hit:", hit.object.name);
+    console.log("Distance:", hit.distance);
+    console.log("Position:", hit.position);
+    console.log("Normal:", hit.normal);
+}</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Multiple Hits</h3>
+                                <p>Get all objects hit by a ray, sorted by distance:</p>
+                                <pre><code>const hits = Raycast.castAll(
+    origin,
+    direction,
+    maxDistance,
+    scene.gameObjects
+);
+
+hits.forEach((hit, index) => {
+    console.log(\`Hit \${index + 1}: \${hit.object.name} at distance \${hit.distance}\`);
+});</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Layer Filtering</h3>
+                                <p>Use layer masks to filter which objects the ray can hit:</p>
+                                <pre><code>// Only hit objects on layers 1 and 3
+const layerMask = (1 << 1) | (1 << 3); // Binary: 1010
+
+const hit = Raycast.cast(
+    origin,
+    direction,
+    maxDistance,
+    scene.gameObjects,
+    layerMask
+);</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Collision Priority</h3>
+                                <p>The raycast system checks collisions in this order:</p>
+                                <ol>
+                                    <li><strong>Matter.js RigidBody</strong> - Most accurate physics collision</li>
+                                    <li><strong>Polygon Collision</strong> - Custom polygon shapes</li>
+                                    <li><strong>Rectangle Collision</strong> - Bounding box collision</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Debug Visualization</h3>
+                                <p>Visualize rays for debugging:</p>
+                                <pre><code>draw(ctx) {
+    // Draw a red ray that shows hit information
+    Raycast.drawRay(
+        ctx,                        // canvas context
+        this.gameObject.position,   // origin
+        this.aimDirection,          // direction
+        this.maxRange,              // length
+        '#ff0000',                  // color
+        true,                       // show hits
+        scene.gameObjects           // objects to check
+    );
+}</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Practical Examples</h3>
+                                <h4>Line of Sight Check</h4>
+                                <pre><code>hasLineOfSight(target) {
+    const direction = target.position.subtract(this.gameObject.position).normalize();
+    const distance = this.gameObject.position.distanceTo(target.position);
+    
+    const hit = Raycast.cast(
+        this.gameObject.position,
+        direction,
+        distance,
+        scene.gameObjects
+    );
+    
+    // If we hit the target or nothing, we have line of sight
+    return !hit || hit.object === target;
+}</code></pre>
+                                
+                                <h4>Ground Detection</h4>
+                                <pre><code>isOnGround() {
+    const hit = Raycast.cast(
+        this.gameObject.position,
+        new Vector2(0, 1),          // downward
+        this.gameObject.size.y / 2 + 5, // slightly below bottom
+        scene.gameObjects
+    );
+    
+    return hit && hit.object.hasTag("ground");
+}</code></pre>
+                                
+                                <h4>Weapon Targeting</h4>
+                                <pre><code>fireWeapon() {
+    const mousePos = window.input.getMousePosition(true);
+    const direction = mousePos.subtract(this.gameObject.position).normalize();
+    
+    const hit = Raycast.cast(
+        this.gameObject.position,
+        direction,
+        this.weaponRange,
+        scene.gameObjects
+    );
+    
+    if (hit && hit.object.hasTag("enemy")) {
+        // Apply damage to enemy
+        const health = hit.object.getModule("SimpleHealth");
+        if (health) {
+            health.applyDamage(this.damage);
+        }
+    }
+}</code></pre>
+                            </div>
+                        `
+                    },
+                    "Collision Detection": {
+                        content: `
+                            <h2>Collision Detection</h2>
+                            <p>Dark Matter JS offers multiple collision detection systems for different needs.</p>
+                            
+                            <div class="doc-section">
+                                <h3>Basic Collision Detection</h3>
+                                <p>Simple bounding box collision detection:</p>
+                                <pre><code>loop(deltaTime) {
+    const collisions = this.gameObject.checkForCollisions();
+    
+    collisions.forEach(other => {
+        if (other.hasTag("enemy")) {
+            // Handle collision with enemy
+            this.takeDamage(10);
+        }
+    });
+}</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Polygon Collision Detection</h3>
+                                <p>More precise collision using custom polygon shapes:</p>
+                                <pre><code>// Enable polygon collision on GameObject
+gameObject.usePolygonCollision = true;
+gameObject.polygon = new Polygon([
+    new Vector2(-25, -25),
+    new Vector2(25, -25),
+    new Vector2(25, 25),
+    new Vector2(-25, 25)
+]);
+
+// Check polygon collisions
+const collisions = this.gameObject.checkPolygonCollisions();
+collisions.forEach(other => {
+    // Handle precise collision
+});</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Physics-Based Collision</h3>
+                                <p>Using Matter.js RigidBody for realistic physics collision:</p>
+                                <pre><code>const rigidBody = gameObject.addModule(new RigidBody());
+rigidBody.bodyType = "dynamic";
+rigidBody.density = 1;
+rigidBody.restitution = 0.8; // Bounciness
+
+// Physics collisions are handled automatically by the physics engine</code></pre>
+                            </div>
+                        `
+                    }
+                }
+            },
             "AI Prompting": {
                 icon: "fas fa-robot",
                 description: "Using AI to enhance gameplay",

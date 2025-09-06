@@ -32,7 +32,7 @@ class RigidBody extends Module {
         this.label = ""; // Custom label
 
         // Shape options
-        this.shape = "rectangle";   // "rectangle", "circle", "polygon"
+        this.shape = "rectangle";   // "rectangle", "circle", "polygon", "capsule"
         this.width = 50;           // Used for rectangle
         this.height = 50;          // Used for rectangle
         this.radius = 25;           // Used for circle
@@ -54,7 +54,7 @@ class RigidBody extends Module {
         });
 
         this.exposeProperty("shape", "enum", this.shape, {
-            options: ["rectangle", "circle", "polygon"],
+            options: ["rectangle", "circle", "capsule", "polygon"],
             onChange: (val) => { this.shape = val; if (!this._skipRebuild) this.rebuildBody(); }
         });
 
@@ -92,8 +92,8 @@ class RigidBody extends Module {
         });
 
         this.exposeProperty("useGravity", "boolean", this.useGravity, {
-            onChange: (val) => { 
-                this.useGravity = val; 
+            onChange: (val) => {
+                this.useGravity = val;
                 if (this.body) this.body.ignoreGravity = !val; // Custom flag, see below
             }
         });
@@ -101,23 +101,23 @@ class RigidBody extends Module {
         this.exposeProperty("frictionAir", "number", this.frictionAir, {
             min: 0,
             max: 1,
-            onChange: (val) => { 
-                this.frictionAir = val; 
-                if (this.body) this.body.frictionAir = val; 
+            onChange: (val) => {
+                this.frictionAir = val;
+                if (this.body) this.body.frictionAir = val;
             }
         });
 
         this.exposeProperty("sleepingAllowed", "boolean", this.sleepingAllowed, {
-            onChange: (val) => { 
-                this.sleepingAllowed = val; 
+            onChange: (val) => {
+                this.sleepingAllowed = val;
                 if (this.body) this.body.sleepThreshold = val ? 60 : -1; // Matter.js default is 60
             }
         });
 
         this.exposeProperty("label", "string", this.label, {
-            onChange: (val) => { 
-                this.label = val; 
-                if (this.body) this.body.label = val; 
+            onChange: (val) => {
+                this.label = val;
+                if (this.body) this.body.label = val;
             }
         });
 
@@ -218,16 +218,8 @@ class RigidBody extends Module {
             return null;
         }
 
-        // Use collider data from GameObject
         let body;
-
         let pos = this.gameObject.getWorldPosition();
-
-        // If position is (0,0) and we have an initialPosition, use that instead
-        /*if ((pos.x === 0 && pos.y === 0) && this.initialPosition && (this.initialPosition.x !== 0 || this.initialPosition.y !== 0)) {
-            pos = { ...this.initialPosition };
-        }*/
-
         const angle = this.gameObject.angle * (Math.PI / 180);
 
         // Use collider size from GameObject
@@ -256,13 +248,39 @@ class RigidBody extends Module {
                 case "circle":
                     body = Matter.Bodies.circle(pos.x, pos.y, colliderRadius, options);
                     break;
+                case "capsule":
+                    // Create capsule as a compound body with a rectangle and two circles
+                    const capsuleRadius = Math.min(colliderWidth, colliderHeight) / 2;
+                    const capsuleLength = Math.max(colliderWidth, colliderHeight) - (capsuleRadius * 2);
+
+                    if (colliderHeight > colliderWidth) {
+                        // Vertical capsule
+                        const rectHeight = capsuleLength;
+                        const rect = Matter.Bodies.rectangle(pos.x, pos.y, colliderWidth, rectHeight, options);
+                        const topCircle = Matter.Bodies.circle(pos.x, pos.y - rectHeight / 2, capsuleRadius, options);
+                        const bottomCircle = Matter.Bodies.circle(pos.x, pos.y + rectHeight / 2, capsuleRadius, options);
+                        body = Matter.Body.create({
+                            parts: [rect, topCircle, bottomCircle],
+                            ...options
+                        });
+                    } else {
+                        // Horizontal capsule
+                        const rectWidth = capsuleLength;
+                        const rect = Matter.Bodies.rectangle(pos.x, pos.y, rectWidth, colliderHeight, options);
+                        const leftCircle = Matter.Bodies.circle(pos.x - rectWidth / 2, pos.y, capsuleRadius, options);
+                        const rightCircle = Matter.Bodies.circle(pos.x + rectWidth / 2, pos.y, capsuleRadius, options);
+                        body = Matter.Body.create({
+                            parts: [rect, leftCircle, rightCircle],
+                            ...options
+                        });
+                    }
+                    break;
                 case "polygon":
-                    // Use polygon points from GameObject if available
-                    let vertices = this.gameObject.polygonPoints?.length ? this.gameObject.polygonPoints.map(pt => ({ x: pt.x, y: pt.y })) : this.vertices;
+                    let vertices = this.gameObject.polygonPoints?.length ?
+                        this.gameObject.polygonPoints.map(pt => ({ x: pt.x, y: pt.y })) : this.vertices;
                     if (vertices && vertices.length >= 3) {
                         body = Matter.Bodies.fromVertices(pos.x, pos.y, vertices, options);
                     } else {
-                        // Fallback to triangle
                         body = Matter.Bodies.polygon(pos.x, pos.y, 3, colliderRadius, options);
                     }
                     break;
@@ -480,6 +498,29 @@ class RigidBody extends Module {
         return 0;
     }
 
+    updateColliderSize() {
+        if (!this.gameObject || this._skipRebuild) return;
+        
+        const newWidth = this.gameObject.size?.x * this.gameObject.scale.x || this.width;
+        const newHeight = this.gameObject.size?.y * this.gameObject.scale.y || this.height;
+        const newRadius = (this.gameObject.size?.x * this.gameObject.scale.x || this.radius) / 2;
+        
+        // Check if size changed
+        const currentWidth = this.width;
+        const currentHeight = this.height;
+        const currentRadius = this.radius;
+        
+        if (Math.abs(newWidth - currentWidth) > 0.1 || 
+            Math.abs(newHeight - currentHeight) > 0.1 || 
+            Math.abs(newRadius - currentRadius) > 0.1) {
+            
+            this.width = newWidth;
+            this.height = newHeight;
+            this.radius = newRadius;
+            this.rebuildBody();
+        }
+    }
+
     /**
      * Handle collision start events
      */
@@ -560,12 +601,22 @@ class RigidBody extends Module {
      * Called before rendering to update static bodies if needed
      */
     beginLoop() {
+        // Update collider size if GameObject size changed
+        this.updateColliderSize();
+
         // If the game object has moved, we need to update static bodies
         if (this.body && this.bodyType === 'static' && this.gameObject) {
             const pos = this.gameObject.getWorldPosition();
             const angle = this.gameObject.angle * (Math.PI / 180);
             Matter.Body.setPosition(this.body, { x: pos.x, y: pos.y });
             Matter.Body.setAngle(this.body, angle);
+        }
+
+        if (this.fixedRotation) {
+            if (this.body) {
+                Matter.Body.setAngularVelocity(this.body, 0);
+                this.body.angle = 0;
+            }
         }
     }
 
@@ -577,6 +628,86 @@ class RigidBody extends Module {
             this.createBody();
             this.pendingBodyCreation = false;
         }
+    }
+
+    drawGizmos(ctx) {
+        const transform = this.gameObject;
+
+        const pos = transform.position;
+        const angle = transform.angle * (Math.PI / 180);
+        
+        // Get actual collider size
+        const colliderWidth = this.gameObject.size?.x * this.gameObject.scale.x || this.width;
+        const colliderHeight = this.gameObject.size?.y * this.gameObject.scale.y || this.height;
+        const colliderRadius = (this.gameObject.size?.x * this.gameObject.scale.x || this.radius) / 2;
+
+        ctx.save();
+        ctx.translate(pos.x, pos.y);
+        ctx.rotate(angle);
+        
+        // Set gizmo style
+        ctx.strokeStyle = this.isSensor ? '#00ff00' : '#ffffff';
+        ctx.lineWidth = this.bodyType === 'static' ? 2 : 1;
+        ctx.setLineDash(this.bodyType === 'kinematic' ? [5, 5] : []);
+        
+        ctx.beginPath();
+        
+        switch (this.shape) {
+            case "rectangle":
+                ctx.rect(-colliderWidth/2, -colliderHeight/2, colliderWidth, colliderHeight);
+                break;
+                
+            case "circle":
+                ctx.arc(0, 0, colliderRadius, 0, Math.PI * 2);
+                // Draw radius line
+                ctx.moveTo(0, 0);
+                ctx.lineTo(colliderRadius, 0);
+                break;
+                
+            case "capsule":
+                const capsuleRadius = Math.min(colliderWidth, colliderHeight) / 2;
+                const capsuleLength = Math.max(colliderWidth, colliderHeight) - (capsuleRadius * 2);
+                
+                if (colliderHeight > colliderWidth) {
+                    // Vertical capsule
+                    const halfLength = capsuleLength / 2;
+                    // Draw rectangle part
+                    ctx.rect(-colliderWidth/2, -halfLength, colliderWidth, capsuleLength);
+                    // Draw top semicircle
+                    ctx.arc(0, -halfLength, capsuleRadius, Math.PI, 0, false);
+                    // Draw bottom semicircle
+                    ctx.arc(0, halfLength, capsuleRadius, 0, Math.PI, false);
+                } else {
+                    // Horizontal capsule
+                    const halfLength = capsuleLength / 2;
+                    // Draw rectangle part
+                    ctx.rect(-halfLength, -colliderHeight/2, capsuleLength, colliderHeight);
+                    // Draw left semicircle
+                    ctx.arc(-halfLength, 0, capsuleRadius, Math.PI/2, -Math.PI/2, false);
+                    // Draw right semicircle
+                    ctx.arc(halfLength, 0, capsuleRadius, -Math.PI/2, Math.PI/2, false);
+                }
+                break;
+                
+            case "polygon":
+                const vertices = this.gameObject.polygonPoints?.length ? 
+                    this.gameObject.polygonPoints : 
+                    this.vertices.length ? this.vertices :
+                    // Default triangle
+                    [{ x: 0, y: -colliderRadius }, { x: -colliderRadius, y: colliderRadius }, { x: colliderRadius, y: colliderRadius }];
+                
+                if (vertices.length > 0) {
+                    ctx.moveTo(vertices[0].x, vertices[0].y);
+                    for (let i = 1; i < vertices.length; i++) {
+                        ctx.lineTo(vertices[i].x, vertices[i].y);
+                    }
+                    ctx.closePath();
+                }
+                break;
+        }
+        
+        ctx.stroke();
+        ctx.restore();
     }
 
     /**

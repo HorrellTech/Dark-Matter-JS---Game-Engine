@@ -168,6 +168,16 @@ class Vector2 {
     static left() { return new Vector2(-1, 0); }
     static right() { return new Vector2(1, 0); }
 
+    static zero() { return new Vector2(0, 0); }
+    static one() { return new Vector2(1, 1); }
+    
+    static fromAngle(angle) {
+        return new Vector2(Math.cos(angle), Math.sin(angle));
+    }
+
+    static forward() { return Vector2.up(); }
+    static back() { return Vector2.down(); }
+
     static fromJSON(data) {
         if (!data) return Vector2.zero();
         return new Vector2(data.x ?? 0, data.y ?? 0);

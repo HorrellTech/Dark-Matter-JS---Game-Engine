@@ -738,6 +738,189 @@ gameObject.position = smoothedPosition;`,
         }
     },
 
+    // Raycast Utilities
+    Raycast: {
+        group: "Physics",
+        functions: {
+            cast: {
+                description: "Cast a ray against all objects in the scene and return the first hit",
+                example: `const hit = Raycast.cast(
+    new Vector2(100, 100),      // origin
+    new Vector2(1, 0),          // direction (will be normalized)
+    200,                        // max distance
+    this.window.engine.gameObjects,          // objects to check
+    0xFFFF                      // layer mask
+);
+
+if (hit) {
+    console.log("Hit object:", hit.object.name);
+    console.log("Hit position:", hit.position);
+    console.log("Hit normal:", hit.normal);
+    console.log("Hit distance:", hit.distance);
+}`,
+                params: [
+                    { name: "origin", type: "Vector2", description: "Starting point of the ray" },
+                    { name: "direction", type: "Vector2", description: "Direction of the ray (will be normalized)" },
+                    { name: "maxDistance", type: "number", description: "Maximum distance to check (default: Infinity)" },
+                    { name: "gameObjects", type: "Array<GameObject>", description: "GameObjects to check against (default: [])" },
+                    { name: "layerMask", type: "number", description: "Layer mask for filtering objects (default: 0xFFFF)" }
+                ],
+                returns: { 
+                    type: "Object|null", 
+                    description: "Hit information object with properties: position (Vector2), normal (Vector2), distance (number), object (GameObject), or null if no hit" 
+                }
+            },
+
+            castAll: {
+                description: "Cast a ray against all objects in the scene and return all hits sorted by distance",
+                example: `const hits = Raycast.castAll(
+    new Vector2(100, 100),      // origin
+    new Vector2(1, 0),          // direction
+    200,                        // max distance
+    this.window.engine.gameObjects           // objects to check
+);
+
+hits.forEach(hit => {
+    console.log("Hit:", hit.object.name, "at distance:", hit.distance);
+});`,
+                params: [
+                    { name: "origin", type: "Vector2", description: "Starting point of the ray" },
+                    { name: "direction", type: "Vector2", description: "Direction of the ray (will be normalized)" },
+                    { name: "maxDistance", type: "number", description: "Maximum distance to check (default: Infinity)" },
+                    { name: "gameObjects", type: "Array<GameObject>", description: "GameObjects to check against (default: [])" },
+                    { name: "layerMask", type: "number", description: "Layer mask for filtering objects (default: 0xFFFF)" }
+                ],
+                returns: { 
+                    type: "Array<Object>", 
+                    description: "Array of hit information objects sorted by distance" 
+                }
+            },
+
+            raycastMatterBody: {
+                description: "Perform raycast against a Matter.js physics body",
+                example: `const rigidbody = gameObject.getModule("RigidBody");
+if (rigidbody && rigidbody.body) {
+    const ray = {
+        origin: new Vector2(0, 0),
+        direction: new Vector2(1, 0).normalize()
+    };
+    
+    const hit = Raycast.raycastMatterBody(ray, rigidbody.body, 100);
+    if (hit) {
+        console.log("Hit Matter.js body at:", hit.position);
+    }
+}`,
+                params: [
+                    { name: "ray", type: "Object", description: "Ray object with origin (Vector2) and direction (Vector2) properties" },
+                    { name: "body", type: "Matter.Body", description: "Matter.js body to test against" },
+                    { name: "maxDistance", type: "number", description: "Maximum distance to check" }
+                ],
+                returns: { 
+                    type: "Object|null", 
+                    description: "Hit information or null if no intersection" 
+                }
+            },
+
+            raycastPolygon: {
+                description: "Perform raycast against a polygon shape",
+                example: `const polygon = gameObject.polygon; // Assuming object has a polygon
+if (polygon) {
+    const ray = {
+        origin: new Vector2(0, 0),
+        direction: new Vector2(1, 0).normalize()
+    };
+    
+    const hit = Raycast.raycastPolygon(ray, polygon, 100);
+    if (hit) {
+        console.log("Hit polygon at:", hit.position);
+    }
+}`,
+                params: [
+                    { name: "ray", type: "Object", description: "Ray object with origin and direction properties" },
+                    { name: "polygon", type: "Polygon", description: "Polygon object with points array" },
+                    { name: "maxDistance", type: "number", description: "Maximum distance to check" }
+                ],
+                returns: { 
+                    type: "Object|null", 
+                    description: "Hit information or null if no intersection" 
+                }
+            },
+
+            raycastRectangle: {
+                description: "Perform raycast against a rectangle bounding box",
+                example: `const boundingBox = gameObject.getBoundingBox();
+const ray = {
+    origin: new Vector2(0, 0),
+    direction: new Vector2(1, 0).normalize()
+};
+
+const hit = Raycast.raycastRectangle(ray, boundingBox, 100);
+if (hit) {
+    console.log("Hit rectangle at:", hit.position);
+}`,
+                params: [
+                    { name: "ray", type: "Object", description: "Ray object with origin and direction properties" },
+                    { name: "box", type: "Object", description: "Bounding box with x, y, width, height, and optional rotation" },
+                    { name: "maxDistance", type: "number", description: "Maximum distance to check" }
+                ],
+                returns: { 
+                    type: "Object|null", 
+                    description: "Hit information or null if no intersection" 
+                }
+            },
+
+            lineLineIntersection: {
+                description: "Find intersection point between two line segments",
+                example: `const intersection = Raycast.lineLineIntersection(
+    { x: 0, y: 0 },     // line 1 start
+    { x: 10, y: 0 },    // line 1 end
+    { x: 5, y: -5 },    // line 2 start
+    { x: 5, y: 5 }      // line 2 end
+);
+
+if (intersection) {
+    console.log("Lines intersect at:", intersection.x, intersection.y);
+}`,
+                params: [
+                    { name: "line1Start", type: "Object", description: "Start point of first line {x, y}" },
+                    { name: "line1End", type: "Object", description: "End point of first line {x, y}" },
+                    { name: "line2Start", type: "Object", description: "Start point of second line {x, y}" },
+                    { name: "line2End", type: "Object", description: "End point of second line {x, y}" }
+                ],
+                returns: { 
+                    type: "Object|null", 
+                    description: "Intersection point {x, y} or null if no intersection" 
+                }
+            },
+
+            drawRay: {
+                description: "Draw a ray in the scene for debugging purposes",
+                example: `// In a module's draw method
+draw(ctx) {
+    Raycast.drawRay(
+        ctx,                        // canvas context
+        new Vector2(100, 100),      // origin
+        new Vector2(1, 0),          // direction
+        150,                        // length to draw
+        '#ff0000',                  // color
+        true,                       // show hit info
+        this.window.engine.gameObjects           // objects to check against
+    );
+}`,
+                params: [
+                    { name: "ctx", type: "CanvasRenderingContext2D", description: "Canvas rendering context" },
+                    { name: "origin", type: "Vector2", description: "Starting point of the ray" },
+                    { name: "direction", type: "Vector2", description: "Direction of the ray" },
+                    { name: "length", type: "number", description: "Length of the ray to draw (default: 100)" },
+                    { name: "color", type: "string", description: "Color of the ray (default: '#ff0000')" },
+                    { name: "showHit", type: "boolean", description: "Whether to show hit information (default: true)" },
+                    { name: "gameObjects", type: "Array<GameObject>", description: "GameObjects to check against (default: [])" }
+                ],
+                returns: { type: "void", description: "No return value" }
+            }
+        }
+    },
+
     // Animation Modules
     Animation: {
         group: "Animation",
