@@ -212,19 +212,6 @@ class PointLightModule extends Module {
         // Track position changes for optimization
         this._positionChanged = (this.worldPos.x !== this._lastPosition.x || this.worldPos.y !== this._lastPosition.y);
 
-        // Mark mask as dirty if position changed
-        if (this._positionChanged && this._registeredDarkness) {
-            this._registeredDarkness._lightsDirty = true;
-        }
-
-        // Add after position tracking:
-        /*if (this._positionChanged && this._registeredDarkness) {
-            this._registeredDarkness._lightsDirty = true;
-            // Force canvas recreation for immediate update
-            this._registeredDarkness._lastVpWidth = 0;
-            this._registeredDarkness._lastVpHeight = 0;
-        }*/
-
         // Handle flickering
         if (this.flickerEnabled) {
             this.flickerTime += deltaTime * this.flickerSpeed;
@@ -237,14 +224,19 @@ class PointLightModule extends Module {
         // Viewport culling for performance
         this._updateVisibility();
 
-        // Register with darkness (only if visible or target changed)
-        //if (this._isVisible || this._positionChanged) {
+        // Register with darkness
         this._updateDarknessRegistration();
-        // Mark mask as dirty if registered
+
+        // Mark lighting as dirty if position changed
         if (this._registeredDarkness && this._positionChanged) {
             this._registeredDarkness._lightsDirty = true;
+
+            // If darkness module is using WebGL, we don't need to mark canvas dirty
+            if (!this._registeredDarkness.useWebGLShaders) {
+                this._registeredDarkness._lastVpWidth = 0;
+                this._registeredDarkness._lastVpHeight = 0;
+            }
         }
-        //}
 
         // Mark gradients as dirty if properties changed
         if (this._lastRadius !== this.radius || this._lastColor !== this.color) {

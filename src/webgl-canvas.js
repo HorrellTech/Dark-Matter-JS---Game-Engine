@@ -14,7 +14,41 @@ class WebGLCanvas {
             pixelHeight: options.pixelHeight || canvas.height,
             pixelScale: options.pixelScale || 1,
             batchSize: Math.min(options.batchSize || 8000, 8000), // Max objects per batch
+            // VSync options
+            vsync: options.vsync !== false, // Default to true
+            targetFPS: options.targetFPS || 60,
+            adaptiveSync: options.adaptiveSync || false,
+            frameTimingBuffer: options.frameTimingBuffer || 30,
             ...options
+        };
+
+        // VSync and frame timing state
+        this.frameTime = {
+            enabled: this.options.vsync,
+            targetFPS: this.options.targetFPS,
+            targetFrameTime: 1000 / this.options.targetFPS,
+            lastFrameTime: 0,
+            frameCount: 0,
+            actualFPS: 0,
+            frameBuffer: [],
+            bufferSize: this.options.frameTimingBuffer,
+            adaptiveSync: this.options.adaptiveSync,
+
+            // Frame timing statistics
+            minFrameTime: Infinity,
+            maxFrameTime: 0,
+            avgFrameTime: 0,
+            frameTimeVariance: 0,
+
+            // Adaptive sync state
+            adaptiveTargetFPS: this.options.targetFPS,
+            performanceScore: 1.0,
+            adaptiveUpdateCounter: 0,
+
+            // Animation frame management
+            animationId: null,
+            isAnimating: false,
+            renderCallback: null
         };
 
         // Set up pixel scaling
@@ -1894,59 +1928,410 @@ class WebGLCanvas {
     }
 
     /*
+     * Set VSync enabled/disabled
+     * @param {boolean} enabled - Whether to enable VSync
+     */
+    setVSync(enabled) {
+        this.frameTime.enabled = enabled;
+        this.options.vsync = enabled;
+
+        if (enabled) {
+            console.log(`VSync enabled - Target FPS: ${this.frameTime.targetFPS}`);
+        } else {
+            console.log('VSync disabled - Unlimited frame rate');
+        }
+    }
+
+    /*
+     * Get current VSync state
+     * @return {boolean} - Whether VSync is enabled
+     */
+    getVSync() {
+        return this.frameTime.enabled;
+    }
+
+    /*
+     * Set target FPS for VSync
+     * @param {number} fps - Target frames per second
+     */
+    setTargetFPS(fps) {
+        fps = Math.max(1, Math.min(240, fps)); // Clamp between 1-240 FPS
+        this.frameTime.targetFPS = fps;
+        this.frameTime.targetFrameTime = 1000 / fps;
+        this.frameTime.adaptiveTargetFPS = fps;
+        this.options.targetFPS = fps;
+
+        console.log(`Target FPS set to: ${fps} (${this.frameTime.targetFrameTime.toFixed(2)}ms per frame)`);
+    }
+
+    /*
+     * Get current target FPS
+     * @return {number} - Target FPS
+     */
+    getTargetFPS() {
+        return this.frameTime.targetFPS;
+    }
+
+    /*
+     * Enable/disable adaptive sync
+     * @param {boolean} enabled - Whether to enable adaptive sync
+     */
+    setAdaptiveSync(enabled) {
+        this.frameTime.adaptiveSync = enabled;
+        this.options.adaptiveSync = enabled;
+
+        if (enabled) {
+            console.log('Adaptive sync enabled - FPS will adjust based on performance');
+        } else {
+            console.log('Adaptive sync disabled');
+            this.frameTime.adaptiveTargetFPS = this.frameTime.targetFPS;
+        }
+    }
+
+    /*
+     * Get frame timing statistics
+     * @return {Object} - Frame timing information
+     */
+    getFrameStats() {
+        return {
+            vsyncEnabled: this.frameTime.enabled,
+            targetFPS: this.frameTime.targetFPS,
+            actualFPS: this.frameTime.actualFPS,
+            adaptiveTargetFPS: this.frameTime.adaptiveTargetFPS,
+            minFrameTime: this.frameTime.minFrameTime,
+            maxFrameTime: this.frameTime.maxFrameTime,
+            avgFrameTime: this.frameTime.avgFrameTime,
+            frameTimeVariance: this.frameTime.frameTimeVariance,
+            performanceScore: this.frameTime.performanceScore,
+            adaptiveSync: this.frameTime.adaptiveSync,
+            frameCount: this.frameTime.frameCount
+        };
+    }
+
+    /*
+     * Update frame timing statistics
+     * @param {number} startTime - Frame start time
+     */
+    updateFrameStats(startTime) {
+        const now = performance.now();
+        const frameTime = now - this.frameTime.lastFrameTime;
+        const renderTime = now - startTime;
+
+        if (this.frameTime.lastFrameTime > 0) {
+            // Update frame buffer
+            this.frameTime.frameBuffer.push(frameTime);
+            if (this.frameTime.frameBuffer.length > this.frameTime.bufferSize) {
+                this.frameTime.frameBuffer.shift();
+            }
+
+            // Calculate statistics
+            this.frameTime.minFrameTime = Math.min(this.frameTime.minFrameTime, frameTime);
+            this.frameTime.maxFrameTime = Math.max(this.frameTime.maxFrameTime, frameTime);
+
+            // Calculate average and variance
+            const sum = this.frameTime.frameBuffer.reduce((a, b) => a + b, 0);
+            this.frameTime.avgFrameTime = sum / this.frameTime.frameBuffer.length;
+            this.frameTime.actualFPS = 1000 / this.frameTime.avgFrameTime;
+
+            // Calculate variance
+            const variance = this.frameTime.frameBuffer.reduce((acc, time) => {
+                return acc + Math.pow(time - this.frameTime.avgFrameTime, 2);
+            }, 0) / this.frameTime.frameBuffer.length;
+            this.frameTime.frameTimeVariance = Math.sqrt(variance);
+
+            // Update performance score
+            this.updatePerformanceScore(frameTime, renderTime);
+
+            // Adaptive sync adjustment
+            if (this.frameTime.adaptiveSync) {
+                this.updateAdaptiveSync();
+            }
+        }
+
+        this.frameTime.lastFrameTime = now;
+        this.frameTime.frameCount++;
+    }
+
+    /*
+     * Update performance score based on frame timing
+     * @param {number} frameTime - Time for this frame
+     * @param {number} renderTime - Time spent rendering
+     */
+    updatePerformanceScore(frameTime, renderTime) {
+        const targetTime = this.frameTime.targetFrameTime;
+
+        // Performance score based on how close we are to target
+        let score = 1.0;
+
+        if (frameTime > targetTime) {
+            // We're running slow
+            score = Math.max(0.1, targetTime / frameTime);
+        } else {
+            // We're running fast - not necessarily bad
+            score = Math.min(1.0, 1.0 - (targetTime - frameTime) / targetTime * 0.1);
+        }
+
+        // Factor in rendering time vs total frame time
+        const renderRatio = renderTime / frameTime;
+        if (renderRatio > 0.8) {
+            // High render time indicates potential performance issues
+            score *= Math.max(0.5, 1.0 - (renderRatio - 0.8) * 2);
+        }
+
+        // Smooth the performance score
+        this.frameTime.performanceScore = this.frameTime.performanceScore * 0.95 + score * 0.05;
+    }
+
+    /*
+     * Update adaptive sync target FPS
+     */
+    updateAdaptiveSync() {
+        this.frameTime.adaptiveUpdateCounter++;
+
+        // Only update every 30 frames to avoid oscillation
+        if (this.frameTime.adaptiveUpdateCounter < 30) {
+            return;
+        }
+
+        this.frameTime.adaptiveUpdateCounter = 0;
+
+        const performance = this.frameTime.performanceScore;
+        const currentAdaptiveTarget = this.frameTime.adaptiveTargetFPS;
+        const baseTarget = this.frameTime.targetFPS;
+
+        if (performance < 0.8) {
+            // Performance is poor, reduce target FPS
+            const newTarget = Math.max(baseTarget * 0.5, currentAdaptiveTarget * 0.9);
+            this.frameTime.adaptiveTargetFPS = newTarget;
+            console.log(`Adaptive sync: Reduced target FPS to ${newTarget.toFixed(1)} (performance: ${(performance * 100).toFixed(1)}%)`);
+        } else if (performance > 0.95 && currentAdaptiveTarget < baseTarget) {
+            // Performance is excellent, try to increase FPS back toward target
+            const newTarget = Math.min(baseTarget, currentAdaptiveTarget * 1.1);
+            this.frameTime.adaptiveTargetFPS = newTarget;
+            console.log(`Adaptive sync: Increased target FPS to ${newTarget.toFixed(1)} (performance: ${(performance * 100).toFixed(1)}%)`);
+        }
+    }
+
+    /*
+     * Start animation loop with VSync
+     * @param {Function} callback - Function to call each frame
+     */
+    startAnimationLoop(callback) {
+        if (this.frameTime.isAnimating) {
+            console.warn('Animation loop already running');
+            return;
+        }
+
+        this.frameTime.renderCallback = callback;
+        this.frameTime.isAnimating = true;
+        this.frameTime.lastFrameTime = performance.now();
+
+        if (this.frameTime.enabled) {
+            this.vsyncAnimationLoop();
+        } else {
+            this.unlimitedAnimationLoop();
+        }
+    }
+
+    /*
+     * Stop animation loop
+     */
+    stopAnimationLoop() {
+        this.frameTime.isAnimating = false;
+        this.frameTime.renderCallback = null;
+
+        if (this.frameTime.animationId) {
+            cancelAnimationFrame(this.frameTime.animationId);
+            this.frameTime.animationId = null;
+        }
+
+        console.log('Animation loop stopped');
+    }
+
+    /*
+     * VSync-limited animation loop
+     */
+    vsyncAnimationLoop() {
+        if (!this.frameTime.isAnimating) return;
+
+        const now = performance.now();
+        const targetFPS = this.frameTime.adaptiveSync ?
+            this.frameTime.adaptiveTargetFPS :
+            this.frameTime.targetFPS;
+        const targetFrameTime = 1000 / targetFPS;
+        const elapsed = now - this.frameTime.lastFrameTime;
+
+        if (elapsed >= targetFrameTime - 1) { // -1ms tolerance for timing precision
+            if (this.frameTime.renderCallback) {
+                this.frameTime.renderCallback(now, elapsed);
+            }
+        }
+
+        this.frameTime.animationId = requestAnimationFrame(() => this.vsyncAnimationLoop());
+    }
+
+    /*
+     * Unlimited frame rate animation loop
+     */
+    unlimitedAnimationLoop() {
+        if (!this.frameTime.isAnimating) return;
+
+        const now = performance.now();
+        const elapsed = now - this.frameTime.lastFrameTime;
+
+        if (this.frameTime.renderCallback) {
+            this.frameTime.renderCallback(now, elapsed);
+        }
+
+        this.frameTime.animationId = requestAnimationFrame(() => this.unlimitedAnimationLoop());
+    }
+
+    /*
+     * Wait for next frame (useful for manual timing control)
+     * @return {Promise} - Promise that resolves on next frame
+     */
+    waitForNextFrame() {
+        return new Promise(resolve => {
+            if (this.frameTime.enabled) {
+                const now = performance.now();
+                const targetFPS = this.frameTime.adaptiveSync ?
+                    this.frameTime.adaptiveTargetFPS :
+                    this.frameTime.targetFPS;
+                const targetFrameTime = 1000 / targetFPS;
+                const elapsed = now - this.frameTime.lastFrameTime;
+                const remaining = Math.max(0, targetFrameTime - elapsed);
+
+                setTimeout(() => {
+                    requestAnimationFrame(resolve);
+                }, remaining);
+            } else {
+                requestAnimationFrame(resolve);
+            }
+        });
+    }
+
+    /*
+     * Convenience method: Render with automatic VSync
+     * @param {Function} renderCallback - Function to call for rendering
+     */
+    renderWithVSync(renderCallback) {
+        if (!this.frameTime.isAnimating) {
+            this.startAnimationLoop((time, deltaTime) => {
+                this.clear();
+                renderCallback(time, deltaTime);
+                this.flush();
+            });
+        }
+    }
+
+    /*
+     * Reset frame timing statistics
+     */
+    resetFrameStats() {
+        this.frameTime.frameCount = 0;
+        this.frameTime.minFrameTime = Infinity;
+        this.frameTime.maxFrameTime = 0;
+        this.frameTime.frameBuffer = [];
+        this.frameTime.performanceScore = 1.0;
+        this.frameTime.adaptiveTargetFPS = this.frameTime.targetFPS;
+        this.frameTime.lastFrameTime = performance.now();
+
+        console.log('Frame timing statistics reset');
+    }
+
+    /*
+     * Get VSync configuration object
+     * @return {Object} - VSync configuration
+     */
+    getVSyncConfig() {
+        return {
+            enabled: this.frameTime.enabled,
+            targetFPS: this.frameTime.targetFPS,
+            adaptiveSync: this.frameTime.adaptiveSync,
+            frameTimingBuffer: this.frameTime.bufferSize
+        };
+    }
+
+    /*
+     * Set VSync configuration
+     * @param {Object} config - VSync configuration object
+     */
+    setVSyncConfig(config) {
+        if (config.enabled !== undefined) {
+            this.setVSync(config.enabled);
+        }
+        if (config.targetFPS !== undefined) {
+            this.setTargetFPS(config.targetFPS);
+        }
+        if (config.adaptiveSync !== undefined) {
+            this.setAdaptiveSync(config.adaptiveSync);
+        }
+        if (config.frameTimingBuffer !== undefined) {
+            this.frameTime.bufferSize = Math.max(10, Math.min(100, config.frameTimingBuffer));
+        }
+    }
+
+    /*
      * Flush all batches to GPU
      */
     flush() {
         if (this.isContextLost() || !this.gl) {
-            //// console.warn('Skipping flush - WebGL context is lost/unavailable');
             return;
         }
 
+        const startTime = performance.now();
+
         try {
-            // If post-processing is enabled, render to framebuffer first
-            if (this.postProcessing.enabled && this.postProcessing.effects.length > 0) {
-                // Only recreate if truly invalid - not every frame!
-                if (!this.isFramebufferValid(this.postProcessing.framebuffers[0])) {
-                    // console.warn('Recreating invalid framebuffers');
-                    this.createPostProcessingFramebuffers();
-                }
+            // Check if we need advanced blending
+            const needsAdvancedBlend = this.applyAdvancedBlendMode(this.state.globalCompositeOperation);
 
-                // Bind first framebuffer for scene rendering
-                this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.postProcessing.framebuffers[0]);
-                this.gl.viewport(0, 0, this.width, this.height);
-                this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-
-                // Render all batches to the framebuffer
-                this.flushRectangles();
-                this.flushCircles();
-                this.flushEllipses();
-                this.flushLines();
-                this.flushImages();
-
-                // Now apply post-processing effects
-                this.renderPostProcessing();
+            if (needsAdvancedBlend) {
+                // Render to texture first, then composite
+                this.renderBatchesToTexture();
+                this.compositeWithAdvancedBlend(this.state.globalCompositeOperation);
             } else {
-                // Normal rendering directly to screen
-                this.flushRectangles();
-                this.flushCircles();
-                this.flushEllipses();
-                this.flushLines();
-                this.flushImages();
+                // Standard rendering path
+                if (this.postProcessing.enabled && this.postProcessing.effects.length > 0) {
+                    if (!this.isFramebufferValid(this.postProcessing.framebuffers[0])) {
+                        this.createPostProcessingFramebuffers();
+                    }
+
+                    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.postProcessing.framebuffers[0]);
+                    this.gl.viewport(0, 0, this.width, this.height);
+                    this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+
+                    this.flushRectangles();
+                    this.flushCircles();
+                    this.flushEllipses();
+                    this.flushLines();
+                    this.flushImages();
+
+                    this.renderPostProcessing();
+                } else {
+                    this.flushRectangles();
+                    this.flushCircles();
+                    this.flushEllipses();
+                    this.flushLines();
+                    this.flushImages();
+                }
             }
+
+            // Update frame timing statistics
+            if (this.frameTime.enabled) {
+                this.updateFrameStats(startTime);
+            }
+
         } catch (e) {
             if (this.gl && this.gl.isContextLost()) {
-                // console.warn('Context lost during flush operation');
                 this.contextLost = true;
                 this.clearResourcesOnContextLoss();
-            } else {
-                // console.error('Error during flush:', e);
             }
         }
     }
 
     /*
- * Ultra-fast image batch flushing
- */
+    * Ultra-fast image batch flushing
+    */
     flushImageBatch() {
         const batch = this.imageBatchBuffer;
         if (batch.currentQuads === 0 || !batch.currentTexture) return;
@@ -2645,7 +3030,7 @@ class WebGLCanvas {
 
         if (validOperations.includes(operation)) {
             this.state.globalCompositeOperation = operation;
-            // Update WebGL blend mode
+            // Update WebGL blend mode - this now properly handles advanced modes
             this.updateBlendMode(operation);
         }
     }
@@ -2977,32 +3362,641 @@ class WebGLCanvas {
     updateBlendMode(operation) {
         const gl = this.gl;
 
+        // Enable blending
+        gl.enable(gl.BLEND);
+
         switch (operation) {
             case 'source-over':
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
                 break;
-            case 'source-in':
-                gl.blendFunc(gl.DST_ALPHA, gl.ZERO);
-                break;
-            case 'source-out':
-                gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ZERO);
-                break;
-            case 'destination-over':
-                gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ONE);
-                break;
-            case 'lighter':
-                gl.blendFunc(gl.ONE, gl.ONE);
-                break;
+
             case 'multiply':
+                // For multiply blend mode, we need special handling
                 gl.blendFunc(gl.DST_COLOR, gl.ZERO);
                 break;
+
             case 'screen':
                 gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
                 break;
+
+            case 'lighter':
+                gl.blendFunc(gl.ONE, gl.ONE);
+                break;
+
+            case 'darken':
+                gl.blendFunc(gl.ONE, gl.ONE);
+                gl.blendEquation(gl.MIN);
+                break;
+
+            case 'lighten':
+                gl.blendFunc(gl.ONE, gl.ONE);
+                gl.blendEquation(gl.MAX);
+                break;
+
+            case 'copy':
+                gl.blendFunc(gl.ONE, gl.ZERO);
+                break;
+
+            case 'xor':
+                gl.blendFunc(gl.ONE_MINUS_DST_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                break;
+
+            // For complex blend modes, use the advanced blend system
+            case 'overlay':
+            case 'color-dodge':
+            case 'color-burn':
+            case 'hard-light':
+            case 'soft-light':
+            case 'difference':
+            case 'exclusion':
+                // These will be handled by the advanced blend system
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                break;
+
             default:
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
                 break;
         }
+
+        // Reset blend equation for most modes
+        if (operation !== 'darken' && operation !== 'lighten') {
+            gl.blendEquation(gl.FUNC_ADD);
+        }
+    }
+
+    renderWithAdvancedBlend(operation) {
+        if (!this.advancedBlendShaders) {
+            this.createAdvancedBlendShaders();
+        }
+
+        if (!this.advancedBlendShaders[operation]) {
+            console.warn(`Advanced blend mode "${operation}" not available, falling back to standard blending`);
+            this.updateBlendMode(operation);
+            return false;
+        }
+
+        const gl = this.gl;
+
+        // Create blend framebuffers if they don't exist
+        if (!this.blendFramebuffers) {
+            this.createBlendFramebuffers();
+        }
+
+        // STEP 1: Capture current screen contents to destination texture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.blendFramebuffers[1]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Copy current screen to destination texture
+        gl.bindTexture(gl.TEXTURE_2D, this.blendTextures[1]);
+        gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, this.width, this.height, 0);
+
+        // STEP 2: Render new content to source texture
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.blendFramebuffers[0]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Render all current batches to source texture
+        this.flushRectangles();
+        this.flushCircles();
+        this.flushEllipses();
+        this.flushLines();
+        this.flushImages();
+
+        // STEP 3: Composite with advanced blend mode to screen
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        // Disable blending for the final composite pass
+        gl.disable(gl.BLEND);
+
+        const program = this.advancedBlendShaders[operation];
+        gl.useProgram(program);
+
+        // Bind source texture (what we just rendered)
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.blendTextures[0]);
+        gl.uniform1i(gl.getUniformLocation(program, 'u_sourceTexture'), 0);
+
+        // Bind destination texture (current screen contents)
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.blendTextures[1]);
+        gl.uniform1i(gl.getUniformLocation(program, 'u_destinationTexture'), 1);
+
+        // Set global alpha uniform for the blend
+        const globalAlphaLoc = gl.getUniformLocation(program, 'u_globalAlpha');
+        if (globalAlphaLoc !== null) {
+            gl.uniform1f(globalAlphaLoc, this.state.globalAlpha);
+        }
+
+        // Render fullscreen quad to apply blend
+        this.renderFullscreenQuad(program);
+
+        // Re-enable blending for subsequent draws
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        return true;
+    }
+
+    // Create framebuffers for advanced blending
+    createBlendFramebuffers() {
+        const gl = this.gl;
+
+        this.blendFramebuffers = [];
+        this.blendTextures = [];
+
+        for (let i = 0; i < 2; i++) {
+            const framebuffer = gl.createFramebuffer();
+            const texture = gl.createTexture();
+
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+            if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+                console.error('Blend framebuffer is not complete');
+            }
+
+            this.blendFramebuffers.push(framebuffer);
+            this.blendTextures.push(texture);
+        }
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    applyAdvancedBlendMode(operation) {
+        const advancedModes = [
+            'overlay', 'multiply', 'screen', 'darken', 'lighten',
+            'color-dodge', 'color-burn', 'hard-light', 'soft-light',
+            'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity'
+        ];
+
+        if (advancedModes.includes(operation)) {
+            // For multiply, we can handle it with simple blend functions
+            if (operation === 'multiply') {
+                this.updateBlendMode(operation);
+                return false; // Use standard path
+            }
+
+            // For other complex modes, use advanced blending
+            return this.renderWithAdvancedBlend(operation);
+        } else {
+            // Use standard WebGL blend functions
+            this.updateBlendMode(operation);
+            return false;
+        }
+    }
+
+    createAdvancedBlendShaders() {
+        // Base vertex shader for all blend modes
+        const baseVertexShader = `
+        precision mediump float;
+        attribute vec2 a_position;
+        attribute vec2 a_texCoord;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_texCoord = a_texCoord;
+        }
+    `;
+
+        // Overlay blend mode shader
+        const overlayFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 overlay(vec3 base, vec3 blend) {
+            return mix(
+                2.0 * base * blend,
+                1.0 - 2.0 * (1.0 - base) * (1.0 - blend),
+                step(0.5, base)
+            );
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = overlay(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Multiply blend mode shader
+        const multiplyFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = dst.rgb * src.rgb;
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        const multiplySimpleFragmentShader = `
+    precision mediump float;
+    uniform sampler2D u_texture;
+    uniform float u_globalAlpha;
+    uniform vec3 u_multiplyColor;
+    varying vec2 v_texCoord;
+    
+    void main() {
+        vec4 base = texture2D(u_texture, v_texCoord);
+        
+        // Multiply the base color with the multiply color
+        vec3 result = base.rgb * u_multiplyColor;
+        
+        gl_FragColor = vec4(result, base.a * u_globalAlpha);
+    }
+`;
+
+        // Screen blend mode shader
+        const screenFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = 1.0 - (1.0 - dst.rgb) * (1.0 - src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Darken blend mode shader
+        const darkenFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = min(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Lighten blend mode shader
+        const lightenFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = max(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Color Dodge blend mode shader
+        const colorDodgeFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 colorDodge(vec3 base, vec3 blend) {
+            vec3 result = vec3(0.0);
+            result.r = (blend.r == 1.0) ? 1.0 : min(1.0, base.r / (1.0 - blend.r));
+            result.g = (blend.g == 1.0) ? 1.0 : min(1.0, base.g / (1.0 - blend.g));
+            result.b = (blend.b == 1.0) ? 1.0 : min(1.0, base.b / (1.0 - blend.b));
+            return result;
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = colorDodge(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Color Burn blend mode shader
+        const colorBurnFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 colorBurn(vec3 base, vec3 blend) {
+            vec3 result = vec3(0.0);
+            result.r = (blend.r == 0.0) ? 0.0 : max(0.0, 1.0 - (1.0 - base.r) / blend.r);
+            result.g = (blend.g == 0.0) ? 0.0 : max(0.0, 1.0 - (1.0 - base.g) / blend.g);
+            result.b = (blend.b == 0.0) ? 0.0 : max(0.0, 1.0 - (1.0 - base.b) / blend.b);
+            return result;
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = colorBurn(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Hard Light blend mode shader
+        const hardLightFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 hardLight(vec3 base, vec3 blend) {
+            return mix(
+                2.0 * base * blend,
+                1.0 - 2.0 * (1.0 - base) * (1.0 - blend),
+                step(0.5, blend)
+            );
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = hardLight(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Soft Light blend mode shader
+        const softLightFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 softLight(vec3 base, vec3 blend) {
+            vec3 result = vec3(0.0);
+            
+            // Soft light formula
+            for(int i = 0; i < 3; i++) {
+                float b = base[i];
+                float s = blend[i];
+                
+                if(s <= 0.5) {
+                    result[i] = b - (1.0 - 2.0 * s) * b * (1.0 - b);
+                } else {
+                    float d = (b <= 0.25) ? ((16.0 * b - 12.0) * b + 4.0) * b : sqrt(b);
+                    result[i] = b + (2.0 * s - 1.0) * (d - b);
+                }
+            }
+            
+            return result;
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = softLight(dst.rgb, src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Difference blend mode shader
+        const differenceFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = abs(dst.rgb - src.rgb);
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Exclusion blend mode shader
+        const exclusionFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 result = dst.rgb + src.rgb - 2.0 * dst.rgb * src.rgb;
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Hue blend mode shader (requires HSL conversion)
+        const hueFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 rgb2hsl(vec3 c) {
+            vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+            vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+            vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+            
+            float d = q.x - min(q.w, q.y);
+            float e = 1.0e-10;
+            return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+        }
+        
+        vec3 hsl2rgb(vec3 c) {
+            vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 baseHSL = rgb2hsl(dst.rgb);
+            vec3 blendHSL = rgb2hsl(src.rgb);
+            
+            vec3 result = hsl2rgb(vec3(blendHSL.x, baseHSL.y, baseHSL.z));
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Saturation blend mode shader
+        const saturationFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 rgb2hsl(vec3 c) {
+            vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+            vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+            vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+            
+            float d = q.x - min(q.w, q.y);
+            float e = 1.0e-10;
+            return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+        }
+        
+        vec3 hsl2rgb(vec3 c) {
+            vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 baseHSL = rgb2hsl(dst.rgb);
+            vec3 blendHSL = rgb2hsl(src.rgb);
+            
+            vec3 result = hsl2rgb(vec3(baseHSL.x, blendHSL.y, baseHSL.z));
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Color blend mode shader
+        const colorFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 rgb2hsl(vec3 c) {
+            vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+            vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+            vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+            
+            float d = q.x - min(q.w, q.y);
+            float e = 1.0e-10;
+            return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+        }
+        
+        vec3 hsl2rgb(vec3 c) {
+            vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 baseHSL = rgb2hsl(dst.rgb);
+            vec3 blendHSL = rgb2hsl(src.rgb);
+            
+            vec3 result = hsl2rgb(vec3(blendHSL.x, blendHSL.y, baseHSL.z));
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Luminosity blend mode shader
+        const luminosityFragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_sourceTexture;
+        uniform sampler2D u_destinationTexture;
+        varying vec2 v_texCoord;
+        
+        vec3 rgb2hsl(vec3 c) {
+            vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+            vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+            vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+            
+            float d = q.x - min(q.w, q.y);
+            float e = 1.0e-10;
+            return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+        }
+        
+        vec3 hsl2rgb(vec3 c) {
+            vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+            return c.z + c.y * (rgb - 0.5) * (1.0 - abs(2.0 * c.z - 1.0));
+        }
+        
+        void main() {
+            vec4 src = texture2D(u_sourceTexture, v_texCoord);
+            vec4 dst = texture2D(u_destinationTexture, v_texCoord);
+            
+            vec3 baseHSL = rgb2hsl(dst.rgb);
+            vec3 blendHSL = rgb2hsl(src.rgb);
+            
+            vec3 result = hsl2rgb(vec3(baseHSL.x, baseHSL.y, blendHSL.z));
+            float alpha = src.a + dst.a * (1.0 - src.a);
+            
+            gl_FragColor = vec4(result, alpha);
+        }
+    `;
+
+        // Create all the shader programs
+        this.advancedBlendShaders = {
+            overlay: this.createShaderProgram(baseVertexShader, overlayFragmentShader),
+            multiply: this.createShaderProgram(baseVertexShader, multiplyFragmentShader),
+            screen: this.createShaderProgram(baseVertexShader, screenFragmentShader),
+            darken: this.createShaderProgram(baseVertexShader, darkenFragmentShader),
+            lighten: this.createShaderProgram(baseVertexShader, lightenFragmentShader),
+            'color-dodge': this.createShaderProgram(baseVertexShader, colorDodgeFragmentShader),
+            'color-burn': this.createShaderProgram(baseVertexShader, colorBurnFragmentShader),
+            'hard-light': this.createShaderProgram(baseVertexShader, hardLightFragmentShader),
+            'soft-light': this.createShaderProgram(baseVertexShader, softLightFragmentShader),
+            difference: this.createShaderProgram(baseVertexShader, differenceFragmentShader),
+            exclusion: this.createShaderProgram(baseVertexShader, exclusionFragmentShader),
+            hue: this.createShaderProgram(baseVertexShader, hueFragmentShader),
+            saturation: this.createShaderProgram(baseVertexShader, saturationFragmentShader),
+            color: this.createShaderProgram(baseVertexShader, colorFragmentShader),
+            luminosity: this.createShaderProgram(baseVertexShader, luminosityFragmentShader)
+        };
+
+        this.shaders.multiplySimple = this.createShaderProgram(baseVertexShader, multiplySimpleFragmentShader);
+
+        console.log('All advanced blend mode shaders created successfully');
     }
 
     /*
@@ -3021,7 +4015,7 @@ class WebGLCanvas {
         }
     }
 
-    
+
 
     /*
         * Parse color input
@@ -4212,7 +5206,7 @@ class WebGLCanvas {
             this.drawDashedLine(x1, y1, x2, y2);
         } else {
             const lineWidth = this.state.lineWidth;
-            
+
             // For line width of 1 or less, use the simple line rendering
             if (lineWidth <= 1) {
                 this.drawThinLine(x1, y1, x2, y2);
@@ -4223,33 +5217,33 @@ class WebGLCanvas {
         }
     }
 
-     /*
-     * Draw dashed line
-     * @param {number} x1 - Start X
-     * @param {number} y1 - Start Y
-     * @param {number} x2 - End X
-     * @param {number} y2 - End Y
-     */
+    /*
+    * Draw dashed line
+    * @param {number} x1 - Start X
+    * @param {number} y1 - Start Y
+    * @param {number} x2 - End X
+    * @param {number} y2 - End Y
+    */
     drawDashedLine(x1, y1, x2, y2) {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (lineLength === 0) return;
-        
+
         // Normalized direction
         const unitX = dx / lineLength;
         const unitY = dy / lineLength;
-        
+
         const dashPattern = this.state.lineDash;
         const dashOffset = this.state.lineDashOffset;
-        
+
         let currentDistance = -dashOffset; // Start with offset
         let currentX = x1;
         let currentY = y1;
         let dashIndex = 0;
         let isDrawing = true; // Start drawing if offset is negative or zero
-        
+
         // Adjust for positive dash offset
         if (dashOffset > 0) {
             // Skip forward through the pattern
@@ -4266,11 +5260,11 @@ class WebGLCanvas {
                 }
             }
         }
-        
+
         while (currentDistance < lineLength) {
             const dashLength = dashPattern[dashIndex % dashPattern.length];
             const segmentEnd = Math.min(currentDistance + dashLength, lineLength);
-            
+
             if (isDrawing && segmentEnd > Math.max(0, currentDistance)) {
                 // Calculate segment coordinates
                 const segmentStart = Math.max(0, currentDistance);
@@ -4278,7 +5272,7 @@ class WebGLCanvas {
                 const startY = y1 + unitY * segmentStart;
                 const endX = x1 + unitX * segmentEnd;
                 const endY = y1 + unitY * segmentEnd;
-                
+
                 // Draw this segment
                 if (this.state.lineWidth <= 1) {
                     this.drawThinLine(startX, startY, endX, endY);
@@ -4286,7 +5280,7 @@ class WebGLCanvas {
                     this.drawThickLine(startX, startY, endX, endY, this.state.lineWidth);
                 }
             }
-            
+
             currentDistance += dashLength;
             dashIndex++;
             isDrawing = !isDrawing;
@@ -4302,17 +5296,17 @@ class WebGLCanvas {
         if (this.state.lineDash.length === 0) {
             return segments;
         }
-        
+
         const dashedSegments = [];
-        
+
         for (const segment of segments) {
             const segmentDashes = this.getDashedSegments(
-                segment.x1, segment.y1, 
+                segment.x1, segment.y1,
                 segment.x2, segment.y2
             );
             dashedSegments.push(...segmentDashes);
         }
-        
+
         return dashedSegments;
     }
 
@@ -4328,20 +5322,20 @@ class WebGLCanvas {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const lineLength = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (lineLength === 0) return [];
-        
+
         const unitX = dx / lineLength;
         const unitY = dy / lineLength;
-        
+
         const dashPattern = this.state.lineDash;
         const dashOffset = this.state.lineDashOffset;
         const segments = [];
-        
+
         let currentDistance = -dashOffset;
         let dashIndex = 0;
         let isDrawing = true;
-        
+
         // Handle positive dash offset
         if (dashOffset > 0) {
             let offsetRemaining = dashOffset;
@@ -4357,11 +5351,11 @@ class WebGLCanvas {
                 }
             }
         }
-        
+
         while (currentDistance < lineLength) {
             const dashLength = dashPattern[dashIndex % dashPattern.length];
             const segmentEnd = Math.min(currentDistance + dashLength, lineLength);
-            
+
             if (isDrawing && segmentEnd > Math.max(0, currentDistance)) {
                 const segmentStart = Math.max(0, currentDistance);
                 segments.push({
@@ -4372,12 +5366,12 @@ class WebGLCanvas {
                     type: 'dash'
                 });
             }
-            
+
             currentDistance += dashLength;
             dashIndex++;
             isDrawing = !isDrawing;
         }
-        
+
         return segments;
     }
 
@@ -4616,15 +5610,15 @@ class WebGLCanvas {
         if (!Array.isArray(dashArray) || dashArray.length === 0) {
             return [];
         }
-        
+
         // Ensure positive values
         const pattern = dashArray.map(value => Math.max(0, Number(value) || 0));
-        
+
         // If odd number of elements, duplicate the array
         if (pattern.length % 2 === 1) {
             return [...pattern, ...pattern];
         }
-        
+
         return pattern;
     }
 
@@ -4637,18 +5631,18 @@ class WebGLCanvas {
             this.state.lineDash = [];
             return;
         }
-        
+
         // Filter out non-positive values and convert to numbers
         const validSegments = segments
             .map(seg => Number(seg))
             .filter(seg => !isNaN(seg) && seg > 0);
-        
+
         // If all segments were invalid, clear the pattern
         if (validSegments.length === 0) {
             this.state.lineDash = [];
             return;
         }
-        
+
         // If odd number of segments, repeat the pattern
         if (validSegments.length % 2 === 1) {
             this.state.lineDash = [...validSegments, ...validSegments];
@@ -4661,22 +5655,22 @@ class WebGLCanvas {
     setDottedLine(dotSize = 2, gapSize = 2) {
         this.setLineDash([dotSize, gapSize]);
     }
-    
+
     // Set dashed line pattern
     setDashedLine(dashSize = 5, gapSize = 5) {
         this.setLineDash([dashSize, gapSize]);
     }
-    
+
     // Set dash-dot pattern
     setDashDotLine(dashSize = 5, gapSize = 2, dotSize = 1) {
         this.setLineDash([dashSize, gapSize, dotSize, gapSize]);
     }
-    
+
     // Set dash-dot-dot pattern
     setDashDotDotLine(dashSize = 5, gapSize = 2, dotSize = 1) {
         this.setLineDash([dashSize, gapSize, dotSize, gapSize, dotSize, gapSize]);
     }
-    
+
     // Clear dash pattern (solid line)
     setSolidLine() {
         this.setLineDash([]);
@@ -4827,12 +5821,12 @@ class WebGLCanvas {
 
         // Get path segments
         let segments = this.pathToSegments(this.currentPath);
-        
+
         // Apply dashing if dash pattern is set
         if (this.state.lineDash.length > 0) {
             segments = this.applyDashesToSegments(segments);
         }
-        
+
         // Draw each segment
         for (const segment of segments) {
             if (this.state.lineWidth > 1) {
@@ -4841,7 +5835,7 @@ class WebGLCanvas {
                 this.drawThinLine(segment.x1, segment.y1, segment.x2, segment.y2);
             }
         }
-        
+
         // Handle line joins for non-dashed lines
         if (this.state.lineDash.length === 0 && this.state.lineJoin !== 'miter' && this.state.lineWidth > 1) {
             const originalSegments = this.pathToSegments(this.currentPath);
@@ -5422,7 +6416,7 @@ class WebGLCanvas {
             x0, y0, x1, y1,
             colorStops: []
         };
-        
+
         // Add addColorStop method to the gradient object
         gradient.addColorStop = (offset, color) => {
             gradient.colorStops.push({
@@ -5432,7 +6426,7 @@ class WebGLCanvas {
             // Sort by offset
             gradient.colorStops.sort((a, b) => a.offset - b.offset);
         };
-        
+
         return gradient;
     }
 
@@ -5452,7 +6446,7 @@ class WebGLCanvas {
             x0, y0, r0, x1, y1, r1,
             colorStops: []
         };
-        
+
         // Add addColorStop method to the gradient object
         gradient.addColorStop = (offset, color) => {
             gradient.colorStops.push({
@@ -5462,7 +6456,7 @@ class WebGLCanvas {
             // Sort by offset
             gradient.colorStops.sort((a, b) => a.offset - b.offset);
         };
-        
+
         return gradient;
     }
 
@@ -5479,7 +6473,7 @@ class WebGLCanvas {
             startAngle, x, y,
             colorStops: []
         };
-        
+
         // Add addColorStop method to the gradient object
         gradient.addColorStop = (offset, color) => {
             gradient.colorStops.push({
@@ -5489,7 +6483,7 @@ class WebGLCanvas {
             // Sort by offset
             gradient.colorStops.sort((a, b) => a.offset - b.offset);
         };
-        
+
         return gradient;
     }
 
@@ -6512,6 +7506,12 @@ class WebGLCanvas {
      * Call this when you're done with the canvas to prevent memory leaks
      */
     dispose() {
+        // Stop animation loop
+        this.stopAnimationLoop();
+
+        // Clear frame timing
+        this.frameTime = null;
+
         // Clean up post-processing resources
         if (this.gl && !this.isContextLost()) {
             try {

@@ -6,6 +6,7 @@ class ExportManager {
             minifyCode: false,
             standalone: true,
             includeEngine: true,
+            useWebGL: true,
             customTitle: '',
             customDescription: '',
             viewport: {
@@ -96,6 +97,9 @@ class ExportManager {
      * Collect all data needed for export
      */
     async collectExportData(project, settings) {
+        // Store settings for later use in getRequiredEngineFiles
+        this.exportSettings = { ...this.exportSettings, ...settings };
+
         const data = {
             scenes: [],
             assets: {},
@@ -126,7 +130,7 @@ class ExportManager {
             data.assets = await this.collectAssets();
         }
 
-        // Collect required engine files
+        // Collect required engine files (this now uses the stored settings)
         data.engineFiles = this.getRequiredEngineFiles();
 
         // Collect custom scripts
@@ -555,7 +559,7 @@ class ExportManager {
      * Get list of required engine files
      */
     getRequiredEngineFiles() {
-        return [
+        const coreFiles = [
             // Core math and utilities
             'src/core/Math/Vector2.js',
             'src/core/Math/Vector3.js',
@@ -575,7 +579,6 @@ class ExportManager {
             'src/core/ModuleManager.js',
             'src/core/GameObject.js',
             'src/core/InputManager.js',
-            //'src/core/Editor Panels/PrefabManager.js',
             'src/core/DecalChunk.js',
             'src/core/Scene.js',
             'src/core/Engine.js',
@@ -584,6 +587,13 @@ class ExportManager {
             'src/core/AssetManager.js',
             'src/core/AssetReference.js'
         ];
+
+        // Add WebGL files if WebGL is enabled
+        if (this.exportSettings.useWebGL) {
+            coreFiles.splice(6, 0, 'src/webgl-canvas.js'); // Insert after matter.min.js
+        }
+
+        return coreFiles;
     }
 
     /**
@@ -768,50 +778,86 @@ class ExportManager {
      * Generate HTML content
      */
     generateHTML(data, settings) {
-        const title = settings.customTitle || 'Dark Matter JS Game';
-        const description = settings.customDescription || 'A game created with Dark Matter JS';
+    const title = settings.customTitle || 'Dark Matter JS Game';
+    const description = settings.customDescription || 'A game created with Dark Matter JS';
+    
+    // Use viewport dimensions or default to full screen
+    const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
+    const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
 
-        let scriptAndStyleTags = '';
-        if (!settings.standalone) {
-            // Link external CSS and JS for ZIP package
-            scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
-            scriptAndStyleTags += `<script src="game.js"></script>\n`;
-            if (data.customScripts && data.customScripts.length > 0) {
-                for (const script of data.customScripts) {
-                    scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
-                }
+    let scriptAndStyleTags = '';
+    if (!settings.standalone) {
+        // Link external CSS and JS for ZIP package
+        scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
+        scriptAndStyleTags += `<script src="game.js"></script>\n`;
+        if (data.customScripts && data.customScripts.length > 0) {
+            for (const script of data.customScripts) {
+                scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
             }
-        } else {
-            // Placeholders for embedded content in standalone HTML
-            scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
-    <script id="game-script">/* JavaScript will be injected here */</script>`;
         }
+    } else {
+        // Placeholders for embedded content in standalone HTML
+        scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
+    <script id="game-script">/* JavaScript will be injected here */</script>`;
+    }
 
-        return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>${title}</title>
     <meta name="description" content="${description}">
     
+    <!-- Prevent zoom and ensure full viewport usage -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
     <!-- External Dependencies -->
-    <!-- Fallback CDN for Matter.js if local file fails -->
     <script>
-        // Check if Matter.js was loaded from local files, if not load from CDN
+        // Dynamic canvas sizing and Matter.js loading
         document.addEventListener('DOMContentLoaded', function() {
+            // Set up full viewport canvas
+            const canvas = document.getElementById('gameCanvas');
+            if (canvas) {
+                // Set canvas internal resolution to viewport size
+                const updateCanvasSize = () => {
+                    const width = window.innerWidth;
+                    const height = window.innerHeight;
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // Update CSS size to match
+                    canvas.style.width = width + 'px';
+                    canvas.style.height = height + 'px';
+                    
+                    // Trigger resize event for game engine
+                    if (window.engine && typeof window.engine.handleResize === 'function') {
+                        window.engine.handleResize(width, height);
+                    }
+                };
+                
+                // Initial size
+                updateCanvasSize();
+                
+                // Handle window resize
+                window.addEventListener('resize', updateCanvasSize);
+                window.addEventListener('orientationchange', () => {
+                    setTimeout(updateCanvasSize, 100); // Small delay for orientation change
+                });
+            }
+            
+            // Load Matter.js if not already loaded
             if (typeof Matter === 'undefined') {
                 console.log('Loading Matter.js from CDN as fallback...');
                 const script = document.createElement('script');
                 script.src = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js';
                 script.onload = function() {
                     console.log('Matter.js loaded from CDN');
-                    // Trigger a custom event to let the game know Matter.js is ready
                     window.dispatchEvent(new Event('matter-loaded'));
                 };
                 document.head.appendChild(script);
             } else {
-                // Matter.js already loaded, trigger ready event
                 window.dispatchEvent(new Event('matter-loaded'));
             }
         });
@@ -821,14 +867,14 @@ class ExportManager {
 </head>
 <body>
     <div id="game-container">
-        <canvas id="gameCanvas" width="${settings.viewport.width}" height="${settings.viewport.height}"></canvas>
-        <div id="loading-screen" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; font-family: Arial, sans-serif;">
+        <canvas id="gameCanvas"></canvas>
+        <div id="loading-screen">
             <div>Loading...</div>
         </div>
     </div>
 </body>
 </html>`;
-    }
+}
 
     /**
      * Generate JavaScript content
@@ -915,7 +961,7 @@ class ExportManager {
      */
     generateCSS(data, settings) {
         let css = `
-/* Prevent scrollbars from reacting to key presses */
+/* Full viewport coverage */
 html, body {
     margin: 0;
     padding: 0;
@@ -924,20 +970,10 @@ html, body {
     overflow: hidden;
     background: #000;
     font-family: Arial, sans-serif;
-    /* Prevent scrolling with arrow keys */
     overscroll-behavior: none;
 }
 
-/* Prevent default key behaviors that cause scrolling */
-body {
-    /* Disable default key behaviors */
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-}
-
-/* Main container fills entire viewport */
+/* Game container fills entire viewport */
 #game-container {
     position: fixed;
     top: 0;
@@ -948,26 +984,36 @@ body {
     justify-content: center;
     align-items: center;
     background: #000;
+    margin: 0;
+    padding: 0;
 }
 
-/* Canvas styling for proper fit scaling */
+/* Canvas fills the game container while maintaining aspect ratio */
 #gameCanvas {
     display: block;
     background: #000;
+    width: 100%;
+    height: 100%;
+    /* Remove fixed dimensions and let it fill container */
     max-width: 100vw;
     max-height: 100vh;
-    width: auto;
-    height: auto;
-    /* Maintain aspect ratio while fitting to screen */
-    object-fit: contain;
+    /* Maintain aspect ratio */
+    object-fit: ${settings.maintainAspectRatio !== false ? 'contain' : 'fill'};
     /* Center the canvas */
-    margin: auto;
+    margin: 0;
     /* Smooth scaling */
     image-rendering: auto;
-    image-rendering: crisp-edges;
+}
+
+/* For pixel-perfect games, use pixelated rendering */
+${settings.pixelPerfect ? `
+#gameCanvas {
     image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
     image-rendering: -webkit-optimize-contrast;
 }
+` : ''}
 
 /* Loading screen covers entire viewport */
 #loading-screen {
@@ -985,7 +1031,7 @@ body {
     z-index: 1000;
 }
 
-/* Prevent context menu on right click */
+/* Prevent context menu and selection */
 #gameCanvas {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
@@ -998,27 +1044,36 @@ body {
 
 /* Mobile optimizations */
 @media (max-width: 768px) {
-    #gameCanvas {
-        /* Ensure canvas scales properly on mobile */
-        width: 100vw;
-        height: 100vh;
-        object-fit: contain;
-    }
-    
-    /* Prevent mobile browser UI from interfering */
     body {
         position: fixed;
         overflow: hidden;
         -webkit-overflow-scrolling: touch;
     }
+    
+    #gameCanvas {
+        width: 100vw !important;
+        height: 100vh !important;
+    }
 }
 
-/* Prevent scrolling with keyboard */
+/* Orientation change handling */
+@media screen and (orientation: portrait) {
+    #game-container {
+        flex-direction: column;
+    }
+}
+
+@media screen and (orientation: landscape) {
+    #game-container {
+        flex-direction: row;
+    }
+}
+
+/* Prevent scrolling */
 body:focus {
     outline: none;
 }
 
-/* Hide scrollbars completely */
 ::-webkit-scrollbar {
     display: none;
 }
@@ -1041,17 +1096,17 @@ html {
  * Generate game initialization code
  */
     generateGameInitialization(data, settings) {
-    // Use safer JSON embedding approach
-    const scenesData = this.safeStringify(data.scenes);
-    const prefabsData = this.safeStringify(data.prefabs);
-    const assetsData = settings.standalone && settings.includeAssets ?
-        this.safeStringify(data.assets) : 'null';
+        // Use safer JSON embedding approach
+        const scenesData = this.safeStringify(data.scenes);
+        const prefabsData = this.safeStringify(data.prefabs);
+        const assetsData = settings.standalone && settings.includeAssets ?
+            this.safeStringify(data.assets) : 'null';
 
-    // Get the starting scene index from settings, default to 0
-    const startingSceneIndex = settings.startingSceneIndex || 0;
-    const maxFPS = settings.maxFPS !== undefined ? settings.maxFPS : 60;
+        // Get the starting scene index from settings, default to 0
+        const startingSceneIndex = settings.startingSceneIndex || 0;
+        const maxFPS = settings.maxFPS !== undefined ? settings.maxFPS : 60;
 
-    return `
+        return `
 // Game Initialization - Fixed for Physics
 let gameInitialized = false;
 
@@ -1126,7 +1181,7 @@ async function initializeGame() {
     };
 
     ${settings.standalone ?
-        `// Standalone mode - override asset loading to use embedded assets
+                `// Standalone mode - override asset loading to use embedded assets
         window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
         window.assetManager.loadAsset = function(path) {
             const normalizedPath = this.normalizePath(path);
@@ -1201,9 +1256,9 @@ async function initializeGame() {
             
             return this.originalLoadAudio(src);
         };` :
-        `// ZIP mode - set base path for assets
+                `// ZIP mode - set base path for assets
         window.assetManager.basePath = 'assets/';`
-    }
+            }
     
     // Initialize Global Prefab Manager
     window.prefabManager = {
@@ -1353,15 +1408,53 @@ async function initializeGame() {
         console.log('Final asset cache keys:', Object.keys(window.assetManager.cache));
     }` : ''}
     
-    // Initialize engine
+    // Initialize engine with WebGL option
     const canvas = document.getElementById('gameCanvas');
-    const engine = new Engine(canvas);
+
+    // Get actual viewport dimensions
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Set canvas to match viewport
+    canvas.width = viewportWidth;
+    canvas.height = viewportHeight;
+
+    const engineOptions = { 
+        useWebGL: ${settings.useWebGL},
+        enableFullscreen: true,
+        pixelWidth: viewportWidth,
+        pixelHeight: viewportHeight,
+        pixelScale: 1
+    };
+
+    const engine = new Engine(canvas, engineOptions);
     engine.updateFPSLimit(${maxFPS});
     
     this.ctx = canvas.ctx;
     
     // Make engine globally available for prefab instantiation
     window.engine = engine;
+
+    // Add resize handler to engine
+    engine.handleResize = function(width, height) {
+        this.canvas.width = width;
+        this.canvas.height = height;
+        this.width = width;
+        this.height = height;
+        
+        // Update WebGL viewport if using WebGL
+        if (this.ctx && this.ctx.gl) {
+            this.ctx.gl.viewport(0, 0, width, height);
+        }
+        
+        // Update camera bounds if camera exists
+        if (this.camera) {
+            // Keep camera centered but update bounds
+            this.camera.updateBounds(width, height);
+        }
+        
+        console.log('Engine resized to:', width, 'x', height);
+    };
     
     // CRITICAL: Connect physics to engine properly
     if (window.physicsManager) {
@@ -1572,7 +1665,7 @@ async function initializeGame() {
 document.addEventListener('DOMContentLoaded', initializeGame);
 window.addEventListener('matter-loaded', initializeGame);
 `;
-}
+    }
 
     /**
      * Safely stringify JSON data for embedding in JavaScript code
@@ -1790,61 +1883,62 @@ window.addEventListener('matter-loaded', initializeGame);
         ).join('');
 
         modal.innerHTML = `
-        <div class="export-modal-content">
-            <div class="export-modal-header">
-                <h2>Export Game</h2>
-                <button class="export-close-button">&times;</button>
+    <div class="export-modal-content">
+        <div class="export-modal-header">
+            <h2>Export Game</h2>
+            <button class="export-close-button">&times;</button>
+        </div>
+        <div class="export-modal-body">
+            <div class="export-group">
+                <label>Game Title:</label>
+                <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
             </div>
-            <div class="export-modal-body">
-                <div class="export-group">
-                    <label>Game Title:</label>
-                    <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
-                </div>
-                <div class="export-group">
-                    <label>Description:</label>
-                    <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
-                </div>
-                <div class="export-group">
-                    <label>Starting Scene:</label>
-                    <select id="export-starting-scene">
-                        ${sceneOptions || '<option value="0">No scenes available</option>'}
-                    </select>
-                </div>
-                <div class="export-group">
-                    <label>Maximum FPS:</label>
-                    <select id="export-max-fps">
-                        <option value="30" ${this.exportSettings.maxFPS === 30 ? 'selected' : ''}>30 FPS</option>
-                        <option value="60" ${this.exportSettings.maxFPS === 60 ? 'selected' : ''}>60 FPS</option>
-                        <option value="120" ${this.exportSettings.maxFPS === 120 ? 'selected' : ''}>120 FPS</option>
-                        <option value="0" ${this.exportSettings.maxFPS === 0 ? 'selected' : ''}>Unlimited</option>
-                    </select>
-                </div>
-                <div class="export-group">
-                    <label>Export Format:</label>
-                    <select id="export-format">
-                        <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
-                        <option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option>
-                    </select>
-                </div>
-                <div class="export-group">
-                    <label>
-                        <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
-                        Include Assets
-                    </label>
-                </div>
-                <!--div class="export-group">
-                    <label>
-                        <input type="checkbox" id="export-minify" ${this.exportSettings.minifyCode ? 'checked' : ''}>
-                        Minify Code
-                    </label>
-                </div-->
+            <div class="export-group">
+                <label>Description:</label>
+                <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
             </div>
-            <div class="export-modal-footer">
-                <button id="export-cancel">Cancel</button>
-                <button id="export-start" class="primary">Export Game</button>
+            <div class="export-group">
+                <label>Starting Scene:</label>
+                <select id="export-starting-scene">
+                    ${sceneOptions || '<option value="0">No scenes available</option>'}
+                </select>
+            </div>
+            <div class="export-group">
+                <label>Maximum FPS:</label>
+                <select id="export-max-fps">
+                    <option value="30" ${this.exportSettings.maxFPS === 30 ? 'selected' : ''}>30 FPS</option>
+                    <option value="60" ${this.exportSettings.maxFPS === 60 ? 'selected' : ''}>60 FPS</option>
+                    <option value="120" ${this.exportSettings.maxFPS === 120 ? 'selected' : ''}>120 FPS</option>
+                    <option value="0" ${this.exportSettings.maxFPS === 0 ? 'selected' : ''}>Unlimited</option>
+                </select>
+            </div>
+            <div class="export-group">
+                <label>Rendering:</label>
+                <select id="export-webgl">
+                    <option value="true" ${this.exportSettings.useWebGL ? 'selected' : ''}>WebGL (Hardware Accelerated)</option>
+                    <option value="false" ${!this.exportSettings.useWebGL ? 'selected' : ''}>Canvas 2D (Software)</option>
+                </select>
+            </div>
+            <div class="export-group">
+                <label>Export Format:</label>
+                <select id="export-format">
+                    <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
+                    <option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option>
+                </select>
+            </div>
+            <div class="export-group">
+                <label>
+                    <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
+                    Include Assets
+                </label>
             </div>
         </div>
-    `;
+        <div class="export-modal-footer">
+            <button id="export-cancel">Cancel</button>
+            <button id="export-start" class="primary">Export Game</button>
+        </div>
+    </div>
+`;
 
         document.body.appendChild(modal);
 
@@ -1863,9 +1957,10 @@ window.addEventListener('matter-loaded', initializeGame);
                 customDescription: modal.querySelector('#export-description').value,
                 startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
                 maxFPS: parseInt(modal.querySelector('#export-max-fps').value) || 60,
+                useWebGL: modal.querySelector('#export-webgl').value === 'true', // New WebGL setting
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
-                minifyCode: false //modal.querySelector('#export-minify').checked
+                minifyCode: false
             };
 
             document.body.removeChild(modal);
@@ -1875,11 +1970,11 @@ window.addEventListener('matter-loaded', initializeGame);
                 const loadingDiv = document.createElement('div');
                 loadingDiv.className = 'export-loading';
                 loadingDiv.innerHTML = `
-                <div class="export-loading-content">
-                    <div class="export-loading-spinner"></div>
-                    <div>Exporting game... Please wait.</div>
-                </div>
-            `;
+            <div class="export-loading-content">
+                <div class="export-loading-spinner"></div>
+                <div>Exporting game... Please wait.</div>
+            </div>
+        `;
                 document.body.appendChild(loadingDiv);
 
                 // Get current project data
@@ -1900,7 +1995,7 @@ window.addEventListener('matter-loaded', initializeGame);
                 // Show success message
                 const successDiv = document.createElement('div');
                 successDiv.className = 'export-notification success';
-                successDiv.textContent = 'Game exported successfully!';
+                successDiv.textContent = `Game exported successfully with ${settings.useWebGL ? 'WebGL' : 'Canvas 2D'} rendering!`;
                 document.body.appendChild(successDiv);
 
                 setTimeout(() => {
@@ -1915,8 +2010,6 @@ window.addEventListener('matter-loaded', initializeGame);
                 if (loadingDiv && loadingDiv.parentNode) {
                     document.body.removeChild(loadingDiv);
                 }
-
-                // console.error('Export failed:', error);
 
                 // Show error message
                 const errorDiv = document.createElement('div');
@@ -1941,10 +2034,10 @@ window.addEventListener('matter-loaded', initializeGame);
     }
 
     /**
- * Simple JavaScript minifier
- * @param {string} code - JavaScript code to minify
- * @returns {string} - Minified JavaScript code
- */
+     * Simple JavaScript minifier
+     * @param {string} code - JavaScript code to minify
+     * @returns {string} - Minified JavaScript code
+     */
     minifyJavaScript(code) {
         return code;
 

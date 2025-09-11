@@ -21,8 +21,14 @@ class DarknessModule extends Module {
 
         this.resolutionMultiplier = 1; // 1 = full res, 2 = half res, etc.
 
+        // WebGL shader support
+        this.useWebGLShaders = false;
+        this.webglCanvas = null;
+        this.lightingShader = null;
+        this._webglInitialized = false;
+
         // Day/Night System Properties
-        this.enableDayNight = true;
+        this.enableDayNight = false;
         this.currentTime = 12.0; // 24-hour format (0-24)
         this.dawnStart = 6.0;    // 6:00 AM
         this.duskStart = 18.0;   // 6:00 PM
@@ -65,6 +71,174 @@ class DarknessModule extends Module {
         this._updateTimer = 0;
 
         this._setupProperties();
+        this._initializeWebGL();
+    }
+
+    _initializeWebGL() {
+        if (window.engine && window.engine.useWebGL && window.engine.ctx instanceof WebGLCanvas) {
+            try {
+                this.useWebGLShaders = true;
+                this.webglCanvas = window.engine.ctx;
+                
+                // Ensure advanced blend shaders are created
+                if (!this.webglCanvas.advancedBlendShaders) {
+                    this.webglCanvas.createAdvancedBlendShaders();
+                }
+                
+                this._createWebGLShaders();
+                console.log('DarknessModule: WebGL shaders enabled');
+            } catch (error) {
+                console.warn('DarknessModule: Failed to initialize WebGL shaders, falling back to canvas:', error);
+                this.useWebGLShaders = false;
+            }
+        }
+    }
+
+    _createWebGLShaders() {
+        // Get WebGL context from WebGLCanvas
+        if (!this.webglCanvas || !this.webglCanvas.gl) {
+            return;
+        }
+
+        const gl = this.webglCanvas.gl;
+
+        // Create lighting shader
+        const vertexShader = `
+        precision mediump float;
+        attribute vec2 a_position;
+        uniform vec2 u_resolution;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            vec2 clipSpace = (a_position / u_resolution) * 2.0 - 1.0;
+            clipSpace.y = -clipSpace.y;
+            gl_Position = vec4(clipSpace, 0.0, 1.0);
+            v_texCoord = a_position / u_resolution;
+        }
+    `;
+
+        const fragmentShader = `
+        precision mediump float;
+        uniform vec2 u_resolution;
+        uniform vec3 u_darknessColor;
+        uniform float u_darknessOpacity;
+        uniform float u_lightCount;
+        uniform vec3 u_lightPositions[32]; // x, y, radius
+        uniform vec3 u_lightColors[32]; // r, g, b
+        uniform float u_lightIntensities[32];
+        uniform int u_falloffTypes[32]; // 0=linear, 1=smooth, 2=sharp, 3=inverse-square
+        varying vec2 v_texCoord;
+        
+        float calculateLightAttenuation(float distance, float radius, int falloffType) {
+            if (distance >= radius) return 0.0;
+            
+            float t = distance / radius;
+            
+            if (falloffType == 0) {
+                // Linear
+                return 1.0 - t;
+            } else if (falloffType == 1) {
+                // Smooth
+                float smooth = 1.0 - smoothstep(0.0, 1.0, t);
+                return smooth * smooth;
+            } else if (falloffType == 2) {
+                // Sharp
+                return 1.0 - (t * t * t);
+            } else if (falloffType == 3) {
+                // Inverse square
+                return 1.0 / (1.0 + t * t * 4.0);
+            }
+            
+            return 1.0 - t; // Default to linear
+        }
+        
+        void main() {
+            vec2 pixelCoord = v_texCoord * u_resolution;
+            vec3 finalColor = u_darknessColor;
+            float totalLightInfluence = 0.0;
+            vec3 accumulatedLight = vec3(0.0);
+            
+            // Calculate lighting influence
+            for (int i = 0; i < 32; i++) {
+                if (float(i) >= u_lightCount) break;
+                
+                vec2 lightPos = u_lightPositions[i].xy;
+                float lightRadius = u_lightPositions[i].z;
+                vec3 lightColor = u_lightColors[i];
+                float lightIntensity = u_lightIntensities[i];
+                
+                float distance = length(pixelCoord - lightPos);
+                float attenuation = calculateLightAttenuation(distance, lightRadius, u_falloffTypes[i]);
+                
+                if (attenuation > 0.0) {
+                    float lightInfluence = attenuation * lightIntensity;
+                    totalLightInfluence += lightInfluence;
+                    accumulatedLight += lightColor * lightInfluence;
+                }
+            }
+            
+            // Blend light colors with darkness
+            if (totalLightInfluence > 0.0) {
+                // Normalize accumulated light
+                accumulatedLight = accumulatedLight / totalLightInfluence;
+                // Mix darkness with light color
+                finalColor = mix(finalColor, accumulatedLight, min(totalLightInfluence, 1.0));
+            }
+            
+            // Calculate final opacity (darkness reduced by light influence)
+            float finalOpacity = u_darknessOpacity * (1.0 - min(totalLightInfluence, 0.9));
+            
+            gl_FragColor = vec4(finalColor, finalOpacity);
+        }
+    `;
+
+        try {
+            this.webglCanvas.addShader('darknessLighting', vertexShader, fragmentShader);
+            this._webglInitialized = true;
+        } catch (error) {
+            console.warn('Failed to create lighting shader:', error);
+            this.useWebGLShaders = false;
+        }
+    }
+
+    loop(deltaTime) {
+        this.worldPos = this.gameObject.getWorldPosition();
+
+        // Track position changes for optimization
+        this._positionChanged = (this.worldPos.x !== this._lastPosition.x || this.worldPos.y !== this._lastPosition.y);
+
+        // Handle flickering
+        if (this.flickerEnabled) {
+            this.flickerTime += deltaTime * this.flickerSpeed;
+            const flicker = Math.sin(this.flickerTime) * Math.sin(this.flickerTime * 2.3) * this.flickerAmount;
+            this.currentIntensity = this.intensity * (1 + flicker);
+        } else {
+            this.currentIntensity = this.intensity;
+        }
+
+        // Viewport culling for performance
+        this._updateVisibility();
+
+        // Register with darkness
+        this._updateDarknessRegistration();
+
+        // Mark lighting as dirty if using WebGL and position changed
+        if (this._registeredDarkness && this._positionChanged) {
+            this._registeredDarkness._lightsDirty = true;
+
+            // If darkness module is using WebGL, we don't need to mark canvas dirty
+            if (!this._registeredDarkness.useWebGLShaders) {
+                this._registeredDarkness._lastVpWidth = 0;
+                this._registeredDarkness._lastVpHeight = 0;
+            }
+        }
+
+        // Mark gradients as dirty if properties changed
+        if (this._lastRadius !== this.radius || this._lastColor !== this.color) {
+            this._gradientCacheDirty = true;
+            this._lastRadius = this.radius;
+            this._lastColor = this.color;
+        }
     }
 
     _setupProperties() {
@@ -446,6 +620,99 @@ class DarknessModule extends Module {
     }
 
     draw(ctx) {
+        if (this.useWebGLShaders && this._webglInitialized && this.webglCanvas) {
+            this._drawWithWebGL(ctx);
+        } else {
+            this._drawWithCanvas(ctx);
+        }
+    }
+
+    _drawWithWebGL(ctx) {
+        if (!this._webglInitialized || !this.webglCanvas || !this.webglCanvas.gl) {
+            // Fallback to canvas if WebGL isn't ready
+            this._drawWithCanvas(ctx);
+            return;
+        }
+
+        const gl = this.webglCanvas.gl;
+        const vp = window.engine.viewport;
+
+        // Prepare light data for shader
+        const lightPositions = new Float32Array(96); // 32 lights * 3 values
+        const lightColors = new Float32Array(96);    // 32 lights * 3 values
+        const lightIntensities = new Float32Array(32);
+        const falloffTypes = new Int32Array(32);
+
+        let lightCount = 0;
+        for (const light of this.lights) {
+            if (lightCount >= 32) break; // Shader limit
+
+            const worldPos = light.gameObject.getWorldPosition();
+            const screenX = worldPos.x - vp.x;
+            const screenY = worldPos.y - vp.y;
+
+            const idx3 = lightCount * 3;
+            lightPositions[idx3] = screenX;
+            lightPositions[idx3 + 1] = screenY;
+            lightPositions[idx3 + 2] = light.radius;
+
+            // Parse light color to RGB
+            const color = this._parseColorToRGB(light.color);
+            lightColors[idx3] = color.r;
+            lightColors[idx3 + 1] = color.g;
+            lightColors[idx3 + 2] = color.b;
+
+            lightIntensities[lightCount] = light.currentIntensity || light.intensity;
+
+            // Convert falloff type to number
+            let falloffType = 0;
+            switch (light.falloffType) {
+                case 'linear': falloffType = 0; break;
+                case 'smooth': falloffType = 1; break;
+                case 'sharp': falloffType = 2; break;
+                case 'inverse-square': falloffType = 3; break;
+                default: falloffType = 0;
+            }
+            falloffTypes[lightCount] = falloffType;
+
+            lightCount++;
+        }
+
+        // Parse darkness color
+        const darknessColor = this._parseColorToRGB(this._currentTint);
+
+        // Create fullscreen quad
+        const quad = this.webglCanvas.createQuad(0, 0, vp.width, vp.height);
+
+        // Set uniforms and draw
+        const uniforms = {
+            u_resolution: [vp.width, vp.height],
+            u_darknessColor: [darknessColor.r, darknessColor.g, darknessColor.b],
+            u_darknessOpacity: this._currentOpacity,
+            u_lightCount: lightCount,
+            u_lightPositions: lightPositions,
+            u_lightColors: lightColors,
+            u_lightIntensities: lightIntensities,
+            u_falloffTypes: falloffTypes
+        };
+
+        // Save current WebGL state
+        this.webglCanvas.save();
+        this.webglCanvas.globalCompositeOperation = this.blendMode;
+
+        try {
+            this.webglCanvas.drawWithShader('darknessLighting', quad.vertices, quad.indices, uniforms);
+        } catch (error) {
+            console.warn('WebGL lighting render failed, falling back to canvas:', error);
+            this.useWebGLShaders = false;
+            this._drawWithCanvas(ctx);
+        }
+
+        this.webglCanvas.restore();
+    }
+
+    _drawWithCanvas(ctx) {
+        // Original canvas implementation
         const vp = window.engine.viewport;
 
         // Only recreate canvases if viewport changed
@@ -468,6 +735,24 @@ class DarknessModule extends Module {
             vp.x, vp.y, vp.width, vp.height
         );
         ctx.restore();
+    }
+
+    _parseColorToRGB(color) {
+        if (typeof color === 'string') {
+            if (color.startsWith('#')) {
+                const r = parseInt(color.slice(1, 3), 16) / 255;
+                const g = parseInt(color.slice(3, 5), 16) / 255;
+                const b = parseInt(color.slice(5, 7), 16) / 255;
+                return { r, g, b };
+            } else if (color.startsWith('rgb(')) {
+                const match = color.match(/rgb\(([^)]+)\)/);
+                if (match) {
+                    const values = match[1].split(',').map(v => parseInt(v.trim()) / 255);
+                    return { r: values[0] || 0, g: values[1] || 0, b: values[2] || 0 };
+                }
+            }
+        }
+        return { r: 0, g: 0, b: 0 };
     }
 
     _createCanvases(vp) {
