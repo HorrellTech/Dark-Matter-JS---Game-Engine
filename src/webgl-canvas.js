@@ -2788,6 +2788,74 @@ class WebGLCanvas {
     }
 
     /*
+     * Get canvas style object for CSS modifications
+     * @return {CSSStyleDeclaration} - The canvas element's style object
+     */
+    get style() {
+        return this.canvas.style;
+    }
+
+    /*
+     * Set canvas style properties
+     * @param {Object|string} styles - Style object or CSS string
+     */
+    set style(styles) {
+        if (typeof styles === 'string') {
+            this.canvas.style.cssText = styles;
+        } else if (typeof styles === 'object' && styles !== null) {
+            Object.assign(this.canvas.style, styles);
+        }
+    }
+
+    /*
+     * Convenience method to set background color
+     * @param {string} color - CSS color value
+     */
+    setBackgroundColor(color) {
+        this.canvas.style.backgroundColor = color;
+    }
+
+    /*
+     * Get current background color
+     * @return {string} - Current background color
+     */
+    getBackgroundColor() {
+        return this.canvas.style.backgroundColor;
+    }
+
+    /*
+     * Convenience method to set canvas border
+     * @param {string} border - CSS border value
+     */
+    setBorder(border) {
+        this.canvas.style.border = border;
+    }
+
+    /*
+     * Convenience method to set canvas border radius
+     * @param {string} radius - CSS border-radius value
+     */
+    setBorderRadius(radius) {
+        this.canvas.style.borderRadius = radius;
+    }
+
+    /*
+     * Convenience method to set canvas cursor
+     * @param {string} cursor - CSS cursor value
+     */
+    setCursor(cursor) {
+        this.canvas.style.cursor = cursor;
+    }
+
+    /*
+     * Apply multiple CSS styles at once
+     * @param {Object} styles - Object with CSS property-value pairs
+     */
+    applyStyles(styles) {
+        Object.assign(this.canvas.style, styles);
+    }
+
+    /*
      * Convenience methods for common image color effects
      */
 
@@ -2938,10 +3006,10 @@ class WebGLCanvas {
     }
 
     /*
-    * Add color stop to gradient
-    * @param {number} offset - Position (0-1)
-    * @param {string} color - Color at this position
-    */
+     * Add color stop to gradient
+     * @param {number} offset - Position (0-1)
+     * @param {string} color - Color at this position
+     */
     addColorStop(gradient, offset, color) {
         if (gradient && gradient.colorStops) {
             gradient.colorStops.push({
@@ -2952,6 +3020,8 @@ class WebGLCanvas {
             gradient.colorStops.sort((a, b) => a.offset - b.offset);
         }
     }
+
+    
 
     /*
         * Parse color input
@@ -4072,18 +4142,27 @@ class WebGLCanvas {
         * @param {number} height - Height of the rectangle
     */
     strokeRect(x, y, width, height) {
-        const lineWidth = this.state.lineWidth;
-        const halfWidth = lineWidth / 2;
+        if (this.state.lineDash.length > 0) {
+            // Draw dashed rectangle by drawing each side separately
+            this.drawDashedLine(x, y, x + width, y); // Top
+            this.drawDashedLine(x + width, y, x + width, y + height); // Right
+            this.drawDashedLine(x + width, y + height, x, y + height); // Bottom
+            this.drawDashedLine(x, y + height, x, y); // Left
+        } else {
+            // Original solid rectangle stroke
+            const lineWidth = this.state.lineWidth;
+            const halfWidth = lineWidth / 2;
 
-        // Draw four rectangles to form the stroke
-        // Top
-        this.addRectangleToBatch(x - halfWidth, y - halfWidth, width + lineWidth, lineWidth, this.state.strokeStyle);
-        // Bottom  
-        this.addRectangleToBatch(x - halfWidth, y + height - halfWidth, width + lineWidth, lineWidth, this.state.strokeStyle);
-        // Left
-        this.addRectangleToBatch(x - halfWidth, y + halfWidth, lineWidth, height - lineWidth, this.state.strokeStyle);
-        // Right
-        this.addRectangleToBatch(x + width - halfWidth, y + halfWidth, lineWidth, height - lineWidth, this.state.strokeStyle);
+            // Draw four rectangles to form the stroke
+            // Top
+            this.addRectangleToBatch(x - halfWidth, y - halfWidth, width + lineWidth, lineWidth, this.state.strokeStyle);
+            // Bottom  
+            this.addRectangleToBatch(x - halfWidth, y + height - halfWidth, width + lineWidth, lineWidth, this.state.strokeStyle);
+            // Left
+            this.addRectangleToBatch(x - halfWidth, y + halfWidth, lineWidth, height - lineWidth, this.state.strokeStyle);
+            // Right
+            this.addRectangleToBatch(x + width - halfWidth, y + halfWidth, lineWidth, height - lineWidth, this.state.strokeStyle);
+        }
     }
 
     /*
@@ -4122,24 +4201,184 @@ class WebGLCanvas {
     }
 
     /*
-        * Enhanced drawLine method with proper line width support
-        * Draws thick lines as rectangles for consistent cross-browser support
-        * @param {number} x1 - X coordinate of the first point
-        * @param {number} y1 - Y coordinate of the first point
-        * @param {number} x2 - X coordinate of the second point
-        * @param {number} y2 - Y coordinate of the second point
-    */
+     * Enhanced drawLine method with dashed line support
+     * @param {number} x1 - Start X
+     * @param {number} y1 - Start Y
+     * @param {number} x2 - End X
+     * @param {number} y2 - End Y
+     */
     drawLine(x1, y1, x2, y2) {
-        const lineWidth = this.state.lineWidth;
-
-        // For line width of 1 or less, use the simple line rendering
-        if (lineWidth <= 1) {
-            this.drawThinLine(x1, y1, x2, y2);
-            return;
+        if (this.state.lineDash.length > 0) {
+            this.drawDashedLine(x1, y1, x2, y2);
+        } else {
+            const lineWidth = this.state.lineWidth;
+            
+            // For line width of 1 or less, use the simple line rendering
+            if (lineWidth <= 1) {
+                this.drawThinLine(x1, y1, x2, y2);
+            } else {
+                // For thick lines, draw as rectangles
+                this.drawThickLine(x1, y1, x2, y2, lineWidth);
+            }
         }
+    }
 
-        // For thick lines, draw as rectangles
-        this.drawThickLine(x1, y1, x2, y2, lineWidth);
+     /*
+     * Draw dashed line
+     * @param {number} x1 - Start X
+     * @param {number} y1 - Start Y
+     * @param {number} x2 - End X
+     * @param {number} y2 - End Y
+     */
+    drawDashedLine(x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lineLength = Math.sqrt(dx * dx + dy * dy);
+        
+        if (lineLength === 0) return;
+        
+        // Normalized direction
+        const unitX = dx / lineLength;
+        const unitY = dy / lineLength;
+        
+        const dashPattern = this.state.lineDash;
+        const dashOffset = this.state.lineDashOffset;
+        
+        let currentDistance = -dashOffset; // Start with offset
+        let currentX = x1;
+        let currentY = y1;
+        let dashIndex = 0;
+        let isDrawing = true; // Start drawing if offset is negative or zero
+        
+        // Adjust for positive dash offset
+        if (dashOffset > 0) {
+            // Skip forward through the pattern
+            let offsetRemaining = dashOffset;
+            while (offsetRemaining > 0 && dashPattern.length > 0) {
+                const dashLength = dashPattern[dashIndex % dashPattern.length];
+                if (offsetRemaining >= dashLength) {
+                    offsetRemaining -= dashLength;
+                    dashIndex++;
+                    isDrawing = !isDrawing;
+                } else {
+                    currentDistance = dashLength - offsetRemaining;
+                    break;
+                }
+            }
+        }
+        
+        while (currentDistance < lineLength) {
+            const dashLength = dashPattern[dashIndex % dashPattern.length];
+            const segmentEnd = Math.min(currentDistance + dashLength, lineLength);
+            
+            if (isDrawing && segmentEnd > Math.max(0, currentDistance)) {
+                // Calculate segment coordinates
+                const segmentStart = Math.max(0, currentDistance);
+                const startX = x1 + unitX * segmentStart;
+                const startY = y1 + unitY * segmentStart;
+                const endX = x1 + unitX * segmentEnd;
+                const endY = y1 + unitY * segmentEnd;
+                
+                // Draw this segment
+                if (this.state.lineWidth <= 1) {
+                    this.drawThinLine(startX, startY, endX, endY);
+                } else {
+                    this.drawThickLine(startX, startY, endX, endY, this.state.lineWidth);
+                }
+            }
+            
+            currentDistance += dashLength;
+            dashIndex++;
+            isDrawing = !isDrawing;
+        }
+    }
+
+    /*
+     * Apply dashed stroke to path segments
+     * @param {Array} segments - Path segments to apply dashing to
+     * @return {Array} - Dashed segments
+     */
+    applyDashesToSegments(segments) {
+        if (this.state.lineDash.length === 0) {
+            return segments;
+        }
+        
+        const dashedSegments = [];
+        
+        for (const segment of segments) {
+            const segmentDashes = this.getDashedSegments(
+                segment.x1, segment.y1, 
+                segment.x2, segment.y2
+            );
+            dashedSegments.push(...segmentDashes);
+        }
+        
+        return dashedSegments;
+    }
+
+    /*
+     * Get dashed segments for a single line
+     * @param {number} x1 - Start X
+     * @param {number} y1 - Start Y
+     * @param {number} x2 - End X
+     * @param {number} y2 - End Y
+     * @return {Array} - Array of dashed line segments
+     */
+    getDashedSegments(x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lineLength = Math.sqrt(dx * dx + dy * dy);
+        
+        if (lineLength === 0) return [];
+        
+        const unitX = dx / lineLength;
+        const unitY = dy / lineLength;
+        
+        const dashPattern = this.state.lineDash;
+        const dashOffset = this.state.lineDashOffset;
+        const segments = [];
+        
+        let currentDistance = -dashOffset;
+        let dashIndex = 0;
+        let isDrawing = true;
+        
+        // Handle positive dash offset
+        if (dashOffset > 0) {
+            let offsetRemaining = dashOffset;
+            while (offsetRemaining > 0 && dashPattern.length > 0) {
+                const dashLength = dashPattern[dashIndex % dashPattern.length];
+                if (offsetRemaining >= dashLength) {
+                    offsetRemaining -= dashLength;
+                    dashIndex++;
+                    isDrawing = !isDrawing;
+                } else {
+                    currentDistance = dashLength - offsetRemaining;
+                    break;
+                }
+            }
+        }
+        
+        while (currentDistance < lineLength) {
+            const dashLength = dashPattern[dashIndex % dashPattern.length];
+            const segmentEnd = Math.min(currentDistance + dashLength, lineLength);
+            
+            if (isDrawing && segmentEnd > Math.max(0, currentDistance)) {
+                const segmentStart = Math.max(0, currentDistance);
+                segments.push({
+                    x1: x1 + unitX * segmentStart,
+                    y1: y1 + unitY * segmentStart,
+                    x2: x1 + unitX * segmentEnd,
+                    y2: y1 + unitY * segmentEnd,
+                    type: 'dash'
+                });
+            }
+            
+            currentDistance += dashLength;
+            dashIndex++;
+            isDrawing = !isDrawing;
+        }
+        
+        return segments;
     }
 
     /*
@@ -4369,11 +4608,78 @@ class WebGLCanvas {
     }
 
     /*
-    * Set line dash pattern
-    * @param {Array} segments - Array of line and gap lengths
-    */
+     * Helper method to create a dash pattern from CSS-style dash array
+     * @param {Array} dashArray - Array of dash and gap lengths
+     * @return {Array} - Normalized dash pattern
+     */
+    createDashPattern(dashArray) {
+        if (!Array.isArray(dashArray) || dashArray.length === 0) {
+            return [];
+        }
+        
+        // Ensure positive values
+        const pattern = dashArray.map(value => Math.max(0, Number(value) || 0));
+        
+        // If odd number of elements, duplicate the array
+        if (pattern.length % 2 === 1) {
+            return [...pattern, ...pattern];
+        }
+        
+        return pattern;
+    }
+
+    /*
+     * Set dash pattern with validation
+     * @param {Array} pattern - Dash pattern
+     */
     setLineDash(segments) {
-        this.state.lineDash = [...segments];
+        if (!Array.isArray(segments)) {
+            this.state.lineDash = [];
+            return;
+        }
+        
+        // Filter out non-positive values and convert to numbers
+        const validSegments = segments
+            .map(seg => Number(seg))
+            .filter(seg => !isNaN(seg) && seg > 0);
+        
+        // If all segments were invalid, clear the pattern
+        if (validSegments.length === 0) {
+            this.state.lineDash = [];
+            return;
+        }
+        
+        // If odd number of segments, repeat the pattern
+        if (validSegments.length % 2 === 1) {
+            this.state.lineDash = [...validSegments, ...validSegments];
+        } else {
+            this.state.lineDash = validSegments;
+        }
+    }
+
+    // Set dotted line pattern
+    setDottedLine(dotSize = 2, gapSize = 2) {
+        this.setLineDash([dotSize, gapSize]);
+    }
+    
+    // Set dashed line pattern
+    setDashedLine(dashSize = 5, gapSize = 5) {
+        this.setLineDash([dashSize, gapSize]);
+    }
+    
+    // Set dash-dot pattern
+    setDashDotLine(dashSize = 5, gapSize = 2, dotSize = 1) {
+        this.setLineDash([dashSize, gapSize, dotSize, gapSize]);
+    }
+    
+    // Set dash-dot-dot pattern
+    setDashDotDotLine(dashSize = 5, gapSize = 2, dotSize = 1) {
+        this.setLineDash([dashSize, gapSize, dotSize, gapSize, dotSize, gapSize]);
+    }
+    
+    // Clear dash pattern (solid line)
+    setSolidLine() {
+        this.setLineDash([]);
     }
 
     /*
@@ -4519,11 +4825,31 @@ class WebGLCanvas {
     stroke() {
         if (this.currentPath.length === 0) return;
 
-        // If line width is thick, we need special handling
-        if (this.state.lineWidth > 1) {
-            this.renderThickStroke();
-        } else {
-            this.renderPath(false);
+        // Get path segments
+        let segments = this.pathToSegments(this.currentPath);
+        
+        // Apply dashing if dash pattern is set
+        if (this.state.lineDash.length > 0) {
+            segments = this.applyDashesToSegments(segments);
+        }
+        
+        // Draw each segment
+        for (const segment of segments) {
+            if (this.state.lineWidth > 1) {
+                this.drawThickLine(segment.x1, segment.y1, segment.x2, segment.y2, this.state.lineWidth);
+            } else {
+                this.drawThinLine(segment.x1, segment.y1, segment.x2, segment.y2);
+            }
+        }
+        
+        // Handle line joins for non-dashed lines
+        if (this.state.lineDash.length === 0 && this.state.lineJoin !== 'miter' && this.state.lineWidth > 1) {
+            const originalSegments = this.pathToSegments(this.currentPath);
+            for (let i = 1; i < originalSegments.length; i++) {
+                const prevSegment = originalSegments[i - 1];
+                const currentSegment = originalSegments[i];
+                this.drawLineJoin(prevSegment, currentSegment, this.state.lineWidth);
+            }
         }
     }
 
@@ -5083,37 +5409,88 @@ class WebGLCanvas {
     }
 
     /*
-     * Create linear gradient
+     * Create linear gradient with addColorStop method
      * @param {number} x0 - Start x
      * @param {number} y0 - Start y
      * @param {number} x1 - End x
      * @param {number} y1 - End y
-     * @return {object} - Gradient object
+     * @return {object} - Gradient object with addColorStop method
      */
     createLinearGradient(x0, y0, x1, y1) {
-        return {
+        const gradient = {
             type: 'linear',
             x0, y0, x1, y1,
             colorStops: []
         };
+        
+        // Add addColorStop method to the gradient object
+        gradient.addColorStop = (offset, color) => {
+            gradient.colorStops.push({
+                offset: Math.max(0, Math.min(1, offset)),
+                color: this.parseColor(color)
+            });
+            // Sort by offset
+            gradient.colorStops.sort((a, b) => a.offset - b.offset);
+        };
+        
+        return gradient;
     }
 
     /*
-     * Create radial gradient
+     * Create radial gradient with addColorStop method
      * @param {number} x0 - Start center x
      * @param {number} y0 - Start center y
      * @param {number} r0 - Start radius
      * @param {number} x1 - End center x
      * @param {number} y1 - End center y
      * @param {number} r1 - End radius
-     * @return {object} - Gradient object
+     * @return {object} - Gradient object with addColorStop method
      */
     createRadialGradient(x0, y0, r0, x1, y1, r1) {
-        return {
+        const gradient = {
             type: 'radial',
             x0, y0, r0, x1, y1, r1,
             colorStops: []
         };
+        
+        // Add addColorStop method to the gradient object
+        gradient.addColorStop = (offset, color) => {
+            gradient.colorStops.push({
+                offset: Math.max(0, Math.min(1, offset)),
+                color: this.parseColor(color)
+            });
+            // Sort by offset
+            gradient.colorStops.sort((a, b) => a.offset - b.offset);
+        };
+        
+        return gradient;
+    }
+
+    /*
+     * Create conic gradient with addColorStop method
+     * @param {number} startAngle - Start angle in radians
+     * @param {number} x - Center x
+     * @param {number} y - Center y
+     * @return {object} - Gradient object with addColorStop method
+     */
+    createConicGradient(startAngle, x, y) {
+        const gradient = {
+            type: 'conic',
+            startAngle, x, y,
+            colorStops: []
+        };
+        
+        // Add addColorStop method to the gradient object
+        gradient.addColorStop = (offset, color) => {
+            gradient.colorStops.push({
+                offset: Math.max(0, Math.min(1, offset)),
+                color: this.parseColor(color)
+            });
+            // Sort by offset
+            gradient.colorStops.sort((a, b) => a.offset - b.offset);
+        };
+        
+        return gradient;
     }
 
     /*
@@ -5665,6 +6042,47 @@ class WebGLCanvas {
             b, d, f,
             0, 0, 1
         ];
+    }
+
+    /*
+     * Get current transform matrix
+     * @return {DOMMatrix} - Current transformation matrix as DOMMatrix
+     */
+    getTransform() {
+        const m = this.state.transform;
+        // Convert from 3x3 matrix to DOMMatrix (2D transform)
+        return new DOMMatrix([
+            m[0], m[3], m[1], m[4], m[2], m[5]
+        ]);
+    }
+
+    /*
+     * Set transform from DOMMatrix
+     * @param {DOMMatrix} matrix - Transform matrix to set
+     */
+    setTransformMatrix(matrix) {
+        this.state.transform = [
+            matrix.a, matrix.c, matrix.e,
+            matrix.b, matrix.d, matrix.f,
+            0, 0, 1
+        ];
+    }
+
+    /*
+     * Get current transform as array (a, b, c, d, e, f)
+     * @return {Array} - Transform values [a, b, c, d, e, f]
+     */
+    getTransformArray() {
+        const m = this.state.transform;
+        return [m[0], m[3], m[1], m[4], m[2], m[5]];
+    }
+
+    /*
+     * Create identity matrix
+     * @return {DOMMatrix} - Identity transform matrix
+     */
+    createIdentityTransform() {
+        return new DOMMatrix();
     }
 
     /*

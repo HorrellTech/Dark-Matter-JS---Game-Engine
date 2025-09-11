@@ -1,7 +1,7 @@
 class Engine {
     constructor(canvas, options = {}) {
         this.canvas = canvas;
-        this.useWebGL = options.useWebGL || false; // New option to enable WebGLCanvas
+        this.useWebGL = options.useWebGL || true; // New option to enable WebGLCanvas
 
         this.guiCanvas = document.createElement('canvas');
         this.guiCanvas.width = 800;
@@ -19,7 +19,7 @@ class Engine {
         this.backgroundCanvas.style.top = '0px';
         this.backgroundCanvas.style.pointerEvents = 'none';
 
-        this.ctx = canvas.getContext('2d');
+        //this.ctx = canvas.getContext('2d');
         this.scene = null;
         this.gameObjects = [];
         this.lastTime = 0;
@@ -47,18 +47,40 @@ class Engine {
         this.pixiRenderer = null;
 
         if (this.useWebGL && window.WebGLCanvas) {
-            // Use WebGLCanvas for GPU-accelerated rendering
-            this.ctx = new WebGLCanvas(this.canvas, {
-                enableFullscreen: false, // Disable built-in fullscreen to avoid conflicts
-                pixelWidth: this.canvas.width,
-                pixelHeight: this.canvas.height,
-                pixelScale: 1,
-                batchSize: 8000
-            });
-            console.log("Using WebGLCanvas for rendering");
+            try {
+                // Use WebGLCanvas for GPU-accelerated rendering
+                this.ctx = new WebGLCanvas(this.canvas, {
+                    enableFullscreen: false,
+                    pixelWidth: this.canvas.width,
+                    pixelHeight: this.canvas.height,
+                    pixelScale: 1,
+                    batchSize: 8000
+                });
+
+                // Check if WebGLCanvas actually initialized properly
+                if (this.ctx) {
+                    console.log("WebGLCanvas initialized successfully");
+                    console.log("WebGLCanvas methods:", Object.getOwnPropertyNames(this.ctx));
+                } else if (this.ctx && typeof this.ctx.init === 'function') {
+                    // Some WebGL contexts need explicit initialization
+                    //await this.ctx.init();
+                    console.log("WebGLCanvas initialized after init() call");
+                } else {
+                    console.warn("WebGLCanvas created but may not be ready");
+                    // Fallback to 2D context
+                    this.useWebGL = false;
+                    this.ctx = this.canvas.getContext('2d');
+                    console.log("Falling back to Canvas 2D context");
+                }
+            } catch (error) {
+                console.error("Failed to initialize WebGLCanvas:", error);
+                this.useWebGL = false;
+                this.ctx = this.canvas.getContext('2d');
+                console.log("Falling back to Canvas 2D context due to error");
+            }
         } else {
             // Fallback to standard 2D context
-            this.ctx = canvas.getContext('2d');
+            this.ctx = this.canvas.getContext('2d');
             console.log("Using standard Canvas 2D context");
         }
 
@@ -178,7 +200,7 @@ class Engine {
         }
     }
 
-    
+
     initializeViewport() {
         // Ensure viewport is properly initialized
         this.viewport.dirty = true;
@@ -1007,8 +1029,8 @@ class Engine {
 
         // Always fill with a solid color to prevent transparency issues
         // Use scene background color if available, otherwise default to black
-        const fillColor = (this.scene && this.scene.settings && this.scene.settings.backgroundColor) 
-            ? this.scene.settings.backgroundColor 
+        const fillColor = (this.scene && this.scene.settings && this.scene.settings.backgroundColor)
+            ? this.scene.settings.backgroundColor
             : '#000000'; // Default fallback
         this.ctx.fillStyle = fillColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1096,33 +1118,47 @@ class Engine {
             this.ctx.drawImage(this.guiCanvas, 0, 0);
             this.ctx.restore();
         }
+
+        if (this.ctx.flush) this.ctx.flush(); // Ensure all drawing commands are executed
     }
 
     applyViewportTransform() {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // Apply viewport transformations in the correct order
-
-        // 1. Translate to center for zoom and rotation
-        this.ctx.translate(centerX, centerY);
-
-        // 2. Apply rotation
-        if (this.viewport.angle && this.viewport.angle !== 0) {
+        /*if (this.useWebGL && this.ctx.setTransform && typeof this.ctx.setTransform === 'function') {
+            // For WebGLCanvas, use the matrix-based transform
             const radians = this.viewport.angle * Math.PI / 180;
-            this.ctx.rotate(radians);
-        }
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
 
-        // 3. Apply zoom
-        if (this.viewport.zoom && this.viewport.zoom !== 1) {
-            this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
-        }
+            // Create transformation matrix
+            const a = this.viewport.zoom * cos;
+            const b = -this.viewport.zoom * sin;
+            const c = this.viewport.zoom * sin;
+            const d = this.viewport.zoom * cos;
+            const e = centerX - this.viewport.x + this.viewport.shake.x;
+            const f = centerY - this.viewport.y + this.viewport.shake.y;
 
-        // 4. Translate back and apply position offset + shake
-        this.ctx.translate(
-            -centerX - this.viewport.x + this.viewport.shake.x,
-            -centerY - this.viewport.y + this.viewport.shake.y
-        );
+            this.ctx.setTransform(a, b, c, d, e, f);
+        } else {*/
+            // Standard 2D canvas transforms
+            this.ctx.translate(centerX, centerY);
+
+            if (this.viewport.angle && this.viewport.angle !== 0) {
+                const radians = this.viewport.angle * Math.PI / 180;
+                this.ctx.rotate(radians);
+            }
+
+            if (this.viewport.zoom && this.viewport.zoom !== 1) {
+                this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
+            }
+
+            this.ctx.translate(
+                -centerX - this.viewport.x + this.viewport.shake.x,
+                -centerY - this.viewport.y + this.viewport.shake.y
+            );
+        //}
     }
 
     loadScene(scene) {
@@ -1457,57 +1493,57 @@ class Engine {
      * Preload decal chunks around the viewport to ensure persistence
      */
     preloadChunks() {
-    // Calculate viewport bounds in world space correctly
-    // Visible world width/height is viewport dimensions divided by zoom
-    const halfVisibleWidth = (this.viewport.width / 2) / this.viewport.zoom;
-    const halfVisibleHeight = (this.viewport.height / 2) / this.viewport.zoom;
-    
-    const viewLeft = this.viewport.x - halfVisibleWidth;
-    const viewRight = this.viewport.x + halfVisibleWidth;
-    const viewTop = this.viewport.y - halfVisibleHeight;
-    const viewBottom = this.viewport.y + halfVisibleHeight;
+        // Calculate viewport bounds in world space correctly
+        // Visible world width/height is viewport dimensions divided by zoom
+        const halfVisibleWidth = (this.viewport.width / 2) / this.viewport.zoom;
+        const halfVisibleHeight = (this.viewport.height / 2) / this.viewport.zoom;
 
-    // Add buffer chunks around the viewport for safety
-    const buffer = this.preloadChunkRadius * this.chunkSize; // Use preloadChunkRadius as buffer distance
-    const minChunkX = Math.floor((viewLeft - buffer) / this.chunkSize) * this.chunkSize;
-    const maxChunkX = Math.floor((viewRight + buffer) / this.chunkSize) * this.chunkSize;
-    const minChunkY = Math.floor((viewTop - buffer) / this.chunkSize) * this.chunkSize;
-    const maxChunkY = Math.floor((viewBottom + buffer) / this.chunkSize) * this.chunkSize;
+        const viewLeft = this.viewport.x - halfVisibleWidth;
+        const viewRight = this.viewport.x + halfVisibleWidth;
+        const viewTop = this.viewport.y - halfVisibleHeight;
+        const viewBottom = this.viewport.y + halfVisibleHeight;
 
-    if (this.debugDecals) {
-        console.log(`Preloading chunks: view bounds (${viewLeft}, ${viewTop}) to (${viewRight}, ${viewBottom}), buffer: ${buffer}`);
-    }
+        // Add buffer chunks around the viewport for safety
+        const buffer = this.preloadChunkRadius * this.chunkSize; // Use preloadChunkRadius as buffer distance
+        const minChunkX = Math.floor((viewLeft - buffer) / this.chunkSize) * this.chunkSize;
+        const maxChunkX = Math.floor((viewRight + buffer) / this.chunkSize) * this.chunkSize;
+        const minChunkY = Math.floor((viewTop - buffer) / this.chunkSize) * this.chunkSize;
+        const maxChunkY = Math.floor((viewBottom + buffer) / this.chunkSize) * this.chunkSize;
 
-    // Preload all chunks that intersect or are near the viewport
-    for (let x = minChunkX; x <= maxChunkX; x += this.chunkSize) {
-        for (let y = minChunkY; y <= maxChunkY; y += this.chunkSize) {
-            const key = `${x}_${y}`;
-            if (!this.decalChunks.has(key)) {
-                this.decalChunks.set(key, new DecalChunk(x, y, this.chunkSize));
-                if (this.debugDecals) {
-                    console.log(`Preloaded chunk: ${key}`);
+        if (this.debugDecals) {
+            console.log(`Preloading chunks: view bounds (${viewLeft}, ${viewTop}) to (${viewRight}, ${viewBottom}), buffer: ${buffer}`);
+        }
+
+        // Preload all chunks that intersect or are near the viewport
+        for (let x = minChunkX; x <= maxChunkX; x += this.chunkSize) {
+            for (let y = minChunkY; y <= maxChunkY; y += this.chunkSize) {
+                const key = `${x}_${y}`;
+                if (!this.decalChunks.has(key)) {
+                    this.decalChunks.set(key, new DecalChunk(x, y, this.chunkSize));
+                    if (this.debugDecals) {
+                        console.log(`Preloaded chunk: ${key}`);
+                    }
                 }
             }
         }
-    }
 
-    // Optional: Unload distant chunks to prevent memory bloat
-    const unloadBuffer = buffer * 2; // Unload beyond 2x the buffer
-    const unloadMinX = minChunkX - unloadBuffer;
-    const unloadMaxX = maxChunkX + unloadBuffer;
-    const unloadMinY = minChunkY - unloadBuffer;
-    const unloadMaxY = maxChunkY + unloadBuffer;
+        // Optional: Unload distant chunks to prevent memory bloat
+        const unloadBuffer = buffer * 2; // Unload beyond 2x the buffer
+        const unloadMinX = minChunkX - unloadBuffer;
+        const unloadMaxX = maxChunkX + unloadBuffer;
+        const unloadMinY = minChunkY - unloadBuffer;
+        const unloadMaxY = maxChunkY + unloadBuffer;
 
-    for (const [key, chunk] of this.decalChunks) {
-        const [cx, cy] = key.split('_').map(Number);
-        if (cx < unloadMinX || cx > unloadMaxX || cy < unloadMinY || cy > unloadMaxY) {
-            if (this.debugDecals) {
-                console.log(`Unloading distant chunk: ${key}`);
+        for (const [key, chunk] of this.decalChunks) {
+            const [cx, cy] = key.split('_').map(Number);
+            if (cx < unloadMinX || cx > unloadMaxX || cy < unloadMinY || cy > unloadMaxY) {
+                if (this.debugDecals) {
+                    console.log(`Unloading distant chunk: ${key}`);
+                }
+                this.decalChunks.delete(key);
             }
-            this.decalChunks.delete(key);
         }
     }
-}
 
     /**
  * Store original positions on objects before cloning for runtime
@@ -1611,12 +1647,6 @@ class Engine {
     resizeCanvas() {
         if (!this.canvas) return;
 
-        // If using WebGLCanvas, call its resize method
-        if (this.useWebGL && this.ctx.resize) {
-            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
-            return;
-        }
-
         const container = this.canvas.parentElement;
         if (!container) return;
 
@@ -1634,6 +1664,14 @@ class Engine {
         const viewportWidth = this.viewport.width || 800;
         const viewportHeight = this.viewport.height || 600;
         const aspectRatio = viewportWidth / viewportHeight;
+
+        const pixelRatio = this.renderConfig.pixelRatio;
+
+        // If using WebGLCanvas, call its resize method
+        if (this.useWebGL && this.ctx.resize) {
+            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
+            return;
+        }
 
         // Set physical dimensions based on scaling mode
         let physicalWidth, physicalHeight;
@@ -1667,9 +1705,6 @@ class Engine {
             physicalWidth = viewportWidth * scale;
             physicalHeight = viewportHeight * scale;
         }
-
-        // Apply pixel ratio for high-DPI displays
-        const pixelRatio = this.renderConfig.pixelRatio;
 
         // Ensure we don't have zero dimensions
         physicalWidth = Math.max(1, Math.floor(physicalWidth));
