@@ -1,7 +1,6 @@
 class Engine {
-    constructor(canvas, options = {}) {
+    constructor(canvas) {
         this.canvas = canvas;
-        this.useWebGL = options.useWebGL || false; // New option to enable WebGLCanvas
 
         this.guiCanvas = document.createElement('canvas');
         this.guiCanvas.width = 800;
@@ -45,22 +44,6 @@ class Engine {
 
         this.usePixi = false; // Set to true to enable Pixi.js
         this.pixiRenderer = null;
-
-        if (this.useWebGL && window.WebGLCanvas) {
-            // Use WebGLCanvas for GPU-accelerated rendering
-            this.ctx = new WebGLCanvas(this.canvas, {
-                enableFullscreen: false, // Disable built-in fullscreen to avoid conflicts
-                pixelWidth: this.canvas.width,
-                pixelHeight: this.canvas.height,
-                pixelScale: 1,
-                batchSize: 8000
-            });
-            console.log("Using WebGLCanvas for rendering");
-        } else {
-            // Fallback to standard 2D context
-            this.ctx = canvas.getContext('2d');
-            console.log("Using standard Canvas 2D context");
-        }
 
         // Track viewport settings
         this.viewport = {
@@ -1610,12 +1593,6 @@ class Engine {
 
     resizeCanvas() {
         if (!this.canvas) return;
-
-        // If using WebGLCanvas, call its resize method
-        if (this.useWebGL && this.ctx.resize) {
-            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
-            return;
-        }
 
         const container = this.canvas.parentElement;
         if (!container) return;

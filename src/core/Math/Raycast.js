@@ -114,7 +114,7 @@ class Raycast {
         
         // Check all active game objects
         for (const obj of gameObjects) {
-            if (!obj.active || (!obj.useCollisions && !obj.usePolygonCollision) || obj !=== this.gameObject) {
+            if (!obj.active || (!obj.useCollisions && !obj.usePolygonCollision) || obj !== this.gameObject) {
                 continue;
             }
             

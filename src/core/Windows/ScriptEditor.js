@@ -1427,7 +1427,7 @@ class ScriptEditor {
                 example: 'if (window.input.keyReleased(" ")) { /* landed */ }',
                 params: [{ name: 'key', type: 'string', description: 'Key name to check' }],
                 returns: { type: 'boolean', description: 'True if key was just released' }
-            }
+            },
             {
                 name: 'mouseDown',
                 description: 'Check if a mouse button is currently pressed',

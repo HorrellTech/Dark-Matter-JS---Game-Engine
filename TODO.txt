@@ -26,3 +26,6 @@
 - Fix ground decal chunk system to reach the edges of the viewport correctly
 
 - Fix infinite texture generator not chunking correctly
+
+- Add more physics functionality, like wind and wind direction, wind zone module that adds force to any rigidbodies 
+    within its rectangle radius etc
