@@ -259,13 +259,16 @@ class ParticleSystem extends Module {
 
         // Image particle properties
         if (this.useImageParticles) {
+            // Enhanced image asset property with AssetManager integration - MATCH SpriteRenderer
             this.exposeProperty("imageAsset", "asset", this.imageAsset, {
                 description: "Image for particles",
                 assetType: 'image',
                 fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+                onAssetSelected: (assetPath) => {
+                    this.setParticleImage(assetPath);  // Use setParticleImage instead of handleImageDrop
+                },
                 onDropCallback: this.handleImageDrop.bind(this),
                 showImageDropdown: true
-
             });
 
             this.exposeProperty("imageScaleMode", "enum", this.imageScaleMode, {
@@ -485,6 +488,9 @@ class ParticleSystem extends Module {
                     description: "Image for particles",
                     assetType: 'image',
                     fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+                    onAssetSelected: (assetPath) => {
+                        this.setParticleImage(assetPath);  // Use setParticleImage instead of handleImageDrop
+                    },
                     onDropCallback: this.handleImageDrop.bind(this),
                     showImageDropdown: true
                 })
@@ -641,6 +647,7 @@ class ParticleSystem extends Module {
         }
 
         try {
+            // Create new asset reference - MATCH SpriteRenderer approach
             if (window.AssetReference) {
                 this.imageAsset = new window.AssetReference(path, 'image');
             } else {
@@ -648,29 +655,23 @@ class ParticleSystem extends Module {
                     path: path,
                     type: 'image',
                     embedded: false,
-                    load: () => this.fallbackLoadImage(path)
+                    load: () => window.assetManager ?
+                        window.assetManager.getAssetByPath(path) :
+                        this.fallbackLoadImage(path)
                 };
-            }
-
-            // Add to AssetManager cache for export
-            if (window.assetManager && typeof window.assetManager.addAssetToCache === 'function') {
-                // You may want to pass the image data URL if available
-                let imageContent = null;
-                if (this._image && this._image.src && this._image.src.startsWith('data:image')) {
-                    imageContent = this._image.src;
-                }
-                window.assetManager.addAssetToCache(path, imageContent || path, 'image/png');
             }
 
             console.log('Created imageAsset:', this.imageAsset);
 
+            // Load via AssetManager - MATCH SpriteRenderer approach
             const image = await this.loadImage();
             if (image) {
-                console.log('Particle image loaded successfully:', image.src);
+                console.log('Particle image loaded successfully:', image.src || 'data URL');
             } else {
                 console.warn('Failed to load particle image');
             }
 
+            // Force refresh of UI and canvas
             if (window.editor) {
                 window.editor.refreshCanvas();
             }
@@ -681,12 +682,13 @@ class ParticleSystem extends Module {
     }
 
     async loadImage() {
+        // If we have embedded data and no path, don't try to load from path
         if (this.imageAsset && this.imageAsset.embedded && !this.imageAsset.path) {
             console.log('Skipping path-based loading for embedded image data - already loaded');
             return this._image;
         }
 
-        if (!this.imageAsset || !this.imageAsset.path) {
+        if (!this.imageAsset || (!this.imageAsset.path && !this.imageAsset.embedded)) {
             if (!this._isImageLoaded && (!this.imageAsset || !this.imageAsset.embedded)) {
                 console.warn('No particle image asset path to load');
             }
@@ -696,61 +698,50 @@ class ParticleSystem extends Module {
         try {
             console.log('Loading particle image:', this.imageAsset.path);
 
-            if (this.imageAsset.embedded && this.imageAsset.load) {
-                this._image = await this.imageAsset.load();
-                console.log('Particle image loaded from embedded data successfully');
-                return this._image;
-            }
-
-            // Try FileBrowser first (editor mode)
-            if (window.editor && window.editor.fileBrowser) {
-                try {
-                    this._image = await this.loadImageFromFileBrowser(this.imageAsset.path);
-                    console.log('Particle image loaded via FileBrowser successfully');
-                    this._imageWidth = this._image.naturalWidth || this._image.width;
-                    this._imageHeight = this._image.naturalHeight || this._image.height;
-                    this._isImageLoaded = true;
-                    return this._image;
-                } catch (fileBrowserError) {
-                    console.warn('FileBrowser failed, trying asset manager:', fileBrowserError.message);
+            // PRIORITY 1: Load from AssetManager (both editor and exported games)
+            if (this.imageAsset.path) {
+                const asset = await this.loadFromAssetManager(this.imageAsset.path);
+                if (asset) {
+                    return asset;
                 }
             }
 
-            // Try asset manager (runtime mode)
-            if (window.assetManager) {
+            // PRIORITY 2: If we're in editor mode with FileBrowser, load from FileBrowser
+            if (window.editor && window.editor.fileBrowser && this.imageAsset.path) {
                 try {
-                    const loadedImage = await window.assetManager.loadAsset(this.imageAsset.path);
-                    console.log('Particle image loaded via asset manager successfully');
-
-                    // Ensure we have a valid HTMLImageElement
-                    if (loadedImage && loadedImage instanceof HTMLImageElement) {
-                        this._image = loadedImage;
-                        this._imageWidth = loadedImage.naturalWidth || loadedImage.width;
-                        this._imageHeight = loadedImage.naturalHeight || loadedImage.height;
+                    const image = await this.loadImageFromFileBrowser(this.imageAsset.path);
+                    if (image) {
+                        console.log('Particle image loaded via FileBrowser successfully');
+                        this._image = image;
+                        this._imageWidth = image.naturalWidth || image.width;
+                        this._imageHeight = image.naturalHeight || image.height;
                         this._isImageLoaded = true;
-
-                        // Validate the image is actually loaded
-                        if (this._image.complete && this._imageWidth > 0 && this._imageHeight > 0) {
-                            console.log('Particle image validated successfully, dimensions:', this._imageWidth, 'x', this._imageHeight);
-                            return this._image;
-                        } else {
-                            console.warn('Asset manager returned invalid image, trying fallback');
-                            throw new Error('Invalid image from asset manager');
-                        }
-                    } else {
-                        console.warn('Asset manager did not return a valid HTMLImageElement');
-                        throw new Error('Invalid image type from asset manager');
+                        return image;
                     }
-                } catch (assetManagerError) {
-                    console.warn('Asset manager failed, trying fallback:', assetManagerError.message);
+                } catch (error) {
+                    console.warn('FileBrowser loading failed, trying fallback:', error);
                 }
             }
 
-            // Fallback to direct loading
-            console.log('Using fallback loading method for particle image');
-            this._image = await this.fallbackLoadImage(this.imageAsset.path);
-            console.log('Particle image loaded successfully via fallback:', this.imageAsset.path);
-            return this._image;
+            // If we have embedded data, use the load function
+            if (this.imageAsset.embedded && typeof this.imageAsset.load === 'function') {
+                console.log('Loading embedded particle image data');
+                const image = await this.imageAsset.load();
+                if (image) {
+                    this._image = image;
+                    this._imageWidth = image.naturalWidth || image.width;
+                    this._imageHeight = image.naturalHeight || image.height;
+                    this._isImageLoaded = true;
+                    return image;
+                }
+            }
+
+            // Final fallback for exported games
+            if (this.imageAsset.path) {
+                return await this.fallbackLoadImage(this.imageAsset.path);
+            }
+
+            return null;
 
         } catch (error) {
             console.error('Error loading particle image:', error);
@@ -761,8 +752,38 @@ class ParticleSystem extends Module {
     }
 
     /**
- * Force reload the particle image
- */
+     * Load image from AssetManager
+     * @param {string} path - Asset path
+     * @returns {Promise<HTMLImageElement>} - Loaded image
+     */
+    async loadFromAssetManager(path) {
+        if (!path) return null;
+
+        try {
+            // Always try to load from AssetManager first
+            if (window.assetManager) {
+                const asset = await window.assetManager.getAssetByPath(path);
+                if (asset && asset instanceof HTMLImageElement) {
+                    this._image = asset;
+                    this._imageWidth = asset.naturalWidth || asset.width;
+                    this._imageHeight = asset.naturalHeight || asset.height;
+                    this._isImageLoaded = true;
+                    console.log('Particle image loaded from AssetManager:', path);
+                    return asset;
+                }
+            }
+
+            // Fallback to direct loading if not in AssetManager
+            return await this.fallbackLoadImage(path);
+        } catch (error) {
+            console.error('Error loading particle image from AssetManager:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Force reload the particle image
+     */
     async forceReloadImage() {
         console.log('Force reloading particle image...');
         this._image = null;
@@ -807,15 +828,89 @@ class ParticleSystem extends Module {
 
     fallbackLoadImage(path) {
         return new Promise((resolve, reject) => {
-            const img = new Image();
-
             if (!path) {
                 reject(new Error('No image path provided'));
                 return;
             }
 
+            const img = new Image();
+
+            // For exported games, if asset manager has no cache, that's a critical error
+            if (window.assetManager && window.assetManager.cache) {
+                const normalizedPath = window.assetManager.normalizePath ?
+                    window.assetManager.normalizePath(path) :
+                    path.replace(/^\/+/, '').replace(/\\/g, '/');
+
+                console.log('Looking for cached particle asset:', normalizedPath);
+                console.log('Available cached assets:', Object.keys(window.assetManager.cache));
+
+                // Try multiple path variations for lookup
+                const pathVariations = [
+                    path,
+                    normalizedPath,
+                    path.replace(/^[\/\\]+/, ''),
+                    path.replace(/\\/g, '/'),
+                    path.split('/').pop(),
+                    path.split('\\').pop(),
+                    decodeURIComponent(path),
+                    '/' + path.replace(/^[\/\\]+/, ''),
+                    '/' + normalizedPath,
+                ];
+
+                let cached = null;
+                let foundPath = null;
+
+                for (const variation of pathVariations) {
+                    if (window.assetManager.cache[variation]) {
+                        cached = window.assetManager.cache[variation];
+                        foundPath = variation;
+                        console.log('Found cached particle asset with path variation:', foundPath);
+                        break;
+                    }
+                }
+
+                if (cached) {
+                    if (cached instanceof HTMLImageElement) {
+                        console.log('Using cached HTMLImageElement for particle');
+                        this._image = cached;
+                        this._imageWidth = cached.naturalWidth || cached.width;
+                        this._imageHeight = cached.naturalHeight || cached.height;
+                        this._isImageLoaded = true;
+                        resolve(cached);
+                        return;
+                    } else if (typeof cached === 'string' && cached.startsWith('data:')) {
+                        console.log('Loading cached data URL for particle');
+                        img.src = cached;
+                    } else if (cached.content && typeof cached.content === 'string' && cached.content.startsWith('data:')) {
+                        console.log('Loading cached asset content as data URL for particle');
+                        img.src = cached.content;
+                    } else {
+                        console.error('Cached particle asset is not a valid image format:', typeof cached, cached);
+                        reject(new Error(`Cached asset for ${path} is not a valid image`));
+                        return;
+                    }
+                } else {
+                    // Critical error for exported games
+                    const isExportedGame = window.location.protocol === 'file:' || !window.fileBrowser;
+                    if (isExportedGame) {
+                        const errorMsg = `Particle image not found in asset cache: ${path}. This is likely an export issue. Available assets: ${Object.keys(window.assetManager.cache).join(', ')}`;
+                        console.error(errorMsg);
+                        reject(new Error(errorMsg));
+                        return;
+                    } else {
+                        // Development mode - try direct loading
+                        console.warn('Particle asset not in cache, trying direct load for development mode');
+                        img.src = path;
+                    }
+                }
+            } else {
+                console.warn('No asset manager or cache available for particle image');
+                // Try direct loading
+                img.src = path;
+            }
+
             img.onload = () => {
-                console.log('Particle image loaded successfully:', img.src);
+                console.log('Particle image loaded successfully:', img.src.substring ? img.src.substring(0, 100) + '...' : 'Image loaded');
                 this._image = img;
                 this._imageWidth = img.naturalWidth || img.width;
                 this._imageHeight = img.naturalHeight || img.height;
@@ -825,10 +920,8 @@ class ParticleSystem extends Module {
 
             img.onerror = (error) => {
                 console.error('Error loading particle image:', path, error);
-                reject(new Error(`Error loading particle image: ${path}`));
+                reject(new Error(`Failed to load particle image: ${path}`));
             };
-
-            img.src = path;
         });
     }
 
@@ -1582,9 +1675,13 @@ class ParticleSystem extends Module {
         json.gradientType = this.gradientType;
         json.gradientDirection = this.gradientDirection;
 
-        // Image properties
+        // Image properties - MATCH SpriteRenderer approach
         json.useImageParticles = this.useImageParticles;
-        json.imageAsset = this.imageAsset ? (typeof this.imageAsset.toJSON === 'function' ? this.imageAsset.toJSON() : { path: this.imageAsset.path }) : null;
+        json.imageAsset = this.imageAsset ? {
+            path: this.imageAsset.path,
+            type: 'image',
+            embedded: this.imageAsset.embedded || false
+        } : null;
         json.imageScaleMode = this.imageScaleMode;
         json.imageRotation = this.imageRotation;
         json.imageFlipX = this.imageFlipX;
@@ -1600,25 +1697,7 @@ class ParticleSystem extends Module {
         json.enableBatching = this.enableBatching;
         json.cullingEnabled = this.cullingEnabled;
 
-        // Save image data if available
-        if (this._image && this._image.src && this._image.src.startsWith('data:image')) {
-            const imageKey = this.imageAsset?.path || `particle_${Date.now()}`;
-            if (window.assetManager && window.assetManager.cache) {
-                if (!window.assetManager.cache[imageKey]) {
-                    window.assetManager.cache[imageKey] = this._image.src;
-                    console.log('Stored particle image in AssetManager cache:', imageKey);
-                }
-                json.imageData = imageKey;
-            } else {
-                // Fallback: store raw data directly
-                json.imageDataRaw = this._image.src;
-            }
-        } else {
-            json.imageData = null;
-            json.imageDataRaw = null;
-        }
-        json.useEmbeddedData = true;
-
+        // DON'T store image data here - let AssetManager handle it
         return json;
     }
 
@@ -1681,66 +1760,37 @@ class ParticleSystem extends Module {
         if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
         if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
 
-        // Handle image loading - MATCH SpriteRenderer exactly
-        const hasExistingImage = this._image && this._isImageLoaded;
+        // Restore asset reference and load from AssetManager - MATCH SpriteRenderer approach
+        if (json.imageAsset && json.imageAsset.path) {
+            console.log('Loading particle image from AssetManager:', json.imageAsset.path);
 
-        // Load image from AssetManager cache using imageData key
-        if (json.useEmbeddedData && json.imageData && window.assetManager && window.assetManager.cache) {
-            const imageData = window.assetManager.cache[json.imageData];
-            if (imageData) {
-                this.loadImageFromData(imageData).then(() => {
-                    console.log('Loaded particle image from AssetManager cache');
-                }).catch(error => {
-                    console.error('Failed to load image from cache:', error);
-                });
-                this.imageAsset = {
-                    path: null,
-                    type: 'image',
-                    embedded: true,
-                    load: () => this.loadImageFromData(imageData)
-                };
+            try {
+                if (window.AssetReference) {
+                    this.imageAsset = new window.AssetReference(json.imageAsset.path, 'image');
+                } else {
+                    this.imageAsset = {
+                        path: json.imageAsset.path,
+                        type: 'image',
+                        embedded: json.imageAsset.embedded || false,
+                        load: () => window.assetManager ?
+                            window.assetManager.getAssetByPath(json.imageAsset.path) :
+                            this.loadFromAssetManager(json.imageAsset.path)
+                    };
+                }
+
+                // Load the asset from AssetManager
+                this.loadFromAssetManager(json.imageAsset.path);
+            } catch (error) {
+                console.error("Error restoring particle image asset:", error);
             }
-        } else if (json.imageDataRaw) {
-            // Fallback: load directly from raw data
-            this.loadImageFromData(json.imageDataRaw).then(() => {
-                console.log('Loaded particle image from raw data');
-            }).catch(error => {
-                console.error('Failed to load image from raw data:', error);
-            });
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageDataRaw)
-            };
-        } else if (json.imageData && json.useEmbeddedData !== false) {
-            // Legacy support for imageData without useEmbeddedData flag
-            this.loadImageFromData(json.imageData).then(() => {
-                console.log('Successfully loaded particle image from legacy embedded data');
-            }).catch(error => {
-                console.error('Failed to load legacy embedded particle image data:', error);
-            });
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageData)
-            };
         } else {
-            // No valid image data found
-            if (!hasExistingImage) {
-                console.log('No particle image data found in JSON, clearing image asset');
-                this.imageAsset = {
-                    path: null,
-                    type: 'image',
-                    embedded: false,
-                    load: () => Promise.resolve(null)
-                };
-                this._image = null;
-                this._isImageLoaded = false;
-            } else {
-                console.log('No particle image data in JSON, but keeping existing loaded image');
-            }
+            this.imageAsset = {
+                path: null,
+                type: 'image',
+                load: () => Promise.resolve(null)
+            };
+            this._image = null;
+            this._isImageLoaded = false;
         }
     }
 }

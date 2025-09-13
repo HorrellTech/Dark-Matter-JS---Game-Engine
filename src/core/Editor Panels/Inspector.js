@@ -1458,9 +1458,18 @@ class Inspector {
     generateSpriteRendererUI(module) {
         // Create image preview display
         const hasImage = module.imageAsset && (typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path);
-        const imageSrc = module._image ? module._image.src : '';
-        const imagePath = typeof module.imageAsset === 'string' ? module.imageAsset :
-            (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
+        
+        // Get the proper image URL for preview
+        let imageSrc = '';
+        let imagePath = 'No image selected';
+        
+        if (hasImage) {
+            imagePath = typeof module.imageAsset === 'string' ? module.imageAsset :
+                (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
+            
+            // Use the asset URL method to get the proper preview URL
+            imageSrc = this.getAssetUrl(imagePath);
+        }
 
         return `
             <div class="property-row">
@@ -1470,7 +1479,12 @@ class Inspector {
                         title="${hasImage ? `Path: ${imagePath}` : 'Drag an image here or click to select'}"
                         data-property="imageAsset">
                         ${hasImage ?
-                `<img src="${imageSrc}" alt="Sprite">
+                `<img src="${imageSrc}" alt="Sprite" 
+                            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="image-fallback" style="display:none;">
+                                <i class="fas fa-image"></i>
+                                <span>Image Error</span>
+                            </div>
                             <div class="image-path">${this.formatImagePath(imagePath)}</div>`
                 : '<i class="fas fa-image"></i><div>No Image</div>'}
                     </div>
@@ -2074,10 +2088,14 @@ class Inspector {
                 }
 
                 const filename = file.name || file.path.split('/').pop();
+                
+                // Use proper asset URL for preview
+                const imageUrl = this.getAssetUrl(file.path);
 
                 item.innerHTML = `
                 <div class="project-image-thumbnail">
-                    <img src="${file.path}" alt="${filename}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <img src="${imageUrl}" alt="${filename}" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                     <div class="image-error" style="display:none; color:#888; text-align:center; padding:10px;">
                         <i class="fas fa-image"></i><br>
                         Image Error
@@ -2095,7 +2113,7 @@ class Inspector {
                     // Add selected class to this item
                     item.classList.add('selected');
 
-                    // Set the image property
+                    // Set the image property using the file path (not the URL)
                     this.setModuleImageProperty(module, propertyName, file.path);
 
                     // Refresh UI
@@ -5099,6 +5117,324 @@ class Inspector {
     }
 
     /**
+     * Check if drag event contains valid assets for the specified type
+     */
+    isValidAssetDrag(dataTransfer, assetType) {
+        // Check for files (from OS)
+        if (dataTransfer.items && dataTransfer.items.length > 0) {
+            for (let item of dataTransfer.items) {
+                if (item.kind === 'file') {
+                    const file = item.getAsFile();
+                    if (file && this.isValidAssetFile(file, assetType)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check for JSON data (from internal file browser)
+        if (dataTransfer.types.includes('application/json')) {
+            try {
+                const jsonData = dataTransfer.getData('application/json');
+                const data = JSON.parse(jsonData);
+                // Check if it's a valid asset file
+                if (data.path && this.isValidAssetPath(data.path, assetType)) {
+                    return true;
+                }
+            } catch (e) {
+                // Not valid JSON
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a file is valid for the specified asset type
+     */
+    isValidAssetFile(file, assetType) {
+        if (!file || !file.type) return false;
+
+        switch (assetType) {
+            case 'image':
+                return file.type.startsWith('image/');
+            case 'audio':
+                return file.type.startsWith('audio/');
+            case 'video':
+                return file.type.startsWith('video/');
+            case 'text':
+                return file.type.startsWith('text/');
+            default:
+                return true; // Accept any file for generic assets
+        }
+    }
+
+    /**
+     * Check if a path is valid for the specified asset type
+     */
+    isValidAssetPath(path, assetType) {
+        if (!path || typeof path !== 'string') return false;
+
+        const lowerPath = path.toLowerCase();
+
+        switch (assetType) {
+            case 'image':
+                const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'];
+                return imageExtensions.some(ext => lowerPath.endsWith(ext));
+            case 'audio':
+                const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac'];
+                return audioExtensions.some(ext => lowerPath.endsWith(ext));
+            case 'video':
+                const videoExtensions = ['.mp4', '.webm', '.ogv', '.mov', '.avi'];
+                return videoExtensions.some(ext => lowerPath.endsWith(ext));
+            case 'text':
+                const textExtensions = ['.txt', '.json', '.xml', '.csv'];
+                return textExtensions.some(ext => lowerPath.endsWith(ext));
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Extract asset path from drop event
+     */
+    async getAssetPathFromDrop(dataTransfer, assetType) {
+        // Check for files directly dropped from OS
+        if (dataTransfer.files && dataTransfer.files.length > 0) {
+            const file = dataTransfer.files[0];
+
+            // Validate it's the correct asset type
+            if (!this.isValidAssetFile(file, assetType)) {
+                console.warn(`Dropped file is not a valid ${assetType}:`, file.type);
+                return null;
+            }
+
+            // Handle through asset manager if available
+            if (window.assetManager && typeof window.assetManager.addAsset === 'function') {
+                try {
+                    const assetPath = await window.assetManager.addAsset(file, assetType);
+                    return assetPath;
+                } catch (error) {
+                    console.error('Error adding asset via asset manager:', error);
+                }
+            }
+
+            // Fallback to file browser
+            const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
+            if (fileBrowser && typeof fileBrowser.handleFileUpload === 'function') {
+                try {
+                    await fileBrowser.handleFileUpload(file);
+                    const assetPath = `${fileBrowser.currentPath}/${file.name}`;
+                    
+                    // Register with asset manager if available
+                    if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
+                        window.assetManager.registerAsset(assetPath, assetType);
+                    }
+                    
+                    return assetPath;
+                } catch (error) {
+                    console.error('Error uploading file via file browser:', error);
+                }
+            }
+
+            console.warn('No asset manager or file browser available for file upload');
+            return null;
+        }
+
+        // Check for JSON data (from internal drag & drop from file browser)
+        const jsonData = dataTransfer.getData('application/json');
+        if (jsonData) {
+            try {
+                const data = JSON.parse(jsonData);
+                
+                // Handle array of items (from file browser)
+                if (Array.isArray(data) && data.length > 0) {
+                    const item = data[0];
+                    if (item.path && this.isValidAssetPath(item.path, assetType)) {
+                        // Register with asset manager if available
+                        if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
+                            window.assetManager.registerAsset(item.path, assetType);
+                        }
+                        // Return the asset path (not a URL)
+                        return item.path;
+                    }
+                }
+                
+                // Handle single item
+                if (data.path && this.isValidAssetPath(data.path, assetType)) {
+                    // Register with asset manager if available
+                    if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
+                        window.assetManager.registerAsset(data.path, assetType);
+                    }
+                    // Return the asset path (not a URL)
+                    return data.path;
+                }
+            } catch (e) {
+                console.warn('Error parsing dropped JSON data:', e);
+            }
+        }
+
+        // Check for plain text (URLs) - but convert to asset path if possible
+        const textData = dataTransfer.getData('text/plain');
+        if (textData && this.isValidAssetPath(textData, assetType)) {
+            // For URLs, register with asset manager if available
+            if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
+                window.assetManager.registerAsset(textData, assetType);
+            }
+            return textData;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get assets from file browser (fallback when asset manager is not available)
+     */
+    async getAssetsFromFileBrowser(assetType) {
+        const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
+        if (!fileBrowser || typeof fileBrowser.getAllFiles !== 'function') {
+            return [];
+        }
+
+        try {
+            const allFiles = await fileBrowser.getAllFiles();
+            return allFiles
+                .filter(file => file.type === 'file' && this.isValidAssetPath(file.path, assetType))
+                .map(file => ({
+                    path: file.path,
+                    name: file.name || file.path.split('/').pop(),
+                    displayName: file.name || file.path.split('/').pop()
+                }));
+        } catch (error) {
+            console.error('Error getting assets from file browser:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Generate asset grid item HTML
+     */
+    generateAssetGridItem(asset, assetType) {
+        const name = asset.name || asset.path.split('/').pop();
+        
+        switch (assetType) {
+            case 'image':
+                return `
+                    <div class="asset-thumbnail-container">
+                        <img src="${asset.path}" alt="${name}" class="asset-thumbnail" 
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <div class="asset-fallback" style="display:none;">
+                            <i class="fas fa-image"></i>
+                        </div>
+                    </div>
+                    <div class="asset-name" title="${asset.path}">${name}</div>
+                `;
+            case 'audio':
+                return `
+                    <div class="asset-thumbnail-container">
+                        <div class="asset-icon">
+                            <i class="fas fa-music"></i>
+                        </div>
+                    </div>
+                    <div class="asset-name" title="${asset.path}">${name}</div>
+                `;
+            case 'video':
+                return `
+                    <div class="asset-thumbnail-container">
+                        <div class="asset-icon">
+                            <i class="fas fa-video"></i>
+                        </div>
+                    </div>
+                    <div class="asset-name" title="${asset.path}">${name}</div>
+                `;
+            default:
+                return `
+                    <div class="asset-thumbnail-container">
+                        <div class="asset-icon">
+                            <i class="fas fa-file"></i>
+                        </div>
+                    </div>
+                    <div class="asset-name" title="${asset.path}">${name}</div>
+                `;
+        }
+    }
+
+    /**
+     * Close asset dialog
+     */
+    closeAssetDialog(dialog) {
+        if (dialog && dialog.parentNode) {
+            document.body.removeChild(dialog);
+        }
+    }
+
+    /**
+     * Upload new asset
+     */
+    async uploadNewAsset(assetType, module, propName, dialog) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        
+        // Set accept attribute based on asset type
+        switch (assetType) {
+            case 'image':
+                input.accept = 'image/*';
+                break;
+            case 'audio':
+                input.accept = 'audio/*';
+                break;
+            case 'video':
+                input.accept = 'video/*';
+                break;
+            case 'text':
+                input.accept = '.txt,.json,.xml,.csv';
+                break;
+        }
+
+        input.onchange = async (e) => {
+            if (e.target.files && e.target.files.length > 0) {
+                const file = e.target.files[0];
+                
+                try {
+                    let assetPath;
+                    
+                    // Try asset manager first
+                    if (window.assetManager && typeof window.assetManager.addAsset === 'function') {
+                        assetPath = await window.assetManager.addAsset(file, assetType);
+                    } 
+                    // Fallback to file browser
+                    else {
+                        const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
+                        if (fileBrowser && typeof fileBrowser.handleFileUpload === 'function') {
+                            await fileBrowser.handleFileUpload(file);
+                            assetPath = `${fileBrowser.currentPath}/${file.name}`;
+                            
+                            // Register with asset manager if available
+                            if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
+                                window.assetManager.registerAsset(assetPath, assetType);
+                            }
+                        }
+                    }
+
+                    if (assetPath) {
+                        this.setAssetProperty(module, propName, assetPath);
+                        this.refreshModuleUI(module);
+                        this.editor?.refreshCanvas();
+                        this.closeAssetDialog(dialog);
+                    } else {
+                        alert('Failed to upload asset. No asset manager or file browser available.');
+                    }
+                } catch (error) {
+                    console.error('Error uploading asset:', error);
+                    alert(`Error uploading asset: ${error.message}`);
+                }
+            }
+        };
+
+        input.click();
+    }
+
+    /**
     * Set up drag and drop for image properties
     * @param {HTMLElement} element - The element that should accept image drops
     * @param {Module} module - The module with the image property
@@ -5815,8 +6151,8 @@ class Inspector {
     }
 
     /**
- * Generate asset preview HTML
- */
+     * Generate asset preview HTML
+     */
     generateAssetPreview(path, assetType) {
         if (!path) {
             return `<span class="drop-hint">Drop ${assetType} here</span>`;
@@ -5824,9 +6160,16 @@ class Inspector {
 
         switch (assetType) {
             case 'image':
+                // Use asset manager or file browser to get the proper URL
+                const imageUrl = this.getAssetUrl(path);
                 return `
                 <div class="image-preview-container">
-                    <img src="${path}" alt="Asset Preview" class="asset-thumbnail">
+                    <img src="${imageUrl}" alt="Asset Preview" class="asset-thumbnail" 
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="asset-fallback" style="display:none;">
+                        <i class="fas fa-image"></i>
+                        <span>Image Error</span>
+                    </div>
                     <div class="asset-path-display">${this.formatImagePath(path)}</div>
                 </div>
             `;
@@ -5845,6 +6188,33 @@ class Inspector {
                 </div>
             `;
         }
+    }
+
+    /**
+     * Get the proper URL for an asset path
+     */
+    getAssetUrl(path) {
+        if (!path) return '';
+
+        // Check if asset manager is available and has a method to get URLs
+        if (window.assetManager && typeof window.assetManager.getAssetUrl === 'function') {
+            return window.assetManager.getAssetUrl(path);
+        }
+
+        // Check if file browser can provide the URL
+        if (this.editor?.fileBrowser && typeof this.editor.fileBrowser.getFileUrl === 'function') {
+            return this.editor.fileBrowser.getFileUrl(path);
+        }
+
+        // Fallback: check if it's already a full URL
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+            return path;
+        }
+
+        // Default fallback: assume it's relative to the project root
+        // Remove leading slash if present to avoid double slashes
+        const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+        return `./${cleanPath}`;
     }
 
     /**
