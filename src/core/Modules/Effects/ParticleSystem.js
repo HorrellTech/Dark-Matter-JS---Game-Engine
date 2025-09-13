@@ -69,6 +69,8 @@ class ParticleSystem extends Module {
         this.particlePool = []; // Object pool for performance
         this.isEmitting = false;
         this.emissionTimer = 0;
+        // Drop queued emissions when at capacity (set true if you want current catch-up behavior)
+        this.accumulateWhenFull = false;
         this.systemTimer = 0;
 
         // Image loading state
@@ -1009,10 +1011,12 @@ class ParticleSystem extends Module {
     startEmission() {
         this.isEmitting = true;
         this.systemTimer = 0;
+        this.emissionTimer = 0;  // Reset emission timer to prevent drift
     }
 
     stopEmission() {
         this.isEmitting = false;
+        this.emissionTimer = 0;  // Reset emission timer to prevent accumulation when stopped
     }
 
     clearParticles() {
@@ -1031,38 +1035,54 @@ class ParticleSystem extends Module {
         // Handle non-looping systems
         if (!this.loopEmitter && this.systemTimer >= this.duration) {
             this.isEmitting = false;
+            this.systemTimer = 0; // Clamp to duration
         }
 
-        // Emit new particles
-        if (this.isEmitting) {
-            this.emissionTimer += deltaTime;
-            const emissionInterval = 1.0 / this.emissionRate;
+        // Handle looping systems - Reset system timer properly
+        if (this.loopEmitter && this.systemTimer >= this.duration) {
+            this.systemTimer = 0; // Reset for next loop
+        }
 
-            while (this.emissionTimer >= emissionInterval && this.particles.length < this.maxParticles) {
+        // Emit new particles with consistent timing - FIXED
+        if (this.isEmitting) {
+            // Calculate how many particles we should emit this frame
+            const particlesToEmit = deltaTime * this.emissionRate;
+            this.emissionTimer += particlesToEmit;
+
+            // Emit particles while we have accumulation and space
+            while (this.emissionTimer >= 1.0 && this.particles.length < this.maxParticles) {
                 this.emitParticle();
-                this.emissionTimer -= emissionInterval;
+                this.emissionTimer = 0;
+                this.systemTimer = 0; // Also reset system timer to avoid drift
             }
+
+            // FIXED: Prevent accumulation when at max capacity
+            if (this.particles.length >= this.maxParticles) {
+                // Reset the timer completely to prevent burst when particles die
+                this.emissionTimer = 0;
+                this.systemTimer = 0; // Also reset system timer to avoid drift
+            }
+        } else {
+            // Reset emission timer when not emitting
+            this.emissionTimer = 0;
+            this.systemTimer = 0; // Also reset system timer to avoid drift
         }
 
         // Update existing particles
         this.updateParticles(deltaTime);
 
         // Periodic culling for performance
-        const now = performance.now();
-        if (this.cullingEnabled && now - this.lastCullTime > this.cullInterval) {
+        if (this.cullingEnabled && performance.now() - this.lastCullTime > this.cullInterval) {
             this.cullParticles();
-            this.lastCullTime = now;
+            this.lastCullTime = performance.now();
         }
 
-        // Prepare batched rendering if enabled
         if (this.enableBatching) {
             this.prepareBatchedParticles();
         }
 
         const endTime = performance.now();
         const frameTime = endTime - startTime;
-
-        // Performance monitoring
         if (frameTime > 5) {
             console.warn(`ParticleSystem: Slow frame detected: ${frameTime.toFixed(2)}ms with ${this.particles.length} particles`);
         }

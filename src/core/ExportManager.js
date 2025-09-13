@@ -1100,8 +1100,14 @@ html {
         // Use safer JSON embedding approach
         const scenesData = this.safeStringify(data.scenes);
         const prefabsData = this.safeStringify(data.prefabs);
-        const assetsData = settings.includeAssets ?
+        // Only embed assets for standalone, not ZIP
+        const assetsData =  settings.includeAssets ?// settings.standalone && settings.includeAssets ?
             this.safeStringify(data.assets) : 'null';
+
+            // For ZIP mode, create asset mapping with just filenames as IDs
+        const assetMapping = settings.standalone ? 'null' : 
+        this.safeStringify(this.createAssetMapping(data.assets));
+
 
         // Get the starting scene index from settings, default to 0
         const startingSceneIndex = settings.startingSceneIndex || 0;
@@ -1122,7 +1128,8 @@ async function initializeGame() {
         window.assetManager = new AssetManager(null);
     }
 
-    // Load embedded assets BEFORE anything else for BOTH standalone AND ZIP
+    ${settings.standalone ? `
+    // Standalone mode - embed assets directly
     const assetsData = ${assetsData};
     if (assetsData) {
         console.log('Loading embedded assets into AssetManager...');
@@ -1131,7 +1138,133 @@ async function initializeGame() {
         // Wait a moment for async asset loading to complete
         await new Promise(resolve => setTimeout(resolve, 100));
         console.log('AssetManager cache populated with:', Object.keys(window.assetManager.cache));
-    }
+    }` : `
+    // ZIP mode - load assets from files dynamically on startup
+    ${settings.includeAssets ? `
+    console.log('ZIP mode: Loading assets from asset files...');
+    const assetMapping = ${assetMapping};
+    
+    if (assetMapping) {
+        // Pre-load all assets from the assets folder using the mapping
+        for (const [originalPath, fileName] of Object.entries(assetMapping)) {
+            try {
+                const assetUrl = 'assets/' + fileName;
+                
+                // Determine asset type
+                const extension = fileName.split('.').pop().toLowerCase();
+                
+                if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                    // Load image asset
+                    console.log('Loading image asset:', assetUrl);
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    
+                    await new Promise((resolve, reject) => {
+                        img.onload = () => {
+                            console.log('Image loaded successfully:', fileName, 'dimensions:', img.width, 'x', img.height);
+                            
+                            // Generate asset ID from filename (without extension)
+                            const assetId = fileName.replace(/\\.[^.]+$/, '');
+                            
+                            // Cache under multiple variations for maximum compatibility
+                            const pathVariations = [
+                                originalPath,                           // Original full path (e.g., "assets/player.png")
+                                fileName,                               // Just filename (e.g., "player.png")
+                                assetId,                               // Filename without extension (e.g., "player")
+                                originalPath.replace(/^[\/\\\\]+/, ''), // Path without leading slashes
+                                '/' + originalPath.replace(/^[\/\\\\]+/, ''), // Path with single leading slash
+                                originalPath.split('/').pop(),         // Just filename from path
+                                originalPath.split('/').pop().replace(/\\.[^.]+$/, '') // Filename without extension from path
+                            ];
+                            
+                            if (img.complete && img.naturalWidth > 0) {
+                                pathVariations.forEach(variation => {
+                                    window.assetManager.cache[variation] = img;
+                                });
+                                console.log('Cached image under primary ID:', assetId, 'and', pathVariations.length, 'variations');
+                            }
+                            resolve();
+                        };
+                        img.onerror = (error) => {
+                            console.warn('Failed to load image asset:', assetUrl, error);
+                            resolve(); // Continue even if one asset fails
+                        };
+                        img.src = assetUrl;
+                    });
+                } else if (['mp3', 'wav', 'ogg', 'aac'].includes(extension)) {
+                    // Load audio asset
+                    try {
+                        const audio = new Audio();
+                        audio.crossOrigin = 'anonymous';
+                        audio.src = assetUrl;
+                        
+                        await new Promise((resolve) => {
+                            audio.addEventListener('canplaythrough', () => {
+                                // Generate asset ID from filename (without extension)
+                                const assetId = fileName.replace(/\\.[^.]+$/, '');
+                                
+                                const pathVariations = [
+                                    originalPath,
+                                    fileName,
+                                    assetId,
+                                    originalPath.replace(/^[\/\\\\]+/, ''),
+                                    '/' + originalPath.replace(/^[\/\\\\]+/, ''),
+                                    originalPath.split('/').pop(),
+                                    originalPath.split('/').pop().replace(/\\.[^.]+$/, '')
+                                ];
+                                
+                                pathVariations.forEach(variation => {
+                                    window.assetManager.cache[variation] = audio;
+                                });
+                                console.log('Loaded audio asset with ID:', assetId);
+                                resolve();
+                            }, { once: true });
+                            audio.addEventListener('error', () => {
+                                console.warn('Failed to load audio asset:', assetUrl);
+                                resolve();
+                            }, { once: true });
+                            audio.load();
+                        });
+                    } catch (error) {
+                        console.warn('Error loading audio asset:', fileName, error);
+                    }
+                } else if (extension === 'json') {
+                    // Load JSON asset
+                    try {
+                        const response = await fetch(assetUrl);
+                        if (response.ok) {
+                            const jsonData = await response.json();
+                            
+                            // Generate asset ID from filename (without extension)
+                            const assetId = fileName.replace(/\\.[^.]+$/, '');
+                            
+                            const pathVariations = [
+                                originalPath,
+                                fileName,
+                                assetId,
+                                originalPath.replace(/^[\/\\\\]+/, ''),
+                                '/' + originalPath.replace(/^[\/\\\\]+/, ''),
+                                originalPath.split('/').pop(),
+                                originalPath.split('/').pop().replace(/\\.[^.]+$/, '')
+                            ];
+                            
+                            pathVariations.forEach(variation => {
+                                window.assetManager.cache[variation] = jsonData;
+                            });
+                            console.log('Loaded JSON asset with ID:', assetId);
+                        }
+                    } catch (error) {
+                        console.warn('Error loading JSON asset:', fileName, error);
+                    }
+                }
+            } catch (error) {
+                console.warn('Error loading asset:', originalPath, error);
+            }
+        }
+        
+        console.log('Finished loading assets. AssetManager cache keys:', Object.keys(window.assetManager.cache));
+    }` : `
+    console.log('ZIP mode: Asset loading disabled');`}`}
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
@@ -1192,65 +1325,174 @@ async function initializeGame() {
         return normalized;
     };
 
-    ${settings.standalone ? `
-    // Standalone mode - assets already loaded above
-    console.log('Standalone mode: Assets already embedded in AssetManager');` : `
-    // ZIP mode - assets are already embedded in AssetManager above
-    // Remove the fetch-based loading and just use the embedded assets
-    console.log('ZIP mode: Using embedded assets in AssetManager');
+    // Override AssetManager methods for ZIP mode
+    ${!settings.standalone ? `
+    // ZIP mode - Override AssetManager methods to handle dynamic loading
+    console.log('ZIP mode: Setting up enhanced asset loading...');
     
-    // Override AssetManager loadAsset to use embedded assets first, then fallback to fetch
+    // Store the asset mapping for reference
+    window.assetManager.assetMapping = ${assetMapping};
+    
+    // Override getAsset to handle asset ID lookups with mapping
+    window.assetManager.originalGetAsset = window.assetManager.getAsset;
+    window.assetManager.getAsset = function(assetId) {
+        // First try direct cache lookup
+        if (this.cache[assetId]) {
+            console.log('Found asset in cache:', assetId);
+            return this.cache[assetId];
+        }
+        
+        // Try to find the asset using the mapping
+        if (this.assetMapping) {
+            for (const [originalPath, fileName] of Object.entries(this.assetMapping)) {
+                const fileNameWithoutExt = fileName.replace(/\\.[^.]+$/, '');
+                
+                // Check if the assetId matches any part of the original path or filename
+                if (assetId === fileNameWithoutExt || 
+                    assetId === fileName || 
+                    assetId === originalPath ||
+                    originalPath.includes(assetId) ||
+                    fileName.includes(assetId)) {
+                    
+                    // Try to find it in cache under various keys
+                    const possibleKeys = [
+                        fileNameWithoutExt,
+                        fileName,
+                        originalPath,
+                        originalPath.replace(/^[\/\\\\]+/, ''),
+                        '/' + originalPath.replace(/^[\/\\\\]+/, '')
+                    ];
+                    
+                    for (const key of possibleKeys) {
+                        if (this.cache[key]) {
+                            console.log('Found mapped asset for ID "' + assetId + '" using cache key "' + key + '"');
+                            this.cache[assetId] = this.cache[key]; // Cache under requested ID too
+                            return this.cache[key];
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Try variations of the asset ID as fallback
+        const possiblePaths = [
+            assetId,
+            assetId + '.png',
+            assetId + '.jpg',
+            assetId + '.jpeg',
+            assetId + '.gif',
+            assetId + '.webp',
+            assetId + '.svg',
+            assetId + '.mp3',
+            assetId + '.wav',
+            assetId + '.ogg',
+            assetId + '.json'
+        ];
+        
+        for (const path of possiblePaths) {
+            if (this.cache[path]) {
+                this.cache[assetId] = this.cache[path];
+                console.log('Found asset for ID "' + assetId + '" using fallback cache key "' + path + '"');
+                return this.cache[path];
+            }
+        }
+        
+        console.warn('Asset not found for ID:', assetId);
+        console.log('Available cache keys:', Object.keys(this.cache));
+        console.log('Asset mapping:', this.assetMapping);
+        return null;
+    };
+    
+    // Override loadAsset for dynamic loading from assets folder
     window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
     window.assetManager.loadAsset = function(path) {
         const normalizedPath = this.normalizePath(path);
         
-        // First check if asset is already in cache (from embedded assets)
+        console.log('Loading asset with path:', path, 'normalized:', normalizedPath);
+        
+        // First check if asset is already in cache under any variation
         const pathVariations = [
             path,
             normalizedPath,
             path.replace(/^[\/\\\\]+/, ''),
             normalizedPath.replace(/^[\/\\\\]+/, ''),
             path.split('/').pop(),
-            normalizedPath.split('/').pop()
+            normalizedPath.split('/').pop(),
+            path.split('/').pop().replace(/\\.[^.]+$/, ''),
+            normalizedPath.split('/').pop().replace(/\\.[^.]+$/, '')
         ];
-
+        
         for (const variation of pathVariations) {
             if (this.cache[variation]) {
-                console.log('Found embedded asset in cache:', variation);
+                console.log('Found cached asset for path:', path, 'using variation:', variation);
                 return Promise.resolve(this.cache[variation]);
             }
         }
         
-        // If not in embedded cache, try to load from assets folder as fallback
-        const fileName = normalizedPath.split('/').pop();
-        const assetPath = 'assets/' + fileName;
+        // Try to find in asset mapping
+        let targetFileName = null;
+        if (this.assetMapping) {
+            // Direct lookup in mapping
+            if (this.assetMapping[path] || this.assetMapping[normalizedPath]) {
+                targetFileName = this.assetMapping[path] || this.assetMapping[normalizedPath];
+            } else {
+                // Search for matching paths
+                for (const [originalPath, fileName] of Object.entries(this.assetMapping)) {
+                    if (originalPath.includes(path) || 
+                        originalPath.includes(normalizedPath) ||
+                        path.includes(originalPath.split('/').pop()) ||
+                        normalizedPath.includes(originalPath.split('/').pop())) {
+                        targetFileName = fileName;
+                        break;
+                    }
+                }
+            }
+        }
         
-        console.log('Asset not in embedded cache, trying to load from:', assetPath);
+        // Fallback to extracting filename from path
+        if (!targetFileName) {
+            targetFileName = normalizedPath.split('/').pop();
+        }
         
-        return fetch(assetPath)
+        const assetUrl = 'assets/' + targetFileName;
+        console.log('Loading asset dynamically from:', assetUrl);
+        
+        return fetch(assetUrl)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('Asset not found: ' + assetPath);
+                    throw new Error('Asset not found: ' + assetUrl);
                 }
                 
-                const extension = normalizedPath.split('.').pop().toLowerCase();
+                const extension = targetFileName.split('.').pop().toLowerCase();
+                const assetId = targetFileName.replace(/\\.[^.]+$/, '');
                 
                 if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
                     return response.blob().then(blob => {
                         const url = URL.createObjectURL(blob);
                         return new Promise((resolve, reject) => {
                             const img = new Image();
+                            img.crossOrigin = 'anonymous';
                             img.onload = () => {
                                 URL.revokeObjectURL(url);
-                                // Cache the loaded image
-                                pathVariations.forEach(variation => {
+                                
+                                // Cache under ALL possible variations
+                                const allVariations = [
+                                    ...pathVariations,
+                                    targetFileName,
+                                    assetId,
+                                    assetUrl
+                                ];
+                                
+                                allVariations.forEach(variation => {
                                     this.cache[variation] = img;
                                 });
+                                
+                                console.log('Dynamically loaded and cached image asset:', assetId, 'under', allVariations.length, 'variations');
                                 resolve(img);
                             };
                             img.onerror = () => {
                                 URL.revokeObjectURL(url);
-                                reject(new Error('Failed to load image'));
+                                reject(new Error('Failed to load image: ' + targetFileName));
                             };
                             img.src = url;
                         });
@@ -1259,36 +1501,47 @@ async function initializeGame() {
                     return response.blob().then(blob => {
                         const url = URL.createObjectURL(blob);
                         const audio = new Audio();
+                        audio.crossOrigin = 'anonymous';
                         audio.src = url;
-                        // Cache the loaded audio
-                        pathVariations.forEach(variation => {
+                        
+                        // Cache under all variations
+                        const allVariations = [...pathVariations, targetFileName, assetId, assetUrl];
+                        allVariations.forEach(variation => {
                             this.cache[variation] = audio;
                         });
+                        
+                        console.log('Dynamically loaded audio asset:', assetId);
                         return audio;
                     });
                 } else if (extension === 'json') {
                     return response.json().then(data => {
-                        // Cache the loaded JSON
-                        pathVariations.forEach(variation => {
+                        // Cache under all variations
+                        const allVariations = [...pathVariations, targetFileName, assetId, assetUrl];
+                        allVariations.forEach(variation => {
                             this.cache[variation] = data;
                         });
+                        
+                        console.log('Dynamically loaded JSON asset:', assetId);
                         return data;
                     });
                 } else {
                     return response.text().then(text => {
-                        // Cache the loaded text
-                        pathVariations.forEach(variation => {
+                        // Cache under all variations
+                        const allVariations = [...pathVariations, targetFileName, assetId, assetUrl];
+                        allVariations.forEach(variation => {
                             this.cache[variation] = text;
                         });
+                        
+                        console.log('Dynamically loaded text asset:', assetId);
                         return text;
                     });
                 }
             })
             .catch(error => {
-                console.error('Failed to load asset:', assetPath, error);
+                console.error('Failed to load asset:', assetUrl, 'Original path:', path, 'Error:', error);
                 throw error;
             });
-    };`}
+    };` : ''}
     
     // Initialize Global Prefab Manager
     window.prefabManager = {
@@ -1698,6 +1951,22 @@ window.addEventListener('matter-loaded', initializeGame);
     }
 
     /**
+     * Create asset mapping for ZIP mode (original path -> filename)
+     */
+    createAssetMapping(assets) {
+        if (!assets) return {};
+        
+        const mapping = {};
+        
+        for (const originalPath of Object.keys(assets)) {
+            const fileName = originalPath.split('/').pop();
+            mapping[originalPath] = fileName;
+        }
+        
+        return mapping;
+    }
+
+    /**
      * Safely stringify JSON data for embedding in JavaScript code
      * @param {*} data - Data to stringify
      * @returns {string} - Safe JavaScript representation
@@ -1963,7 +2232,7 @@ window.addEventListener('matter-loaded', initializeGame);
                 <label>Export Format:</label>
                 <select id="export-format">
                     <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
-                    <option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option>
+                    <!--option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option-->
                 </select>
             </div>
             <div class="export-group">
