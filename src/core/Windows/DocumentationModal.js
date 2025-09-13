@@ -55,7 +55,6 @@ class DocumentationModal {
         closeBtn.addEventListener('click', () => this.close());
         closeBtn.addEventListener('touchstart', () => this.close());
 
-
         // Search input
         const searchInput = this.modal.querySelector('.search-box input');
         searchInput.addEventListener('input', (e) => {
@@ -77,8 +76,13 @@ class DocumentationModal {
             }
         });
 
-        // Close on outside click
+        // Close on outside click/touch
         this.modal.addEventListener('click', (e) => {
+            if (e.target === this.modal) {
+                this.close();
+            }
+        });
+        this.modal.addEventListener('touchstart', (e) => {
             if (e.target === this.modal) {
                 this.close();
             }
@@ -152,6 +156,7 @@ class DocumentationModal {
                 item.className = 'doc-item';
                 item.textContent = func.name;
                 item.addEventListener('click', () => this.showFunctionDetails(func));
+                item.addEventListener('touchstart', () => this.showFunctionDetails(func));
                 itemsContainer.appendChild(item);
             });
 
