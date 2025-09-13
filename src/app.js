@@ -169,6 +169,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.fileBrowser = fileBrowser;
             console.log('FileBrowser initialized successfully');
 
+            
+
+            // Connect AssetManager to FileBrowser
+            if (window.assetManager && window.fileBrowser) {
+                window.assetManager.fileBrowser = window.fileBrowser;
+                window.assetManager.setupFileBrowserIntegration();
+                // Scan for existing assets
+                window.assetManager.scanAndRegisterAssets();
+            }
+
             // Connect editor and fileBrowser
             if (editor) {
                 editor.fileBrowser = fileBrowser;

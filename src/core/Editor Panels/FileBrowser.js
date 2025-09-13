@@ -32,10 +32,12 @@ class FileBrowser {
 
         if (!this.assetManager) {
             if (window.assetManager) {
-                this.assetManager = window.assetManager; // Use existing instance if available
-            }
-            else {
+                this.assetManager = window.assetManager;
+                // IMPORTANT: Connect the FileBrowser to the existing AssetManager
+                this.assetManager.fileBrowser = this;
+            } else {
                 this.assetManager = new AssetManager(this);
+                window.assetManager = this.assetManager; // Make it global
             }
         }
 

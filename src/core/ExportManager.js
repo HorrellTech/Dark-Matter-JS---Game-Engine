@@ -196,35 +196,33 @@ class ExportManager {
             try {
                 serialized.data = module.toJSON();
 
-                // For SpriteRenderer, ensure we capture image data for export
-                if (module.constructor.name === 'SpriteRenderer' && module._image && module._isLoaded) {
-                    // Convert the loaded image to a data URL for embedding
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = module._image.naturalWidth;
-                        canvas.height = module._image.naturalHeight;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(module._image, 0, 0);
-
-                        // Set the embedded data and flag
-                        serialized.data.imageData = canvas.toDataURL('image/png');
-                        serialized.data.useEmbeddedData = true;
-
-                        // IMPORTANT: Completely remove the imageAsset to prevent any path loading
-                        delete serialized.data.imageAsset;
-
-                        // console.log('Embedded image data for SpriteRenderer and removed imageAsset completely');
-                    } catch (error) {
-                        // console.warn('Could not embed image data:', error);
-                        // If embedding fails, keep the original imageAsset but mark as non-embedded
-                        serialized.data.useEmbeddedData = false;
+                // For SpriteRenderer, DON'T embed image data - let AssetManager handle it
+                if (module.constructor.name === 'SpriteRenderer') {
+                    // Remove any embedded image data to force AssetManager usage
+                    if (serialized.data.imageData) {
+                        delete serialized.data.imageData;
                     }
-                } else if (module.constructor.name === 'SpriteRenderer') {
-                    // No loaded image, ensure useEmbeddedData is false
-                    serialized.data.useEmbeddedData = false;
+
+                    // Ensure we're using asset references only
+                    if (module.imageAsset && module.imageAsset.path) {
+                        // Register the asset with AssetManager if it's not already there
+                        if (window.assetManager && module._image && module._isLoaded) {
+                            const assetId = window.assetManager.generateAssetId(module.imageAsset.path);
+                            if (!window.assetManager.hasAsset(assetId)) {
+                                window.assetManager.addAsset(assetId, module._image, 'image', {
+                                    path: module.imageAsset.path,
+                                    originalPath: module.imageAsset.path
+                                }).catch(error => {
+                                    console.warn('Failed to register sprite asset:', error);
+                                });
+                            }
+                        }
+                    }
+
+                    console.log('Serialized SpriteRenderer without embedding image data, using asset reference:', serialized.data.imageAsset?.path);
                 }
             } catch (error) {
-                // console.warn(`Error serializing module ${module.constructor.name}:`, error);
+                console.warn(`Error serializing module ${module.constructor.name}:`, error);
                 serialized.data = this.fallbackSerializeModule(module);
             }
         } else {
@@ -284,85 +282,71 @@ class ExportManager {
      * Collect all assets used in the project
      */
     async collectAssets() {
-        const assets = {};
+        let assets = {}; // Changed from const to let
 
-        if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
-            const files = await window.fileBrowser.getAllFiles();
-            for (const file of files) {
-                // Skip code files - they're handled separately
-                if (file.name.endsWith('.js') || file.name.endsWith('.html') || file.name.endsWith('.css') || file.name.endsWith('.scene') || file.name.endsWith('.prefab')) {
-                    continue;
-                }
-
-                const path = file.path || file.name;
-                // Use AssetManager's normalization to ensure consistency
-                const normalizedPath = this.normalizePath(path);
-
-                let content = file.content;
-
-                if (file.type && (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('font/'))) {
-                    // For binary files, ensure we have a proper data URL
-                    if (typeof content === 'string' && content.startsWith('data:')) {
-                        // Already a data URL
-                        assets[normalizedPath] = {
-                            content: content,
-                            type: file.type,
-                            binary: true,
-                            originalFile: file,
-                            rawContent: content
-                        };
-                    } else if (content instanceof Blob) {
-                        const dataUrl = await this.blobToDataURL(content);
-                        assets[normalizedPath] = {
-                            content: dataUrl,
-                            type: file.type,
-                            binary: true,
-                            originalFile: file,
-                            rawContent: content
-                        };
-                    } else if (content instanceof ArrayBuffer) {
-                        const dataUrl = this.arrayBufferToDataURL(content, file.type);
-                        assets[normalizedPath] = {
-                            content: dataUrl,
-                            type: file.type,
-                            binary: true,
-                            originalFile: file,
-                            rawContent: content
-                        };
-                    } else if (content instanceof File) {
-                        const dataUrl = await this.fileToDataURL(content);
-                        assets[normalizedPath] = {
-                            content: dataUrl,
-                            type: file.type,
-                            binary: true,
-                            originalFile: file,
-                            rawContent: content
-                        };
-                    } else {
-                        // console.warn(`Unexpected content type for binary file ${path}:`, typeof content, content);
-                        continue;
-                    }
-                } else {
-                    // For text-based assets, ensure content is a string
-                    if (content instanceof Blob) {
-                        content = await content.text();
-                    } else if (content instanceof ArrayBuffer) {
-                        content = new TextDecoder().decode(content);
-                    } else if (content instanceof File) {
-                        content = await content.text();
-                    }
-
-                    assets[normalizedPath] = {
-                        content: content,
-                        type: file.type || 'text/plain',
-                        binary: false
-                    };
-                }
+        // First, try to get assets from AssetManager
+        if (window.assetManager) {
+            try {
+                const assetManagerAssets = await window.assetManager.exportAssetsForGame();
+                assets = { ...assets, ...assetManagerAssets }; // Use spread operator instead of assignment
+            } catch (error) {
+                console.warn('Failed to collect assets from AssetManager:', error);
             }
         }
 
-        // console.log('Collected assets:', Object.keys(assets));
+        if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
+            try {
+                const files = await window.fileBrowser.getAllFiles();
+
+                for (const file of files) {
+                    if (file.type === 'file') {
+                        const normalizedPath = this.normalizePath(file.path);
+
+                        // Skip if already collected from AssetManager
+                        if (assets[normalizedPath]) {
+                            continue;
+                        }
+
+                        // Determine if this is an asset file
+                        const extension = file.path.split('.').pop().toLowerCase();
+                        const assetExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'wav', 'ogg', 'json'];
+
+                        if (assetExtensions.includes(extension)) {
+                            assets[normalizedPath] = {
+                                content: file.content,
+                                type: this.detectMimeType(file.path),
+                                source: 'fileBrowser'
+                            };
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to collect assets from FileBrowser:', error);
+            }
+        }
+
+        console.log('Collected assets:', Object.keys(assets));
         return assets;
+    }
+
+    /**
+     * Detect MIME type from file extension
+     */
+    detectMimeType(path) {
+        const extension = path.split('.').pop().toLowerCase();
+        const mimeMap = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'svg': 'image/svg+xml',
+            'mp3': 'audio/mpeg',
+            'wav': 'audio/wav',
+            'ogg': 'audio/ogg',
+            'json': 'application/json'
+        };
+        return mimeMap[extension] || 'application/octet-stream';
     }
 
     /**
@@ -778,30 +762,30 @@ class ExportManager {
      * Generate HTML content
      */
     generateHTML(data, settings) {
-    const title = settings.customTitle || 'Dark Matter JS Game';
-    const description = settings.customDescription || 'A game created with Dark Matter JS';
-    
-    // Use viewport dimensions or default to full screen
-    const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
-    const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
+        const title = settings.customTitle || 'Dark Matter JS Game';
+        const description = settings.customDescription || 'A game created with Dark Matter JS';
 
-    let scriptAndStyleTags = '';
-    if (!settings.standalone) {
-        // Link external CSS and JS for ZIP package
-        scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
-        scriptAndStyleTags += `<script src="game.js"></script>\n`;
-        if (data.customScripts && data.customScripts.length > 0) {
-            for (const script of data.customScripts) {
-                scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
+        // Use viewport dimensions or default to full screen
+        const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
+        const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
+
+        let scriptAndStyleTags = '';
+        if (!settings.standalone) {
+            // Link external CSS and JS for ZIP package
+            scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
+            scriptAndStyleTags += `<script src="game.js"></script>\n`;
+            if (data.customScripts && data.customScripts.length > 0) {
+                for (const script of data.customScripts) {
+                    scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
+                }
             }
-        }
-    } else {
-        // Placeholders for embedded content in standalone HTML
-        scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
+        } else {
+            // Placeholders for embedded content in standalone HTML
+            scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
     <script id="game-script">/* JavaScript will be injected here */</script>`;
-    }
+        }
 
-    return `<!DOCTYPE html>
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -874,7 +858,7 @@ class ExportManager {
     </div>
 </body>
 </html>`;
-}
+    }
 
     /**
      * Generate JavaScript content
@@ -1093,8 +1077,8 @@ html {
     }
 
     /**
- * Generate game initialization code
- */
+     * Generate game initialization code
+     */
     generateGameInitialization(data, settings) {
         // Use safer JSON embedding approach
         const scenesData = this.safeStringify(data.scenes);
@@ -1115,6 +1099,22 @@ async function initializeGame() {
     gameInitialized = true;
     
     console.log('Initializing exported game...');
+
+    // Initialize AssetManager first
+    if (!window.assetManager) {
+        window.assetManager = new AssetManager(null);
+    }
+
+    // Load embedded assets BEFORE anything else
+    const assetsData = ${assetsData};
+    if (assetsData) {
+        console.log('Loading embedded assets into AssetManager...');
+        window.assetManager.addEmbeddedAssets(assetsData);
+        
+        // Wait a moment for async asset loading to complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+        console.log('AssetManager cache populated with:', Object.keys(window.assetManager.cache));
+    }
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
@@ -1163,11 +1163,6 @@ async function initializeGame() {
         window.input = new InputManager();
     }
 
-    // Initialize AssetManager with proper export mode handling
-    if (!window.assetManager) {
-        window.assetManager = new AssetManager(null);
-    }
-
     // Enhanced path normalization function
     window.assetManager.normalizePath = function(path) {
         if (!path) return '';
@@ -1180,85 +1175,16 @@ async function initializeGame() {
         return normalized;
     };
 
-    ${settings.standalone ?
-                `// Standalone mode - override asset loading to use embedded assets
-        window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
-        window.assetManager.loadAsset = function(path) {
-            const normalizedPath = this.normalizePath(path);
-            
-            const pathVariations = [
-                path,
-                normalizedPath,
-                path.replace(/^[\/\\\\]+/, ''),
-                normalizedPath.replace(/^[\/\\\\]+/, ''),
-                '/' + path.replace(/^[\/\\\\]+/, ''),
-                '/' + normalizedPath.replace(/^[\/\\\\]+/, ''),
-                decodeURIComponent(path),
-                decodeURIComponent(normalizedPath),
-                path.split('/').pop(),
-                normalizedPath.split('/').pop()
-            ];
-            
-            for (const variation of pathVariations) {
-                if (this.cache[variation]) {
-                    console.log('Found asset in cache with path variation:', variation);
-                    return Promise.resolve(this.cache[variation]);
-                }
-            }
-            
-            console.warn('Asset not found in cache:', path, 'Tried variations:', pathVariations);
-            return Promise.reject(new Error('Asset not found: ' + path));
-        };
-
-        // Override loadImage and loadAudio methods...
-        window.assetManager.originalLoadImage = window.assetManager.loadImage;
-        window.assetManager.loadImage = function(src) {
-            if (src.startsWith('data:') || src.startsWith('blob:')) {
-                return this.originalLoadImage(src);
-            }
-            
-            const normalizedSrc = this.normalizePath(src);
-            const pathVariations = [
-                src, normalizedSrc, src.replace(/^[\/\\\\]+/, ''),
-                normalizedSrc.replace(/^[\/\\\\]+/, ''), '/' + src.replace(/^[\/\\\\]+/, ''),
-                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''), decodeURIComponent(src),
-                decodeURIComponent(normalizedSrc), src.split('/').pop(), normalizedSrc.split('/').pop()
-            ];
-            
-            for (const variation of pathVariations) {
-                if (this.cache[variation]) {
-                    return Promise.resolve(this.cache[variation]);
-                }
-            }
-            
-            return this.originalLoadImage(src);
-        };
-
-        window.assetManager.originalLoadAudio = window.assetManager.loadAudio;
-        window.assetManager.loadAudio = function(src) {
-            if (src.startsWith('data:') || src.startsWith('blob:')) {
-                return this.originalLoadAudio(src);
-            }
-            
-            const normalizedSrc = this.normalizePath(src);
-            const pathVariations = [
-                src, normalizedSrc, src.replace(/^[\/\\\\]+/, ''),
-                normalizedSrc.replace(/^[\/\\\\]+/, ''), '/' + src.replace(/^[\/\\\\]+/, ''),
-                '/' + normalizedSrc.replace(/^[\/\\\\]+/, ''), decodeURIComponent(src),
-                decodeURIComponent(normalizedSrc), src.split('/').pop(), normalizedSrc.split('/').pop()
-            ];
-            
-            for (const variation of pathVariations) {
-                if (this.cache[variation]) {
-                    return Promise.resolve(this.cache[variation]);
-                }
-            }
-            
-            return this.originalLoadAudio(src);
-        };` :
-                `// ZIP mode - set base path for assets
-        window.assetManager.basePath = 'assets/';`
-            }
+    ${settings.standalone ? `
+    // Standalone mode - add embedded assets to AssetManager
+    //const assetsData = ${assetsData};
+    if (assetsData) {
+        console.log('Loading embedded assets into AssetManager...');
+        window.assetManager.addEmbeddedAssets(assetsData);
+        console.log('AssetManager cache populated with:', Object.keys(window.assetManager.cache));
+    }` : `
+    // ZIP mode - configure AssetManager for file loading
+    window.assetManager.basePath = 'assets/';`}
     
     // Initialize Global Prefab Manager
     window.prefabManager = {

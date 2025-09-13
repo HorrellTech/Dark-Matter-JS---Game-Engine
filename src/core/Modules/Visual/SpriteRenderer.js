@@ -71,13 +71,14 @@ class SpriteRenderer extends Module {
         // Clear any previously registered properties
         this.clearProperties();
 
-        // Re-register all properties
+        // Enhanced image asset property with AssetManager integration
         this.exposeProperty("imageAsset", "asset", this.imageAsset, {
             description: "Sprite image to display",
-            assetType: 'image',
+            assetType: 'image',  // This tells the Inspector it's an image asset
             fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
-            onDropCallback: this.handleImageDrop.bind(this),
-            showImageDropdown: true
+            onAssetSelected: (assetPath) => {
+                this.setSprite(assetPath);  // Your custom handler
+            }
         });
 
         this.exposeProperty("width", "number", this.width, {
@@ -273,11 +274,10 @@ class SpriteRenderer extends Module {
         // If we have embedded data and no path, don't try to load from path
         if (this.imageAsset && this.imageAsset.embedded && !this.imageAsset.path) {
             console.log('Skipping path-based loading for embedded image data - already loaded');
-            return this._image; // Should already be loaded via loadImageFromData
+            return this._image;
         }
 
-        if (!this.imageAsset || !this.imageAsset.path) {
-            // Only warn if we don't have an embedded image already loaded AND we're not in embedded mode
+        if (!this.imageAsset || (!this.imageAsset.path && !this.imageAsset.embedded)) {
             if (!this._isLoaded && (!this.imageAsset || !this.imageAsset.embedded)) {
                 console.warn('No image asset path to load');
             }
@@ -287,67 +287,64 @@ class SpriteRenderer extends Module {
         try {
             console.log('Loading image for SpriteRenderer:', this.imageAsset.path);
 
-            // Check if this asset uses embedded data
-            if (this.imageAsset.embedded && this.imageAsset.load) {
-                this._image = await this.imageAsset.load();
-                console.log('Image loaded from embedded data successfully');
-                return this._image;
-            }
-
-            // First try FileBrowser if available (editor mode)
-            if (window.editor && window.editor.fileBrowser) {
-                try {
-                    console.log('Using FileBrowser to load image');
-                    this._image = await this.loadImageFromFileBrowser(this.imageAsset.path);
-                    console.log('Image loaded via FileBrowser successfully');
-                    this._imageWidth = this._image.naturalWidth || this._image.width;
-                    this._imageHeight = this._image.naturalHeight || this._image.height;
-                    this._isLoaded = true;
-                    return this._image;
-                } catch (fileBrowserError) {
-                    console.warn('FileBrowser failed, trying asset manager:', fileBrowserError.message);
+            // PRIORITY 1: Load from AssetManager (both editor and exported games)
+            if (this.imageAsset.path) {
+                const asset = await this.loadFromAssetManager(this.imageAsset.path);
+                if (asset) {
+                    return asset;
                 }
             }
 
-            // Try the asset manager if available (runtime mode)
-            if (window.assetManager) {
+            // PRIORITY 2: If we're in editor mode with FileBrowser, load from FileBrowser
+            if (window.editor && window.editor.fileBrowser && this.imageAsset.path) {
                 try {
-                    this._image = await window.assetManager.loadAsset(this.imageAsset.path);
-                    console.log('Image loaded via asset manager successfully');
-                    this._imageWidth = this._image.naturalWidth || this._image.width;
-                    this._imageHeight = this._image.naturalHeight || this._image.height;
-                    this._isLoaded = true;
-                    return this._image;
-                } catch (assetManagerError) {
-                    console.warn('Asset manager failed, trying fallback:', assetManagerError.message);
+                    const image = await this.loadImageFromFileBrowser(this.imageAsset.path);
+                    if (image) {
+                        console.log('Image loaded via FileBrowser successfully');
+                        this._image = image;
+                        this._imageWidth = image.naturalWidth || image.width;
+                        this._imageHeight = image.naturalHeight || image.height;
+                        this._isLoaded = true;
+                        return image;
+                    }
+                } catch (error) {
+                    console.warn('FileBrowser loading failed, trying fallback:', error);
                 }
             }
 
-            // Fallback to direct loading
-            console.log('Using fallback loading method');
-            this._image = await this.fallbackLoadImage(this.imageAsset.path);
-            console.log('Image loaded successfully via fallback:', this.imageAsset.path);
-            return this._image;
+            // If we have embedded data, use the load function
+            if (this.imageAsset.embedded && typeof this.imageAsset.load === 'function') {
+                console.log('Loading embedded image data');
+                const image = await this.imageAsset.load();
+                if (image) {
+                    this._image = image;
+                    this._imageWidth = image.naturalWidth || image.width;
+                    this._imageHeight = image.naturalHeight || image.height;
+                    this._isLoaded = true;
+                    return image;
+                }
+            }
+
+            // Final fallback for exported games
+            if (this.imageAsset.path) {
+                return await this.fallbackLoadImage(this.imageAsset.path);
+            }
+
+            return null;
 
         } catch (error) {
             console.error('Error loading sprite image:', error);
             this._image = null;
             this._isLoaded = false;
-
-            // Don't retry loading if we're in an exported game without fileBrowser
-            if (!window.fileBrowser) {
-                console.warn('Sprite image failed to load in exported game - this is expected if asset embedding failed');
-            }
-
             return null;
         }
     }
 
     /**
- * Load image from FileBrowser (editor mode)
- * @param {string} path - Path to the image
- * @returns {Promise<HTMLImageElement>} - Loaded image
- */
+     * Load image from FileBrowser (editor mode)
+     * @param {string} path - Path to the image
+     * @returns {Promise<HTMLImageElement>} - Loaded image
+     */
     async loadImageFromFileBrowser(path) {
         try {
             const fileBrowser = window.editor.fileBrowser;
@@ -358,17 +355,71 @@ class SpriteRenderer extends Module {
                 throw new Error(`Could not read file from FileBrowser: ${path}`);
             }
 
+            console.log('FileBrowser content type:', typeof content, content.substring ? content.substring(0, 50) + '...' : 'Binary data');
+
             // Check if content is already a data URL (for images)
             if (typeof content === 'string' && content.startsWith('data:image')) {
                 console.log('Loading image from data URL via FileBrowser');
                 return this.loadImageFromDataURL(content);
-            } else {
-                throw new Error(`File content is not a valid image data URL: ${path}`);
+            }
+            // Handle cases where FileBrowser returns the content differently
+            else if (typeof content === 'string' && !content.startsWith('data:')) {
+                // If it's a string but not a data URL, it might be base64 or raw content
+                // Try to construct a data URL
+                try {
+                    // Detect image type from path
+                    const extension = path.split('.').pop().toLowerCase();
+                    let mimeType = 'image/png'; // default
+
+                    if (extension === 'jpg' || extension === 'jpeg') mimeType = 'image/jpeg';
+                    else if (extension === 'gif') mimeType = 'image/gif';
+                    else if (extension === 'webp') mimeType = 'image/webp';
+                    else if (extension === 'svg') mimeType = 'image/svg+xml';
+
+                    // Try as base64 first
+                    let dataUrl;
+                    if (content.includes(',')) {
+                        // Already has data URL prefix but might be malformed
+                        dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
+                    } else {
+                        // Assume it's base64 data
+                        dataUrl = `data:${mimeType};base64,${content}`;
+                    }
+
+                    console.log('Attempting to load as constructed data URL');
+                    return this.loadImageFromDataURL(dataUrl);
+                } catch (error) {
+                    console.error('Failed to construct data URL:', error);
+                    throw new Error(`File content is not a valid image: ${path}`);
+                }
+            }
+            // Handle binary content (Blob/ArrayBuffer)
+            else if (content instanceof Blob || content instanceof ArrayBuffer) {
+                console.log('Converting binary content to data URL');
+                let blob = content;
+                if (content instanceof ArrayBuffer) {
+                    blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
+                }
+
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadImageFromDataURL(dataUrl);
+            }
+            else {
+                throw new Error(`Unsupported file content type for image: ${typeof content}`);
             }
         } catch (error) {
             console.error('Error loading image from FileBrowser:', error);
             throw error;
         }
+    }
+
+    async blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     /**
@@ -396,41 +447,34 @@ class SpriteRenderer extends Module {
      */
     fallbackLoadImage(path) {
         return new Promise((resolve, reject) => {
-            const img = new Image();
-
             // Check if path is null or undefined
             if (!path) {
                 reject(new Error('No image path provided'));
                 return;
             }
 
-            // Normalize path for cache lookup
-            const normalizedPath = window.assetManager?.normalizePath ?
-                window.assetManager.normalizePath(path) :
-                path.replace(/^\/+/, '').replace(/\\/g, '/');
+            const img = new Image();
 
-            console.log('Loading image:', path, 'normalized:', normalizedPath);
-
-            // Check asset cache first if asset manager exists
+            // For exported games, if asset manager has no cache, that's a critical error
             if (window.assetManager && window.assetManager.cache) {
+                const normalizedPath = window.assetManager.normalizePath ?
+                    window.assetManager.normalizePath(path) :
+                    path.replace(/^\/+/, '').replace(/\\/g, '/');
+
+                console.log('Looking for cached asset:', normalizedPath);
                 console.log('Available cached assets:', Object.keys(window.assetManager.cache));
 
                 // Try multiple path variations for lookup
                 const pathVariations = [
                     path,
                     normalizedPath,
-                    path.replace(/^\/+/, ''),
+                    path.replace(/^[\/\\]+/, ''),
                     path.replace(/\\/g, '/'),
-                    path.replace(/\\/g, '/').replace(/^\/+/, ''),
                     path.split('/').pop(),
                     path.split('\\').pop(),
                     decodeURIComponent(path),
-                    encodeURIComponent(path.split('/').pop()),
-                    path.replace(/\//g, '\\'),
-                    path.replace(/\\/g, '/'),
-                    '/' + path,
+                    '/' + path.replace(/^[\/\\]+/, ''),
                     '/' + normalizedPath,
-                    '/' + path.replace(/^\/+/, ''),
                 ];
 
                 let cached = null;
@@ -454,44 +498,40 @@ class SpriteRenderer extends Module {
                         this._isLoaded = true;
                         resolve(cached);
                         return;
-                    } else if (typeof cached === 'string') {
-                        // If it's a data URL or regular URL, load it
-                        console.log('Loading cached data URL or URL');
+                    } else if (typeof cached === 'string' && cached.startsWith('data:')) {
+                        console.log('Loading cached data URL');
                         img.src = cached;
+                    } else if (cached.content && typeof cached.content === 'string' && cached.content.startsWith('data:')) {
+                        console.log('Loading cached asset content as data URL');
+                        img.src = cached.content;
                     } else {
-                        console.warn('Cached asset is not a valid image:', typeof cached, cached?.constructor?.name);
-                        // For exported games, this is a critical error
-                        if (window.location.protocol === 'file:' || !window.fileBrowser) {
-                            return reject(new Error(`Cached asset for ${path} is not a valid image`));
-                        }
-                        // Try direct load as fallback
-                        this.tryMultipleImagePaths(img, path).then(resolve).catch(reject);
+                        console.error('Cached asset is not a valid image format:', typeof cached, cached);
+                        reject(new Error(`Cached asset for ${path} is not a valid image`));
                         return;
                     }
                 } else {
-                    console.warn('Image not found in asset cache:', path);
-                    console.log('Tried path variations:', pathVariations);
-                    console.log('Available assets:', Object.keys(window.assetManager.cache));
-
-                    // For exported games, this is a critical error
-                    if (window.location.protocol === 'file:' || !window.fileBrowser) {
-                        return reject(new Error(`Image not found in asset cache: ${path}. Available assets: ${Object.keys(window.assetManager.cache).join(', ')}`));
+                    // Critical error for exported games
+                    const isExportedGame = window.location.protocol === 'file:' || !window.fileBrowser;
+                    if (isExportedGame) {
+                        const errorMsg = `Image not found in asset cache: ${path}. This is likely an export issue. Available assets: ${Object.keys(window.assetManager.cache).join(', ')}`;
+                        console.error(errorMsg);
+                        reject(new Error(errorMsg));
+                        return;
+                    } else {
+                        // Development mode - try direct loading
+                        console.warn('Asset not in cache, trying direct load for development mode');
+                        this.tryMultipleImagePaths(img, path).then(resolve).catch(reject);
+                        return;
                     }
-
-                    // Fallback to trying multiple paths for development
-                    console.log('Attempting multiple path resolution for development mode');
-                    this.tryMultipleImagePaths(img, path).then(resolve).catch(reject);
-                    return;
                 }
             } else {
-                // No asset manager - try multiple paths
-                console.log('No asset manager found, attempting multiple path resolution');
-                this.tryMultipleImagePaths(img, path).then(resolve).catch(reject);
-                return;
+                console.warn('No asset manager or cache available');
+                // Try direct loading
+                img.src = path;
             }
 
             img.onload = () => {
-                console.log('Image loaded successfully:', img.src);
+                console.log('Image loaded successfully:', img.src.substring(0, 100) + '...');
                 this._image = img;
                 this._imageWidth = img.naturalWidth || img.width;
                 this._imageHeight = img.naturalHeight || img.height;
@@ -501,85 +541,150 @@ class SpriteRenderer extends Module {
 
             img.onerror = (error) => {
                 console.error('Error loading image:', path, error);
-                // Try multiple paths as fallback
-                this.tryMultipleImagePaths(img, path).then(resolve).catch(() => {
-                    const errorMsg = `Error loading image: ${path}. ${window.assetManager ? `Asset cache contains: ${Object.keys(window.assetManager.cache).join(', ')}` : 'No asset manager available'}`;
-                    reject(new Error(errorMsg));
-                });
+                reject(new Error(`Failed to load image: ${path}`));
             };
         });
     }
 
     /**
- * Try loading an image from multiple possible paths
+     * Try loading an image from multiple possible paths
+     * @param {HTMLImageElement} img - Image element to load into
+     * @param {string} originalPath - Original path that failed
+     * @returns {Promise<HTMLImageElement>} - Promise that resolves when image loads
+     */
+    async tryMultipleImagePaths(img, originalPath) {
+        // First, try to use FileBrowser to resolve the path
+        if (window.editor && window.editor.fileBrowser) {
+            const fileBrowser = window.editor.fileBrowser;
+
+            // Try different relative paths within the FileBrowser's workspace
+            const possiblePaths = [
+                originalPath,
+                originalPath.replace(/^[\/\\]+/, ''), // Remove leading slashes
+                `assets/${originalPath.replace(/^[\/\\]+/, '')}`,
+                `images/${originalPath.replace(/^[\/\\]+/, '')}`,
+                `src/assets/${originalPath.replace(/^[\/\\]+/, '')}`,
+                `public/assets/${originalPath.replace(/^[\/\\]+/, '')}`,
+                // Also try just the filename in common directories
+                `assets/${originalPath.split(/[\/\\]/).pop()}`,
+                `images/${originalPath.split(/[\/\\]/).pop()}`,
+                `src/assets/${originalPath.split(/[\/\\]/).pop()}`,
+                `public/assets/${originalPath.split(/[\/\\]/).pop()}`
+            ];
+
+            console.log('Trying FileBrowser paths for image:', originalPath, possiblePaths);
+
+            // Try each path with FileBrowser
+            for (const testPath of possiblePaths) {
+                try {
+                    if (await fileBrowser.fileExists(testPath)) {
+                        console.log('Found file in FileBrowser:', testPath);
+                        const image = await this.loadImageFromFileBrowser(testPath);
+                        if (image) {
+                            this._image = image;
+                            this._imageWidth = image.naturalWidth || image.width;
+                            this._imageHeight = image.naturalHeight || image.height;
+                            this._isLoaded = true;
+                            return image;
+                        }
+                    }
+                } catch (error) {
+                    // Continue to next path
+                    continue;
+                }
+            }
+        }
+
+        // If FileBrowser approach failed, try AssetManager cache with normalized paths
+        if (window.assetManager && window.assetManager.cache) {
+            const cache = window.assetManager.cache;
+            const cleanPath = originalPath.replace(/^[\/\\]+/, '').replace(/\\/g, '/');
+
+            const pathVariations = [
+                originalPath,
+                cleanPath,
+                `/${cleanPath}`,
+                cleanPath.split('/').pop(), // Just filename
+                cleanPath.split('\\').pop(), // Just filename (Windows)
+                decodeURIComponent(originalPath),
+                decodeURIComponent(cleanPath)
+            ];
+
+            console.log('Trying AssetManager cache paths:', pathVariations);
+            console.log('Available cached assets:', Object.keys(cache));
+
+            for (const variation of pathVariations) {
+                if (cache[variation]) {
+                    const cached = cache[variation];
+                    if (cached instanceof HTMLImageElement) {
+                        console.log('Found cached image:', variation);
+                        this._image = cached;
+                        this._imageWidth = cached.naturalWidth || cached.width;
+                        this._imageHeight = cached.naturalHeight || cached.height;
+                        this._isLoaded = true;
+                        return cached;
+                    } else if (typeof cached === 'string' && cached.startsWith('data:')) {
+                        console.log('Loading cached data URL:', variation);
+                        return this.loadImageFromDataURL(cached);
+                    }
+                }
+            }
+        }
+
+        // Last resort: only for exported games or when all else fails
+        console.warn('All relative path attempts failed, falling back to direct URL loading');
+        return this.directUrlFallback(img, originalPath);
+    }
+
+    /**
+ * Direct URL fallback (only for exported games or when other methods fail)
  * @param {HTMLImageElement} img - Image element to load into
  * @param {string} originalPath - Original path that failed
  * @returns {Promise<HTMLImageElement>} - Promise that resolves when image loads
  */
-    async tryMultipleImagePaths(img, originalPath) {
-        // Remove leading slashes and normalize
-        const cleanPath = originalPath.replace(/^\/+/, '').replace(/\\/g, '/');
+async directUrlFallback(img, originalPath) {
+    // Only use direct URL loading as a last resort and warn about it
+    console.warn('Using direct URL fallback - this may not work in all environments:', originalPath);
+    
+    // Remove leading slashes and normalize
+    const cleanPath = originalPath.replace(/^\/+/, '').replace(/\\/g, '/');
 
-        // Get the current base URL
-        const currentUrl = new URL(window.location.href);
-        const basePath = currentUrl.pathname.endsWith('/') ?
-            currentUrl.pathname :
-            currentUrl.pathname.substring(0, currentUrl.pathname.lastIndexOf('/') + 1);
+    // Generate minimal possible paths to try
+    const possiblePaths = [
+        cleanPath, // Relative to current directory
+        `assets/${cleanPath}`,
+        `images/${cleanPath}`,
+        originalPath // Original path as-is
+    ];
 
-        // Generate multiple possible paths to try
-        const possiblePaths = [
-            // Current directory level
-            `${basePath}${cleanPath}`,
-            // Common asset directories at current level
-            `${basePath}assets/${cleanPath}`,
-            `${basePath}images/${cleanPath}`,
-            `${basePath}public/${cleanPath}`,
-            `${basePath}public/assets/${cleanPath}`,
-            `${basePath}public/images/${cleanPath}`,
-            // Root level paths
-            `${currentUrl.origin}/${cleanPath}`,
-            `${currentUrl.origin}/assets/${cleanPath}`,
-            `${currentUrl.origin}/images/${cleanPath}`,
-            `${currentUrl.origin}/public/${cleanPath}`,
-            `${currentUrl.origin}/public/assets/${cleanPath}`,
-            `${currentUrl.origin}/public/images/${cleanPath}`,
-            // Source directory paths (for development)
-            `${basePath}src/assets/${cleanPath}`,
-            `${basePath}src/images/${cleanPath}`,
-            `${currentUrl.origin}/src/assets/${cleanPath}`,
-            `${currentUrl.origin}/src/images/${cleanPath}`,
-            // Direct original path
-            originalPath
-        ];
+    console.log('Trying direct URL paths:', possiblePaths);
 
-        console.log('Trying multiple paths for image:', originalPath, possiblePaths);
-
-        // Try each path until one works
-        for (const testPath of possiblePaths) {
-            try {
-                const success = await this.testImagePath(testPath);
-                if (success) {
-                    console.log('Successfully loaded image from path:', testPath);
-                    return new Promise((resolve, reject) => {
-                        img.onload = () => {
-                            this._image = img;
-                            this._imageWidth = img.naturalWidth || img.width;
-                            this._imageHeight = img.naturalHeight || img.height;
-                            this._isLoaded = true;
-                            resolve(img);
-                        };
-                        img.onerror = reject;
-                        img.src = testPath;
-                    });
-                }
-            } catch (error) {
-                // Continue to next path
-                continue;
+    // Try each path until one works
+    for (const testPath of possiblePaths) {
+        try {
+            const success = await this.testImagePath(testPath);
+            if (success) {
+                console.log('Successfully loaded image from direct URL:', testPath);
+                return new Promise((resolve, reject) => {
+                    img.onload = () => {
+                        this._image = img;
+                        this._imageWidth = img.naturalWidth || img.width;
+                        this._imageHeight = img.naturalHeight || img.height;
+                        this._isLoaded = true;
+                        resolve(img);
+                    };
+                    img.onerror = reject;
+                    img.src = testPath;
+                });
             }
+        } catch (error) {
+            // Continue to next path
+            continue;
         }
-
-        throw new Error(`Could not load image from any of the attempted paths for: ${originalPath}`);
     }
+
+    throw new Error(`Could not load image from any of the attempted paths for: ${originalPath}`);
+}
 
     /**
      * Test if an image can be loaded from a specific path
@@ -643,7 +748,6 @@ class SpriteRenderer extends Module {
         console.log('setSprite called with path:', path);
 
         if (path === null || path === undefined) {
-            // Clear the sprite
             this.imageAsset = null;
             this._image = null;
             this._isLoaded = false;
@@ -655,26 +759,25 @@ class SpriteRenderer extends Module {
             return;
         }
 
-        // Create new asset reference in a safe way
         try {
+            // Create new asset reference
             if (window.AssetReference) {
                 this.imageAsset = new window.AssetReference(path, 'image');
             } else {
-                // Simple fallback if AssetReference isn't available
                 this.imageAsset = {
                     path: path,
                     type: 'image',
-                    load: () => this.fallbackLoadImage(path)
+                    load: () => window.assetManager ?
+                        window.assetManager.getAssetByPath(path) :
+                        this.fallbackLoadImage(path)
                 };
             }
 
-            console.log('Created imageAsset:', this.imageAsset);
-
-            // Load the image
+            // Load via AssetManager
             const image = await this.loadImage();
 
             if (image) {
-                console.log('Image loaded successfully:', image.src);
+                console.log('Image loaded successfully:', image.src || 'data URL');
             } else {
                 console.warn('Failed to load image');
             }
@@ -1446,13 +1549,48 @@ class SpriteRenderer extends Module {
     }
 
     /**
+ * Load image from AssetManager
+ * @param {string} path - Asset path
+ * @returns {Promise<HTMLImageElement>} - Loaded image
+ */
+    async loadFromAssetManager(path) {
+        if (!path) return null;
+
+        try {
+            // Always try to load from AssetManager first
+            if (window.assetManager) {
+                const asset = await window.assetManager.getAssetByPath(path);
+                if (asset && asset instanceof HTMLImageElement) {
+                    this._image = asset;
+                    this._imageWidth = asset.naturalWidth || asset.width;
+                    this._imageHeight = asset.naturalHeight || asset.height;
+                    this._isLoaded = true;
+                    console.log('Image loaded from AssetManager:', path);
+                    return asset;
+                }
+            }
+
+            // Fallback to direct loading if not in AssetManager
+            return await this.fallbackLoadImage(path);
+        } catch (error) {
+            console.error('Error loading from AssetManager:', error);
+            return null;
+        }
+    }
+
+    /**
      * Override to handle serialization
      */
     toJSON() {
         const json = super.toJSON() || {};
 
-        // Serialize sprite properties
-        json.imageAsset = this.imageAsset ? (typeof this.imageAsset.toJSON === 'function' ? this.imageAsset.toJSON() : { path: this.imageAsset.path }) : null;
+        // Only store the asset reference, not the actual image data
+        json.imageAsset = this.imageAsset ? {
+            path: this.imageAsset.path,
+            type: 'image',
+            embedded: this.imageAsset.embedded || false
+        } : null;
+
         json.width = this.width;
         json.height = this.height;
         json.color = this.color;
@@ -1472,12 +1610,7 @@ class SpriteRenderer extends Module {
         json.sliceMode = this.sliceMode;
         json.sliceBorder = { ...this.sliceBorder };
 
-        // Note: Don't embed image data here - let ExportManager handle it
-        // This prevents double-encoding and corruption
-        json.imageData = null;
-
-        json.useEmbeddedData = true; // Indicate that this sprite uses embedded data
-
+        // DON'T store image data here - let AssetManager handle it
         return json;
     }
 
@@ -1500,81 +1633,35 @@ class SpriteRenderer extends Module {
         if (json.sliceMode !== undefined) this.sliceMode = json.sliceMode;
         if (json.sliceBorder !== undefined) this.sliceBorder = json.sliceBorder;
 
-        // IMPORTANT: Don't clear existing loaded images unless we're explicitly replacing them
-        const hasExistingImage = this._image && this._isLoaded;
+        // Restore asset reference and load from AssetManager
+        if (json.imageAsset && json.imageAsset.path) {
+            console.log('Loading sprite from AssetManager:', json.imageAsset.path);
 
-        // Handle image loading based on export/embedded status
-        if (json.useEmbeddedData === true && json.imageData) {
-            // Exported game with embedded data - PRIORITY CASE
-            console.log('Loading sprite from embedded image data');
-            this.loadImageFromData(json.imageData).then(() => {
-                console.log('Successfully loaded sprite from embedded data');
-            }).catch(error => {
-                console.error('Failed to load embedded image data:', error);
-            });
-
-            // Set a minimal imageAsset that won't try to load from path
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageData)
-            };
-
-        } else if (json.imageData && json.useEmbeddedData !== false) {
-            // Legacy support for imageData without useEmbeddedData flag
-            console.log('Loading sprite from legacy embedded image data');
-            this.loadImageFromData(json.imageData).then(() => {
-                console.log('Successfully loaded sprite from legacy embedded data');
-            }).catch(error => {
-                console.error('Failed to load legacy embedded image data:', error);
-            });
-
-            this.imageAsset = {
-                path: null,
-                type: 'image',
-                embedded: true,
-                load: () => this.loadImageFromData(json.imageData)
-            };
-
-        } else if (json.imageAsset && json.imageAsset.path) {
-            // Development mode with normal imageAsset - only if we have a valid path
-            console.log('Loading sprite from path:', json.imageAsset.path);
             try {
-                if (window.AssetReference && typeof window.AssetReference.fromJSON === 'function') {
-                    this.imageAsset = window.AssetReference.fromJSON(json.imageAsset);
+                if (window.AssetReference) {
+                    this.imageAsset = new window.AssetReference(json.imageAsset.path, 'image');
                 } else {
                     this.imageAsset = {
                         path: json.imageAsset.path,
                         type: 'image',
-                        load: () => this.fallbackLoadImage(json.imageAsset.path)
+                        embedded: json.imageAsset.embedded || false,
+                        load: () => this.loadFromAssetManager(json.imageAsset.path)
                     };
                 }
-                // Delay loading slightly to ensure asset manager is ready
-                setTimeout(() => {
-                    this.loadImage().catch(error => {
-                        console.error("Failed to load image from path:", error);
-                    });
-                }, 100);
+
+                // Load the asset from AssetManager
+                this.loadFromAssetManager(json.imageAsset.path);
             } catch (error) {
                 console.error("Error restoring image asset:", error);
             }
-
         } else {
-            // No valid image data or asset found
-            // IMPORTANT: Only clear if we don't already have a loaded image
-            if (!hasExistingImage) {
-                console.log('No image data found in JSON, clearing image asset');
-                this.imageAsset = {
-                    path: null,
-                    type: 'image',
-                    load: () => Promise.resolve(null)
-                };
-                this._image = null;
-                this._isLoaded = false;
-            } else {
-                console.log('No image data in JSON, but keeping existing loaded image');
-            }
+            this.imageAsset = {
+                path: null,
+                type: 'image',
+                load: () => Promise.resolve(null)
+            };
+            this._image = null;
+            this._isLoaded = false;
         }
     }
 }

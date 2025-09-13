@@ -1328,13 +1328,13 @@ class Inspector {
                 addButton: (label, onClick, options = {}) => {
                     const buttonId = `btn-${module.id}-${Date.now()}`;
                     const customStyle = options.style || '';
-                    
+
                     // Store the button handler for later use
                     if (!module._styleButtonHandlers) {
                         module._styleButtonHandlers = {};
                     }
                     module._styleButtonHandlers[buttonId] = onClick;
-                    
+
                     styleHelper.html += `<button id="${buttonId}" class="property-btn" style="margin: 4px 0; padding: 6px 12px; ${customStyle}">${label}</button>`;
                 },
                 addHelpText: (text, options = {}) => {
@@ -2312,57 +2312,6 @@ class Inspector {
             return this.generateVectorUI(prop, module, value);
         }
 
-        // Handle image assets specially
-        if (
-            prop.type === 'image' ||
-            prop.type === 'asset' && prop.options?.assetType === 'image'
-        ) {
-            const inputId = `prop-${module.id}-${prop.name}`;
-            const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-            // Get current value
-            let value;
-            if (typeof module.getProperty === 'function') {
-                value = module.getProperty(prop.name, prop.value);
-            } else if (prop.name in module) {
-                value = module[prop.name];
-            } else if (module.properties && prop.name in module.properties) {
-                value = module.properties[prop.name];
-            } else {
-                value = prop.value;
-            }
-
-            // Safely extract path
-            let path = '';
-            if (typeof value === 'string') {
-                path = value;
-            } else if (value && typeof value === 'object' && 'path' in value) {
-                path = value.path;
-            }
-
-            return `
-        <div class="property-row" style="${rowStyle}">
-            <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
-            <div class="image-drop-target" 
-                data-prop-name="${prop.name}"
-                data-property-type="image"
-                data-asset-type="image"
-                title="Drag an image here or click to select"
-                style="${inputStyle}">
-                ${path ? `<div class="image-path">${this.formatImagePath(path)}</div>` : '<span class="drop-hint">Drop image here</span>'}
-                <div class="image-actions">
-                    <button class="asset-btn select-btn" title="Select Image" type="button">
-                        <i class="fas fa-folder-open"></i>
-                    </button>
-                    <button class="asset-btn clear-btn" title="Clear Image" type="button" ${!path ? 'disabled' : ''}>
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-        }
-
         // Add slider if requested
         let sliderHtml = '';
         if (prop.options?.slider) {
@@ -2398,6 +2347,48 @@ class Inspector {
                     </option>`;
             }).join('')}
             </select>
+            `;
+        }
+
+        // Handle asset properties
+        if (prop.type === 'asset') {
+            const assetType = prop.options?.assetType || 'image';
+            const inputId = `prop-${module.id}-${prop.name}`;
+
+            // Get current value
+            let value = this.getModuleProperty(module, prop.name);
+            let path = '';
+            if (typeof value === 'string') {
+                path = value;
+            } else if (value && typeof value === 'object' && 'path' in value) {
+                path = value.path;
+            }
+
+            return `
+                <div class="property-row" style="${prop.options?.rowStyle || ''}">
+                    <label for="${inputId}" title="${prop.options?.description || ''}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
+                    <div class="asset-selector-container" data-prop-name="${prop.name}" data-asset-type="${assetType}">
+                        <div class="asset-preview" 
+                            data-property-type="asset"
+                            data-asset-type="${assetType}"
+                            title="Drag an ${assetType} here or click to select">
+                            ${this.generateAssetPreview(path, assetType)}
+                        </div>
+                        <div class="asset-actions">
+                            <button class="asset-btn select-btn" title="Select ${assetType.charAt(0).toUpperCase() + assetType.slice(1)}" type="button">
+                                <i class="fas fa-folder-open"></i>
+                            </button>
+                            <button class="asset-btn clear-btn" title="Clear ${assetType}" type="button" ${!path ? 'disabled' : ''}>
+                                <i class="fas fa-times"></i>
+                            </button>
+                            ${window.assetManager ? `
+                            <select class="asset-dropdown" title="Quick select from project assets">
+                                <option value="">-- Select ${assetType} --</option>
+                                ${this.generateAssetOptions(assetType, path)}
+                            </select>` : ''}
+                        </div>
+                    </div>
+                </div>
             `;
         }
 
@@ -3211,6 +3202,48 @@ class Inspector {
             this.setupImageDropTarget(element, module);
         });
 
+        // Asset selector handling
+        container.querySelectorAll('.asset-selector-container').forEach(assetContainer => {
+            const propName = assetContainer.dataset.propName;
+            const assetType = assetContainer.dataset.assetType;
+            const selectBtn = assetContainer.querySelector('.select-btn');
+            const clearBtn = assetContainer.querySelector('.clear-btn');
+            const dropdown = assetContainer.querySelector('.asset-dropdown');
+            const preview = assetContainer.querySelector('.asset-preview');
+
+            // Setup drag and drop
+            if (preview) {
+                this.setupAssetDropTarget(preview, module, propName, assetType);
+            }
+
+            // Select button
+            if (selectBtn) {
+                selectBtn.addEventListener('click', () => {
+                    this.showAssetSelector(module, propName, assetType);
+                });
+            }
+
+            // Clear button
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    this.clearAssetProperty(module, propName);
+                    this.refreshModuleUI(module);
+                    this.editor?.refreshCanvas();
+                });
+            }
+
+            // Dropdown selection
+            if (dropdown) {
+                dropdown.addEventListener('change', (e) => {
+                    if (e.target.value) {
+                        this.setAssetProperty(module, propName, e.target.value);
+                        this.refreshModuleUI(module);
+                        this.editor?.refreshCanvas();
+                    }
+                });
+            }
+        });
+
         // Set up select and clear buttons for image assets
         container.querySelectorAll('.image-drop-target').forEach(dropTarget => {
             const propName = dropTarget.dataset.propName;
@@ -3308,16 +3341,16 @@ class Inspector {
             button.addEventListener('click', () => {
                 const buttonId = button.id;
                 const propName = button.dataset.propName || buttonId;
-                
+
                 // Look for the onClick handler in the module's exposed properties
                 if (module.getExposedProperties) {
                     const exposedProps = module.getExposedProperties();
-                    const buttonProp = exposedProps.find(prop => 
-                        prop.name === propName || 
+                    const buttonProp = exposedProps.find(prop =>
+                        prop.name === propName ||
                         prop.name === buttonId ||
                         (prop.type === 'button' && prop.label === button.textContent)
                     );
-                    
+
                     if (buttonProp && buttonProp.options && buttonProp.options.onClick) {
                         try {
                             buttonProp.options.onClick();
@@ -3326,7 +3359,7 @@ class Inspector {
                         }
                     }
                 }
-                
+
                 // Also check for style-based buttons
                 if (module._styleButtonHandlers && module._styleButtonHandlers[buttonId]) {
                     try {
@@ -5303,6 +5336,153 @@ class Inspector {
     }
 
     /**
+ * Setup asset drop target
+ */
+    setupAssetDropTarget(element, module, propName, assetType) {
+        element.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            if (this.isValidAssetDrag(e.dataTransfer, assetType)) {
+                element.classList.add('drag-over');
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        element.addEventListener('dragleave', () => {
+            element.classList.remove('drag-over');
+        });
+
+        element.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            element.classList.remove('drag-over');
+
+            try {
+                const assetPath = await this.getAssetPathFromDrop(e.dataTransfer, assetType);
+                if (assetPath) {
+                    this.setAssetProperty(module, propName, assetPath);
+                    this.refreshModuleUI(module);
+                    this.editor?.refreshCanvas();
+                }
+            } catch (error) {
+                console.error('Error handling asset drop:', error);
+            }
+        });
+    }
+
+    /**
+     * Show asset selector dialog
+     */
+    showAssetSelector(module, propName, assetType) {
+        // Create the asset selector dialog
+        const dialog = document.createElement('div');
+        dialog.className = 'asset-selector-dialog';
+        dialog.innerHTML = `
+        <div class="asset-selector-content">
+            <div class="asset-selector-header">
+                <h3>Select ${assetType.charAt(0).toUpperCase() + assetType.slice(1)} for ${module.type}</h3>
+                <button class="asset-selector-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="asset-selector-body">
+                <div class="asset-search">
+                    <input type="text" placeholder="Search assets..." class="asset-search-input">
+                </div>
+                <div class="project-assets-grid">
+                    <div class="loading-message">Loading assets...</div>
+                </div>
+            </div>
+            <div class="asset-selector-footer">
+                <button class="upload-new-btn">Upload New</button>
+                <button class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(dialog);
+        this.loadAssetsForSelector(dialog, module, propName, assetType);
+
+        // Setup event listeners
+        const closeBtn = dialog.querySelector('.asset-selector-close');
+        const cancelBtn = dialog.querySelector('.cancel-btn');
+        const uploadBtn = dialog.querySelector('.upload-new-btn');
+
+        closeBtn.addEventListener('click', () => this.closeAssetDialog(dialog));
+        cancelBtn.addEventListener('click', () => this.closeAssetDialog(dialog));
+        uploadBtn.addEventListener('click', () => this.uploadNewAsset(assetType, module, propName, dialog));
+    }
+
+    /**
+     * Load assets for the selector
+     */
+    async loadAssetsForSelector(dialog, module, propName, assetType) {
+        const grid = dialog.querySelector('.project-assets-grid');
+
+        try {
+            const assets = window.assetManager ?
+                window.assetManager.getAvailableAssetPaths(assetType) :
+                await this.getAssetsFromFileBrowser(assetType);
+
+            if (assets.length === 0) {
+                grid.innerHTML = `<div class="no-assets-message">No ${assetType} assets found</div>`;
+                return;
+            }
+
+            grid.innerHTML = '';
+
+            assets.forEach(asset => {
+                const item = document.createElement('div');
+                item.className = 'asset-grid-item';
+                item.innerHTML = this.generateAssetGridItem(asset, assetType);
+
+                item.addEventListener('click', () => {
+                    this.setAssetProperty(module, propName, asset.path);
+                    this.refreshModuleUI(module);
+                    this.editor?.refreshCanvas();
+                    this.closeAssetDialog(dialog);
+                });
+
+                grid.appendChild(item);
+            });
+
+        } catch (error) {
+            console.error('Error loading assets:', error);
+            grid.innerHTML = '<div class="error-message">Error loading assets</div>';
+        }
+    }
+
+    /**
+     * Set asset property on module
+     */
+    setAssetProperty(module, propName, assetPath) {
+        // Check if module has a specific setter method
+        const setterName = `set${propName.charAt(0).toUpperCase() + propName.slice(1)}`;
+        if (typeof module[setterName] === 'function') {
+            module[setterName](assetPath);
+            return;
+        }
+
+        // Check for custom asset selection handler
+        const exposedProps = module.getExposedProperties ? module.getExposedProperties() : [];
+        const prop = exposedProps.find(p => p.name === propName);
+        if (prop && prop.options && prop.options.onAssetSelected) {
+            prop.options.onAssetSelected(assetPath);
+            return;
+        }
+
+        // Fallback to generic property setting
+        if (typeof module.setProperty === 'function') {
+            module.setProperty(propName, assetPath);
+        } else {
+            module[propName] = assetPath;
+        }
+    }
+
+    /**
+     * Clear asset property
+     */
+    clearAssetProperty(module, propName) {
+        this.setAssetProperty(module, propName, null);
+    }
+
+    /**
      * Handle placeholder view data action
      */
     handlePlaceholderViewData(module) {
@@ -5635,6 +5815,51 @@ class Inspector {
     }
 
     /**
+ * Generate asset preview HTML
+ */
+    generateAssetPreview(path, assetType) {
+        if (!path) {
+            return `<span class="drop-hint">Drop ${assetType} here</span>`;
+        }
+
+        switch (assetType) {
+            case 'image':
+                return `
+                <div class="image-preview-container">
+                    <img src="${path}" alt="Asset Preview" class="asset-thumbnail">
+                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
+                </div>
+            `;
+            case 'audio':
+                return `
+                <div class="audio-preview-container">
+                    <i class="fas fa-music"></i>
+                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
+                </div>
+            `;
+            default:
+                return `
+                <div class="generic-preview-container">
+                    <i class="fas fa-file"></i>
+                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Generate dropdown options for assets
+     */
+    generateAssetOptions(assetType, currentPath) {
+        if (!window.assetManager) return '';
+
+        const assets = window.assetManager.getAvailableAssetPaths(assetType);
+        return assets.map(asset =>
+            `<option value="${asset.path}" ${asset.path === currentPath ? 'selected' : ''}>${asset.displayName}</option>`
+        ).join('');
+    }
+
+    /**
      * Update the transform module values when object changes
      */
     updateTransformValues() {
@@ -5647,5 +5872,36 @@ class Inspector {
         transformModule.querySelector('.position-y').value = this.inspectedObject.position.y;
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;
         transformModule.querySelector('.depth').value = this.inspectedObject.depth;
+    }
+}
+
+class AssetSelector {
+    static createImageDropdown(currentPath, onSelect) {
+        const assets = window.assetManager ?
+            window.assetManager.getAvailableAssetPaths('image') : [];
+
+        const select = document.createElement('select');
+        select.className = 'asset-dropdown';
+
+        // Add empty option
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = '-- Select Image --';
+        select.appendChild(emptyOption);
+
+        // Add asset options
+        assets.forEach(asset => {
+            const option = document.createElement('option');
+            option.value = asset.path;
+            option.textContent = asset.displayName;
+            option.selected = asset.path === currentPath;
+            select.appendChild(option);
+        });
+
+        select.addEventListener('change', (e) => {
+            if (onSelect) onSelect(e.target.value);
+        });
+
+        return select;
     }
 }
