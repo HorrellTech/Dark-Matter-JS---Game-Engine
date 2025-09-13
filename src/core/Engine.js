@@ -1667,12 +1667,6 @@ class Engine {
 
         const pixelRatio = this.renderConfig.pixelRatio;
 
-        // If using WebGLCanvas, call its resize method
-        if (this.useWebGL && this.ctx.resize) {
-            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
-            return;
-        }
-
         // Set physical dimensions based on scaling mode
         let physicalWidth, physicalHeight;
 
@@ -1776,6 +1770,16 @@ class Engine {
             this.canvas.style.imageRendering = 'pixelated';
         } else {
             this.canvas.style.imageRendering = this.renderConfig.smoothing ? 'auto' : 'crisp-edges';
+        }
+
+        // If using WebGLCanvas, call its resize method
+        if (this.useWebGL && this.ctx.resize) {
+            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
+            
+            if (pixelRatio !== 1) {
+                this.ctx.scale(pixelRatio, pixelRatio); // Ensure scaling is applied
+            }
+            return;
         }
 
         this.canvasResized = true;

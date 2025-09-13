@@ -355,6 +355,20 @@ class RigidBody extends Module {
         return body;
     }
 
+    setAngle(angle) {
+        if (this.body) {
+            const radians = angle * (Math.PI / 180);
+            Matter.Body.setAngle(this.body, radians);
+        }
+    }
+
+    rotate(deltaAngle) {
+        if (this.body) {
+            const radians = deltaAngle;
+            Matter.Body.setAngle(this.body, this.body.angle + radians);
+        }
+    }
+
     updateMass(weight = 1) {
         if (this.body && this.bodyType === "dynamic") {
             const area = this.body.area || 1;

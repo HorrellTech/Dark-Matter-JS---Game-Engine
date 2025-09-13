@@ -4015,8 +4015,6 @@ class WebGLCanvas {
         }
     }
 
-
-
     /*
         * Parse color input
         * Converts hex, rgb, rgba, or array formats to RGBA array

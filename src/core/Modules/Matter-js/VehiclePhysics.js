@@ -56,6 +56,18 @@ class VehiclePhysics extends Module {
         this.lastRightMarkPos = null; // {x, y} - Last world position of right tire mark
         this.minMarkSpacing = 32; // Minimum distance (pixels) between marks to prevent overlap
 
+        this.gtaStyleVehicle = true; // Use GTA-style enter/exit vehicle
+
+        // NEW: GTA-style vehicle system
+        this.enterKey = "enter";                    // Key to enter/exit vehicle
+        this.enterDistance = 80;                // Distance player needs to be to enter vehicle
+        this.playerInside = false;              // Whether player is currently inside
+        this.playerGameObject = null;           // Reference to player GameObject
+        this.playerOriginalPosition = null;     // Store player's position when entering
+        this.hidePlayerWhenInside = true;       // Hide player sprite when inside vehicle
+        this.ejectOnDestroy = true;             // Eject player when vehicle is destroyed
+        this.showEnterPrompt = true;
+
         // NEW: Drift and traction system
         this.handbrakeForce = 6;             // How much handbrake reduces rear grip (0-1)
         this.driftThreshold = 0.8;             // Speed threshold for drift to begin (0-1 of max speed)
@@ -109,6 +121,12 @@ class VehiclePhysics extends Module {
         this.exposeProperty("playerControlled", "boolean", this.playerControlled, {
             description: "Can be controlled with arrow keys",
             onChange: (val) => { this.playerControlled = val; }
+        });
+
+        this.exposeProperty("gtaStyleVehicle", "boolean", this.gtaStyleVehicle, {
+            description: "Allow player to enter/exit this vehicle",
+            style: { label: "GTA Style Vehicle" },
+            onChange: (val) => { this.gtaStyleVehicle = val; }
         });
 
         this.exposeProperty("maxSpeed", "number", this.maxSpeed, {
@@ -174,6 +192,11 @@ class VehiclePhysics extends Module {
         style.exposeProperty("playerControlled", "boolean", this.playerControlled, {
             description: "Enable arrow key controls",
             style: { label: "Player Controlled" }
+        });
+
+        style.exposeProperty("gtaStyleVehicle", "boolean", this.gtaStyleVehicle, {
+            description: "Allow player to enter/exit this vehicle",
+            style: { label: "GTA Style Vehicle" }
         });
 
         style.exposeProperty("handbrakeKey", "string", this.handbrakeKey, {
@@ -449,6 +472,42 @@ class VehiclePhysics extends Module {
 
         style.endGroup();
 
+        style.startGroup("GTA Vehicle System", false, {
+            backgroundColor: 'rgba(255, 100, 255, 0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("gtaStyleVehicle", "boolean", this.gtaStyleVehicle, {
+            description: "Enable GTA-style enter/exit system",
+            style: { label: "GTA Style Vehicle" }
+        });
+
+        style.exposeProperty("enterKey", "string", this.enterKey, {
+            description: "Key to enter/exit vehicle",
+            style: { label: "Enter/Exit Key" }
+        });
+
+        style.exposeProperty("enterDistance", "number", this.enterDistance, {
+            description: "Distance player needs to be to enter",
+            min: 30,
+            max: 200,
+            step: 10,
+            style: { label: "Enter Distance", slider: true }
+        });
+
+        style.exposeProperty("hidePlayerWhenInside", "boolean", this.hidePlayerWhenInside, {
+            description: "Hide player sprite when inside vehicle",
+            style: { label: "Hide Player Inside" }
+        });
+
+        style.exposeProperty("showEnterPrompt", "boolean", this.showEnterPrompt, {
+            description: "Show enter/exit prompts",
+            style: { label: "Show Enter Prompt" }
+        });
+
+        style.endGroup();
+
         style.addDivider();
         style.addHelpText("Enhanced physics with realistic drift mechanics. Use handbrake + steering to initiate drifts. RWD vehicles have more oversteer, FWD have better traction.");
     }
@@ -482,6 +541,11 @@ class VehiclePhysics extends Module {
     loop(deltaTime) {
         if (!this.rigidBody || !this.rigidBody.body) return;
 
+        // Handle GTA-style vehicle entry/exit system
+        if (this.gtaStyleVehicle) {
+            this.handleVehicleEntry();
+        }
+
         // Reset input flags
         this.isAccelerating = false;
         this.isBraking = false;
@@ -492,7 +556,11 @@ class VehiclePhysics extends Module {
         this.targetThrottleInput = 0;
         this.targetSteeringInput = 0;
 
-        if (this.playerControlled) {
+        // Only allow control when player is inside the vehicle OR when it's not a GTA-style vehicle
+        const canControl = this.playerControlled && (!this.gtaStyleVehicle || this.playerInside);
+
+        if (canControl) {
+            // Vehicle controls (same as before)
             if (window.input.keyDown(this.upKey)) {
                 this.targetThrottleInput = 1;
                 this.isAccelerating = true;
@@ -529,6 +597,192 @@ class VehiclePhysics extends Module {
         this.updateTractionSystem(deltaTime);
         this.updateVehiclePhysics(deltaTime);
         this.updateDriftPhysics(deltaTime);
+    }
+
+    handleVehicleEntry() {
+        if (!window.engine || !window.engine.gameObjectManager) return;
+
+        // Find player GameObject (assuming it has a "Player" tag or specific name)
+        if (!this.playerGameObject) {
+            this.playerGameObject = this.findPlayerGameObject();
+        }
+
+        if (!this.playerGameObject) return;
+
+        const playerPos = this.playerGameObject.getWorldPosition();
+        const vehiclePos = this.gameObject.getWorldPosition();
+        const distance = this.calculateDistance(playerPos, vehiclePos);
+
+        // Check if player is close enough to enter/exit
+        if (distance <= this.enterDistance) {
+            // Show enter prompt if player is outside
+            if (!this.playerInside && this.showEnterPrompt) {
+                this.showEnterPromptUI();
+            }
+
+            // Handle enter/exit input
+            if (window.input.keyPressed(this.enterKey)) {
+                if (this.playerInside) {
+                    this.exitVehicle();
+                } else {
+                    this.enterVehicle();
+                }
+            }
+        } else {
+            // Hide enter prompt when too far
+            this.hideEnterPromptUI();
+        }
+
+        // Keep player inside vehicle if they're in it
+        if (this.playerInside && this.playerGameObject) {
+            this.updatePlayerPositionInVehicle();
+        }
+    }
+
+    enterVehicle() {
+        if (!this.playerGameObject || this.playerInside) return;
+
+        console.log("Player entering vehicle");
+
+        // Store player's original position for ejection
+        this.playerOriginalPosition = this.playerGameObject.getWorldPosition();
+
+        // Set player as inside
+        this.playerInside = true;
+
+        // Position player at vehicle center
+        const vehiclePos = this.gameObject.getWorldPosition();
+        this.playerGameObject.setWorldPosition(vehiclePos.x, vehiclePos.y);
+
+        // Hide player sprite if enabled
+        if (this.hidePlayerWhenInside) {
+            this.setPlayerVisibility(false);
+        }
+
+        // Disable player movement (if player has movement script)
+        this.setPlayerMovementEnabled(false);
+
+        this.hideEnterPromptUI();
+    }
+
+    exitVehicle() {
+        if (!this.playerGameObject || !this.playerInside) return;
+
+        console.log("Player exiting vehicle");
+
+        // Calculate exit position (slightly to the side of vehicle)
+        const vehiclePos = this.gameObject.getWorldPosition();
+        const vehicleAngle = this.gameObject.angle * (Math.PI / 180);
+        const exitDistance = 60; // Distance from vehicle center
+
+        // Exit to the left side of the vehicle
+        const exitX = vehiclePos.x - Math.sin(vehicleAngle) * exitDistance;
+        const exitY = vehiclePos.y + Math.cos(vehicleAngle) * exitDistance;
+
+        // Position player at exit location
+        this.playerGameObject.setWorldPosition(exitX, exitY);
+
+        // Set player as outside
+        this.playerInside = false;
+
+        // Show player sprite
+        if (this.hidePlayerWhenInside) {
+            this.setPlayerVisibility(true);
+        }
+
+        // Re-enable player movement
+        this.setPlayerMovementEnabled(true);
+
+        this.playerOriginalPosition = null;
+    }
+
+    updatePlayerPositionInVehicle() {
+        if (!this.playerGameObject || !this.playerInside) return;
+
+        const vehiclePos = this.gameObject.getWorldPosition();
+        this.playerGameObject.setWorldPosition(vehiclePos.x, vehiclePos.y);
+
+        // Optionally match vehicle rotation
+        // this.playerGameObject.angle = this.gameObject.angle;
+    }
+
+    findPlayerGameObject() {
+        // Look for GameObject with "Player" tag first
+        let player = window.engine.gameObjectManager.findGameObjectByTag("Player");
+
+        if (!player) {
+            // Fallback: look for GameObject named "Player"
+            const allObjects = window.engine.gameObjectManager.getAllGameObjects();
+            player = allObjects.find(obj => obj.name && obj.name.toLowerCase().includes("player"));
+        }
+
+        if (!player) {
+            // Last resort: look for GameObject with player movement component
+            const allObjects = window.engine.gameObjectManager.getAllGameObjects();
+            player = allObjects.find(obj => {
+                // Check for common player movement modules
+                return obj.getModule("PlayerMovement") ||
+                    obj.getModule("Movement") ||
+                    obj.getModule("TopDownMovement");
+            });
+        }
+
+        return player;
+    }
+
+    calculateDistance(pos1, pos2) {
+        const dx = pos1.x - pos2.x;
+        const dy = pos1.y - pos2.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    setPlayerVisibility(visible) {
+        if (!this.playerGameObject) return;
+
+        // Try to find and toggle sprite renderer
+        const spriteRenderer = this.playerGameObject.getModule("SpriteRenderer");
+        if (spriteRenderer) {
+            spriteRenderer.visible = visible;
+        }
+
+        // Also try other common renderer modules
+        const renderer = this.playerGameObject.getModule("Renderer");
+        if (renderer) {
+            renderer.visible = visible;
+        }
+    }
+
+    setPlayerMovementEnabled(enabled) {
+        if (!this.playerGameObject) return;
+
+        // Try to find and toggle movement modules
+        const playerMovement = this.playerGameObject.getModule("PlayerMovement");
+        if (playerMovement && typeof playerMovement.setEnabled === 'function') {
+            playerMovement.setEnabled(enabled);
+        }
+
+        const movement = this.playerGameObject.getModule("Movement");
+        if (movement && typeof movement.setEnabled === 'function') {
+            movement.setEnabled(enabled);
+        }
+
+        const topDownMovement = this.playerGameObject.getModule("TopDownMovement");
+        if (topDownMovement && typeof topDownMovement.setEnabled === 'function') {
+            topDownMovement.setEnabled(enabled);
+        }
+    }
+
+    showEnterPromptUI() {
+        // Simple implementation - you can enhance this with proper UI
+        if (!this._promptShown) {
+            this._promptShown = true;
+            // You could implement a proper UI system here
+            console.log(`Press ${this.enterKey.toUpperCase()} to enter vehicle`);
+        }
+    }
+
+    hideEnterPromptUI() {
+        this._promptShown = false;
     }
 
     updateInputs(deltaTime) {
@@ -876,6 +1130,11 @@ class VehiclePhysics extends Module {
             if (this.isHandbraking) ctx.fillText("HANDBRAKE", 0, 2);
         }
 
+        // Draw enter prompt and vehicle status
+        if (this.gtaStyleVehicle) {
+            this.drawVehicleUI(ctx);
+        }
+
         if (this.showDriftInfo) {
             // Draw drift-specific debug info
             ctx.fillStyle = this.isDrifting ? "orange" : "lightblue";
@@ -974,6 +1233,68 @@ class VehiclePhysics extends Module {
         }
 
         ctx.restore();
+    }
+
+    drawVehicleUI(ctx) {
+        if (!this.playerGameObject) return;
+
+        const playerPos = this.playerGameObject.getWorldPosition();
+        const vehiclePos = this.gameObject.getWorldPosition();
+        const distance = this.calculateDistance(playerPos, vehiclePos);
+
+        ctx.save();
+
+        // Draw enter prompt when player is close
+        if (!this.playerInside && distance <= this.enterDistance && this.showEnterPrompt) {
+            ctx.fillStyle = "white";
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2;
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+
+            const promptText = `Press ${this.enterKey.toUpperCase()} to enter`;
+
+            // Draw text background
+            const textWidth = ctx.measureText(promptText).width;
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(-textWidth / 2 - 5, -100 - 20, textWidth + 10, 25);
+
+            // Draw text
+            ctx.fillStyle = "white";
+            ctx.fillText(promptText, 0, -100);
+        }
+
+        // Draw status indicator when player is inside
+        if (this.playerInside) {
+            ctx.fillStyle = "lime";
+            ctx.font = "12px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("DRIVING", 0, -85);
+
+            // Draw exit hint
+            ctx.fillStyle = "yellow";
+            ctx.font = "10px Arial";
+            ctx.fillText(`Press ${this.enterKey.toUpperCase()} to exit`, 0, -73);
+        }
+
+        // Draw interaction range (debug)
+        if (this.showDebugInfo && !this.playerInside) {
+            ctx.strokeStyle = "cyan";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(0, 0, this.enterDistance, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        ctx.restore();
+    }
+
+    onDestroy() {
+        if (this.playerInside && this.ejectOnDestroy) {
+            this.exitVehicle();
+        }
     }
 
     isLosingTraction() {
@@ -1259,8 +1580,15 @@ class VehiclePhysics extends Module {
             tireMarkDistanceApart: this.tireMarkDistanceApart,
             tireMarkEnabled: this.tireMarkEnabled,
             tireMarkOffsetX: this.tireMarkOffsetX,
-            tireMarkOffsetY: this.tireMarkOffsetY       
-         };
+            tireMarkOffsetY: this.tireMarkOffsetY,
+            gtaStyleVehicle: this.gtaStyleVehicle,
+            gtaStyleVehicle: this.gtaStyleVehicle,
+            enterKey: this.enterKey,
+            enterDistance: this.enterDistance,
+            hidePlayerWhenInside: this.hidePlayerWhenInside,
+            showEnterPrompt: this.showEnterPrompt,
+            ejectOnDestroy: this.ejectOnDestroy
+        };
     }
 
     fromJSON(data) {
@@ -1311,7 +1639,13 @@ class VehiclePhysics extends Module {
         this.tireMarkEnabled = data.tireMarkEnabled !== undefined ? data.tireMarkEnabled : true;
         this.tireMarkOffsetX = data.tireMarkOffsetX || 0;
         this.tireMarkOffsetY = data.tireMarkOffsetY || 0;
-        
+        this.gtaStyleVehicle = data.gtaStyleVehicle !== undefined ? data.gtaStyleVehicle : true;
+        this.enterKey = data.enterKey || "enter";
+        this.enterDistance = data.enterDistance || 80;
+        this.hidePlayerWhenInside = data.hidePlayerWhenInside !== undefined ? data.hidePlayerWhenInside : true;
+        this.showEnterPrompt = data.showEnterPrompt !== undefined ? data.showEnterPrompt : true;
+        this.ejectOnDestroy = data.ejectOnDestroy !== undefined ? data.ejectOnDestroy : true;
+
     }
 }
 
