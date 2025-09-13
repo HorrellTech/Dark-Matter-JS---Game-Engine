@@ -282,18 +282,20 @@ class ExportManager {
      * Collect all assets used in the project
      */
     async collectAssets() {
-        let assets = {}; // Changed from const to let
+        let assets = {};
 
         // First, try to get assets from AssetManager
         if (window.assetManager) {
             try {
                 const assetManagerAssets = await window.assetManager.exportAssetsForGame();
-                assets = { ...assets, ...assetManagerAssets }; // Use spread operator instead of assignment
+                assets = { ...assets, ...assetManagerAssets };
+                console.log('Collected assets from AssetManager:', Object.keys(assetManagerAssets));
             } catch (error) {
                 console.warn('Failed to collect assets from AssetManager:', error);
             }
         }
 
+        // Also collect from FileBrowser for any additional assets
         if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
             try {
                 const files = await window.fileBrowser.getAllFiles();
@@ -312,9 +314,24 @@ class ExportManager {
                         const assetExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'wav', 'ogg', 'json'];
 
                         if (assetExtensions.includes(extension)) {
+                            // For binary files, we need to handle them properly
+                            let content = file.content;
+                            let mimeType = this.detectMimeType(file.path);
+                            
+                            // If it's not already a data URL, convert it
+                            if (!content.startsWith('data:')) {
+                                if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
+                                    // For images, ensure it's a proper data URL
+                                    content = `data:${mimeType};base64,${content}`;
+                                } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
+                                    // For audio, ensure it's a proper data URL
+                                    content = `data:${mimeType};base64,${content}`;
+                                }
+                            }
+                            
                             assets[normalizedPath] = {
-                                content: file.content,
-                                type: this.detectMimeType(file.path),
+                                content: content,
+                                type: mimeType,
                                 source: 'fileBrowser'
                             };
                         }
@@ -325,7 +342,7 @@ class ExportManager {
             }
         }
 
-        console.log('Collected assets:', Object.keys(assets));
+        console.log('Final collected assets:', Object.keys(assets));
         return assets;
     }
 
@@ -1083,7 +1100,7 @@ html {
         // Use safer JSON embedding approach
         const scenesData = this.safeStringify(data.scenes);
         const prefabsData = this.safeStringify(data.prefabs);
-        const assetsData = settings.standalone && settings.includeAssets ?
+        const assetsData = settings.includeAssets ?
             this.safeStringify(data.assets) : 'null';
 
         // Get the starting scene index from settings, default to 0
@@ -1105,7 +1122,7 @@ async function initializeGame() {
         window.assetManager = new AssetManager(null);
     }
 
-    // Load embedded assets BEFORE anything else
+    // Load embedded assets BEFORE anything else for BOTH standalone AND ZIP
     const assetsData = ${assetsData};
     if (assetsData) {
         console.log('Loading embedded assets into AssetManager...');
@@ -1176,15 +1193,102 @@ async function initializeGame() {
     };
 
     ${settings.standalone ? `
-    // Standalone mode - add embedded assets to AssetManager
-    //const assetsData = ${assetsData};
-    if (assetsData) {
-        console.log('Loading embedded assets into AssetManager...');
-        window.assetManager.addEmbeddedAssets(assetsData);
-        console.log('AssetManager cache populated with:', Object.keys(window.assetManager.cache));
-    }` : `
-    // ZIP mode - configure AssetManager for file loading
-    window.assetManager.basePath = 'assets/';`}
+    // Standalone mode - assets already loaded above
+    console.log('Standalone mode: Assets already embedded in AssetManager');` : `
+    // ZIP mode - assets are already embedded in AssetManager above
+    // Remove the fetch-based loading and just use the embedded assets
+    console.log('ZIP mode: Using embedded assets in AssetManager');
+    
+    // Override AssetManager loadAsset to use embedded assets first, then fallback to fetch
+    window.assetManager.originalLoadAsset = window.assetManager.loadAsset;
+    window.assetManager.loadAsset = function(path) {
+        const normalizedPath = this.normalizePath(path);
+        
+        // First check if asset is already in cache (from embedded assets)
+        const pathVariations = [
+            path,
+            normalizedPath,
+            path.replace(/^[\/\\\\]+/, ''),
+            normalizedPath.replace(/^[\/\\\\]+/, ''),
+            path.split('/').pop(),
+            normalizedPath.split('/').pop()
+        ];
+
+        for (const variation of pathVariations) {
+            if (this.cache[variation]) {
+                console.log('Found embedded asset in cache:', variation);
+                return Promise.resolve(this.cache[variation]);
+            }
+        }
+        
+        // If not in embedded cache, try to load from assets folder as fallback
+        const fileName = normalizedPath.split('/').pop();
+        const assetPath = 'assets/' + fileName;
+        
+        console.log('Asset not in embedded cache, trying to load from:', assetPath);
+        
+        return fetch(assetPath)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Asset not found: ' + assetPath);
+                }
+                
+                const extension = normalizedPath.split('.').pop().toLowerCase();
+                
+                if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
+                    return response.blob().then(blob => {
+                        const url = URL.createObjectURL(blob);
+                        return new Promise((resolve, reject) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                URL.revokeObjectURL(url);
+                                // Cache the loaded image
+                                pathVariations.forEach(variation => {
+                                    this.cache[variation] = img;
+                                });
+                                resolve(img);
+                            };
+                            img.onerror = () => {
+                                URL.revokeObjectURL(url);
+                                reject(new Error('Failed to load image'));
+                            };
+                            img.src = url;
+                        });
+                    });
+                } else if (['mp3', 'wav', 'ogg', 'aac'].includes(extension)) {
+                    return response.blob().then(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const audio = new Audio();
+                        audio.src = url;
+                        // Cache the loaded audio
+                        pathVariations.forEach(variation => {
+                            this.cache[variation] = audio;
+                        });
+                        return audio;
+                    });
+                } else if (extension === 'json') {
+                    return response.json().then(data => {
+                        // Cache the loaded JSON
+                        pathVariations.forEach(variation => {
+                            this.cache[variation] = data;
+                        });
+                        return data;
+                    });
+                } else {
+                    return response.text().then(text => {
+                        // Cache the loaded text
+                        pathVariations.forEach(variation => {
+                            this.cache[variation] = text;
+                        });
+                        return text;
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Failed to load asset:', assetPath, error);
+                throw error;
+            });
+    };`}
     
     // Initialize Global Prefab Manager
     window.prefabManager = {
@@ -1693,40 +1797,43 @@ window.addEventListener('matter-loaded', initializeGame);
         zip.file('game.js', js);
         zip.file('style.css', css);
 
-        // Add assets to a dedicated 'assets' folder
+        // Add assets to a dedicated 'assets' folder - FIXED handling
         if (settings.includeAssets && Object.keys(data.assets).length > 0) {
             const assetsFolder = zip.folder('assets');
-            for (const [path, asset] of Object.entries(data.assets)) {
-                if (asset.binary) {
-                    // Use rawContent (original file content) for binary assets
-                    const rawContent = asset.rawContent || asset.originalFile?.content;
-
-                    if (rawContent instanceof Blob) {
-                        assetsFolder.file(path, rawContent);
-                    } else if (rawContent instanceof File) {
-                        assetsFolder.file(path, rawContent);
-                    } else if (rawContent instanceof ArrayBuffer) {
-                        assetsFolder.file(path, rawContent);
-                    } else if (typeof rawContent === 'string' && rawContent.startsWith('data:')) {
-                        // Extract base64 data from data URL
-                        const commaIndex = rawContent.indexOf(',');
-                        if (commaIndex !== -1) {
-                            const base64Data = rawContent.substring(commaIndex + 1);
-                            assetsFolder.file(path, base64Data, { base64: true });
+            
+            for (const [originalPath, asset] of Object.entries(data.assets)) {
+                // Use just the filename for the ZIP structure
+                const fileName = originalPath.split('/').pop();
+                
+                try {
+                    if (asset.type && asset.type.startsWith('image/')) {
+                        // Handle image assets
+                        if (typeof asset.content === 'string' && asset.content.startsWith('data:')) {
+                            // Extract base64 data from data URL
+                            const commaIndex = asset.content.indexOf(',');
+                            if (commaIndex !== -1) {
+                                const base64Data = asset.content.substring(commaIndex + 1);
+                                assetsFolder.file(fileName, base64Data, { base64: true });
+                                console.log('Added image asset to ZIP:', fileName);
+                            }
                         }
-                    } else {
-                        // Fallback: try to use the processed content
+                    } else if (asset.type && asset.type.startsWith('audio/')) {
+                        // Handle audio assets
                         if (typeof asset.content === 'string' && asset.content.startsWith('data:')) {
                             const commaIndex = asset.content.indexOf(',');
                             if (commaIndex !== -1) {
                                 const base64Data = asset.content.substring(commaIndex + 1);
-                                assetsFolder.file(path, base64Data, { base64: true });
+                                assetsFolder.file(fileName, base64Data, { base64: true });
+                                console.log('Added audio asset to ZIP:', fileName);
                             }
                         }
+                    } else {
+                        // Handle text/JSON assets
+                        assetsFolder.file(fileName, asset.content);
+                        console.log('Added text asset to ZIP:', fileName);
                     }
-                } else {
-                    // For text-based assets, save as text
-                    assetsFolder.file(path, asset.content);
+                } catch (error) {
+                    console.error('Error adding asset to ZIP:', fileName, error);
                 }
             }
         }
@@ -1741,7 +1848,14 @@ window.addEventListener('matter-loaded', initializeGame);
         }
 
         // Generate and download ZIP
-        const content = await zip.generateAsync({ type: 'blob' });
+        const content = await zip.generateAsync({ 
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: {
+                level: 6
+            }
+        });
+        
         this.downloadFile(content, `${projectName}.zip`, 'application/zip');
     }
 
