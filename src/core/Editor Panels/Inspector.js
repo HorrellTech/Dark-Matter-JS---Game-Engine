@@ -3023,12 +3023,12 @@ class Inspector {
                             descSpan.style.display = 'none';
                         });
                     }
-                    item.addEventListener('click', () => {
+                    /*item.addEventListener('click', () => {
                         const module = this.addModuleToGameObject(moduleClass);
                         if (module) {
                             this.moduleDropdown.style.display = 'none';
                         }
-                    });
+                    });*/
 
                     const handleModuleSelect = () => {
                         const module = this.addModuleToGameObject(moduleClass);
