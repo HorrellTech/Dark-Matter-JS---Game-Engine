@@ -145,6 +145,11 @@ class Engine {
 
         window.engine = this; // Global reference for easy access
 
+        // Initialize MelodiCode if available
+        if (window.MelodiCode) {
+            this.melodicode = new window.MelodiCode();
+        }
+
         // Set up resize observer to continuously monitor container size
         this.setupResizeObserver();
 
