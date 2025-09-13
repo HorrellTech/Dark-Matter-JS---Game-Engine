@@ -647,20 +647,28 @@ class Inspector {
 
         this.modulesList.appendChild(transformModule);
 
-        // Add collapse button event listener
-        const collapseButton = transformModule.querySelector('.module-collapse');
-        collapseButton.addEventListener('click', () => {
-            const moduleContent = transformModule.querySelector('.module-content');
-            const isCollapsed = moduleContent.style.display === 'none';
+        
 
-            // Toggle collapse state
-            moduleContent.style.display = isCollapsed ? '' : 'none';
-            collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
-            collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
+        // Add collapse button event listener with touch support
+    const collapseButton = transformModule.querySelector('.module-collapse');
+    const handleCollapseToggle = () => {
+        const moduleContent = transformModule.querySelector('.module-content');
+        const isCollapsed = moduleContent.style.display === 'none';
 
-            // Save collapse state
-            this.saveModuleCollapseState('transform', !isCollapsed);
-        });
+        // Toggle collapse state
+        moduleContent.style.display = isCollapsed ? '' : 'none';
+        collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+        collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
+
+        // Save collapse state
+        this.saveModuleCollapseState('transform', !isCollapsed);
+    };
+
+        collapseButton.addEventListener('click', handleCollapseToggle);
+        collapseButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleCollapseToggle();
+        }, { passive: false });
 
         // Add existing event listeners...
         const posXInput = transformModule.querySelector('.position-x');
@@ -1073,8 +1081,8 @@ class Inspector {
         const moduleHeader = moduleElement.querySelector('.module-header');
 
         if (dragHandle) {
-            // Make the drag handle initiate dragging
-            dragHandle.addEventListener('mousedown', (e) => {
+            // Support both mouse and touch events
+            const startDrag = (e) => {
                 // Set draggable attribute just before drag starts
                 moduleElement.setAttribute('draggable', 'true');
 
@@ -1083,23 +1091,35 @@ class Inspector {
 
                 // Prevent event propagation to avoid other handlers
                 e.stopPropagation();
-            });
+            };
 
-            // Reset draggable attribute after mouseup anywhere
-            document.addEventListener('mouseup', () => {
+            const endDrag = () => {
                 moduleElement.setAttribute('draggable', 'false');
                 if (dragHandle) dragHandle.style.cursor = 'grab';
-            }, { once: true });
+            };
+
+            // Mouse events
+            dragHandle.addEventListener('mousedown', startDrag);
+
+            // Touch events
+            dragHandle.addEventListener('touchstart', startDrag, { passive: false });
+
+            // Reset draggable attribute after any interaction ends
+            document.addEventListener('mouseup', endDrag, { once: true });
+            document.addEventListener('touchend', endDrag, { once: true });
         }
 
         // Make the module header draggable too
         if (moduleHeader) {
-            moduleHeader.addEventListener('mousedown', (e) => {
+            const headerStartDrag = (e) => {
                 // Only allow drag from the header, not from buttons within it
                 if (e.target === moduleHeader || e.target.classList.contains('module-title')) {
                     moduleElement.setAttribute('draggable', 'true');
                 }
-            });
+            };
+
+            moduleHeader.addEventListener('mousedown', headerStartDrag);
+            moduleHeader.addEventListener('touchstart', headerStartDrag, { passive: false });
         }
 
         // Drag start event
@@ -1458,15 +1478,15 @@ class Inspector {
     generateSpriteRendererUI(module) {
         // Create image preview display
         const hasImage = module.imageAsset && (typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path);
-        
+
         // Get the proper image URL for preview
         let imageSrc = '';
         let imagePath = 'No image selected';
-        
+
         if (hasImage) {
             imagePath = typeof module.imageAsset === 'string' ? module.imageAsset :
                 (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
-            
+
             // Use the asset URL method to get the proper preview URL
             imageSrc = this.getAssetUrl(imagePath);
         }
@@ -2088,7 +2108,7 @@ class Inspector {
                 }
 
                 const filename = file.name || file.path.split('/').pop();
-                
+
                 // Use proper asset URL for preview
                 const imageUrl = this.getAssetUrl(file.path);
 
@@ -2943,12 +2963,25 @@ class Inspector {
                     folderElement.appendChild(content);
                     parentElement.appendChild(folderElement);
 
-                    header.addEventListener('click', () => {
+                    /*header.addEventListener('click', () => {
                         const currentlyCollapsed = content.style.display === 'none';
                         content.style.display = currentlyCollapsed ? 'block' : 'none';
                         icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
                         this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
-                    });
+                    });*/
+
+                    const handleFolderToggle = () => {
+                        const currentlyCollapsed = content.style.display === 'none';
+                        content.style.display = currentlyCollapsed ? 'block' : 'none';
+                        icon.className = `fas ${currentlyCollapsed ? 'fa-chevron-down' : 'fa-chevron-right'}`;
+                        this.saveFolderCollapseState(currentPath, !currentlyCollapsed);
+                    };
+
+                    header.addEventListener('click', handleFolderToggle);
+                    header.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        handleFolderToggle();
+                    }, { passive: false });
 
                     renderNode(node._children[folderName], content, level + 1, currentPath);
                 });
@@ -2996,6 +3029,19 @@ class Inspector {
                             this.moduleDropdown.style.display = 'none';
                         }
                     });
+
+                    const handleModuleSelect = () => {
+                        const module = this.addModuleToGameObject(moduleClass);
+                        if (module) {
+                            this.moduleDropdown.style.display = 'none';
+                        }
+                    };
+
+                    item.addEventListener('click', handleModuleSelect);
+                    item.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        handleModuleSelect();
+                    }, { passive: false });
                     parentElement.appendChild(item);
                 });
             };
@@ -3205,6 +3251,24 @@ class Inspector {
             if (this.editor && this.editor.refreshCanvas) {
                 this.editor.refreshCanvas();
             }
+        };
+
+        // Helper function to add both mouse and touch event listeners
+        const addClickListener = (element, handler) => {
+            element.addEventListener('click', handler);
+            element.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                handler(e);
+            }, { passive: false });
+        };
+
+        // Helper function to add input listeners that work on touch devices
+        const addInputListener = (input, handler) => {
+            input.addEventListener('input', handler);
+            input.addEventListener('change', handler);
+
+            // For touch devices, also listen to blur to catch final values
+            input.addEventListener('blur', handler);
         };
 
         // Prefab drop targets - NEW FUNCTIONALITY
@@ -5225,12 +5289,12 @@ class Inspector {
                 try {
                     await fileBrowser.handleFileUpload(file);
                     const assetPath = `${fileBrowser.currentPath}/${file.name}`;
-                    
+
                     // Register with asset manager if available
                     if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
                         window.assetManager.registerAsset(assetPath, assetType);
                     }
-                    
+
                     return assetPath;
                 } catch (error) {
                     console.error('Error uploading file via file browser:', error);
@@ -5246,7 +5310,7 @@ class Inspector {
         if (jsonData) {
             try {
                 const data = JSON.parse(jsonData);
-                
+
                 // Handle array of items (from file browser)
                 if (Array.isArray(data) && data.length > 0) {
                     const item = data[0];
@@ -5259,7 +5323,7 @@ class Inspector {
                         return item.path;
                     }
                 }
-                
+
                 // Handle single item
                 if (data.path && this.isValidAssetPath(data.path, assetType)) {
                     // Register with asset manager if available
@@ -5316,7 +5380,7 @@ class Inspector {
      */
     generateAssetGridItem(asset, assetType) {
         const name = asset.name || asset.path.split('/').pop();
-        
+
         switch (assetType) {
             case 'image':
                 return `
@@ -5374,7 +5438,7 @@ class Inspector {
     async uploadNewAsset(assetType, module, propName, dialog) {
         const input = document.createElement('input');
         input.type = 'file';
-        
+
         // Set accept attribute based on asset type
         switch (assetType) {
             case 'image':
@@ -5394,21 +5458,21 @@ class Inspector {
         input.onchange = async (e) => {
             if (e.target.files && e.target.files.length > 0) {
                 const file = e.target.files[0];
-                
+
                 try {
                     let assetPath;
-                    
+
                     // Try asset manager first
                     if (window.assetManager && typeof window.assetManager.addAsset === 'function') {
                         assetPath = await window.assetManager.addAsset(file, assetType);
-                    } 
+                    }
                     // Fallback to file browser
                     else {
                         const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
                         if (fileBrowser && typeof fileBrowser.handleFileUpload === 'function') {
                             await fileBrowser.handleFileUpload(file);
                             assetPath = `${fileBrowser.currentPath}/${file.name}`;
-                            
+
                             // Register with asset manager if available
                             if (window.assetManager && typeof window.assetManager.registerAsset === 'function') {
                                 window.assetManager.registerAsset(assetPath, assetType);
