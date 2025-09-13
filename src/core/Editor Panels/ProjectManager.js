@@ -133,6 +133,13 @@ class ProjectManager {
                 this.fileBrowser.db = null;
             }
 
+            if(window.engine) {
+                // Stop the engine if it's running
+                if (window.engine.running) {
+                    window.engine.stop();
+                }
+            }
+
             // 1. Reset File Browser
             await this.fileBrowser.resetDatabase(promptUser); // This clears and re-initializes with root
             await this.fileBrowser.navigateTo('/'); // Navigate to root after reset
