@@ -721,9 +721,10 @@ class ExportManager {
 
             // Physics and Collision Modules
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
-            //'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
+            'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
             'GravityFieldMatter': 'src/core/Modules/Matter-js/GravityFieldMatter.js',
+            'WindZoneMatter': 'src/core/Modules/Matter-js/WindZoneMatter.js',
             'VehiclePhysics': 'src/core/Modules/Matter-js/VehiclePhysics.js',
             'PlatformControllerMatter': 'src/core/Modules/Matter-js/PlatformControllerMatter.js',
 
