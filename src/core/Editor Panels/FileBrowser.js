@@ -9,6 +9,9 @@ class FileBrowser {
         this.fileTypes = {}; // Initialize fileTypes object first
         this.isInitializing = false; // Track initialization state
 
+        // Editor window registry
+        this.editorWindows = new Map(); // Store registered EditorWindow classes
+
         // Add clipboard state
         this.clipboard = {
             items: [],
@@ -28,6 +31,9 @@ class FileBrowser {
                 color: '#64B5F6',
                 onDoubleClick: (file) => this.openSceneFile(file)
             };
+
+            // Scan for existing EditorWindow scripts
+            this.scanForEditorWindowScripts();
         });
 
         if (!this.assetManager) {
@@ -121,6 +127,9 @@ class FileBrowser {
         this.breadcrumb.className = 'fb-breadcrumb';
         this.toolbar.appendChild(this.breadcrumb);
 
+        // Create EditorWindow tools toolbar
+        this.createEditorWindowToolbar();
+
         // Create the split container for directory tree and file browser
         this.splitContainer = document.createElement('div');
         this.splitContainer.className = 'fb-split-container';
@@ -155,6 +164,7 @@ class FileBrowser {
 
         // Add to main container
         this.fbContainer.appendChild(this.toolbar);
+        this.fbContainer.appendChild(this.editorWindowToolbar); // EditorWindow toolbar
         this.fbContainer.appendChild(this.splitContainer);
 
         // IMPORTANT: Append to the DOM before setting up event listeners
@@ -487,6 +497,279 @@ class FileBrowser {
         this.treePanelResizer.addEventListener('touchstart', (e) => this.handleTreePanelTouchStart(e));
         document.addEventListener('touchmove', (e) => this.handleTreePanelTouchMove(e));
         document.addEventListener('touchend', (e) => this.handleTreePanelTouchEnd(e));
+    }
+
+    /**
+     * Create the EditorWindow tools toolbar
+     */
+    createEditorWindowToolbar() {
+        this.editorWindowToolbar = document.createElement('div');
+        this.editorWindowToolbar.className = 'editor-window-toolbar';
+        this.editorWindowToolbar.style.cssText = `
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: #2a2a2a;
+            border-bottom: 1px solid #444;
+            flex-shrink: 0;
+            min-height: 32px;
+            flex-wrap: wrap;
+            gap: 8px;
+        `;
+
+        // Create title for the toolbar
+        const toolbarTitle = document.createElement('span');
+        toolbarTitle.textContent = 'Workspace Tools:';
+        toolbarTitle.style.cssText = `
+            color: #aaa;
+            font-size: 12px;
+            font-weight: 500;
+            margin-right: 8px;
+        `;
+
+        this.editorWindowToolbar.appendChild(toolbarTitle);
+
+        // Container for EditorWindow buttons
+        this.editorWindowButtonsContainer = document.createElement('div');
+        this.editorWindowButtonsContainer.style.cssText = `
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        `;
+
+        this.editorWindowToolbar.appendChild(this.editorWindowButtonsContainer);
+
+        // Initially show "No tools available" message
+        this.updateEditorWindowToolbar();
+    }
+
+    /**
+     * Update the EditorWindow toolbar with available tools
+     */
+    updateEditorWindowToolbar() {
+        // Clear existing buttons
+        this.editorWindowButtonsContainer.innerHTML = '';
+
+        if (this.editorWindows.size === 0) {
+            const noToolsMessage = document.createElement('span');
+            noToolsMessage.textContent = 'No workspace tools available';
+            noToolsMessage.style.cssText = `
+                color: #666;
+                font-size: 11px;
+                font-style: italic;
+            `;
+            this.editorWindowButtonsContainer.appendChild(noToolsMessage);
+            return;
+        }
+
+        // Create buttons for each registered EditorWindow
+        this.editorWindows.forEach((WindowClass, className) => {
+            const button = document.createElement('button');
+            button.className = 'editor-window-tool-btn';
+            button.title = WindowClass.description || `Open ${className}`;
+            
+            // Use class properties for styling if available
+            const icon = WindowClass.icon || 'fa-window-maximize';
+            const color = WindowClass.color || '#64B5F6';
+            
+            button.innerHTML = `<i class="fas ${icon}"></i> ${className}`;
+            button.style.cssText = `
+                padding: 4px 8px;
+                background: ${color}20;
+                border: 1px solid ${color}40;
+                color: ${color};
+                border-radius: 4px;
+                font-size: 11px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                transition: all 0.2s ease;
+            `;
+
+            // Hover effects
+            button.addEventListener('mouseenter', () => {
+                button.style.background = `${color}30`;
+                button.style.borderColor = `${color}60`;
+            });
+
+            button.addEventListener('mouseleave', () => {
+                button.style.background = `${color}20`;
+                button.style.borderColor = `${color}40`;
+            });
+
+            // Click handler to launch the EditorWindow
+            button.addEventListener('click', () => {
+                this.launchEditorWindow(WindowClass);
+            });
+
+            this.editorWindowButtonsContainer.appendChild(button);
+        });
+    }
+
+    /**
+     * Launch an EditorWindow instance
+     * @param {Class} WindowClass - The EditorWindow class to instantiate
+     */
+    launchEditorWindow(WindowClass) {
+        try {
+            // Create new instance
+            const windowInstance = new WindowClass();
+            
+            // Show the window
+            windowInstance.show();
+            
+            // Store reference for cleanup if needed
+            if (!window.activeEditorWindows) {
+                window.activeEditorWindows = new Set();
+            }
+            window.activeEditorWindows.add(windowInstance);
+            
+            // Clean up reference when window is closed
+            const originalOnClose = windowInstance.onClose.bind(windowInstance);
+            windowInstance.onClose = function() {
+                if (window.activeEditorWindows) {
+                    window.activeEditorWindows.delete(windowInstance);
+                }
+                originalOnClose();
+            };
+
+            this.showNotification(`Opened ${WindowClass.name}`, 'success');
+        } catch (error) {
+            console.error('Error launching EditorWindow:', error);
+            this.showNotification(`Error opening ${WindowClass.name}: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Register an EditorWindow class
+     * @param {Class} WindowClass - EditorWindow class to register
+     */
+    registerEditorWindow(WindowClass) {
+        if (!WindowClass || typeof WindowClass !== 'function') {
+            console.warn('Invalid EditorWindow class provided');
+            return;
+        }
+
+        // Check if it extends EditorWindow
+        if (!this.isEditorWindowClass(WindowClass)) {
+            console.warn(`${WindowClass.name} does not extend EditorWindow`);
+            return;
+        }
+
+        this.editorWindows.set(WindowClass.name, WindowClass);
+        this.updateEditorWindowToolbar();
+        
+        console.log(`Registered EditorWindow: ${WindowClass.name}`);
+    }
+
+    /**
+     * Unregister an EditorWindow class
+     * @param {string} className - Name of the class to unregister
+     */
+    unregisterEditorWindow(className) {
+        if (this.editorWindows.has(className)) {
+            this.editorWindows.delete(className);
+            this.updateEditorWindowToolbar();
+            console.log(`Unregistered EditorWindow: ${className}`);
+        }
+    }
+
+    /**
+     * Check if a class extends EditorWindow
+     * @param {Class} WindowClass - Class to check
+     * @returns {boolean} True if it extends EditorWindow
+     */
+    isEditorWindowClass(WindowClass) {
+        if (!WindowClass || typeof WindowClass !== 'function') {
+            return false;
+        }
+
+        // Check if EditorWindow is available
+        if (typeof window.EditorWindow !== 'function') {
+            return false;
+        }
+
+        // Check prototype chain
+        let currentClass = WindowClass;
+        while (currentClass) {
+            if (currentClass === window.EditorWindow) {
+                return true;
+            }
+            currentClass = Object.getPrototypeOf(currentClass);
+        }
+
+        return false;
+    }
+
+    /**
+     * Scan for existing EditorWindow scripts in the file system
+     */
+    async scanForEditorWindowScripts() {
+        if (!this.db) return;
+
+        try {
+            console.log('Scanning for EditorWindow scripts...');
+            
+            // Get all JavaScript files
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            const allFiles = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+
+            const jsFiles = allFiles.filter(file =>
+                file.type === 'file' && file.name.endsWith('.js')
+            );
+
+            // Check each JS file for EditorWindow extension
+            for (const file of jsFiles) {
+                await this.checkAndRegisterEditorWindow(file.path, file.content);
+            }
+
+            console.log(`EditorWindow scan complete. Found ${this.editorWindows.size} tools.`);
+        } catch (error) {
+            console.error('Error scanning for EditorWindow scripts:', error);
+        }
+    }
+
+    /**
+     * Check if a script extends EditorWindow and register it
+     * @param {string} filePath - Path to the script file
+     * @param {string} content - Script content (optional, will read if not provided)
+     */
+    async checkAndRegisterEditorWindow(filePath, content = null) {
+        try {
+            // Read content if not provided
+            if (!content) {
+                content = await this.readFile(filePath);
+            }
+
+            if (!content) return;
+
+            // Quick check if it might extend EditorWindow
+            if (!content.includes('extends EditorWindow')) {
+                return;
+            }
+
+            // Extract class name from file
+            const fileName = filePath.split('/').pop().split('\\').pop();
+            const className = fileName.replace('.js', '');
+
+            // Load the script if not already loaded
+            if (!window[className]) {
+                await this.loadModuleScript(filePath);
+            }
+
+            // Check if the class is now available and extends EditorWindow
+            const WindowClass = window[className];
+            if (WindowClass && this.isEditorWindowClass(WindowClass)) {
+                this.registerEditorWindow(WindowClass);
+            }
+
+        } catch (error) {
+            console.error(`Error checking EditorWindow script ${filePath}:`, error);
+        }
     }
 
     /**
@@ -1385,6 +1668,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                 await this.loadContent(this.currentPath);
             }
 
+            if (result && path.endsWith('.js')) {
+                // Check if the new file is an EditorWindow
+                await this.checkAndRegisterEditorWindow(path, content);
+            }
+            
             return result;
         } catch (error) {
             console.error('Failed to create/update file:', error);
@@ -1480,6 +1768,17 @@ window.${pascalCaseName} = ${pascalCaseName};
                 }
             }
 
+            // Check if we're deleting an EditorWindow script
+            if (path.endsWith('.js')) {
+                const fileName = path.split('/').pop().split('\\').pop();
+                const className = fileName.replace('.js', '');
+                
+                // Unregister if it was an EditorWindow
+                if (this.editorWindows.has(className)) {
+                    this.unregisterEditorWindow(className);
+                }
+            }
+
             // Finally delete the item itself
             await new Promise((resolve, reject) => {
                 const request = store.delete(path);
@@ -1493,6 +1792,11 @@ window.${pascalCaseName} = ${pascalCaseName};
             // or if the parent path is not the current path
             if (this.directoryTree && (isFolder || parentPath !== this.currentPath)) {
                 await this.directoryTree.refreshFolder(parentPath);
+            }
+
+            if (path.endsWith('.js')) {
+                // Check if the updated file is an EditorWindow
+                await this.checkAndRegisterEditorWindow(path, content);
             }
 
             return true;
@@ -1770,30 +2074,45 @@ window.${pascalCaseName} = ${pascalCaseName};
 
             console.log(`Auto-registering new module: ${pascalClassName}`);
 
-            // Use ModuleReloader to load the module
-            if (window.moduleReloader) {
-                const success = window.moduleReloader.reloadModuleClass(pascalClassName, content);
-
-                if (success) {
-                    // Register with ModuleRegistry if available
-                    if (window.moduleRegistry && window[pascalClassName]) {
-                        window.moduleRegistry.register(window[pascalClassName]);
+            // Check if it's an EditorWindow first
+            if (content.includes('extends EditorWindow')) {
+                // Use ModuleReloader to load the EditorWindow class
+                if (window.moduleReloader) {
+                    const success = window.moduleReloader.reloadModuleClass(pascalClassName, content);
+                    
+                    if (success && window[pascalClassName]) {
+                        // Register as EditorWindow
+                        this.registerEditorWindow(window[pascalClassName]);
+                        this.showNotification(`EditorWindow tool ${pascalClassName} registered and ready to use`, 'success');
+                        return;
                     }
-
-                    // Update inspector if available
-                    if (window.editor && window.editor.inspector) {
-                        window.editor.inspector.refreshModuleList();
-                    }
-
-                    this.showNotification(`Module ${pascalClassName} registered and ready to use`, 'success');
-                } else {
-                    console.warn(`Failed to auto-register module: ${pascalClassName}`);
                 }
-            } else {
-                console.warn("ModuleReloader not available, cannot auto-register module");
+            } else if (content.includes('extends Module')) {
+                // Use ModuleReloader to load the module
+                if (window.moduleReloader) {
+                    const success = window.moduleReloader.reloadModuleClass(pascalClassName, content);
+
+                    if (success) {
+                        // Register with ModuleRegistry if available
+                        if (window.moduleRegistry && window[pascalClassName]) {
+                            window.moduleRegistry.register(window[pascalClassName]);
+                        }
+
+                        // Update inspector if available
+                        if (window.editor && window.editor.inspector) {
+                            window.editor.inspector.refreshModuleList();
+                        }
+
+                        this.showNotification(`Module ${pascalClassName} registered and ready to use`, 'success');
+                    } else {
+                        console.warn(`Failed to auto-register module: ${pascalClassName}`);
+                    }
+                } else {
+                    console.warn("ModuleReloader not available, cannot auto-register module");
+                }
             }
         } catch (error) {
-            console.error('Error auto-registering module:', error);
+            console.error('Error auto-registering module/EditorWindow:', error);
         }
     }
 
@@ -2019,6 +2338,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                     // Create parent directories recursively
                     await this.createDirectory(parentPath);
                 }
+            }
+
+            if (path.endsWith('.js')) {
+                // Check if the updated file is an EditorWindow
+                await this.checkAndRegisterEditorWindow(path, content);
             }
 
             // Now create or update the file

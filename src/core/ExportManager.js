@@ -686,6 +686,10 @@ class ExportManager {
             'DrawLine': 'src/core/Modules/Drawing/DrawLine.js',
             'DrawGrid': 'src/core/Modules/Drawing/DrawGrid.js',
 
+            'MelodiCode': 'src/MelodiCode/MelodiCode.js',
+            'audio-engine': 'src/MelodiCode/js/audio-engine.js',
+            'code-interpreter': 'src/MelodiCode/js/code-interpreter.js',
+
             // Asteroid Modules
             'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
             'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
