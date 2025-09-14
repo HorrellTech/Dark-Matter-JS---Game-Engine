@@ -647,22 +647,22 @@ class Inspector {
 
         this.modulesList.appendChild(transformModule);
 
-        
+
 
         // Add collapse button event listener with touch support
-    const collapseButton = transformModule.querySelector('.module-collapse');
-    const handleCollapseToggle = () => {
-        const moduleContent = transformModule.querySelector('.module-content');
-        const isCollapsed = moduleContent.style.display === 'none';
+        const collapseButton = transformModule.querySelector('.module-collapse');
+        const handleCollapseToggle = () => {
+            const moduleContent = transformModule.querySelector('.module-content');
+            const isCollapsed = moduleContent.style.display === 'none';
 
-        // Toggle collapse state
-        moduleContent.style.display = isCollapsed ? '' : 'none';
-        collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
-        collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
+            // Toggle collapse state
+            moduleContent.style.display = isCollapsed ? '' : 'none';
+            collapseButton.innerHTML = `<i class="fas ${isCollapsed ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>`;
+            collapseButton.title = isCollapsed ? 'Collapse' : 'Expand';
 
-        // Save collapse state
-        this.saveModuleCollapseState('transform', !isCollapsed);
-    };
+            // Save collapse state
+            this.saveModuleCollapseState('transform', !isCollapsed);
+        };
 
         collapseButton.addEventListener('click', handleCollapseToggle);
         collapseButton.addEventListener('touchend', (e) => {
@@ -1055,6 +1055,9 @@ class Inspector {
 
         // Setup module property listeners AFTER adding the module container to DOM
         this.modulesList.appendChild(moduleContainer);
+
+        // Load image previews for this module
+        this.loadImagePreviews(moduleContainer);
 
         // Add this line to setup drag events for reordering:
         this.setupModuleDragEvents(moduleContainer);
@@ -1473,22 +1476,47 @@ class Inspector {
     }
 
     /**
+     * Load image previews for all image elements in a container
+     */
+    async loadImagePreviews(container) {
+        const imageElements = container.querySelectorAll('.preview-image[data-path]');
+
+        for (const img of imageElements) {
+            const path = img.dataset.path;
+            if (path && path !== 'No image selected') {
+                try {
+                    const imageUrl = await this.getImagePreviewFromFileBrowser(path);
+                    if (imageUrl) {
+                        img.src = imageUrl;
+                    }
+                } catch (error) {
+                    console.warn('Failed to load image preview:', path, error);
+                    // Show fallback
+                    img.style.display = 'none';
+                    const fallback = img.nextElementSibling;
+                    if (fallback && fallback.classList.contains('image-fallback')) {
+                        fallback.style.display = 'flex';
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Generate UI for SpriteRenderer module
      */
     generateSpriteRendererUI(module) {
         // Create image preview display
         const hasImage = module.imageAsset && (typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path);
 
-        // Get the proper image URL for preview
+        // For previews, we'll load the image asynchronously
         let imageSrc = '';
         let imagePath = 'No image selected';
 
         if (hasImage) {
-            imagePath = typeof module.imageAsset === 'string' ? module.imageAsset :
-                (module.imageAsset && module.imageAsset.path ? module.imageAsset.path : 'No image selected');
-
-            // Use the asset URL method to get the proper preview URL
-            imageSrc = this.getAssetUrl(imagePath);
+            imagePath = typeof module.imageAsset === 'string' ? module.imageAsset : module.imageAsset.path;
+            // Set a placeholder, we'll load the actual image after DOM creation
+            imageSrc = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzIi8+CjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjNTU1Ii8+Cjx0ZXh0IHg9IjMyIiB5PSIzNiIgZmlsbD0iI2FhYSIgZm9udC1zaXplPSI4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JTUc8L3RleHQ+Cjwvc3ZnPg==';
         }
 
         return `
@@ -2109,20 +2137,18 @@ class Inspector {
 
                 const filename = file.name || file.path.split('/').pop();
 
-                // Use proper asset URL for preview
-                const imageUrl = this.getAssetUrl(file.path);
-
                 item.innerHTML = `
-                <div class="project-image-thumbnail">
-                    <img src="${imageUrl}" alt="${filename}" 
-                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                    <div class="image-error" style="display:none; color:#888; text-align:center; padding:10px;">
-                        <i class="fas fa-image"></i><br>
-                        Image Error
-                    </div>
-                </div>
-                <div class="project-image-name" title="${file.path}">${filename}</div>
-            `;
+        <div class="project-image-thumbnail">
+            <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiMzMzMiLz4=" 
+                 alt="${filename}" 
+                 class="preview-image" 
+                 data-path="${file.path}">
+        </div>
+        <div class="project-image-name" title="${file.path}">${filename}</div>
+    `;
+
+                // Load the actual image preview asynchronously
+                this.loadImagePreviewForElement(item.querySelector('.preview-image'), file.path);
 
                 item.addEventListener('click', async () => {
                     // Remove selected class from all items
@@ -2133,14 +2159,14 @@ class Inspector {
                     // Add selected class to this item
                     item.classList.add('selected');
 
-                    // Set the image property using the file path (not the URL)
+                    // Set the image property using the file path
                     this.setModuleImageProperty(module, propertyName, file.path);
 
                     // Refresh UI
                     this.refreshModuleUI(module);
                     this.editor?.refreshCanvas();
 
-                    // Close dialog after a short delay to provide visual feedback
+                    // Close dialog after a short delay
                     setTimeout(() => {
                         const dialog = container.closest('.image-selector-dialog');
                         if (dialog) {
@@ -2156,6 +2182,21 @@ class Inspector {
         } catch (error) {
             console.error('Error loading project images:', error);
             container.innerHTML = '<div class="loading-message error">Error loading images: ' + error.message + '</div>';
+        }
+    }
+
+    /**
+     * Load image preview for a specific element
+     */
+    async loadImagePreviewForElement(imgElement, path) {
+        try {
+            const content = await this.editor.fileBrowser.readFile(path);
+            if (content && typeof content === 'string' && content.startsWith('data:image/')) {
+                imgElement.src = content;
+            }
+        } catch (error) {
+            console.warn('Failed to load image preview:', path, error);
+            imgElement.style.display = 'none';
         }
     }
 
@@ -2247,6 +2288,10 @@ class Inspector {
      * @param {Class} moduleClass - The module class to register
      */
     registerModuleClass(moduleClass) {
+        if (moduleClass.prototype instanceof EditorWindow) {
+            //console.warn('EditorWindow classes should not be registered as modules:', moduleClass.name);
+            return;
+        }
         if (!moduleClass || typeof moduleClass !== 'function') {
             console.error('Invalid module class:', moduleClass);
             return;
@@ -6260,25 +6305,39 @@ class Inspector {
     getAssetUrl(path) {
         if (!path) return '';
 
-        // Check if asset manager is available and has a method to get URLs
-        if (window.assetManager && typeof window.assetManager.getAssetUrl === 'function') {
-            return window.assetManager.getAssetUrl(path);
-        }
-
-        // Check if file browser can provide the URL
-        if (this.editor?.fileBrowser && typeof this.editor.fileBrowser.getFileUrl === 'function') {
-            return this.editor.fileBrowser.getFileUrl(path);
-        }
-
-        // Fallback: check if it's already a full URL
-        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+        // If it's already a data URL, return as-is
+        if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http')) {
             return path;
         }
 
-        // Default fallback: assume it's relative to the project root
-        // Remove leading slash if present to avoid double slashes
-        const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-        return `./${cleanPath}`;
+        // Try to get from FileBrowser first
+        if (this.editor?.fileBrowser) {
+            try {
+                // For image previews, we need to read the file content from FileBrowser
+                // Since this is synchronous, we'll return a placeholder and load async
+                return this.getImagePreviewFromFileBrowser(path);
+            } catch (error) {
+                console.warn('Could not get asset from FileBrowser:', error);
+            }
+        }
+
+        // Fallback - return empty for missing assets
+        return '';
+    }
+
+    /**
+     * Get image preview from FileBrowser (async helper)
+     */
+    async getImagePreviewFromFileBrowser(path) {
+        try {
+            const content = await this.editor.fileBrowser.readFile(path);
+            if (content && typeof content === 'string' && content.startsWith('data:image/')) {
+                return content;
+            }
+        } catch (error) {
+            console.warn('Could not load image preview from FileBrowser:', path, error);
+        }
+        return '';
     }
 
     /**

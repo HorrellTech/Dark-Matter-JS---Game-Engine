@@ -15,6 +15,10 @@ class ModuleReloader {
      */
     reloadModuleClass(className, scriptContent) {
         try {
+            if(className === 'EditorWindow' || className.endsWith('EditorWindow')) {
+                //console.warn('EditorWindow classes should not be reloaded as modules:', className);
+                return false;
+            }
             // Cache the script content
             this.scriptCache.set(className, scriptContent);
 

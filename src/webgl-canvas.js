@@ -2963,16 +2963,22 @@ class WebGLCanvas {
         this.state.imageSmoothingEnabled = enabled;
 
         // Update existing textures
-        this.textureCache.forEach((texture) => {
+        this.textureCache.forEach((cacheEntry) => {
             const gl = this.gl;
-            gl.bindTexture(gl.TEXTURE_2D, texture);
 
-            if (enabled) {
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-            } else {
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            // Handle both old cache format (direct texture) and new cache format (object with texture property)
+            const texture = cacheEntry.texture || cacheEntry;
+
+            if (texture && gl.isTexture(texture)) {
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+
+                if (enabled) {
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                } else {
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                }
             }
         });
     }

@@ -1940,7 +1940,7 @@ window.${pascalCaseName} = ${pascalCaseName};
             const fileName = scriptPath.split('/').pop().split('\\').pop();
             // Remove extension and ensure first character is uppercase for class name
             const className = fileName.replace('.js', '');
-            const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+            const pascalClassName = className;//.charAt(0).toUpperCase() + className.slice(1);
 
             console.log(`Loading module: ${scriptPath}, expected class name: ${pascalClassName}`);
 
