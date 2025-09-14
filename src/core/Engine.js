@@ -500,6 +500,11 @@ class Engine {
             return;
         }
 
+        // Make sure InputManager has the engine reference
+        if (window.input) {
+            window.input.setEngine(this);
+        }
+
         console.log("Starting game...");
 
         this.viewportOriginalPosition = {

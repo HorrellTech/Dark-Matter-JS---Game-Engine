@@ -1082,9 +1082,10 @@ class SpriteCode {
             this.currentAnimation = name;
             this.currentAnimationRange = range;
             this.currentFrame = range.start;
-            this.isPlaying = false;
             this.frameTimer = 0;
             this.playDirection = 1;
+            // Auto-start the animation when setting it
+            this.isPlaying = true;
         }
     }
 
@@ -1136,6 +1137,10 @@ class SpriteCode {
         // Initialize to first frame of current animation
         const range = this.getCurrentAnimationRange();
         this.currentFrame = range.start;
+        this.frameTimer = 0;
+        this.playDirection = 1;
+        // Start playing by default
+        this.isPlaying = true;
     }
 
     loop(deltaTime) {
@@ -1150,17 +1155,19 @@ class SpriteCode {
             return;
         }
 
+        // Accumulate time
         this.frameTimer += deltaTime * this.animationSpeed;
 
-        // Use frame duration of 0.1 seconds (10 FPS)
+        // Use frame duration of 0.1 seconds (10 FPS) - adjust as needed
         const frameDuration = 0.1;
         
-        if (this.frameTimer >= frameDuration) {
-            this.frameTimer = 0;
-
+        if (this.enableTweening) {
+            // For tweening, update currentFrame as a floating point value
+            const framesPerSecond = 1 / frameDuration;
+            const frameAdvance = deltaTime * this.animationSpeed * framesPerSecond;
+            
             if (this.pingPong) {
-                // Ping pong animation within the range
-                this.currentFrame += this.playDirection;
+                this.currentFrame += frameAdvance * this.playDirection;
                 
                 if (this.currentFrame >= range.end) {
                     this.playDirection = -1;
@@ -1170,17 +1177,38 @@ class SpriteCode {
                     this.currentFrame = range.start;
                 }
             } else {
-                // Linear loop animation within the range
-                this.currentFrame++;
-                if (this.currentFrame > range.end) {
-                    this.currentFrame = range.start;
+                this.currentFrame += frameAdvance;
+                if (this.currentFrame >= range.end + 1) {
+                    this.currentFrame = range.start + (this.currentFrame - (range.end + 1));
+                }
+            }
+        } else {
+            // Discrete frame animation
+            while (this.frameTimer >= frameDuration) {
+                this.frameTimer -= frameDuration;
+
+                if (this.pingPong) {
+                    this.currentFrame += this.playDirection;
+                    
+                    if (this.currentFrame >= range.end) {
+                        this.playDirection = -1;
+                        this.currentFrame = range.end;
+                    } else if (this.currentFrame <= range.start) {
+                        this.playDirection = 1;
+                        this.currentFrame = range.start;
+                    }
+                } else {
+                    this.currentFrame++;
+                    if (this.currentFrame > range.end) {
+                        this.currentFrame = range.start;
+                    }
                 }
             }
         }
     }
 
     draw(ctx) {
-        if (this.preGenerateImage && this.generatedImage && this.imageGenerated) {
+        if (this.preGenerateImage && this.generatedImage && this.imageGenerated && !this.isAnimated) {
             ctx.save();
             ctx.scale(this.scale, this.scale);
             if (this.flipped) {
@@ -1210,12 +1238,17 @@ class SpriteCode {
 
         // Get current frame shapes
         let shapes;
-        if (this.enableTweening && this.totalFrames > 1 && this.isPlaying) {
+        if (this.enableTweening && this.totalFrames > 1 && this.isAnimated) {
             shapes = this.getTweenedShapes();
         } else {
-            const frameIndex = Math.floor(this.currentFrame);
+            const range = this.getCurrentAnimationRange();
+            let frameIndex = Math.floor(this.currentFrame);
+            frameIndex = Math.max(range.start, Math.min(range.end, frameIndex));
+            frameIndex = Math.max(0, Math.min(this.frames.length - 1, frameIndex));
             shapes = this.frames[frameIndex] || [];
         }
+        
+        // Filter out invisible shapes
         shapes = shapes.filter(shape => shape && shape.visible !== false);
 
         shapes.forEach((shape, index) => {
@@ -1228,27 +1261,35 @@ class SpriteCode {
     getTweenedShapes() {
         const range = this.getCurrentAnimationRange();
         
-        // Ensure current frame is within animation range for tweening
-        let currentFrame = Math.floor(this.currentFrame);
-        let nextFrame = currentFrame + 1;
+        // Ensure currentFrame is within range
+        let clampedFrame = Math.max(range.start, Math.min(range.end, this.currentFrame));
         
-        // Handle range boundaries
-        if (nextFrame > range.end) {
+        // For tweening, we need to handle fractional frames
+        let currentFrameInt = Math.floor(clampedFrame);
+        let nextFrameInt = currentFrameInt + 1;
+        
+        // Handle range boundaries for looping
+        if (nextFrameInt > range.end) {
             if (this.pingPong && this.playDirection === -1) {
-                nextFrame = currentFrame - 1;
+                nextFrameInt = Math.max(range.start, currentFrameInt - 1);
             } else {
-                nextFrame = range.start; // Loop back to start
+                nextFrameInt = range.start; // Loop back to start
             }
         }
         
-        // Ensure frames are valid
-        currentFrame = Math.max(range.start, Math.min(range.end, currentFrame));
-        nextFrame = Math.max(range.start, Math.min(range.end, nextFrame));
+        // Ensure frames are within valid bounds
+        currentFrameInt = Math.max(0, Math.min(this.frames.length - 1, currentFrameInt));
+        nextFrameInt = Math.max(0, Math.min(this.frames.length - 1, nextFrameInt));
         
-        const t = this.currentFrame - Math.floor(this.currentFrame);
+        // Calculate interpolation factor
+        const t = clampedFrame - currentFrameInt;
 
-        const currentShapes = this.frames[currentFrame] || [];
-        const nextShapes = this.frames[nextFrame] || [];
+        const currentShapes = this.frames[currentFrameInt] || [];
+        const nextShapes = this.frames[nextFrameInt] || [];
+
+        if (t === 0 || currentFrameInt === nextFrameInt) {
+            return currentShapes;
+        }
 
         return this.interpolateShapes(currentShapes, nextShapes, t);
     }

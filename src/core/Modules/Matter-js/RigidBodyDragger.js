@@ -34,6 +34,7 @@ class RigidBodyDragger extends Module {
         // Internal references
         this.rigidBody = null;
         this.originalPosition = null;
+        this.originalGravityEnabled = true;
 
         this.require("RigidBody");
 
@@ -69,9 +70,9 @@ class RigidBodyDragger extends Module {
     start() {
         // Get the RigidBody component
         this.rigidBody = this.gameObject.getModule("RigidBody");
-        
+
         if (!this.rigidBody) {
-            console.warn(`Draggable module on ${this.gameObject.name} requires a RigidBody component`);
+            // console.warn(`Draggable module on ${this.gameObject.name} requires a RigidBody component`);
             return;
         }
 
@@ -86,11 +87,11 @@ class RigidBodyDragger extends Module {
      * Update dragging logic each frame
      */
     loop() {
-        if(!this.rigidBody) {
+        if (!this.rigidBody) {
             this.rigidBody = this.gameObject.getModule("RigidBody");
-            
-            if(!this.rigidBody) {
-                console.warn(`RigidBodyDragger: No RigidBody component found on ${this.gameObject.name}`);
+
+            if (!this.rigidBody) {
+                // console.warn(`RigidBodyDragger: No RigidBody component found on ${this.gameObject.name}`);
                 return;
             }
         }
@@ -105,26 +106,72 @@ class RigidBodyDragger extends Module {
      */
     handleMouseInput() {
         if (!window.input) {
-            console.warn("RigidBodyDragger: InputManager not found");
+            // console.warn("RigidBodyDragger: InputManager not found");
             return;
         }
 
         const mousePos = window.input.getMousePosition(true); // Get world coordinates
 
-        // Start dragging
-        if (window.input.mousePressed(0) && !this.isDragging && this.enabled) {
-            console.log('Mouse pressed at', mousePos);
-            if (this.isPointOverObject(mousePos)) {
-                this.startDragging(mousePos);
-            }
-        }
-
-        // Map dragButton string to index
+        // Map dragButton string to index for consistent checking
         const buttonMap = { left: 0, middle: 1, right: 2 };
         const dragButtonIndex = buttonMap[this.dragButton] ?? 0;
 
+        // Check input states directly from the input manager
+        const mousePressed = window.input.mousePressed(dragButtonIndex);
+        const mouseDown = window.input.mouseDown(dragButtonIndex);
+        const mouseReleased = window.input.mouseReleased(dragButtonIndex);
+
+        // Also check the internal state for debugging
+        const inputState = window.input.getDebugState();
+
+        // Debug every frame to see what's happening
+        // console.log('=== Mouse Input Debug ===');
+        // console.log('Mouse position:', mousePos);
+        // console.log('Drag button index:', dragButtonIndex);
+        // console.log('Mouse pressed (this frame):', mousePressed);
+        // console.log('Mouse down (held):', mouseDown);
+        // console.log('Mouse released (this frame):', mouseReleased);
+        // console.log('Input manager state:', inputState);
+        // console.log('Raw mouseButtonsDown:', window.input.mouseButtonsDown);
+        // console.log('Raw mouseButtonsUp:', window.input.mouseButtonsUp);
+        // console.log('Raw mouseButtons:', window.input.mouseButtons);
+        // console.log('Is dragging:', this.isDragging);
+        // console.log('Enabled:', this.enabled);
+        // console.log('RigidBody exists:', !!this.rigidBody?.body);
+        // console.log('=======================');
+
+        // Try a more direct approach - check the raw button states
+        const leftPressed = window.input.mouseButtonsDown.left;
+        const leftDown = window.input.mouseButtons.left;
+        const leftReleased = window.input.mouseButtonsUp.left;
+
+        // console.log('Direct left button check - pressed:', leftPressed, 'down:', leftDown, 'released:', leftReleased);
+
+        // Use either the indexed method or direct method depending on which works
+        const shouldStartDrag = (mousePressed || leftPressed || (!this.isDragging && (mouseDown || leftDown))) && !this.isDragging && this.enabled;
+        const shouldStopDrag = this.isDragging && (mouseReleased || leftReleased || !(mouseDown || leftDown));
+
+        // console.log('Should start drag:', shouldStartDrag);
+        // console.log('Should stop drag:', shouldStopDrag);
+
+        // Start dragging
+        if (shouldStartDrag) {
+            // console.log('=== ATTEMPTING TO START DRAG ===');
+            // console.log('Mouse pressed detected at', mousePos);
+            // console.log('Checking if point is over object...');
+
+            if (this.isPointOverObject(mousePos)) {
+                // console.log('Point is over object - starting drag');
+                this.startDragging(mousePos);
+            } else {
+                // console.log('Point is NOT over object');
+            }
+            // console.log('=== END DRAG ATTEMPT ===');
+        }
+
         // Stop dragging
-        if (this.isDragging && window.input.mouseReleased(dragButtonIndex)) {
+        if (shouldStopDrag) {
+            // console.log('Mouse released - stopping drag');
             this.stopDragging();
         }
 
@@ -172,19 +219,76 @@ class RigidBodyDragger extends Module {
      * @param {Vector2} point - The point to check
      * @returns {boolean} True if point is over the object
      */
-    isPointOverObject(point) {    
-        // Avoid logging the whole body object (circular structure)
-        console.log('isPointOverObject called', point, this.rigidBody?.body?.position, this.rigidBody?.body?.id);
+    isPointOverObject(point) {
+        // console.log('=== isPointOverObject Debug ===');
+        // console.log('Point:', point);
 
-        if (!this.rigidBody) {
-            console.warn("RigidBodyDragger: No RigidBody component found");
+        if (!this.rigidBody || !this.rigidBody.body) {
+            // console.warn("RigidBodyDragger: No RigidBody component found");
             return false;
         }
 
-        // Use Matter.js collision detection
-        const bodies = Matter.Query.point([this.rigidBody.body], point);
-        console.log('Bodies under point:', bodies.map(b => b.id));
-        return bodies.length > 0;
+        const body = this.rigidBody.body;
+        // console.log('RigidBody position:', body.position);
+        // console.log('RigidBody bounds:', body.bounds);
+        // console.log('Body ID:', body.id);
+        // console.log('Body label:', body.label);
+
+        // Check if Matter.js is available
+        if (typeof Matter === 'undefined') {
+            // console.error('Matter.js not found');
+            return false;
+        }
+
+        // First try the fallback bounding box check for debugging
+        const bounds = body.bounds;
+        const boundingBoxCheck = point.x >= bounds.min.x && point.x <= bounds.max.x &&
+            point.y >= bounds.min.y && point.y <= bounds.max.y;
+        // console.log('Bounding box check result:', boundingBoxCheck);
+        // console.log('Bounds:', bounds);
+        // console.log('Point vs bounds:', {
+            //x_in_range: `${point.x} >= ${bounds.min.x} && ${point.x} <= ${bounds.max.x}`,
+           // y_in_range: `${point.y} >= ${bounds.min.y} && ${point.y} <= ${bounds.max.y}`
+        //});
+
+        // Verify body is in the physics world
+        const isInWorld = window.physicsManager?.world?.bodies?.includes(body);
+        // console.log('Body is in physics world:', isInWorld);
+
+        // Try Matter.js Query.point
+        try {
+            // Method 1: Check against single body
+            const bodies = Matter.Query.point([body], { x: point.x, y: point.y });
+            // console.log('Matter.Query.point result (single body):', bodies.length > 0);
+            // console.log('Bodies found:', bodies.length, bodies.map(b => ({ id: b.id, label: b.label })));
+
+            // Method 2: Check against all world bodies (more reliable)
+            if (window.physicsManager && window.physicsManager.world) {
+                const allBodies = Matter.Query.point(window.physicsManager.world.bodies, { x: point.x, y: point.y });
+                // console.log('Matter.Query.point result (all bodies):', allBodies.length);
+                const thisBodyInResults = allBodies.find(b => b.id === body.id);
+                // console.log('This body found in world query:', !!thisBodyInResults);
+
+                if (thisBodyInResults) {
+                    // console.log('Final result (Matter.js world query): true');
+                    // console.log('===============================');
+                    return true;
+                }
+            }
+
+            // Use the single body result if available
+            const matterResult = bodies.length > 0;
+            // console.log('Final result (Matter.js single):', matterResult);
+            // console.log('===============================');
+            return matterResult;
+        } catch (error) {
+            // console.error('Error in Matter.js collision detection:', error);
+
+            // Fallback to bounding box
+            // console.log('Using fallback bounding box result:', boundingBoxCheck);
+            // console.log('===============================');
+            return boundingBoxCheck;
+        }
     }
 
     /**
@@ -193,6 +297,8 @@ class RigidBodyDragger extends Module {
      */
     startDragging(startPos) {
         if (!this.rigidBody || !this.rigidBody.body) return;
+
+        // console.log('Starting drag at position:', startPos);
 
         this.isDragging = true;
         this.dragStartPos = startPos.clone();
@@ -207,16 +313,16 @@ class RigidBodyDragger extends Module {
 
         // Store original body type and make it kinematic for smooth dragging
         this.originalBodyType = this.rigidBody.bodyType;
+
+        // Make the body kinematic (can be moved but doesn't respond to forces)
         if (this.originalBodyType === "dynamic") {
-            // Instead of setPosition, apply velocity towards target
-            const velocity = {
-                x: (targetPos.x - currentPos.x) * this.force,
-                y: (targetPos.y - currentPos.y) * this.force
-            };
-            Matter.Body.setVelocity(this.rigidBody.body, velocity);
-        } else {
-            Matter.Body.setPosition(this.rigidBody.body, targetPos);
+            //Matter.Body.setStatic(this.rigidBody.body, true);
+            this.rigidBody.bodyType = "static"; // Keep as dynamic but override velocity
+            this.originalGravityEnabled = this.rigidBody.useGravity;
+            this.rigidBody.useGravity = false;
         }
+
+        // console.log('Drag started successfully');
 
         // Call drag start event if it exists
         if (this.gameObject.onDragStart) {
@@ -237,8 +343,9 @@ class RigidBodyDragger extends Module {
         if (this.rigidBody && this.rigidBody.body && this.originalBodyType) {
             if (this.originalBodyType === "dynamic") {
                 // Restore dynamic properties
-                this.rigidBody.body.isStatic = false;
-                
+                this.rigidBody.bodyType = "dynamic";
+                this.rigidBody.useGravity = this.originalGravityEnabled;
+
                 // Recalculate inertia based on shape
                 if (this.rigidBody.shape === "circle") {
                     const mass = this.rigidBody.body.mass;
@@ -249,7 +356,7 @@ class RigidBodyDragger extends Module {
                     const vertices = this.rigidBody.body.vertices;
                     const centre = this.rigidBody.body.position;
                     let inertia = 0;
-                    
+
                     for (let i = 0; i < vertices.length; i++) {
                         const vertex = vertices[i];
                         const dx = vertex.x - centre.x;
@@ -257,10 +364,10 @@ class RigidBodyDragger extends Module {
                         const distSq = dx * dx + dy * dy;
                         inertia += distSq;
                     }
-                    
+
                     this.rigidBody.body.inertia = this.rigidBody.body.mass * (inertia / vertices.length);
                 }
-                
+
                 this.rigidBody.body.inverseInertia = 1 / this.rigidBody.body.inertia;
 
                 // Apply momentum if maintaining velocity
@@ -309,27 +416,11 @@ class RigidBodyDragger extends Module {
             targetPos.y = Math.max(area.y, Math.min(area.y + area.height, targetPos.y));
         }
 
-        // Move the body towards target position
-        const currentPos = this.rigidBody.body.position;
-        const force = new Vector2(
-            (targetPos.x - currentPos.x) * this.force,
-            (targetPos.y - currentPos.y) * this.force
-        );
-
-        // Apply damping
-        force.x *= this.damping;
-        force.y *= this.damping;
-
-        // For kinematic bodies, set position directly for smoother movement
-        if (this.originalBodyType === "dynamic") {
-            Matter.Body.setPosition(this.rigidBody.body, {
-                x: currentPos.x + force.x,
-                y: currentPos.y + force.y
-            });
-        } else {
-            // For static bodies, just set position
-            Matter.Body.setPosition(this.rigidBody.body, targetPos);
-        }
+        // Move the body to target position
+        Matter.Body.setPosition(this.rigidBody.body, {
+            x: targetPos.x,
+            y: targetPos.y
+        });
 
         // Call drag update event if it exists
         if (this.gameObject.onDragUpdate) {
@@ -360,7 +451,7 @@ class RigidBodyDragger extends Module {
         if (this.rigidBody.body) {
             const pos = this.rigidBody.body.position;
             const radius = Math.max(this.rigidBody.width || 50, this.rigidBody.height || 50) / 2 + 10;
-            
+
             ctx.beginPath();
             ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
             ctx.stroke();

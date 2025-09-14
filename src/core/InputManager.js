@@ -139,30 +139,89 @@ class InputManager {
     }
 
     /**
+     * Update mouse position from event, handling canvas-relative coordinates
+     * @private
+     */
+    _updateMousePosition(e) {
+        // Always store the raw client coordinates
+        const rawX = e.clientX;
+        const rawY = e.clientY;
+
+        // Convert to canvas-relative coordinates
+        if (this.engine && this.engine.canvas) {
+            const rect = this.engine.canvas.getBoundingClientRect();
+
+            // Calculate canvas-relative position
+            let canvasX = rawX - rect.left;
+            let canvasY = rawY - rect.top;
+
+            // Scale coordinates if canvas is scaled
+            const scaleX = this.engine.canvas.width / rect.width;
+            const scaleY = this.engine.canvas.height / rect.height;
+            canvasX *= scaleX;
+            canvasY *= scaleY;
+
+            this.mousePosition.x = canvasX;
+            this.mousePosition.y = canvasY;
+        } else {
+            // Fallback to raw coordinates
+            this.mousePosition.x = rawX;
+            this.mousePosition.y = rawY;
+        }
+
+        // Update world coordinates immediately
+        this.updateWorldMousePosition();
+    }
+
+    /**
      * Convert screen mouse position to world coordinates
      */
     updateWorldMousePosition() {
         if (!this.engine || !this.engine.ctx) return;
 
-        const canvas = this.engine.canvas;
-        const ctx = this.engine.ctx;
+        // Use the engine's screen to world conversion
+        if (this.engine.screenToWorld) {
+            const worldPos = this.engine.screenToWorld(this.mousePosition.x, this.mousePosition.y);
+            this.worldMousePosition.x = worldPos.x;
+            this.worldMousePosition.y = worldPos.y;
+        } else {
+            // Manual calculation if screenToWorld is not available
+            // This takes into account viewport position, zoom, rotation, and shake
+            const viewport = this.engine.viewport;
+            if (viewport) {
+                const centerX = this.engine.canvas.width / 2;
+                const centerY = this.engine.canvas.height / 2;
 
-        // Get the current transformation matrix
-        const transform = ctx.getTransform();
+                let worldX = this.mousePosition.x;
+                let worldY = this.mousePosition.y;
 
-        // Get the canvas bounds
-        const rect = canvas.getBoundingClientRect();
+                // Reverse rotation if viewport is rotated
+                if (viewport.angle !== 0) {
+                    const cos = Math.cos(-viewport.angle * Math.PI / 180);
+                    const sin = Math.sin(-viewport.angle * Math.PI / 180);
+                    const relativeX = worldX - centerX;
+                    const relativeY = worldY - centerY;
 
-        // Calculate mouse position relative to canvas
-        const mouseX = this.mousePosition.x - rect.left;
-        const mouseY = this.mousePosition.y - rect.top;
+                    worldX = centerX + (relativeX * cos - relativeY * sin);
+                    worldY = centerY + (relativeX * sin + relativeY * cos);
+                }
 
-        // Apply inverse of the transformation matrix to get world coordinates
-        const transformedX = (mouseX / transform.a) - (transform.e / transform.a);
-        const transformedY = (mouseY / transform.d) - (transform.f / transform.d);
+                // Reverse zoom transformation
+                worldX = (worldX - centerX) / viewport.zoom + centerX;
+                worldY = (worldY - centerY) / viewport.zoom + centerY;
 
-        this.worldMousePosition.x = transformedX;
-        this.worldMousePosition.y = transformedY;
+                // Apply viewport position offset and reverse shake
+                worldX = worldX + viewport.x - (viewport.shake?.x || 0);
+                worldY = worldY + viewport.y - (viewport.shake?.y || 0);
+
+                this.worldMousePosition.x = worldX;
+                this.worldMousePosition.y = worldY;
+            } else {
+                // Fallback: copy canvas coordinates as world coordinates
+                this.worldMousePosition.x = this.mousePosition.x;
+                this.worldMousePosition.y = this.mousePosition.y;
+            }
+        }
     }
 
     // ----------------------
@@ -314,8 +373,7 @@ class InputManager {
     _handleMouseMove(e) {
         if (!this.enabled) return;
 
-        this.mousePosition.x = e.clientX;
-        this.mousePosition.y = e.clientY;
+        this._updateMousePosition(e);
         this.mouseMoveThisFrame = true;
     }
 
@@ -326,7 +384,10 @@ class InputManager {
     _handleMouseDown(e) {
         if (!this.enabled) return;
 
-        //console.log('Mouse Down:' + e.button + ' at ' + e.clientX + ',' + e.clientY + ' World Position: ' + this.worldMousePosition.x + ',' + this.worldMousePosition.y);
+        // Update mouse position first
+        this._updateMousePosition(e);
+
+        console.log('Mouse Down:', e.button, 'at screen:', e.clientX, e.clientY, 'canvas:', this.mousePosition.x, this.mousePosition.y, 'world:', this.worldMousePosition.x, this.worldMousePosition.y);
 
         switch (e.button) {
             case 0: // Left

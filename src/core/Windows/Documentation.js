@@ -1199,6 +1199,7 @@ rigidBody.restitution = 0.8; // Bounciness
                     }
                 }
             },
+            
             "AI Prompting": {
                 icon: "fas fa-robot",
                 description: "Using AI to enhance gameplay",
