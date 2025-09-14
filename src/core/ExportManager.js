@@ -317,7 +317,7 @@ class ExportManager {
                             // For binary files, we need to handle them properly
                             let content = file.content;
                             let mimeType = this.detectMimeType(file.path);
-                            
+
                             // If it's not already a data URL, convert it
                             if (!content.startsWith('data:')) {
                                 if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
@@ -328,7 +328,7 @@ class ExportManager {
                                     content = `data:${mimeType};base64,${content}`;
                                 }
                             }
-                            
+
                             assets[normalizedPath] = {
                                 content: content,
                                 type: mimeType,
@@ -769,14 +769,41 @@ class ExportManager {
     async collectFileBrowserScripts() {
         if (!window.fileBrowser || typeof window.fileBrowser.getAllFiles !== 'function') return [];
         const files = await window.fileBrowser.getAllFiles();
-        // Only .js files, not modules (unless you want modules too)
-        return files
-            .filter(file => file.name.endsWith('.js'))
-            .map(file => ({
-                name: file.name,
-                path: file.path,
-                content: file.content
-            }));
+
+        // Filter out scripts that extend EditorWindow and only include .js files
+        const filteredScripts = [];
+
+        for (const file of files) {
+            if (file.name.endsWith('.js')) {
+                // Check if the script content extends EditorWindow
+                if (file.content && typeof file.content === 'string') {
+                    // Look for patterns that indicate this is an EditorWindow extension
+                    const extendsEditorWindow =
+                        file.content.includes('extends EditorWindow') ||
+                        file.content.includes('class ') && file.content.includes('EditorWindow') ||
+                        file.content.includes('EditorWindow.');
+
+                    if (!extendsEditorWindow) {
+                        filteredScripts.push({
+                            name: file.name,
+                            path: file.path,
+                            content: file.content
+                        });
+                    } else {
+                        console.log(`Excluding EditorWindow script from export: ${file.name}`);
+                    }
+                } else {
+                    // If we can't read the content, include it to be safe
+                    filteredScripts.push({
+                        name: file.name,
+                        path: file.path,
+                        content: file.content
+                    });
+                }
+            }
+        }
+
+        return filteredScripts;
     }
 
     /**
@@ -1105,12 +1132,12 @@ html {
         const scenesData = this.safeStringify(data.scenes);
         const prefabsData = this.safeStringify(data.prefabs);
         // Only embed assets for standalone, not ZIP
-        const assetsData =  settings.includeAssets ?// settings.standalone && settings.includeAssets ?
+        const assetsData = settings.includeAssets ?// settings.standalone && settings.includeAssets ?
             this.safeStringify(data.assets) : 'null';
 
-            // For ZIP mode, create asset mapping with just filenames as IDs
-        const assetMapping = settings.standalone ? 'null' : 
-        this.safeStringify(this.createAssetMapping(data.assets));
+        // For ZIP mode, create asset mapping with just filenames as IDs
+        const assetMapping = settings.standalone ? 'null' :
+            this.safeStringify(this.createAssetMapping(data.assets));
 
 
         // Get the starting scene index from settings, default to 0
@@ -1959,14 +1986,14 @@ window.addEventListener('matter-loaded', initializeGame);
      */
     createAssetMapping(assets) {
         if (!assets) return {};
-        
+
         const mapping = {};
-        
+
         for (const originalPath of Object.keys(assets)) {
             const fileName = originalPath.split('/').pop();
             mapping[originalPath] = fileName;
         }
-        
+
         return mapping;
     }
 
@@ -2073,11 +2100,11 @@ window.addEventListener('matter-loaded', initializeGame);
         // Add assets to a dedicated 'assets' folder - FIXED handling
         if (settings.includeAssets && Object.keys(data.assets).length > 0) {
             const assetsFolder = zip.folder('assets');
-            
+
             for (const [originalPath, asset] of Object.entries(data.assets)) {
                 // Use just the filename for the ZIP structure
                 const fileName = originalPath.split('/').pop();
-                
+
                 try {
                     if (asset.type && asset.type.startsWith('image/')) {
                         // Handle image assets
@@ -2121,14 +2148,14 @@ window.addEventListener('matter-loaded', initializeGame);
         }
 
         // Generate and download ZIP
-        const content = await zip.generateAsync({ 
+        const content = await zip.generateAsync({
             type: 'blob',
             compression: 'DEFLATE',
             compressionOptions: {
                 level: 6
             }
         });
-        
+
         this.downloadFile(content, `${projectName}.zip`, 'application/zip');
     }
 

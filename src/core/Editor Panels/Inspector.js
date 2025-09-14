@@ -1479,15 +1479,23 @@ class Inspector {
      * Load image previews for all image elements in a container
      */
     async loadImagePreviews(container) {
-        const imageElements = container.querySelectorAll('.preview-image[data-path]');
+        const imageElements = container.querySelectorAll('.preview-image[data-path], img[data-path]');
 
         for (const img of imageElements) {
             const path = img.dataset.path;
             if (path && path !== 'No image selected') {
                 try {
-                    const imageUrl = await this.getImagePreviewFromFileBrowser(path);
-                    if (imageUrl) {
-                        img.src = imageUrl;
+                    const fileBrowser = this.editor?.fileBrowser;
+                    if (fileBrowser) {
+                        const content = await fileBrowser.readFile(path);
+                        if (content && typeof content === 'string' && content.startsWith('data:image/')) {
+                            img.src = content;
+                            img.style.display = 'block';
+                            const fallback = img.nextElementSibling;
+                            if (fallback && fallback.classList.contains('image-fallback')) {
+                                fallback.style.display = 'none';
+                            }
+                        }
                     }
                 } catch (error) {
                     console.warn('Failed to load image preview:', path, error);
@@ -5220,6 +5228,55 @@ class Inspector {
     overflow-y: auto;
     max-height: 400px;
 }
+
+.asset-path-display {
+            font-size: 10px;
+            color: #aaa;
+            text-align: center;
+            margin-top: 2px;
+            word-break: break-all;
+            max-width: 64px;
+        }
+
+        /* Project image items in selector */
+        .project-image-item {
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            width: 80px;
+            height: 100px;
+            overflow: hidden;
+            background: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .project-image-item:hover {
+            border-color: #666;
+        }
+
+        .project-image-item.selected {
+            border-color: #0078D7;
+            background: rgba(0, 120, 215, 0.1);
+        }
+
+        .project-image-thumbnail {
+            width: 64px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 4px;
+        }
+
+        .project-image-thumbnail img {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+        }
         `;
 
         document.head.appendChild(styleElement);
@@ -6269,32 +6326,36 @@ class Inspector {
 
         switch (assetType) {
             case 'image':
-                // Use asset manager or file browser to get the proper URL
-                const imageUrl = this.getAssetUrl(path);
+                // Use a placeholder initially and load async
+                const placeholder = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiMzMzMiLz4=';
+
                 return `
-                <div class="image-preview-container">
-                    <img src="${imageUrl}" alt="Asset Preview" class="asset-thumbnail" 
-                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                    <div class="asset-fallback" style="display:none;">
-                        <i class="fas fa-image"></i>
-                        <span>Image Error</span>
-                    </div>
-                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
+            <div class="image-preview-container">
+                <img src="${placeholder}" 
+                     data-path="${path}"
+                     alt="Asset Preview" 
+                     class="asset-thumbnail" 
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="asset-fallback" style="display:none;">
+                    <i class="fas fa-image"></i>
+                    <span>Image Error</span>
                 </div>
+                <div class="asset-path-display">${this.formatImagePath(path)}</div>
+            </div>
             `;
             case 'audio':
                 return `
-                <div class="audio-preview-container">
-                    <i class="fas fa-music"></i>
-                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
-                </div>
+            <div class="audio-preview-container">
+                <i class="fas fa-music"></i>
+                <div class="asset-path-display">${this.formatImagePath(path)}</div>
+            </div>
             `;
             default:
                 return `
-                <div class="generic-preview-container">
-                    <i class="fas fa-file"></i>
-                    <div class="asset-path-display">${this.formatImagePath(path)}</div>
-                </div>
+            <div class="generic-preview-container">
+                <i class="fas fa-file"></i>
+                <div class="asset-path-display">${this.formatImagePath(path)}</div>
+            </div>
             `;
         }
     }
@@ -6310,19 +6371,25 @@ class Inspector {
             return path;
         }
 
-        // Try to get from FileBrowser first
-        if (this.editor?.fileBrowser) {
-            try {
-                // For image previews, we need to read the file content from FileBrowser
-                // Since this is synchronous, we'll return a placeholder and load async
-                return this.getImagePreviewFromFileBrowser(path);
-            } catch (error) {
-                console.warn('Could not get asset from FileBrowser:', error);
-            }
-        }
+        // Return a placeholder and load async
+        const placeholder = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIGZpbGw9IiMzMzMiLz4=';
 
-        // Fallback - return empty for missing assets
-        return '';
+        // Load the actual image asynchronously
+        setTimeout(async () => {
+            try {
+                const content = await this.editor.fileBrowser.readFile(path);
+                if (content && typeof content === 'string' && content.startsWith('data:image/')) {
+                    // Find all img elements with this path and update them
+                    document.querySelectorAll(`img[data-path="${path}"]`).forEach(img => {
+                        img.src = content;
+                    });
+                }
+            } catch (error) {
+                console.warn('Could not load image preview:', path, error);
+            }
+        }, 0);
+
+        return placeholder;
     }
 
     /**

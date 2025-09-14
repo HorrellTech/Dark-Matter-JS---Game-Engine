@@ -346,72 +346,118 @@ class SpriteRenderer extends Module {
      * @returns {Promise<HTMLImageElement>} - Loaded image
      */
     async loadImageFromFileBrowser(path) {
-        try {
-            const fileBrowser = window.editor.fileBrowser;
+    try {
+        const fileBrowser = window.editor.fileBrowser;
 
-            // Read the file content from FileBrowser
-            const content = await fileBrowser.readFile(path);
-            if (!content) {
-                throw new Error(`Could not read file from FileBrowser: ${path}`);
-            }
-
-            console.log('FileBrowser content type:', typeof content, content.substring ? content.substring(0, 50) + '...' : 'Binary data');
-
-            // Check if content is already a data URL (for images)
-            if (typeof content === 'string' && content.startsWith('data:image')) {
-                console.log('Loading image from data URL via FileBrowser');
-                return this.loadImageFromDataURL(content);
-            }
-            // Handle cases where FileBrowser returns the content differently
-            else if (typeof content === 'string' && !content.startsWith('data:')) {
-                // If it's a string but not a data URL, it might be base64 or raw content
-                // Try to construct a data URL
-                try {
-                    // Detect image type from path
-                    const extension = path.split('.').pop().toLowerCase();
-                    let mimeType = 'image/png'; // default
-
-                    if (extension === 'jpg' || extension === 'jpeg') mimeType = 'image/jpeg';
-                    else if (extension === 'gif') mimeType = 'image/gif';
-                    else if (extension === 'webp') mimeType = 'image/webp';
-                    else if (extension === 'svg') mimeType = 'image/svg+xml';
-
-                    // Try as base64 first
-                    let dataUrl;
-                    if (content.includes(',')) {
-                        // Already has data URL prefix but might be malformed
-                        dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
-                    } else {
-                        // Assume it's base64 data
-                        dataUrl = `data:${mimeType};base64,${content}`;
-                    }
-
-                    console.log('Attempting to load as constructed data URL');
-                    return this.loadImageFromDataURL(dataUrl);
-                } catch (error) {
-                    console.error('Failed to construct data URL:', error);
-                    throw new Error(`File content is not a valid image: ${path}`);
-                }
-            }
-            // Handle binary content (Blob/ArrayBuffer)
-            else if (content instanceof Blob || content instanceof ArrayBuffer) {
-                console.log('Converting binary content to data URL');
-                let blob = content;
-                if (content instanceof ArrayBuffer) {
-                    blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
-                }
-
-                const dataUrl = await this.blobToDataURL(blob);
-                return this.loadImageFromDataURL(dataUrl);
-            }
-            else {
-                throw new Error(`Unsupported file content type for image: ${typeof content}`);
-            }
-        } catch (error) {
-            console.error('Error loading image from FileBrowser:', error);
-            throw error;
+        // Read the file content from FileBrowser
+        const content = await fileBrowser.readFile(path);
+        if (!content) {
+            throw new Error(`Could not read file from FileBrowser: ${path}`);
         }
+
+        console.log('FileBrowser content type:', typeof content, content.substring ? content.substring(0, 50) + '...' : 'Binary data');
+
+        // Check if content is already a data URL (for images)
+        if (typeof content === 'string' && content.startsWith('data:image')) {
+            console.log('Loading image from data URL via FileBrowser');
+            const image = await this.loadImageFromDataURL(content);
+            
+            // Auto-size the sprite to match the image if dimensions are default
+            if (this.width === 64 && this.height === 64) {
+                this.width = image.naturalWidth;
+                this.height = image.naturalHeight;
+                console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+                
+                // Refresh inspector to show new dimensions
+                if (window.editor && window.editor.inspector) {
+                    window.editor.inspector.refreshModuleUI(this);
+                }
+            }
+            
+            return image;
+        }
+        // Handle cases where FileBrowser returns the content differently
+        else if (typeof content === 'string' && !content.startsWith('data:')) {
+            // If it's a string but not a data URL, it might be base64 or raw content
+            // Try to construct a data URL
+            try {
+                // Detect image type from path
+                const extension = path.split('.').pop().toLowerCase();
+                let mimeType = 'image/png'; // default
+                
+                if (extension === 'jpg' || extension === 'jpeg') {
+                    mimeType = 'image/jpeg';
+                } else if (extension === 'gif') {
+                    mimeType = 'image/gif';
+                } else if (extension === 'webp') {
+                    mimeType = 'image/webp';
+                } else if (extension === 'svg') {
+                    mimeType = 'image/svg+xml';
+                }
+
+                let dataUrl;
+                if (content.startsWith('data:')) {
+                    // Already has data URL prefix, might be malformed
+                    dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
+                } else {
+                    // Assume it's base64 data
+                    dataUrl = `data:${mimeType};base64,${content}`;
+                }
+
+                console.log('Attempting to load as constructed data URL');
+                const image = await this.loadImageFromDataURL(dataUrl);
+                
+                // Auto-size the sprite to match the image if dimensions are default
+                if (this.width === 64 && this.height === 64) {
+                    this.width = image.naturalWidth;
+                    this.height = image.naturalHeight;
+                    console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+                    
+                    // Refresh inspector to show new dimensions
+                    if (window.editor && window.editor.inspector) {
+                        window.editor.inspector.refreshModuleUI(this);
+                    }
+                }
+                
+                return image;
+            } catch (error) {
+                console.error('Failed to construct data URL:', error);
+                throw new Error(`File content is not a valid image: ${path}`);
+            }
+        }
+        // Handle binary content (Blob/ArrayBuffer)
+        else if (content instanceof Blob || content instanceof ArrayBuffer) {
+            console.log('Converting binary content to data URL');
+            let blob = content;
+            if (content instanceof ArrayBuffer) {
+                blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
+            }
+
+            const dataUrl = await this.blobToDataURL(blob);
+            const image = await this.loadImageFromDataURL(dataUrl);
+            
+            // Auto-size the sprite to match the image if dimensions are default
+            if (this.width === 64 && this.height === 64) {
+                this.width = image.naturalWidth;
+                this.height = image.naturalHeight;
+                console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+                
+                // Refresh inspector to show new dimensions
+                if (window.editor && window.editor.inspector) {
+                    window.editor.inspector.refreshModuleUI(this);
+                }
+            }
+            
+            return image;
+        }
+        else {
+            throw new Error(`Unsupported file content type for image: ${typeof content}`);
+        }
+    } catch (error) {
+        console.error('Error loading image from FileBrowser:', error);
+        throw error;
     }
+}
 
     async blobToDataURL(blob) {
         return new Promise((resolve, reject) => {

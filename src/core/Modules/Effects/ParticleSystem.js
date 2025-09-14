@@ -816,16 +816,63 @@ class ParticleSystem extends Module {
                 throw new Error(`Could not read file from FileBrowser: ${path}`);
             }
 
+            console.log('Loading particle image from FileBrowser:', path);
+
             if (typeof content === 'string' && content.startsWith('data:image')) {
                 console.log('Loading particle image from data URL via FileBrowser');
                 return this.loadImageFromDataURL(content);
-            } else {
+            }
+            // Handle cases where FileBrowser returns the content differently
+            else if (typeof content === 'string' && !content.startsWith('data:')) {
+                // Try to construct a data URL
+                try {
+                    const extension = path.split('.').pop().toLowerCase();
+                    let mimeType = 'image/png';
+
+                    if (extension === 'jpg' || extension === 'jpeg') {
+                        mimeType = 'image/jpeg';
+                    } else if (extension === 'gif') {
+                        mimeType = 'image/gif';
+                    } else if (extension === 'webp') {
+                        mimeType = 'image/webp';
+                    } else if (extension === 'svg') {
+                        mimeType = 'image/svg+xml';
+                    }
+
+                    const dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
+                    console.log('Loading particle image from constructed data URL');
+                    return this.loadImageFromDataURL(dataUrl);
+                } catch (error) {
+                    console.error('Failed to construct data URL for particle image:', error);
+                    throw error;
+                }
+            }
+            // Handle binary content
+            else if (content instanceof Blob || content instanceof ArrayBuffer) {
+                let blob = content;
+                if (content instanceof ArrayBuffer) {
+                    blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
+                }
+
+                const dataUrl = await this.blobToDataURL(blob);
+                return this.loadImageFromDataURL(dataUrl);
+            }
+            else {
                 throw new Error(`File content is not a valid image data URL: ${path}`);
             }
         } catch (error) {
             console.error('Error loading particle image from FileBrowser:', error);
             throw error;
         }
+    }
+
+    async blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     fallbackLoadImage(path) {

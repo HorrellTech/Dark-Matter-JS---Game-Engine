@@ -2952,8 +2952,8 @@ class WebGLCanvas {
     }
 
     /*
- * Set image smoothing
- */
+    * Set image smoothing
+    */
     set imageSmoothingEnabled(enabled) {
         if (!this.useWebGL) {
             this.ctx.imageSmoothingEnabled = enabled;
