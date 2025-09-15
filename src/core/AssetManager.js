@@ -85,7 +85,7 @@ class AssetManager {
         try {
             console.log('Scanning FileBrowser for assets...');
             const allFiles = await this.fileBrowser.getAllFiles();
-            
+
             for (const file of allFiles) {
                 if (file.type === 'file') {
                     const assetType = this.detectAssetType(file.path);
@@ -94,7 +94,7 @@ class AssetManager {
                     }
                 }
             }
-            
+
             console.log(`Registered ${this.assetRegistry.size} assets from FileBrowser`);
         } catch (error) {
             console.error('Error scanning FileBrowser for assets:', error);
@@ -1028,6 +1028,93 @@ class AssetManager {
             </div>
         `;
 
+        // Add CSS styles for icon selector
+        const style = document.createElement('style');
+        style.textContent = `
+            .asset-pack-info {
+                margin-bottom: 20px;
+                padding: 16px;
+                background: #3d3d3d;
+                border-radius: 6px;
+                border: 1px solid #555;
+            }
+            
+            .asset-input-group {
+                margin-bottom: 16px;
+            }
+            
+            .asset-input-group label {
+                display: block;
+                margin-bottom: 6px;
+                color: #ccc;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            
+            .asset-input-group input,
+            .asset-input-group textarea {
+                width: 100%;
+                padding: 8px 12px;
+                background: #2a2a2a;
+                border: 1px solid #555;
+                border-radius: 4px;
+                color: #fff;
+                font-size: 14px;
+                font-family: inherit;
+            }
+            
+            .asset-input-group input:focus,
+            .asset-input-group textarea:focus {
+                outline: none;
+                border-color: #0078d4;
+                box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+            }
+            
+            .icon-selector {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }
+            
+            .icon-preview {
+                width: 80px;
+                height: 80px;
+                background: #2a2a2a;
+                border: 2px dashed #555;
+                border-radius: 8px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                color: #888;
+                font-size: 12px;
+                flex-shrink: 0;
+            }
+            
+            .icon-preview img {
+                border-radius: 4px;
+            }
+            
+            .icon-preview span {
+                margin-top: 4px;
+                font-size: 10px;
+            }
+            
+            .icon-controls {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .asset-tree-section h3 {
+                color: #fff;
+                margin-bottom: 12px;
+                font-size: 16px;
+            }
+        `;
+        document.head.appendChild(style);
+
         document.body.appendChild(this.modal);
         this.setupEventListeners();
     }
@@ -1039,16 +1126,28 @@ class AssetManager {
         });
 
         // Select all button
-        this.modal.querySelector('.select-all').addEventListener('click', () => {
-            const checkboxes = this.modal.querySelectorAll('.asset-item input[type="checkbox"]');
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            checkboxes.forEach(cb => cb.checked = !allChecked);
+        this.modal.addEventListener('click', (e) => {
+            if (e.target.classList.contains('select-all')) {
+                const checkboxes = this.modal.querySelectorAll('.asset-item input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = true);
+            }
+
+            if (e.target.classList.contains('select-none')) {
+                const checkboxes = this.modal.querySelectorAll('.asset-item input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = false);
+            }
+
+            if (e.target.classList.contains('export')) {
+                this.exportSelected();
+            }
         });
 
-        // Export button
-        this.modal.querySelector('.export').addEventListener('click', () => {
-            this.exportSelected();
-        });
+        // Click outside to close
+        /*this.modal.addEventListener('click', (e) => {
+            if (e.target === this.modal) {
+                this.hideModal();
+            }
+        });*/
     }
 
     async showExportModal() {
@@ -1059,6 +1158,58 @@ class AssetManager {
         // Group files by directory
         const fileTree = this.buildFileTree(files);
         this.renderFileTree(fileTree, tree);
+
+        // Update modal content to include name, description, and icon fields
+        const modalBody = this.modal.querySelector('.asset-modal-body');
+        modalBody.innerHTML = `
+        <div class="asset-pack-info">
+            <div class="asset-input-group">
+                <label for="asset-pack-name">Asset Pack Name:</label>
+                <input type="text" id="asset-pack-name" placeholder="Enter asset pack name" value="My Asset Pack">
+            </div>
+            <div class="asset-input-group">
+                <label for="asset-pack-description">Description:</label>
+                <textarea id="asset-pack-description" placeholder="Enter a description for this asset pack" rows="3"></textarea>
+            </div>
+            <div class="asset-input-group">
+                <label for="asset-pack-version">Version:</label>
+                <input type="text" id="asset-pack-version" placeholder="1.0.0" value="1.0.0">
+            </div>
+            <div class="asset-input-group">
+                <label for="asset-pack-author">Author:</label>
+                <input type="text" id="asset-pack-author" placeholder="Your name">
+            </div>
+            <div class="asset-input-group">
+                <label for="asset-pack-icon">Icon (optional):</label>
+                <div class="icon-selector">
+                    <div class="icon-preview" id="icon-preview">
+                        <i class="fas fa-image" style="font-size: 48px; color: #666;"></i>
+                        <span>No icon selected</span>
+                    </div>
+                    <div class="icon-controls">
+                        <button type="button" class="asset-button select-icon">Select Icon</button>
+                        <button type="button" class="asset-button remove-icon" style="display: none;">Remove Icon</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="asset-tree-section">
+            <h3>Select Assets to Export</h3>
+            <div class="asset-tree"></div>
+        </div>
+        <div class="asset-actions">
+            <button class="asset-button select-all">Select All</button>
+            <button class="asset-button select-none">Select None</button>
+            <button class="asset-button export">Export Selected</button>
+        </div>
+    `;
+
+        // Re-render the file tree in the new structure
+        const newTree = modalBody.querySelector('.asset-tree');
+        this.renderFileTree(fileTree, newTree);
+
+        // Setup icon selection
+        this.setupIconSelector();
 
         this.modal.style.display = 'flex';
     }
@@ -1129,11 +1280,149 @@ class AssetManager {
         }
     }
 
+    setupIconSelector() {
+        const selectIconBtn = this.modal.querySelector('.select-icon');
+        const removeIconBtn = this.modal.querySelector('.remove-icon');
+        const iconPreview = this.modal.querySelector('#icon-preview');
+
+        // Store selected icon data
+        this.selectedIcon = null;
+
+        selectIconBtn.addEventListener('click', async () => {
+            try {
+                // Create file input for icon selection
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        await this.handleIconSelection(file, iconPreview, removeIconBtn);
+                    }
+                };
+
+                input.click();
+            } catch (error) {
+                console.error('Error selecting icon:', error);
+                this.fileBrowser?.showNotification?.('Error selecting icon: ' + error.message, 'error');
+            }
+        });
+
+        removeIconBtn.addEventListener('click', () => {
+            this.selectedIcon = null;
+            iconPreview.innerHTML = `
+                <i class="fas fa-image" style="font-size: 48px; color: #666;"></i>
+                <span>No icon selected</span>
+            `;
+            removeIconBtn.style.display = 'none';
+        });
+    }
+
+    async handleIconSelection(file, iconPreview, removeIconBtn) {
+        try {
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                throw new Error('Please select a valid image file');
+            }
+
+            // Validate file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                throw new Error('Image file size must be less than 5MB');
+            }
+
+            // Create image element for resizing
+            const img = new Image();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Load the image
+            const imageDataUrl = await this.fileToDataURL(file);
+
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = imageDataUrl;
+            });
+
+            // Resize to 128x128
+            canvas.width = 128;
+            canvas.height = 128;
+
+            // Draw image with proper scaling to maintain aspect ratio
+            const { width, height, x, y } = this.calculateImageFit(img.width, img.height, 128, 128);
+
+            // Fill background with transparent pixels
+            ctx.clearRect(0, 0, 128, 128);
+
+            // Draw the resized image
+            ctx.drawImage(img, x, y, width, height);
+
+            // Convert to data URL
+            const resizedDataUrl = canvas.toDataURL('image/png');
+
+            // Store the icon data
+            this.selectedIcon = {
+                data: resizedDataUrl,
+                originalName: file.name,
+                size: Math.round(resizedDataUrl.length * 0.75) // Approximate size
+            };
+
+            // Update preview
+            iconPreview.innerHTML = `
+                <img src="${resizedDataUrl}" style="width: 64px; height: 64px; border-radius: 4px; border: 1px solid #555;">
+                <span style="font-size: 12px; color: #aaa;">${file.name} (128x128)</span>
+            `;
+
+            removeIconBtn.style.display = 'inline-block';
+
+            this.fileBrowser?.showNotification?.('Icon resized and ready for export', 'success');
+
+        } catch (error) {
+            console.error('Error processing icon:', error);
+            this.fileBrowser?.showNotification?.('Error processing icon: ' + error.message, 'error');
+        }
+    }
+
+    calculateImageFit(srcWidth, srcHeight, targetWidth, targetHeight) {
+        const scale = Math.min(targetWidth / srcWidth, targetHeight / srcHeight);
+        const width = srcWidth * scale;
+        const height = srcHeight * scale;
+        const x = (targetWidth - width) / 2;
+        const y = (targetHeight - height) / 2;
+
+        return { width, height, x, y };
+    }
+
+    fileToDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
     async exportSelected() {
-        const selected = this.modal.querySelectorAll('.asset-item input[type="checkbox"]:checked');
+        const selectedFiles = this.modal.querySelectorAll('.asset-item input[type="checkbox"]:checked');
+        const selectedDirs = this.modal.querySelectorAll('.asset-dir-header input[type="checkbox"]:checked');
         const files = [];
 
-        for (const checkbox of selected) {
+        // Get pack metadata
+        const packName = this.modal.querySelector('#asset-pack-name').value.trim() || 'Untitled Asset Pack';
+        const packDescription = this.modal.querySelector('#asset-pack-description').value.trim() || '';
+        const packVersion = this.modal.querySelector('#asset-pack-version').value.trim() || '1.0.0';
+        const packAuthor = this.modal.querySelector('#asset-pack-author').value.trim() || '';
+
+        // Collect explicitly selected directories
+        const explicitlySelectedDirs = new Set();
+        for (const checkbox of selectedDirs) {
+            const dirPath = checkbox.dataset.path;
+            explicitlySelectedDirs.add(dirPath);
+        }
+
+        // Collect selected files
+        for (const checkbox of selectedFiles) {
             const path = checkbox.dataset.path;
             const file = await this.fileBrowser.getFile(path);
             if (file) {
@@ -1141,7 +1430,10 @@ class AssetManager {
                     path: file.path,
                     content: file.content,
                     type: file.type,
-                    name: file.name
+                    name: file.name,
+                    parentPath: file.parentPath,
+                    created: file.created,
+                    modified: file.modified
                 });
             }
         }
@@ -1151,34 +1443,88 @@ class AssetManager {
             return;
         }
 
-        // Prompt for package name
-        const packageName = await this.fileBrowser.promptDialog(
-            'Export Assets',
-            'Enter name for asset package:',
-            'assets'
-        );
+        // Build directory structure - only include explicitly selected directories
+        const directories = new Set();
 
-        if (!packageName) return;
+        // Add explicitly selected directories first
+        explicitlySelectedDirs.forEach(dirPath => {
+            if (dirPath && dirPath !== '/') {
+                directories.add(dirPath);
+            }
+        });
 
-        // Create asset package
+        // For each selected file, check if any parent directories are explicitly selected
+        // If so, include those parent directories (but not auto-created ones)
+        files.forEach(file => {
+            let currentPath = file.parentPath;
+            while (currentPath && currentPath !== '/') {
+                // Only add this directory if it was explicitly selected
+                if (explicitlySelectedDirs.has(currentPath)) {
+                    directories.add(currentPath);
+
+                    // Also add any parent directories of explicitly selected directories
+                    let parentOfSelected = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+                    while (parentOfSelected && parentOfSelected !== '/' && explicitlySelectedDirs.has(parentOfSelected)) {
+                        directories.add(parentOfSelected);
+                        parentOfSelected = parentOfSelected.substring(0, parentOfSelected.lastIndexOf('/')) || '/';
+                    }
+                }
+                currentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+            }
+        });
+
+        // Convert directories to array and sort
+        const directoryList = Array.from(directories).sort();
+
+        // Create enhanced asset package
         const assetPackage = {
-            name: packageName,
-            version: '1.0',
+            // Package metadata
+            name: packName,
+            description: packDescription,
+            version: packVersion,
+            author: packAuthor,
             timestamp: Date.now(),
-            files: files
+
+            // Icon data (if selected)
+            icon: this.selectedIcon ? {
+                data: this.selectedIcon.data,
+                originalName: this.selectedIcon.originalName,
+                size: this.selectedIcon.size
+            } : null,
+
+            // Structure information
+            directories: directoryList,
+            totalFiles: files.length,
+            totalDirectories: directoryList.length,
+
+            // File data
+            files: files,
+
+            // Additional metadata
+            metadata: {
+                exportedBy: 'Dark Matter JS Game Engine',
+                exportVersion: '1.0',
+                engineVersion: window.engineVersion || '1.0.0',
+                selectionMode: 'explicit-directories-only' // Indicates this export method
+            }
         };
 
         // Create and download file
-        const blob = new Blob([JSON.stringify(assetPackage)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(assetPackage, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${packageName}.dmjs`;
+
+        // Sanitize filename
+        const sanitizedName = packName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        a.download = `${sanitizedName}.dmjs`;
+
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        this.fileBrowser.showNotification(`Asset pack "${packName}" exported successfully!`, 'success');
         this.hideModal();
     }
 
@@ -1191,41 +1537,75 @@ class AssetManager {
                 throw new Error('Invalid asset package format');
             }
 
-            // Create directory based on package name or file name
-            const packageName = assetPackage.name || file.name.replace('.dmjs', '');
-            const importPath = `/${packageName}`;
+            // Show import confirmation with package details
+            const confirmMessage = `Import Asset Pack: "${assetPackage.name}"
+        
+Description: ${assetPackage.description || 'No description'}
+Version: ${assetPackage.version}
+Author: ${assetPackage.author || 'Unknown'}
+Files: ${assetPackage.totalFiles || assetPackage.files.length}
+Directories: ${assetPackage.totalDirectories || 0}
 
-            // Ensure the directory exists
+Continue with import?`;
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            // Create directory based on package name
+            const packageName = assetPackage.name || file.name.replace('.dmjs', '');
+            const sanitizedPackageName = packageName.replace(/[^a-z0-9\s]/gi, '_');
+            const importPath = `/${sanitizedPackageName}`;
+
+            // Ensure the main directory exists
             await this.fileBrowser.createDirectory(importPath);
 
-            // Import files with adjusted paths
-            for (const fileEntry of assetPackage.files) {
-                // Extract the file name and any subdirectories from the original path
-                const pathParts = fileEntry.path.split('/').filter(Boolean);
-                const newPath = `${importPath}/${pathParts.join('/')}`;
-
-                // Ensure parent directories exist
-                const parentPath = newPath.substring(0, newPath.lastIndexOf('/'));
-                if (parentPath !== importPath) {
-                    await this.fileBrowser.createDirectory(parentPath);
+            // Create all directories first (if directory structure is preserved)
+            if (assetPackage.directories) {
+                for (const dirPath of assetPackage.directories) {
+                    const newDirPath = `${importPath}${dirPath}`;
+                    await this.fileBrowser.createDirectory(newDirPath);
                 }
+            }
 
-                // Write the file
-                await this.fileBrowser.writeFile(newPath, fileEntry.content, true);
+            // Import files with preserved directory structure
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const fileEntry of assetPackage.files) {
+                try {
+                    // Preserve original directory structure
+                    const newPath = `${importPath}${fileEntry.path}`;
+
+                    // Ensure parent directories exist
+                    const parentPath = newPath.substring(0, newPath.lastIndexOf('/'));
+                    if (parentPath !== importPath && parentPath !== '/') {
+                        await this.fileBrowser.createDirectory(parentPath);
+                    }
+
+                    // Write the file
+                    await this.fileBrowser.writeFile(newPath, fileEntry.content, true);
+                    successCount++;
+                } catch (error) {
+                    console.error(`Error importing file ${fileEntry.path}:`, error);
+                    errorCount++;
+                }
             }
 
             this.fileBrowser.refreshFiles();
-            this.fileBrowser.showNotification(
-                `Assets imported successfully to /${packageName}`,
-                'info'
-            );
+
+            const statusMessage = errorCount > 0
+                ? `Asset pack imported with ${successCount} files succeeded, ${errorCount} files failed`
+                : `Asset pack "${packageName}" imported successfully with ${successCount} files`;
+
+            this.fileBrowser.showNotification(statusMessage, errorCount > 0 ? 'warning' : 'success');
 
             // Navigate to the newly created directory
             await this.fileBrowser.navigateTo(importPath);
 
         } catch (error) {
             console.error('Error importing assets:', error);
-            this.fileBrowser.showNotification('Error importing assets', 'error');
+            this.fileBrowser.showNotification(`Error importing assets: ${error.message}`, 'error');
         }
     }
 

@@ -1925,7 +1925,7 @@ window.${pascalCaseName} = ${pascalCaseName};
         try {
             const content = await this.readFile(scriptPath);
             if (!content) {
-                throw new Error(`Could not read file: ${scriptPath}`);
+                //throw new Error(`Could not read file: ${scriptPath}`);
             }
 
             // Basic syntax check (optional, can be improved)
