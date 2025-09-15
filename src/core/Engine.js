@@ -166,6 +166,82 @@ class Engine {
         // Initialize viewport properly
         this.initializeViewport();
 
+        // Initialize prefab manager if not already available
+        if (!window.prefabManager) {
+            // Create a simple prefab manager for runtime
+            window.prefabManager = {
+                prefabs: new Map(),
+
+                loadPrefabs: function (prefabsData) {
+                    if (!prefabsData) return;
+
+                    for (const [name, prefabData] of Object.entries(prefabsData)) {
+                        this.prefabs.set(name, prefabData);
+                        console.log('Loaded prefab:', name);
+                    }
+
+                    console.log('Total prefabs loaded:', this.prefabs.size);
+                },
+
+                findPrefabByName: function (name) {
+                    if (!name) return null;
+
+                    if (this.prefabs.has(name)) {
+                        return this.prefabs.get(name);
+                    }
+
+                    const lowerName = name.toLowerCase();
+                    for (const [key, value] of this.prefabs) {
+                        if (key.toLowerCase() === lowerName) {
+                            return value;
+                        }
+                    }
+
+                    return null;
+                },
+
+                hasPrefab: function (name) {
+                    return this.findPrefabByName(name) !== null;
+                },
+
+                getAllPrefabNames: function () {
+                    return Array.from(this.prefabs.keys());
+                },
+
+                instantiatePrefabByName: function (name, position = null, parent = null) {
+                    const prefabData = this.findPrefabByName(name);
+                    if (!prefabData) {
+                        console.error('Prefab not found:', name);
+                        return null;
+                    }
+
+                    return this.instantiatePrefab(prefabData, position, parent);
+                },
+
+                instantiatePrefab: function (prefabData, position = null, parent = null) {
+                    try {
+                        const gameObject = GameObject.fromJSON(prefabData);
+
+                        if (position) {
+                            gameObject.position.x = position.x;
+                            gameObject.position.y = position.y;
+                        }
+
+                        if (parent) {
+                            parent.addChild(gameObject);
+                        } else if (window.engine && window.engine.gameObjects) {
+                            window.engine.gameObjects.push(gameObject);
+                        }
+
+                        return gameObject;
+                    } catch (error) {
+                        console.error('Error instantiating prefab:', error);
+                        return null;
+                    }
+                }
+            };
+        }
+
         // Track dynamically created objects for cleanup
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
@@ -210,6 +286,48 @@ class Engine {
         // Ensure viewport is properly initialized
         this.viewport.dirty = true;
         this.updateViewport();
+    }
+
+    /**
+ * Load all existing prefabs into memory
+ */
+    async loadExistingPrefabs() {
+        if (!this.editor || !this.editor.fileBrowser) return;
+
+        try {
+            const files = await this.editor.fileBrowser.getAllFiles();
+            const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
+
+            for (const file of prefabFiles) {
+                try {
+                    const content = file.content || await this.editor.fileBrowser.readFile(file.path);
+                    if (!content) continue;
+
+                    const prefabData = JSON.parse(content);
+
+                    // Store by metadata name or filename without extension
+                    const prefabName = prefabData.metadata?.name || file.name.replace('.prefab', '');
+                    this.prefabs.set(prefabName, prefabData);
+
+                    console.log(`Loaded prefab: ${prefabName}`);
+                } catch (error) {
+                    console.error(`Error loading prefab ${file.name}:`, error);
+                }
+            }
+
+            console.log(`Loaded ${this.prefabs.size} prefabs into memory`);
+
+            // Also update the global prefab manager if it exists
+            if (window.prefabManager && typeof window.prefabManager.loadPrefabs === 'function') {
+                const prefabsData = {};
+                for (const [name, data] of this.prefabs) {
+                    prefabsData[name] = data;
+                }
+                window.prefabManager.loadPrefabs(prefabsData);
+            }
+        } catch (error) {
+            console.error('Error loading existing prefabs:', error);
+        }
     }
 
     updateViewport() {
@@ -1152,22 +1270,22 @@ class Engine {
 
             this.ctx.setTransform(a, b, c, d, e, f);
         } else {*/
-            // Standard 2D canvas transforms
-            this.ctx.translate(centerX, centerY);
+        // Standard 2D canvas transforms
+        this.ctx.translate(centerX, centerY);
 
-            if (this.viewport.angle && this.viewport.angle !== 0) {
-                const radians = this.viewport.angle * Math.PI / 180;
-                this.ctx.rotate(radians);
-            }
+        if (this.viewport.angle && this.viewport.angle !== 0) {
+            const radians = this.viewport.angle * Math.PI / 180;
+            this.ctx.rotate(radians);
+        }
 
-            if (this.viewport.zoom && this.viewport.zoom !== 1) {
-                this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
-            }
+        if (this.viewport.zoom && this.viewport.zoom !== 1) {
+            this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
+        }
 
-            this.ctx.translate(
-                -centerX - this.viewport.x + this.viewport.shake.x,
-                -centerY - this.viewport.y + this.viewport.shake.y
-            );
+        this.ctx.translate(
+            -centerX - this.viewport.x + this.viewport.shake.x,
+            -centerY - this.viewport.y + this.viewport.shake.y
+        );
         //}
     }
 
@@ -1249,7 +1367,7 @@ class Engine {
 
         let instantiated = null;
 
-        // Check if we're in the editor - use the hierarchy's prefab manager
+        // Method 1: Check if we're in the editor - use the hierarchy's prefab manager
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             const position = new Vector2(x, y);
             instantiated = window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position);
@@ -1259,10 +1377,29 @@ class Engine {
                 if (!this.gameObjects.includes(instantiated)) {
                     this.gameObjects.push(instantiated);
                 }
+                console.log(`Successfully instantiated prefab via editor: ${prefabName}`);
             }
         }
 
-        // If the hierarchy prefab manager failed, try loading from file browser
+        // Method 2: Try the global prefab manager (for exported games)
+        if (!instantiated && window.prefabManager) {
+            console.log('Using global prefab manager for instantiation');
+
+            if (typeof window.prefabManager.instantiatePrefabByName === 'function') {
+                const position = new Vector2(x, y);
+                instantiated = window.prefabManager.instantiatePrefabByName(prefabName, position);
+
+                if (instantiated) {
+                    // Add to the current scene's gameObjects if not already added
+                    if (!this.gameObjects.includes(instantiated)) {
+                        this.gameObjects.push(instantiated);
+                    }
+                    console.log(`Successfully instantiated prefab via global manager: ${prefabName}`);
+                }
+            }
+        }
+
+        // Method 3: Try loading from file browser (editor fallback)
         if (!instantiated && window.editor && window.editor.fileBrowser) {
             const variations = [
                 `${prefabName}.prefab`,
@@ -1291,40 +1428,6 @@ class Engine {
             }
         }
 
-        // Check if we're in an exported game with embedded prefabs
-        if (!instantiated && window.prefabManager) {
-            console.log('Using global prefab manager for instantiation');
-
-            // Use the prefab manager's instantiation method
-            if (typeof window.prefabManager.instantiatePrefabByName === 'function') {
-                const position = new Vector2(x, y);
-                instantiated = window.prefabManager.instantiatePrefabByName(prefabName, position);
-
-                if (instantiated) {
-                    // Add to the current scene's gameObjects if not already added
-                    if (!this.gameObjects.includes(instantiated)) {
-                        this.gameObjects.push(instantiated);
-                    }
-                    console.log(`Successfully instantiated prefab: ${prefabName}`);
-                }
-            }
-
-            // Fallback: try direct prefab data access
-            if (!instantiated && typeof window.prefabManager.findPrefabByName === 'function') {
-                const prefabData = window.prefabManager.findPrefabByName(prefabName);
-                if (prefabData) {
-                    console.log(`Found prefab data, creating instance: ${prefabName}`);
-                    instantiated = this.createGameObjectFromPrefab(prefabData, x, y);
-
-                    if (instantiated) {
-                        if (!this.gameObjects.includes(instantiated)) {
-                            this.gameObjects.push(instantiated);
-                        }
-                    }
-                }
-            }
-        }
-
         // Track the instantiated object for cleanup
         if (instantiated) {
             this.dynamicObjects.add(instantiated);
@@ -1348,7 +1451,7 @@ class Engine {
         try {
             // Create GameObject
             const gameObject = GameObject.fromJSON(prefabData);
-            gameObject.position.set(x, y);
+            gameObject.position = new Vector2(x, y);
             return gameObject;
 
         } catch (error) {
@@ -1785,7 +1888,7 @@ class Engine {
         // If using WebGLCanvas, call its resize method
         if (this.useWebGL && this.ctx.resize) {
             this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
-            
+
             if (pixelRatio !== 1) {
                 this.ctx.scale(pixelRatio, pixelRatio); // Ensure scaling is applied
             }

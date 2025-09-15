@@ -118,8 +118,36 @@ class ExportManager {
 
         // Collect prefabs
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            // Ensure prefabs are loaded first
+            await window.editor.hierarchy.prefabManager.loadExistingPrefabs();
+            
+            // Now export them
             data.prefabs = window.editor.hierarchy.prefabManager.exportPrefabs();
-            // console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export`);
+            console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export:`, Object.keys(data.prefabs));
+        } else {
+            // Fallback: try to load prefabs directly from FileBrowser
+            if (window.editor && window.editor.fileBrowser) {
+                try {
+                    const files = await window.editor.fileBrowser.getAllFiles();
+                    const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
+                    
+                    for (const file of prefabFiles) {
+                        try {
+                            const content = file.content || await window.editor.fileBrowser.readFile(file.path);
+                            if (content) {
+                                const prefabData = JSON.parse(content);
+                                const prefabName = prefabData.metadata?.name || file.name.replace('.prefab', '');
+                                data.prefabs[prefabName] = prefabData;
+                            }
+                        } catch (error) {
+                            console.error(`Error loading prefab ${file.name} for export:`, error);
+                        }
+                    }
+                    console.log(`Fallback collected ${Object.keys(data.prefabs).length} prefabs for export`);
+                } catch (error) {
+                    console.error('Error collecting prefabs via fallback method:', error);
+                }
+            }
         }
 
         // Collect custom modules (after scenes are serialized)
@@ -1160,6 +1188,84 @@ async function initializeGame() {
         window.assetManager = new AssetManager(null);
     }
 
+    // Initialize Global Prefab Manager
+    if (!window.prefabManager) {
+        window.prefabManager = {
+            prefabs: new Map(),
+            
+            loadPrefabs: function(prefabsData) {
+                if (!prefabsData) return;
+                
+                for (const [name, prefabData] of Object.entries(prefabsData)) {
+                    this.prefabs.set(name, prefabData);
+                    console.log('Loaded prefab:', name);
+                }
+                
+                console.log('Total prefabs loaded:', this.prefabs.size);
+            },
+            
+            findPrefabByName: function(name) {
+                if (!name) return null;
+                
+                if (this.prefabs.has(name)) {
+                    return this.prefabs.get(name);
+                }
+                
+                const lowerName = name.toLowerCase();
+                for (const [key, value] of this.prefabs) {
+                    if (key.toLowerCase() === lowerName) {
+                        return value;
+                    }
+                }
+                
+                return null;
+            },
+            
+            hasPrefab: function(name) {
+                return this.findPrefabByName(name) !== null;
+            },
+            
+            getAllPrefabNames: function() {
+                return Array.from(this.prefabs.keys());
+            },
+            
+            instantiatePrefabByName: function(name, position = null, parent = null) {
+                const prefabData = this.findPrefabByName(name);
+                if (!prefabData) {
+                    console.error('Prefab not found:', name);
+                    return null;
+                }
+                
+                return this.instantiatePrefab(prefabData, position, parent);
+            },
+            
+            instantiatePrefab: function(prefabData, position = null, parent = null) {
+                try {
+                    // Use GameObject.fromJSON for proper deserialization
+                    const gameObject = GameObject.fromJSON(prefabData);
+                    
+                    // Override position if specified
+                    if (position) {
+                        gameObject.position.x = position.x;
+                        gameObject.position.y = position.y;
+                    }
+
+                    // Handle parenting
+                    if (parent) {
+                        parent.addChild(gameObject);
+                    } else if (window.engine && window.engine.gameObjects) {
+                        window.engine.gameObjects.push(gameObject);
+                    }
+
+                    return gameObject;
+                } catch (error) {
+                    console.error('Error instantiating prefab:', error);
+                    return null;
+                }
+            }
+        };
+    }
+
     ${settings.standalone ? `
     // Standalone mode - embed assets directly
     const assetsData = ${assetsData};
@@ -1705,7 +1811,7 @@ async function initializeGame() {
         return;
     }
     
-    // Load prefabs into the global prefab manager
+    // Load prefabs into the global prefab manager FIRST
     if (gameData.prefabs) {
         window.prefabManager.loadPrefabs(gameData.prefabs);
         console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
@@ -1749,6 +1855,12 @@ async function initializeGame() {
     
     // Make engine globally available for prefab instantiation
     window.engine = engine;
+    
+    // CRITICAL: Attach prefab manager to engine
+    if (window.prefabManager) {
+        engine.prefabManager = window.prefabManager;
+        console.log('Attached prefab manager to engine with', window.prefabManager.prefabs.size, 'prefabs');
+    }
 
     // Add resize handler to engine
     engine.handleResize = function(width, height) {

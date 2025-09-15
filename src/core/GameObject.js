@@ -470,6 +470,12 @@ class GameObject {
             if (module.onDestroy) module.onDestroy();
         });
         this.children.forEach(child => child.onDestroy());
+        window.engine.gameObjects = window.engine.gameObjects.filter(obj => obj !== this);
+    }
+
+    destroy() {
+        this.onDestroy();
+        // Additional cleanup logic (if any) goes here
     }
 
     /**
