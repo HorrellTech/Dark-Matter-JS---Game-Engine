@@ -1015,7 +1015,102 @@ class ExportManager {
                     }
                 });
             }
+
+            // Load Game Button Logic
+            const loadBtn = document.getElementById('load-game-btn');
+            if (loadBtn) {
+                loadBtn.addEventListener('click', function() {
+                    showLoadGameDialog();
+                });
+            }
         });
+
+        // Load Game Dialog
+        function showLoadGameDialog() {
+            const modal = document.createElement('div');
+            modal.id = 'load-game-modal';
+            modal.style.position = 'fixed';
+            modal.style.top = '0'; modal.style.left = '0';
+            modal.style.width = '100vw'; modal.style.height = '100vh';
+            modal.style.background = 'rgba(0,0,0,0.85)';
+            modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center';
+            modal.style.zIndex = '2000';
+
+            // List local saves
+            let saves = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('dmjs_save_')) {
+                    saves.push(key.replace('dmjs_save_', ''));
+                }
+            }
+
+            // Build options string
+            let optionsHtml = '';
+            if (saves.length) {
+                optionsHtml = saves.map(s => \`<option value="\${s}">\${s}</option>\`).join('');
+            } else {
+                optionsHtml = '<option>No saves found</option>';
+            }
+
+            modal.innerHTML = \`
+                <div style="background:#222;padding:32px;border-radius:16px;min-width:320px;max-width:90vw;">
+                    <h2 style="color:#fff;">Load Game</h2>
+                    <div>
+                        <label style="color:#fff;">Local Saves:</label>
+                        <select id="local-save-list" style="width:100%;margin-bottom:12px;">
+                            \${optionsHtml}
+                        </select>
+                        <button id="load-local-btn" style="margin-right:8px;">Load Selected</button>
+                        <button id="delete-local-btn" style="margin-right:8px;">Delete Selected</button>
+                    </div>
+                    <hr style="margin:16px 0;">
+                    <div>
+                        <label style="color:#fff;">Import Save File:</label>
+                        <input type="file" id="import-save-file" accept=".json,.dmjs-save.json" style="margin-bottom:8px;">
+                        <button id="import-file-btn">Import & Load</button>
+                    </div>
+                    <hr style="margin:16px 0;">
+                    <button id="back-btn" style="margin-top:8px;">Back</button>
+                </div>
+            \`;
+            document.body.appendChild(modal);
+
+            // Load local
+            modal.querySelector('#load-local-btn').onclick = async () => {
+                const sel = modal.querySelector('#local-save-list').value;
+                if (window.engine && sel) {
+                    await window.engine.loadGame(sel);
+                    modal.remove();
+                    document.getElementById('loading-screen').style.display = 'none';
+                }
+            };
+            // Delete local
+            modal.querySelector('#delete-local-btn').onclick = () => {
+                const sel = modal.querySelector('#local-save-list').value;
+                if (sel && confirm('Delete save "' + sel + '"?')) {
+                    localStorage.removeItem('dmjs_save_' + sel);
+                    modal.remove();
+                    showLoadGameDialog();
+                }
+            };
+            // Import file
+            modal.querySelector('#import-file-btn').onclick = async () => {
+                const fileInput = modal.querySelector('#import-save-file');
+                if (fileInput.files.length) {
+                    const file = fileInput.files[0];
+                    if (window.engine) {
+                        await window.engine.loadGame(file);
+                        modal.remove();
+                        document.getElementById('loading-screen').style.display = 'none';
+                    }
+                }
+            };
+            // Back button
+            modal.querySelector('#back-btn').onclick = () => {
+                modal.remove();
+            };
+        }
     </script>
     
     ${scriptAndStyleTags.trim()}
@@ -1041,6 +1136,21 @@ class ExportManager {
                     outline: none;
                     letter-spacing: 1px;
                 ">Start Game</button>
+                <button id="load-game-btn" style="
+                    margin-top:12px;
+                    padding: 12px 32px;
+                    font-size: 1.1em;
+                    font-weight: bold;
+                    color: #fff;
+                    background: #444;
+                    border: none;
+                    border-radius: 24px;
+                    box-shadow: 0 2px 8px 0 #4444;
+                    cursor: pointer;
+                    transition: background 0.2s, box-shadow 0.2s;
+                    outline: none;
+                    letter-spacing: 1px;
+                ">Load Game</button>
             </div>
         </div>
     </div>
@@ -1371,6 +1481,94 @@ html {
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0;
+}
+
+#load-game-modal {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+#load-game-modal > div {
+    background: #222;
+    padding: 32px 40px;
+    border-radius: 18px;
+    min-width: 340px;
+    max-width: 95vw;
+    box-shadow: 0 8px 32px #000a;
+    color: #fff;
+}
+
+#load-game-modal h2 {
+    margin-top: 0;
+    margin-bottom: 18px;
+    font-size: 2em;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #4F8EF7;
+}
+
+#load-game-modal label {
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: block;
+    color: #eee;
+}
+
+#load-game-modal select,
+#load-game-modal input[type="file"] {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: none;
+    background: #333;
+    color: #fff;
+    margin-bottom: 10px;
+    font-size: 1em;
+}
+
+#load-game-modal button {
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: none;
+    background: #4F8EF7;
+    color: #fff;
+    font-weight: 600;
+    font-size: 1em;
+    margin: 6px 4px 0 0;
+    cursor: pointer;
+    box-shadow: 0 2px 8px #4F8EF744;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+#load-game-modal button#back-btn {
+    background: #444;
+}
+
+#load-game-modal button:hover {
+    background: #3574c3;
+}
+
+#load-game-modal hr {
+    border: none;
+    border-top: 1px solid #444;
+    margin: 18px 0;
+}
+
+@media (max-width: 600px) {
+    #load-game-modal > div {
+        padding: 18px 8px;
+        min-width: 90vw;
+    }
+    #load-game-modal h2 {
+        font-size: 1.3em;
+    }
 }
 `;
 

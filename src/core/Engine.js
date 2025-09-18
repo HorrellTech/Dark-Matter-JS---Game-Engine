@@ -1654,9 +1654,9 @@ class Engine {
     }
 
     /**
- * Store original positions on objects before cloning for runtime
- * @param {Array} gameObjects - Array of game objects to process
- */
+     * Store original positions on objects before cloning for runtime
+     * @param {Array} gameObjects - Array of game objects to process
+     */
     storeOriginalPositions(gameObjects) {
         const storeForObject = (obj) => {
             // Store the original position
@@ -1695,6 +1695,79 @@ class Engine {
 
             return clonedObj;
         });
+    }
+
+    /**
+     * Save the current game state
+     * @param {string} saveFileName - Name for the save file
+     * @param {boolean} saveLocal - If true, save to localStorage; else, download as file
+     */
+    saveGame(saveFileName = 'savegame', saveLocal = true) {
+        const state = {
+            scene: this.scene ? this.scene.name : null,
+            gameObjects: this.gameObjects.map(obj => obj.toJSON ? obj.toJSON() : obj),
+            viewport: this.viewport,
+            timestamp: Date.now()
+        };
+        const saveData = JSON.stringify(state);
+
+        if (saveLocal) {
+            localStorage.setItem(`dmjs_save_${saveFileName}`, saveData);
+            alert(`Game saved locally as "${saveFileName}"`);
+        } else {
+            const blob = new Blob([saveData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${saveFileName}.dmjs-save.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    }
+
+    /**
+     * Load a game state from localStorage or file
+     * @param {string|File} source - Save file name (local) or File object
+     * @returns {Promise<boolean>}
+     */
+    async loadGame(source) {
+        let saveData = null;
+        if (typeof source === 'string') {
+            saveData = localStorage.getItem(`dmjs_save_${source}`);
+        } else if (source instanceof File) {
+            saveData = await source.text();
+        }
+        if (!saveData) {
+            alert('Save file not found.');
+            return false;
+        }
+        try {
+            const state = JSON.parse(saveData);
+            // Load scene by name if available
+            if (state.scene && window.editor && window.editor.scenes) {
+                const scene = window.editor.scenes.find(s => s.name === state.scene);
+                if (scene) this.loadScene(scene);
+            }
+            // Restore game objects
+            if (state.gameObjects) {
+                this.gameObjects = state.gameObjects.map(objData =>
+                    window.GameObject && window.GameObject.fromJSON
+                        ? window.GameObject.fromJSON(objData)
+                        : objData
+                );
+            }
+            // Restore viewport
+            if (state.viewport) {
+                Object.assign(this.viewport, state.viewport);
+            }
+            alert('Game loaded!');
+            return true;
+        } catch (e) {
+            alert('Failed to load game: ' + e.message);
+            return false;
+        }
     }
 
     /**
