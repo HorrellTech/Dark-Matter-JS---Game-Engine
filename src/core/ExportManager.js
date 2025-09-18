@@ -61,10 +61,11 @@ class ExportManager {
         // console.log('Starting HTML5 export...');
 
         try {
-            // Load Terser if minification is enabled
-            //if (exportSettings.minifyCode) {
-            //    await this.loadTerser();
-            //}
+            // Ensure prefabs are loaded before collecting export data
+            if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+                console.log('Pre-loading prefabs before export...');
+                await window.editor.hierarchy.prefabManager.loadExistingPrefabs();
+            }
 
             // Collect all necessary files and data
             const exportData = await this.collectExportData(project, exportSettings);
@@ -116,21 +117,28 @@ class ExportManager {
             data.scenes = window.editor.scenes.map(scene => this.serializeScene(scene));
         }
 
-        // Collect prefabs
+        // Collect prefabs - IMPROVED VERSION
         if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+            console.log('Collecting prefabs from editor hierarchy prefab manager...');
+
             // Ensure prefabs are loaded first
             await window.editor.hierarchy.prefabManager.loadExistingPrefabs();
-            
-            // Now export them
+
+            // Export them using the existing export method
             data.prefabs = window.editor.hierarchy.prefabManager.exportPrefabs();
+            console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export:`, Object.keys(data.prefabs));
+        } else if (window.prefabManager && typeof window.prefabManager.exportPrefabs === 'function') {
+            console.log('Collecting prefabs from global prefab manager...');
+            data.prefabs = window.prefabManager.exportPrefabs();
             console.log(`Collected ${Object.keys(data.prefabs).length} prefabs for export:`, Object.keys(data.prefabs));
         } else {
             // Fallback: try to load prefabs directly from FileBrowser
+            console.log('Using fallback prefab collection from file browser...');
             if (window.editor && window.editor.fileBrowser) {
                 try {
                     const files = await window.editor.fileBrowser.getAllFiles();
                     const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
-                    
+
                     for (const file of prefabFiles) {
                         try {
                             const content = file.content || await window.editor.fileBrowser.readFile(file.path);
@@ -601,6 +609,9 @@ class ExportManager {
             // Physics (if using Matter.js)
             'src/core/matter-js/PhysicsManager.js',
 
+            // MelodiCode
+            'src/MelodiCode/MelodiCode.js',
+
             // Core engine components
             'src/core/Module.js',
             'src/core/ModuleRegistry.js',
@@ -626,9 +637,86 @@ class ExportManager {
     }
 
     /**
-     * Collect all modules used in the project
-     */
+ * Collect all modules used in the project
+ */
     collectModules(data) {
+    const modules = [];
+    const moduleSet = new Set(); // Prevent duplicates
+
+    // Primary: Get all modules from the module registry
+    if (window.moduleRegistry && window.moduleRegistry.modules) {
+        console.log('Collecting all modules from registry...');
+        
+        for (const [className, moduleClass] of window.moduleRegistry.modules) {
+            if (!moduleSet.has(className)) {
+                modules.push({
+                    className: className,
+                    filePath: this.getModuleFilePath(className)
+                });
+                moduleSet.add(className);
+            }
+        }
+        
+        console.log('Collected modules from registry:', modules.map(m => m.className));
+    }
+
+    // Secondary: Check global window for module classes (fallback)
+    const commonModuleNames = [
+        'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle', 
+        'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
+        'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
+        'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController',
+        'FollowTarget', 'Spawner', 'PostScreenEffects', 'DrawHeart',
+        'DrawShield', 'DrawCapsule', 'DrawStar', 'DrawIcon', 'DrawGrid',
+        'PlayerShip', 'EnemyShip', 'AsteroidsBullet', 'Asteroid',
+        'AsteroidManager', 'AsteroidsPlanet', 'DrawInfiniteStarFieldParallax',
+        'DarknessModule', 'PointLightModule', 'SnakePlayer', 'SnakeSegment',
+        'RigidBodyDragger', 'Joint', 'GravityFieldMatter', 'WindZoneMatter',
+        'VehiclePhysics', 'PlatformControllerMatter', 'SimpleHealth',
+        'BehaviorTrigger', 'DrawPlatformerHills'
+    ];
+
+    for (const className of commonModuleNames) {
+        if (!moduleSet.has(className) && window[className]) {
+            modules.push({
+                className: className,
+                filePath: this.getModuleFilePath(className)
+            });
+            moduleSet.add(className);
+            console.log('Added fallback module:', className);
+        }
+    }
+
+    // If we still have very few modules, use the complete fallback list
+    if (modules.length < 5) {
+        console.warn('Very few modules found, using complete fallback list');
+        
+        const fallbackModules = [
+            'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle',
+            'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
+            'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
+            'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController'
+        ];
+
+        fallbackModules.forEach(className => {
+            if (!moduleSet.has(className)) {
+                modules.push({
+                    className: className,
+                    filePath: this.getModuleFilePath(className)
+                });
+                moduleSet.add(className);
+            }
+        });
+    }
+
+    console.log('Final collected modules for export:', modules.map(m => m.className));
+    return modules;
+}
+
+    /**
+     * Collect all modules used in the project, only if theyre in use
+     */
+    collectModulesObjectSpecific(data) {
         const modules = [];
         const usedModuleTypes = new Set();
 
@@ -645,6 +733,23 @@ class ExportManager {
                 className: moduleType,
                 filePath: this.getModuleFilePath(moduleType)
             });
+
+            // Add dependencies for specific modules
+            if (moduleType === 'Spawner') {
+                // Spawner might need RigidBody and Timer modules
+                if (!usedModuleTypes.has('RigidBody')) {
+                    modules.push({
+                        className: 'RigidBody',
+                        filePath: this.getModuleFilePath('RigidBody')
+                    });
+                }
+                if (!usedModuleTypes.has('Timer')) {
+                    modules.push({
+                        className: 'Timer',
+                        filePath: this.getModuleFilePath('Timer')
+                    });
+                }
+            }
         }
 
         // Also include modules from registry as fallback
@@ -695,6 +800,11 @@ class ExportManager {
             'SpriteRenderer': 'src/core/Modules/Visual/SpriteRenderer.js',
             'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
 
+            // Utility Modules
+            'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
+            'Spawner': 'src/core/Modules/Utility/Spawner.js',
+            'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
+
             // Controller Modules
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
@@ -714,7 +824,6 @@ class ExportManager {
             'DrawLine': 'src/core/Modules/Drawing/DrawLine.js',
             'DrawGrid': 'src/core/Modules/Drawing/DrawGrid.js',
 
-            'MelodiCode': 'src/MelodiCode/MelodiCode.js',
             'audio-engine': 'src/MelodiCode/js/audio-engine.js',
             'code-interpreter': 'src/MelodiCode/js/code-interpreter.js',
 
@@ -741,11 +850,6 @@ class ExportManager {
             // Snake Game Modules
             'SnakePlayer': 'src/core/Modules/Snake/SnakePlayer.js',
             'SnakeSegment': 'src/core/Modules/Snake/SnakeApple.js',
-
-            // Utility Modules
-            'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
-            'Spawner': 'src/core/Modules/Utility/Spawner.js',
-            'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
             // Physics and Collision Modules
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
@@ -1196,9 +1300,9 @@ async function initializeGame() {
             loadPrefabs: function(prefabsData) {
                 if (!prefabsData) return;
                 
+                console.log('Loading prefabs into global manager:', Object.keys(prefabsData));
                 for (const [name, prefabData] of Object.entries(prefabsData)) {
                     this.prefabs.set(name, prefabData);
-                    console.log('Loaded prefab:', name);
                 }
                 
                 console.log('Total prefabs loaded:', this.prefabs.size);
@@ -1241,7 +1345,7 @@ async function initializeGame() {
             
             instantiatePrefab: function(prefabData, position = null, parent = null) {
                 try {
-                    // Use GameObject.fromJSON for proper deserialization
+                    // Use GameObject.fromJSON for proper deserialization (matches editor behavior)
                     const gameObject = GameObject.fromJSON(prefabData);
                     
                     // Override position if specified
@@ -1249,14 +1353,14 @@ async function initializeGame() {
                         gameObject.position.x = position.x;
                         gameObject.position.y = position.y;
                     }
-
+                    
                     // Handle parenting
                     if (parent) {
                         parent.addChild(gameObject);
                     } else if (window.engine && window.engine.gameObjects) {
                         window.engine.gameObjects.push(gameObject);
                     }
-
+                    
                     return gameObject;
                 } catch (error) {
                     console.error('Error instantiating prefab:', error);
@@ -1801,20 +1905,14 @@ async function initializeGame() {
     let gameData;
     try {
         gameData = {
-            scenes: ${scenesData},
-            assets: ${assetsData},
-            prefabs: ${prefabsData}
+            scenes: ${this.safeStringify(data.scenes)},
+            assets: ${settings.includeAssets ? this.safeStringify(data.assets) : 'null'},
+            prefabs: ${this.safeStringify(data.prefabs)}
         };
     } catch (error) {
         console.error('Error parsing game data:', error);
         loadingScreen.innerHTML = '<div>Error loading game data: ' + error.message + '</div>';
         return;
-    }
-    
-    // Load prefabs into the global prefab manager FIRST
-    if (gameData.prefabs) {
-        window.prefabManager.loadPrefabs(gameData.prefabs);
-        console.log('Loaded prefabs:', Object.keys(gameData.prefabs));
     }
     
     // Pre-load assets for standalone mode
@@ -1849,6 +1947,24 @@ async function initializeGame() {
     };
 
     const engine = new Engine(canvas, engineOptions);
+
+    if (gameData.prefabs && Object.keys(gameData.prefabs).length > 0) {
+        console.log('Loading', Object.keys(gameData.prefabs).length, 'prefabs...');
+        
+        // Load into global prefab manager first
+        window.prefabManager.loadPrefabs(gameData.prefabs);
+        
+        // Then load into engine
+        if (typeof engine.loadPrefabs === 'function') {
+            engine.loadPrefabs(gameData.prefabs);
+        }
+        
+        console.log('Prefabs loaded. Available in global manager:', window.prefabManager.getAllPrefabNames());
+        console.log('Available in engine:', engine.getAvailablePrefabs());
+    } else {
+        console.warn('No prefabs found in game data');
+    }
+    
     engine.updateFPSLimit(${maxFPS});
     
     this.ctx = canvas.ctx;
@@ -1856,10 +1972,17 @@ async function initializeGame() {
     // Make engine globally available for prefab instantiation
     window.engine = engine;
     
-    // CRITICAL: Attach prefab manager to engine
-    if (window.prefabManager) {
-        engine.prefabManager = window.prefabManager;
-        console.log('Attached prefab manager to engine with', window.prefabManager.prefabs.size, 'prefabs');
+    // CRITICAL: Load prefabs into the engine BEFORE scene loading
+    if (gameData.prefabs) {
+        console.log('Loading prefabs into engine...');
+        engine.loadPrefabs(gameData.prefabs);
+        
+        // Also ensure global prefab manager has the data
+        if (window.prefabManager && typeof window.prefabManager.loadPrefabs === 'function') {
+            window.prefabManager.loadPrefabs(gameData.prefabs);
+        }
+        
+        console.log('Prefabs loaded. Available prefabs:', engine.getAvailablePrefabs());
     }
 
     // Add resize handler to engine

@@ -30,17 +30,45 @@ class PrefabManager {
      * Load all existing prefabs into memory
      */
     async loadExistingPrefabs() {
-        if (!this.editor || !this.editor.fileBrowser) return;
+        if (!this.editor || !this.editor.fileBrowser) {
+            console.warn('Editor or FileBrowser not available for loading prefabs');
+            return;
+        }
 
         try {
-            const files = await this.editor.fileBrowser.getAllFiles();
+            console.log('Loading existing prefabs...');
+            let files;
+
+            // Try to get files
+            const filesResult = this.editor.fileBrowser.getAllFiles();
+            if (filesResult && typeof filesResult.then === 'function') {
+                files = await filesResult;
+            } else {
+                files = filesResult;
+            }
+
+            if (!Array.isArray(files)) {
+                console.warn('Could not get file list for prefab loading');
+                return;
+            }
+
             const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
+            console.log(`Found ${prefabFiles.length} prefab files to load`);
 
             for (const file of prefabFiles) {
                 try {
-                    const content = file.content || await this.editor.fileBrowser.readFile(file.path);
-                    if (!content) continue;
-                    
+                    let content = file.content;
+
+                    // If content is not available, try to read it
+                    if (!content && this.editor.fileBrowser.readFile) {
+                        content = await this.editor.fileBrowser.readFile(file.path);
+                    }
+
+                    if (!content) {
+                        console.warn(`Could not read content for prefab: ${file.name}`);
+                        continue;
+                    }
+
                     const prefabData = JSON.parse(content);
 
                     // Store by metadata name or filename without extension
@@ -54,65 +82,64 @@ class PrefabManager {
             }
 
             console.log(`Loaded ${this.prefabs.size} prefabs into memory`);
-            
+
             // Also update the global prefab manager if it exists
-            if (window.prefabManager && typeof window.prefabManager.loadPrefabs === 'function') {
+            if (window.prefabManager && window.prefabManager !== this && typeof window.prefabManager.loadPrefabs === 'function') {
                 const prefabsData = {};
                 for (const [name, data] of this.prefabs) {
                     prefabsData[name] = data;
                 }
                 window.prefabManager.loadPrefabs(prefabsData);
+                console.log('Updated global prefab manager with loaded prefabs');
             }
         } catch (error) {
             console.error('Error loading existing prefabs:', error);
         }
     }
 
-    exportPrefabs() {
-    const exportData = {};
-    
-    // First load all prefabs from the file system if not already loaded
-    if (this.prefabs.size === 0) {
-        // Try to load prefabs synchronously from fileBrowser
-        if (this.editor && this.editor.fileBrowser) {
+    async exportPrefabs() {
+        console.log('Starting prefab export...');
+        const exportData = {};
+
+        // Ensure prefabs are loaded before export
+        if (this.prefabs.size === 0) {
+            console.log('No prefabs in memory, loading from file system...');
+            await this.loadExistingPrefabs();
+        }
+
+        // If still no prefabs, try alternative loading method
+        if (this.prefabs.size === 0 && this.editor && this.editor.fileBrowser) {
+            console.log('Trying alternative prefab loading method...');
             try {
-                // Use a synchronous approach to get files
-                const files = this.editor.fileBrowser.getAllFiles ? 
-                    this.editor.fileBrowser.getAllFiles() : [];
-                    
-                if (files && files.then) {
-                    // It's a promise, we can't wait here, but log a warning
-                    console.warn('Prefabs not loaded - call loadExistingPrefabs() before export');
-                } else if (Array.isArray(files)) {
-                    // Synchronous file list
-                    const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
-                    for (const file of prefabFiles) {
-                        try {
-                            const content = file.content;
-                            if (content) {
-                                const prefabData = JSON.parse(content);
-                                const prefabName = prefabData.metadata?.name || file.name.replace('.prefab', '');
-                                this.prefabs.set(prefabName, prefabData);
-                            }
-                        } catch (error) {
-                            console.error(`Error loading prefab ${file.name} for export:`, error);
+                const files = await this.editor.fileBrowser.getAllFiles();
+                const prefabFiles = files.filter(file => file.name.endsWith('.prefab'));
+
+                for (const file of prefabFiles) {
+                    try {
+                        const content = file.content || await this.editor.fileBrowser.readFile(file.path);
+                        if (content) {
+                            const prefabData = JSON.parse(content);
+                            const prefabName = prefabData.metadata?.name || file.name.replace('.prefab', '');
+                            this.prefabs.set(prefabName, prefabData);
+                            console.log(`Loaded prefab for export: ${prefabName}`);
                         }
+                    } catch (error) {
+                        console.error(`Error loading prefab ${file.name} for export:`, error);
                     }
                 }
             } catch (error) {
-                console.error('Error loading prefabs for export:', error);
+                console.error('Error in alternative prefab loading:', error);
             }
         }
+
+        // Export all loaded prefabs
+        for (const [name, prefabData] of this.prefabs) {
+            exportData[name] = prefabData;
+        }
+
+        console.log(`Exported ${Object.keys(exportData).length} prefabs:`, Object.keys(exportData));
+        return exportData;
     }
-    
-    // Export all loaded prefabs
-    for (const [name, prefabData] of this.prefabs) {
-        exportData[name] = prefabData;
-    }
-    
-    console.log(`Exported ${Object.keys(exportData).length} prefabs:`, Object.keys(exportData));
-    return exportData;
-}
 
     /**
      * Find a prefab by name
@@ -280,7 +307,7 @@ class PrefabManager {
      */
     async instantiatePrefabFromFile(file) {
         try {
-            if(!this.editor || !this.hierarchy) {
+            if (!this.editor || !this.hierarchy) {
                 console.error('Editor or HierarchyManager not available');
                 return;
             }
@@ -448,6 +475,6 @@ class PrefabManager {
     }
 }
 
-if(!window.prefabManager) {
+if (!window.prefabManager) {
     window.prefabManager = new PrefabManager();
 }

@@ -242,6 +242,9 @@ class Engine {
             };
         }
 
+        // Store reference in engine for easy access
+        this.prefabManager = window.prefabManager;
+
         // Track dynamically created objects for cleanup
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
@@ -1367,8 +1370,22 @@ class Engine {
 
         let instantiated = null;
 
-        // Method 1: Check if we're in the editor - use the hierarchy's prefab manager
-        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
+        // Method 1: Use engine's own prefab manager first
+        if (this.prefabManager && typeof this.prefabManager.instantiatePrefabByName === 'function') {
+            const position = new Vector2(x, y);
+            instantiated = this.prefabManager.instantiatePrefabByName(prefabName, position);
+
+            if (instantiated) {
+                // Add to the current scene's gameObjects if not already added
+                if (!this.gameObjects.includes(instantiated)) {
+                    this.gameObjects.push(instantiated);
+                }
+                console.log(`Successfully instantiated prefab via engine prefab manager: ${prefabName}`);
+            }
+        }
+
+        // Method 2: Check if we're in the editor - use the hierarchy's prefab manager
+        if (!instantiated && window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
             const position = new Vector2(x, y);
             instantiated = window.editor.hierarchy.prefabManager.instantiatePrefabByName(prefabName, position);
 
@@ -1381,7 +1398,7 @@ class Engine {
             }
         }
 
-        // Method 2: Try the global prefab manager (for exported games)
+        // Method 3: Try the global prefab manager (for exported games)
         if (!instantiated && window.prefabManager) {
             console.log('Using global prefab manager for instantiation');
 
@@ -1399,7 +1416,7 @@ class Engine {
             }
         }
 
-        // Method 3: Try loading from file browser (editor fallback)
+        // Method 4: Try loading from file browser (editor fallback)
         if (!instantiated && window.editor && window.editor.fileBrowser) {
             const variations = [
                 `${prefabName}.prefab`,
@@ -1436,7 +1453,8 @@ class Engine {
             console.log(`Tracked dynamic object: ${instantiated.name || 'Unnamed'}`);
         } else {
             console.error(`Prefab not found: ${prefabName}`);
-            console.log('Available prefabs:', this.getAvailablePrefabs());
+            console.log('Available prefabs in global manager:', window.prefabManager ? window.prefabManager.getAllPrefabNames() : 'None');
+            console.log('Available prefabs in engine:', this.getAvailablePrefabs());
         }
 
         return instantiated;
@@ -1495,29 +1513,6 @@ class Engine {
         }
 
         return false;
-    }
-
-    /**
-     * Get all available prefab names
-     * @returns {Array<string>} Array of prefab names
-     */
-    getAvailablePrefabs() {
-        // Check if we're in the editor
-        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
-            return window.editor.hierarchy.prefabManager.getAvailablePrefabs();
-        }
-
-        // Check if we're in an exported game
-        if (window.prefabManager && typeof window.prefabManager.getAllPrefabNames === 'function') {
-            return window.prefabManager.getAllPrefabNames();
-        }
-
-        // Fallback to engine's prefab cache
-        if (this.prefabs && this.prefabs.keys) {
-            return Array.from(this.prefabs.keys());
-        }
-
-        return [];
     }
 
     findGameObjectByName(name) {
@@ -1700,6 +1695,45 @@ class Engine {
 
             return clonedObj;
         });
+    }
+
+    /**
+     * Load prefabs into the engine's prefab manager
+     * @param {Object} prefabsData - Object containing prefab data
+     */
+    loadPrefabs(prefabsData) {
+        if (!prefabsData) return;
+
+        console.log('Loading prefabs into engine:', Object.keys(prefabsData));
+
+        // Ensure we have a prefab manager
+        if (!this.prefabManager && window.prefabManager) {
+            this.prefabManager = window.prefabManager;
+        }
+
+        if (this.prefabManager && typeof this.prefabManager.loadPrefabs === 'function') {
+            this.prefabManager.loadPrefabs(prefabsData);
+            console.log(`Engine loaded ${Object.keys(prefabsData).length} prefabs`);
+        } else {
+            console.warn('No prefab manager available in engine');
+        }
+    }
+
+    /**
+     * Get all available prefab names from the engine's prefab manager
+     * @returns {Array<string>} Array of prefab names
+     */
+    getAvailablePrefabs() {
+        if (this.prefabManager && typeof this.prefabManager.getAllPrefabNames === 'function') {
+            return this.prefabManager.getAllPrefabNames();
+        }
+
+        // Fallback to global prefab manager
+        if (window.prefabManager && typeof window.prefabManager.getAllPrefabNames === 'function') {
+            return window.prefabManager.getAllPrefabNames();
+        }
+
+        return [];
     }
 
     initTouchControls() {

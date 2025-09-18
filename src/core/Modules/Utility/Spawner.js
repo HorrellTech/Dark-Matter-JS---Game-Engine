@@ -311,28 +311,53 @@ class Spawner extends Module {
      */
     spawnSingleObject() {
         let spawnedObject = null;
-        
-        // Try different spawn methods based on spawnType preference
-        switch (this.spawnType) {
-            case "prefab":
-                spawnedObject = this.trySpawnPrefab();
-                if (!spawnedObject) spawnedObject = this.trySpawnTemplate();
-                if (!spawnedObject) spawnedObject = this.createBasicObject();
-                break;
-                
-            case "template":
-                spawnedObject = this.trySpawnTemplate();
-                if (!spawnedObject) spawnedObject = this.trySpawnPrefab();
-                if (!spawnedObject) spawnedObject = this.createBasicObject();
-                break;
-                
-            case "basic":
-            default:
-                spawnedObject = this.createBasicObject();
-                break;
+
+        console.log(`Spawner: Attempting to spawn "${this.spawnObjectName}" using spawnType: ${this.spawnType}`);
+
+        // Try based on spawnType setting first
+        if (this.spawnType === "prefab") {
+            spawnedObject = this.trySpawnPrefab();
+        } else if (this.spawnType === "template") {
+            spawnedObject = this.trySpawnTemplate();
+        } else if (this.spawnType === "basic") {
+            spawnedObject = this.createBasicObject();
         }
-        
-        return spawnedObject;
+
+        // IMPORTANT: Return immediately if we successfully spawned an object
+        if (spawnedObject) {
+            console.log(`Spawner: Successfully spawned object using preferred method: ${this.spawnType}`);
+            return spawnedObject;
+        }
+
+        // Only try fallbacks if the preferred method completely failed
+        console.log(`Spawner: Preferred method "${this.spawnType}" failed, trying fallbacks...`);
+
+        if (this.spawnType !== "prefab") {
+            spawnedObject = this.trySpawnPrefab();
+            if (spawnedObject) {
+                console.log(`Spawner: Fallback prefab spawn succeeded`);
+                return spawnedObject;
+            }
+        }
+
+        if (this.spawnType !== "template") {
+            spawnedObject = this.trySpawnTemplate();
+            if (spawnedObject) {
+                console.log(`Spawner: Fallback template spawn succeeded`);
+                return spawnedObject;
+            }
+        }
+
+        if (this.spawnType !== "basic") {
+            spawnedObject = this.createBasicObject();
+            if (spawnedObject) {
+                console.log(`Spawner: Fallback basic spawn succeeded`);
+                return spawnedObject;
+            }
+        }
+
+        console.log(`Spawner: All spawn methods failed for "${this.spawnObjectName}"`);
+        return null;
     }
 
     /**
@@ -342,19 +367,52 @@ class Spawner extends Module {
         if (window.engine && typeof window.engine.instantiatePrefab === 'function') {
             try {
                 const spawnPos = this.getSpawnPosition();
-                const spawnedObject = window.engine.instantiatePrefab(this.spawnObjectName, spawnPos.x, spawnPos.y);
-                
+
+                // Capture state before instantiation
+                const beforeCount = window.engine.gameObjects ? window.engine.gameObjects.length : 0;
+                const beforeDynamicCount = window.engine.dynamicObjects ? window.engine.dynamicObjects.size : 0;
+
+                const result = window.engine.instantiatePrefab(this.spawnObjectName, spawnPos.x, spawnPos.y);
+
+                // Check if new objects were added (either to gameObjects or dynamicObjects)
+                const afterCount = window.engine.gameObjects ? window.engine.gameObjects.length : 0;
+                const afterDynamicCount = window.engine.dynamicObjects ? window.engine.dynamicObjects.size : 0;
+
+                const objectsAdded = afterCount > beforeCount || afterDynamicCount > beforeDynamicCount;
+
+                let spawnedObject = null;
+
+                // Method 1: Direct return from instantiatePrefab
+                if (result && typeof result === 'object' && result.position) {
+                    spawnedObject = result;
+                    console.log(`Spawner: Got prefab instance directly from instantiatePrefab: ${this.spawnObjectName}`);
+                }
+                // Method 2: Check if objects were added to the scene
+                else if (objectsAdded) {
+                    // Try to find the most recently added object
+                    if (window.engine.gameObjects && afterCount > beforeCount) {
+                        spawnedObject = window.engine.gameObjects[window.engine.gameObjects.length - 1];
+                    } else if (window.engine.dynamicObjects && afterDynamicCount > beforeDynamicCount) {
+                        // Get the last added dynamic object
+                        const dynamicArray = Array.from(window.engine.dynamicObjects);
+                        spawnedObject = dynamicArray[dynamicArray.length - 1];
+                    }
+                    console.log(`Spawner: Detected successful prefab instantiation by object count change: ${this.spawnObjectName}`);
+                }
+
                 if (spawnedObject) {
-                    console.log(`Spawner: Instantiated prefab "${this.spawnObjectName}" at (${spawnPos.x}, ${spawnPos.y})`);
-                    
-                    // Apply additional transformations to the prefab instance
+                    console.log(`Spawner: Successfully instantiated prefab "${this.spawnObjectName}" at (${spawnPos.x}, ${spawnPos.y})`);
+
+                    // Apply additional transformations AFTER instantiation
                     this.applySpawnTransforms(spawnedObject, spawnPos);
-                    
+
                     // Track spawned object
                     this.spawnedObjects.push(spawnedObject);
                     this.spawnedCount++;
-                    
+
                     return spawnedObject;
+                } else {
+                    console.log(`Spawner: Prefab instantiation failed or no objects detected for "${this.spawnObjectName}"`);
                 }
             } catch (error) {
                 console.log(`Spawner: Failed to instantiate prefab "${this.spawnObjectName}":`, error);
@@ -374,33 +432,33 @@ class Spawner extends Module {
                     const spawnedObject = templateObject.clone(false); // Don't add "Copy" suffix
                     const spawnPos = this.getSpawnPosition();
                     spawnedObject.position = new Vector2(spawnPos.x, spawnPos.y);
-                    
+
                     console.log(`Spawner: Cloned existing object "${this.spawnObjectName}" at (${spawnPos.x}, ${spawnPos.y})`);
-                    
+
                     // Apply additional transformations
                     this.applySpawnTransforms(spawnedObject, spawnPos);
-                    
+
                     // Add to scene
                     if (window.engine.gameObjects) {
                         window.engine.gameObjects.push(spawnedObject);
                         spawnedObject.engine = window.engine;
-                        
+
                         // Mark as dynamic for cleanup
                         if (window.engine.dynamicObjects) {
                             window.engine.dynamicObjects.add(spawnedObject);
                             spawnedObject._isDynamic = true;
                         }
-                        
+
                         // Initialize the object
                         if (spawnedObject.start) {
                             spawnedObject.start();
                         }
                     }
-                    
+
                     // Track spawned object
                     this.spawnedObjects.push(spawnedObject);
                     this.spawnedCount++;
-                    
+
                     return spawnedObject;
                 } catch (error) {
                     console.error(`Spawner: Failed to clone object "${this.spawnObjectName}":`, error);
@@ -444,35 +502,49 @@ class Spawner extends Module {
      * Apply velocity to a spawned object
      */
     applyVelocityToObject(spawnedObject) {
-        // Check if object already has a RigidBody
-        let rigidBody = spawnedObject.getModule('RigidBody');
-
-        if (!rigidBody) {
-            rigidBody = new RigidBody();
-            spawnedObject.addModule(rigidBody);
-        }
-
-        let direction = new Vector2(this.velocityDirection.x, this.velocityDirection.y);
-        if (this.randomDirection) {
-            const angle = Math.random() * Math.PI * 2;
-            direction = new Vector2(Math.cos(angle), Math.sin(angle));
-        }
-
-        // Add velocity variation
-        const variation = (Math.random() - 0.5) * this.velocityVariation;
-        const magnitude = this.velocityMagnitude + variation;
-
-        const velocity = new Vector2(
-            direction.x * magnitude,
-            direction.y * magnitude
-        );
-
-        // Set initial velocity after a short delay to ensure physics is initialized
-        setTimeout(() => {
-            if (rigidBody.body) {
-                rigidBody.setVelocity(velocity);
+        try {
+            // Import RigidBody module if not available globally
+            if (typeof RigidBody === 'undefined' && window.RigidBody) {
+                RigidBody = window.RigidBody;
             }
-        }, 50);
+
+            // Check if object already has a RigidBody
+            let rigidBody = spawnedObject.getModule('RigidBody');
+
+            if (!rigidBody) {
+                rigidBody = new RigidBody();
+                spawnedObject.addModule(rigidBody);
+
+                // If the GO is already started, ensure the module initializes
+                if (typeof rigidBody.start === 'function' && (spawnedObject._started || spawnedObject.started || spawnedObject._hasStarted)) {
+                    try { rigidBody.start(); } catch { }
+                }
+            }
+
+            let direction = new Vector2(this.velocityDirection.x, this.velocityDirection.y);
+            if (this.randomDirection) {
+                const angle = Math.random() * Math.PI * 2;
+                direction = new Vector2(Math.cos(angle), Math.sin(angle));
+            }
+
+            // Add velocity variation
+            const variation = (Math.random() - 0.5) * this.velocityVariation;
+            const magnitude = this.velocityMagnitude + variation;
+
+            const velocity = new Vector2(
+                direction.x * magnitude,
+                direction.y * magnitude
+            );
+
+            // Set initial velocity after a short delay to ensure physics is initialized
+            setTimeout(() => {
+                if (rigidBody.body && typeof rigidBody.setVelocity === 'function') {
+                    rigidBody.setVelocity(velocity);
+                }
+            }, 50);
+        } catch (error) {
+            console.error('Error applying velocity to spawned object:', error);
+        }
     }
 
     /**
@@ -483,12 +555,38 @@ class Spawner extends Module {
         let timer = spawnedObject.getModule('Timer');
 
         if (!timer) {
+            // Import Timer module if not available globally
+            if (typeof Timer === 'undefined' && window.Timer) {
+                Timer = window.Timer;
+            }
+
+            if (typeof Timer === 'undefined') {
+                console.warn('Timer module not available for lifetime management');
+                return;
+            }
+
             timer = new Timer();
             timer.duration = this.lifetime + (Math.random() - 0.5) * this.lifetimeVariation;
             timer.actionType = "destroy";
             timer.autoStart = true;
             timer.repeat = false;
+
+            // Set the gameObject reference for the timer
+            timer.gameObject = spawnedObject;
+
             spawnedObject.addModule(timer);
+
+            // Ensure the Timer module starts immediately for spawned objects
+            if (typeof timer.start === 'function') {
+                try {
+                    timer.start();
+                    console.log(`Started Timer module for ${spawnedObject.name || 'spawned object'} with ${timer.duration}s lifetime`);
+                } catch (error) {
+                    console.error('Error starting Timer module:', error);
+                }
+            }
+        } else {
+            console.log(`Object ${spawnedObject.name || 'spawned object'} already has Timer module`);
         }
     }
 
