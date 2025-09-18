@@ -627,6 +627,8 @@ class ExportManager {
             'src/core/matter-js/PhysicsManager.js',
 
             // MelodiCode
+            'src/MelodiCode/js/audio-engine.js',
+            'src/MelodiCode/js/code-interpreter.js',
             'src/MelodiCode/MelodiCode.js',
 
             // Core engine components
@@ -662,26 +664,26 @@ class ExportManager {
         // Get all modules from the module registry instead of scanning scenes
         if (window.moduleRegistry && window.moduleRegistry.modules) {
             console.log('Collecting all modules from registry...');
-            
+
             for (const [className, moduleClass] of window.moduleRegistry.modules) {
                 modules.push({
                     className: className,
                     filePath: this.getModuleFilePath(className)
                 });
             }
-            
+
             console.log('Collected all modules for export:', modules.map(m => m.className));
         } else {
             console.warn('Module registry not found, using fallback module list');
-            
+
             // Fallback: include common modules if registry is not available
             const commonModules = [
-                'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle', 
+                'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle',
                 'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
                 'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
                 'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController'
             ];
-            
+
             commonModules.forEach(className => {
                 modules.push({
                     className: className,
@@ -929,32 +931,31 @@ class ExportManager {
      * Generate HTML content
      */
     generateHTML(data, settings) {
-        const title = settings.customTitle || 'Dark Matter Game';
-        const description = settings.customDescription || 'A game created with Dark Matter JS Engine';
+    const title = settings.customTitle || 'Dark Matter Game';
+    const description = settings.customDescription || 'A game created with Dark Matter JS Engine';
 
-        const logoSrc = settings.logoImage ? settings.logoImage : './loading.png';
+    const logoSrc = settings.logoImage ? settings.logoImage : './loading.png';
 
-        // Use viewport dimensions or default to full screen
-        const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
-        const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
+    // Use viewport dimensions or default to full screen
+    const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
+    const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
 
-        let scriptAndStyleTags = '';
-        if (!settings.standalone) {
-            // Link external CSS and JS for ZIP package
-            scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
-            scriptAndStyleTags += `<script src="game.js"></script>\n`;
-            if (data.customScripts && data.customScripts.length > 0) {
-                for (const script of data.customScripts) {
-                    scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
-                }
+    let scriptAndStyleTags = '';
+    if (!settings.standalone) {
+        scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
+        scriptAndStyleTags += `<script src="game.js"></script>\n`;
+        if (data.customScripts && data.customScripts.length > 0) {
+            for (const script of data.customScripts) {
+                scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
             }
-        } else {
-            // Placeholders for embedded content in standalone HTML
-            scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
-    <script id="game-script">/* JavaScript will be injected here */</script>`;
         }
+    } else {
+        scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
+    <script id="game-script">/* JavaScript will be injected here */</script>`;
+    }
 
-        return `<!DOCTYPE html>
+    // Remove loading text, spinner, and progress bar from loading screen
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -962,45 +963,29 @@ class ExportManager {
     <title>${title}</title>
     <meta name="description" content="${description}">
     
-    <!-- Prevent zoom and ensure full viewport usage -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <!-- External Dependencies -->
     <script>
-        // Dynamic canvas sizing and Matter.js loading
         document.addEventListener('DOMContentLoaded', function() {
-            // Set up full viewport canvas
             const canvas = document.getElementById('gameCanvas');
             if (canvas) {
-                // Set canvas internal resolution to viewport size
                 const updateCanvasSize = () => {
                     const width = window.innerWidth;
                     const height = window.innerHeight;
-                    
                     canvas.width = width;
                     canvas.height = height;
-                    
-                    // Update CSS size to match
                     canvas.style.width = width + 'px';
                     canvas.style.height = height + 'px';
-                    
-                    // Trigger resize event for game engine
                     if (window.engine && typeof window.engine.handleResize === 'function') {
                         window.engine.handleResize(width, height);
                     }
                 };
-                
-                // Initial size
                 updateCanvasSize();
-                
-                // Handle window resize
                 window.addEventListener('resize', updateCanvasSize);
                 window.addEventListener('orientationchange', () => {
-                    setTimeout(updateCanvasSize, 100); // Small delay for orientation change
+                    setTimeout(updateCanvasSize, 100);
                 });
             }
-            
-            // Load Matter.js if not already loaded
             if (typeof Matter === 'undefined') {
                 console.log('Loading Matter.js from CDN as fallback...');
                 const script = document.createElement('script');
@@ -1014,6 +999,23 @@ class ExportManager {
                 window.dispatchEvent(new Event('matter-loaded'));
             }
         });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const startBtn = document.getElementById('start-game-btn');
+            if (startBtn) {
+                startBtn.addEventListener('click', function() {
+                    startBtn.style.display = 'none';
+                    const loadingScreen = document.getElementById('loading-screen');
+                    if (loadingScreen) loadingScreen.style.display = 'none';
+                    if (window.melodicode && window.melodicode.audioEngine && window.melodicode.audioEngine.context) {
+                        window.melodicode.audioEngine.context.resume();
+                    }
+                    if (typeof initializeGame === 'function') {
+                        initializeGame();
+                    }
+                });
+            }
+        });
     </script>
     
     ${scriptAndStyleTags.trim()}
@@ -1024,19 +1026,27 @@ class ExportManager {
         <div id="loading-screen" style="background:${settings.loadingBg || '#111'};">
             <div class="loading-content">
                 <img class="loading-logo" src="${logoSrc}" alt="Logo">
-                <div class="loading-row">
-                    <div class="loading-text">${settings.loadingText || 'Loading Game...'}</div>
-                    <div class="loading-spinner"></div>
-                </div>
-                <div class="loading-progress-bar">
-                    <div class="loading-progress"></div>
-                </div>
+                <button id="start-game-btn" style="
+                    margin-top:32px;
+                    padding: 16px 48px;
+                    font-size: 1.4em;
+                    font-weight: bold;
+                    color: #fff;
+                    background: ${settings.spinnerColor || '#09f'};
+                    border: none;
+                    border-radius: 32px;
+                    box-shadow: 0 2px 16px 0 ${settings.spinnerColor || '#09f'}44;
+                    cursor: pointer;
+                    transition: background 0.2s, box-shadow 0.2s;
+                    outline: none;
+                    letter-spacing: 1px;
+                ">Start Game</button>
             </div>
         </div>
     </div>
 </body>
 </html>`;
-    }
+}
 
     /**
      * Generate JavaScript content
@@ -1108,7 +1118,35 @@ class ExportManager {
 
             // Add game initialization - DON'T minify this critical code
             let initCode = this.generateGameInitialization(data, settings);
-            js += initCode;
+            //js += initCode;
+
+            // Add a global handler for Start Game button
+            js += `
+${initCode}
+
+// Only start game after Start Game button is pressed
+document.addEventListener('DOMContentLoaded', function() {
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+        startBtn.addEventListener('click', function() {
+            // Hide button and loading screen
+            startBtn.style.display = 'none';
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) loadingScreen.style.display = 'none';
+
+            // Resume AudioContext if needed
+            if (window.melodicode && window.melodicode.audioEngine && window.melodicode.audioEngine.context) {
+                window.melodicode.audioEngine.context.resume();
+            }
+
+            // Trigger game initialization if not already started
+            if (typeof initializeGame === 'function') {
+                initializeGame();
+            }
+        });
+    }
+});
+`;
 
             return js;
 
@@ -2310,8 +2348,27 @@ async function initializeGame() {
 }
 
 // Wait for both DOM and Matter.js to be ready
-document.addEventListener('DOMContentLoaded', initializeGame);
-window.addEventListener('matter-loaded', initializeGame);
+document.addEventListener('DOMContentLoaded', function() {
+    const startBtn = document.getElementById('start-game-btn');
+    if (startBtn) {
+        startBtn.addEventListener('click', function() {
+            // Hide button and loading screen
+            startBtn.style.display = 'none';
+            const loadingScreen = document.getElementById('loading-screen');
+            if (loadingScreen) loadingScreen.style.display = 'none';
+
+            // Resume AudioContext if needed
+            if (window.melodicode && window.melodicode.audioEngine && window.melodicode.audioEngine.context) {
+                window.melodicode.audioEngine.context.resume();
+            }
+
+            // Trigger game initialization if not already started
+            if (typeof initializeGame === 'function') {
+                initializeGame();
+            }
+        });
+    }
+});
 `;
     }
 
@@ -2589,7 +2646,7 @@ window.addEventListener('matter-loaded', initializeGame);
                 <input type="color" id="export-progress-color" value="${this.exportSettings.progressColor || '#09f'}">
             </div>
             <div class="export-group">
-                <label>Spinner Color:</label>
+                <label>Spinner/Start button Color:</label>
                 <input type="color" id="export-spinner-color" value="${this.exportSettings.spinnerColor || '#09f'}">
             </div>
             <div class="export-group">
