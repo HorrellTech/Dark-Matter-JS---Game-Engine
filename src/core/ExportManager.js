@@ -14,7 +14,12 @@ class ExportManager {
                 height: 600,
                 scalable: true
             },
-            maxFPS: 60
+            maxFPS: 60,
+            // Default dark theme colors
+            loadingBg: '#181A20',        // dark gray background
+            spinnerColor: '#4F8EF7',     // blue accent
+            progressColor: '#2D3748',      // darker gray for progress bar
+            logoImage: null // base64 or file path
         };
     }
 
@@ -579,6 +584,18 @@ class ExportManager {
         });
     }
 
+    async filePathToDataURL(path) {
+        // Loads a local image and converts to base64 data URL
+        try {
+            const response = await fetch(path);
+            const blob = await response.blob();
+            return await this.blobToDataURL(blob);
+        } catch (e) {
+            console.warn('Could not convert file to base64:', path, e);
+            return null;
+        }
+    }
+
     /**
      * Convert ArrayBuffer to data URL
      */
@@ -637,81 +654,50 @@ class ExportManager {
     }
 
     /**
- * Collect all modules used in the project
- */
+     * Collect all modules used in the project
+     */
     collectModules(data) {
-    const modules = [];
-    const moduleSet = new Set(); // Prevent duplicates
+        let modules = [];
 
-    // Primary: Get all modules from the module registry
-    if (window.moduleRegistry && window.moduleRegistry.modules) {
-        console.log('Collecting all modules from registry...');
-        
-        for (const [className, moduleClass] of window.moduleRegistry.modules) {
-            if (!moduleSet.has(className)) {
+        // Get all modules from the module registry instead of scanning scenes
+        if (window.moduleRegistry && window.moduleRegistry.modules) {
+            console.log('Collecting all modules from registry...');
+            
+            for (const [className, moduleClass] of window.moduleRegistry.modules) {
                 modules.push({
                     className: className,
                     filePath: this.getModuleFilePath(className)
                 });
-                moduleSet.add(className);
             }
-        }
-        
-        console.log('Collected modules from registry:', modules.map(m => m.className));
-    }
-
-    // Secondary: Check global window for module classes (fallback)
-    const commonModuleNames = [
-        'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle', 
-        'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
-        'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
-        'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController',
-        'FollowTarget', 'Spawner', 'PostScreenEffects', 'DrawHeart',
-        'DrawShield', 'DrawCapsule', 'DrawStar', 'DrawIcon', 'DrawGrid',
-        'PlayerShip', 'EnemyShip', 'AsteroidsBullet', 'Asteroid',
-        'AsteroidManager', 'AsteroidsPlanet', 'DrawInfiniteStarFieldParallax',
-        'DarknessModule', 'PointLightModule', 'SnakePlayer', 'SnakeSegment',
-        'RigidBodyDragger', 'Joint', 'GravityFieldMatter', 'WindZoneMatter',
-        'VehiclePhysics', 'PlatformControllerMatter', 'SimpleHealth',
-        'BehaviorTrigger', 'DrawPlatformerHills'
-    ];
-
-    for (const className of commonModuleNames) {
-        if (!moduleSet.has(className) && window[className]) {
-            modules.push({
-                className: className,
-                filePath: this.getModuleFilePath(className)
+            
+            console.log('Collected all modules for export:', modules.map(m => m.className));
+        } else {
+            console.warn('Module registry not found, using fallback module list');
+            
+            // Fallback: include common modules if registry is not available
+            const commonModules = [
+                'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle', 
+                'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
+                'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
+                'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController'
+            ];
+            
+            commonModules.forEach(className => {
+                modules.push({
+                    className: className,
+                    filePath: this.getModuleFilePath(className)
+                });
             });
-            moduleSet.add(className);
-            console.log('Added fallback module:', className);
         }
+
+        modules.push(...this.collectModulesObjectSpecific(data));
+
+        // Remove duplicates
+        const uniqueModules = Array.from(new Set(modules.map(m => m.className)))
+            .map(className => modules.find(m => m.className === className));
+
+        return uniqueModules;
     }
-
-    // If we still have very few modules, use the complete fallback list
-    if (modules.length < 5) {
-        console.warn('Very few modules found, using complete fallback list');
-        
-        const fallbackModules = [
-            'SpriteRenderer', 'SpriteSheetRenderer', 'DrawCircle', 'DrawRectangle',
-            'DrawPolygon', 'DrawText', 'DrawLine', 'SimpleMovementController',
-            'CameraController', 'RigidBody', 'Timer', 'Tween', 'ParticleSystem',
-            'AudioPlayer', 'BasicPhysics', 'PhysicsKeyboardController'
-        ];
-
-        fallbackModules.forEach(className => {
-            if (!moduleSet.has(className)) {
-                modules.push({
-                    className: className,
-                    filePath: this.getModuleFilePath(className)
-                });
-                moduleSet.add(className);
-            }
-        });
-    }
-
-    console.log('Final collected modules for export:', modules.map(m => m.className));
-    return modules;
-}
 
     /**
      * Collect all modules used in the project, only if theyre in use
@@ -943,8 +929,10 @@ class ExportManager {
      * Generate HTML content
      */
     generateHTML(data, settings) {
-        const title = settings.customTitle || 'Dark Matter JS Game';
-        const description = settings.customDescription || 'A game created with Dark Matter JS';
+        const title = settings.customTitle || 'Dark Matter Game';
+        const description = settings.customDescription || 'A game created with Dark Matter JS Engine';
+
+        const logoSrc = settings.logoImage ? settings.logoImage : './loading.png';
 
         // Use viewport dimensions or default to full screen
         const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
@@ -1033,8 +1021,17 @@ class ExportManager {
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div id="loading-screen">
-            <div>Loading...</div>
+        <div id="loading-screen" style="background:${settings.loadingBg || '#111'};">
+            <div class="loading-content">
+                <img class="loading-logo" src="${logoSrc}" alt="Logo">
+                <div class="loading-row">
+                    <div class="loading-text">${settings.loadingText || 'Loading Game...'}</div>
+                    <div class="loading-spinner"></div>
+                </div>
+                <div class="loading-progress-bar">
+                    <div class="loading-progress"></div>
+                </div>
+            </div>
         </div>
     </div>
 </body>
@@ -1247,6 +1244,96 @@ html {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+
+/* Enhanced loading screen */
+#loading-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: ${settings.loadingBg || '#111'};
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+}
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 6px solid transparent;
+    border-top: 6px solid ${settings.spinnerColor || '#09f'};
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 16px;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg);}
+    100% { transform: rotate(360deg);}
+}
+.loading-text {
+    font-size: 1.2em;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+}
+.loading-progress-bar {
+    width: 200px;
+    height: 8px;
+    background: #222;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+.loading-progress {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #09f 0%, #0ff 100%);
+    transition: width 0.3s;
+}
+
+/* Make the logo much larger and centered */
+.loading-logo {
+    display: block;
+    margin: 0 auto 32px auto;
+    max-width: 60vw;
+    max-height: 60vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Stack loading text and spinner horizontally */
+.loading-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    gap: 24px;
+}
+
+/* Loading text styling */
+.loading-text {
+    font-size: 2em;
+    margin: 0;
+    letter-spacing: 1px;
+    color: #fff;
+}
+
+/* Spinner next to text, not inside logo */
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 6px solid transparent;
+    border-top: 6px solid ${settings.spinnerColor || '#09f'};
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0;
+}
 `;
 
         // Minify CSS if enabled
@@ -1280,6 +1367,11 @@ html {
         return `
 // Game Initialization - Fixed for Physics
 let gameInitialized = false;
+
+function setLoadingProgress(percent) {
+    var bar = document.querySelector('.loading-progress');
+    if (bar) bar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+}
 
 async function initializeGame() {
     if (gameInitialized) return;
@@ -1385,6 +1477,9 @@ async function initializeGame() {
     ${settings.includeAssets ? `
     console.log('ZIP mode: Loading assets from asset files...');
     const assetMapping = ${assetMapping};
+
+    let loadedCount = 0;
+    const totalAssets = Object.keys(assetMapping).length;
     
     if (assetMapping) {
         // Pre-load all assets from the assets folder using the mapping
@@ -1502,6 +1597,9 @@ async function initializeGame() {
             } catch (error) {
                 console.warn('Error loading asset:', originalPath, error);
             }
+
+            loadedCount++;
+            setLoadingProgress(Math.round((loadedCount / totalAssets) * 100));
         }
         
         console.log('Finished loading assets. AssetManager cache keys:', Object.keys(window.assetManager.cache));
@@ -2474,6 +2572,27 @@ window.addEventListener('matter-loaded', initializeGame);
                 <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
             </div>
             <div class="export-group">
+                <label>Loading Background Color:</label>
+                <input type="color" id="export-loading-bg" value="${this.exportSettings.loadingBg || '#111'}">
+            </div>
+            <div class="export-group">
+                <label>Loading Screen Logo:</label>
+                <input type="file" id="export-logo" accept="image/*">
+                <small>(Optional. If not set, uses defatult Dark Matter logo.)</small>
+            </div>
+            <div class="export-group">
+                <label>Loading Text:</label>
+                <input type="text" id="export-loading-text" value="${this.exportSettings.loadingText || 'Loading Game...'}" placeholder="Loading Game...">
+            </div>
+            <div class="export-group">
+                <label>Progress Bar Color:</label>
+                <input type="color" id="export-progress-color" value="${this.exportSettings.progressColor || '#09f'}">
+            </div>
+            <div class="export-group">
+                <label>Spinner Color:</label>
+                <input type="color" id="export-spinner-color" value="${this.exportSettings.spinnerColor || '#09f'}">
+            </div>
+            <div class="export-group">
                 <label>Starting Scene:</label>
                 <select id="export-starting-scene">
                     ${sceneOptions || '<option value="0">No scenes available</option>'}
@@ -2531,6 +2650,10 @@ window.addEventListener('matter-loaded', initializeGame);
             const settings = {
                 customTitle: modal.querySelector('#export-title').value,
                 customDescription: modal.querySelector('#export-description').value,
+                loadingBg: modal.querySelector('#export-loading-bg').value,
+                loadingText: modal.querySelector('#export-loading-text').value,
+                progressColor: modal.querySelector('#export-progress-color').value,
+                spinnerColor: modal.querySelector('#export-spinner-color').value,
                 startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
                 maxFPS: parseInt(modal.querySelector('#export-max-fps').value) || 60,
                 useWebGL: modal.querySelector('#export-webgl').value === 'true', // New WebGL setting
@@ -2538,6 +2661,21 @@ window.addEventListener('matter-loaded', initializeGame);
                 includeAssets: modal.querySelector('#export-include-assets').checked,
                 minifyCode: false
             };
+
+            // Handle logo image if provided
+            let logoImage = null;
+            const logoInput = modal.querySelector('#export-logo');
+            if (logoInput && logoInput.files && logoInput.files[0]) {
+                logoImage = await this.fileToDataURL(logoInput.files[0]);
+            }
+
+            // If no logo selected, convert loading.png to base64
+            if (!logoImage) {
+                logoImage = await this.filePathToDataURL('loading.png');
+                // If loading.png is missing, fallback to a blank image
+                if (!logoImage) logoImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB...";
+            }
+            settings.logoImage = logoImage;
 
             document.body.removeChild(modal);
 
@@ -2604,7 +2742,7 @@ window.addEventListener('matter-loaded', initializeGame);
         // Close on outside click
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
-                document.body.removeChild(modal);
+                //document.body.removeChild(modal);
             }
         });
     }
