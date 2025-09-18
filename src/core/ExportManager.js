@@ -16,7 +16,7 @@ class ExportManager {
             },
             maxFPS: 60,
             // Default dark theme colors
-            loadingBg: '#181A20',        // dark gray background
+            loadingBg: '#000000ff',        // dark gray background
             spinnerColor: '#4F8EF7',     // blue accent
             progressColor: '#2D3748',      // darker gray for progress bar
             logoImage: null // base64 or file path
