@@ -1025,6 +1025,40 @@ class ExportManager {
             }
         });
 
+        document.addEventListener('DOMContentLoaded', function() {
+            function showDescModal() {
+                document.getElementById('desc-modal').style.display = 'flex';
+            }
+            function hideDescModal() {
+                document.getElementById('desc-modal').style.display = 'none';
+            }
+            const descBtn = document.getElementById('desc-btn');
+            if (descBtn) {
+                descBtn.addEventListener('click', showDescModal);
+                descBtn.addEventListener('touchstart', function(e){e.preventDefault();showDescModal();});
+            }
+            const descCloseBtn = document.getElementById('desc-close-btn');
+            if (descCloseBtn) {
+                descCloseBtn.addEventListener('click', hideDescModal);
+                descCloseBtn.addEventListener('touchstart', function(e){e.preventDefault();hideDescModal();});
+            }
+            // Touch support for start/load buttons
+            const startBtn = document.getElementById('start-game-btn');
+            if (startBtn) {
+                startBtn.addEventListener('touchstart', function(e){
+                    e.preventDefault();
+                    startBtn.click();
+                });
+            }
+            const loadBtn = document.getElementById('load-game-btn');
+            if (loadBtn) {
+                loadBtn.addEventListener('touchstart', function(e){
+                    e.preventDefault();
+                    loadBtn.click();
+                });
+            }
+        });
+
         // Load Game Dialog
         function showLoadGameDialog() {
             const modal = document.createElement('div');
@@ -1121,36 +1155,71 @@ class ExportManager {
         <div id="loading-screen" style="background:${settings.loadingBg || '#111'};">
             <div class="loading-content">
                 <img class="loading-logo" src="${logoSrc}" alt="Logo">
-                <button id="start-game-btn" style="
-                    margin-top:32px;
-                    padding: 16px 48px;
-                    font-size: 1.4em;
-                    font-weight: bold;
-                    color: #fff;
-                    background: ${settings.spinnerColor || '#09f'};
-                    border: none;
-                    border-radius: 32px;
-                    box-shadow: 0 2px 16px 0 ${settings.spinnerColor || '#09f'}44;
-                    cursor: pointer;
-                    transition: background 0.2s, box-shadow 0.2s;
-                    outline: none;
-                    letter-spacing: 1px;
-                ">Start Game</button>
+                <div class="game-title" style="
+                    font-size:2em;
+                    font-weight:700;
+                    color:${settings.spinnerColor || '#09f'};
+                    margin-bottom:16px;
+                    text-align:center;
+                    letter-spacing:1px;
+                ">${title}</div>
+                <div style="display:flex;align-items:center;justify-content:center;gap:12px;">
+                    <button id="start-game-btn" style="
+                        margin-top:8px;
+                        padding: 16px 48px;
+                        font-size: 1.4em;
+                        font-weight: bold;
+                        color: #fff;
+                        background: ${settings.spinnerColor || '#09f'};
+                        border: none;
+                        border-radius: 32px;
+                        box-shadow: 0 2px 16px 0 ${settings.spinnerColor || '#09f'}44;
+                        cursor: pointer;
+                        transition: background 0.2s, box-shadow 0.2s;
+                        outline: none;
+                        letter-spacing: 1px;
+                    ">Start Game</button>
+                    <button id="desc-btn" aria-label="Show Description" style="
+                        margin-top:8px;
+                        padding: 0 16px;
+                        font-size: 1.4em;
+                        font-weight: bold;
+                        color: ${settings.spinnerColor || '#09f'};
+                        background: #222;
+                        border: 2px solid ${settings.spinnerColor || '#09f'};
+                        border-radius: 50%;
+                        cursor: pointer;
+                        transition: background 0.2s, box-shadow 0.2s;
+                        outline: none;
+                        height:48px;
+                        width:48px;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                    ">?</button>
+                </div>
                 <button id="load-game-btn" style="
                     margin-top:12px;
                     padding: 12px 32px;
                     font-size: 1.1em;
                     font-weight: bold;
                     color: #fff;
-                    background: #444;
+                    background: ${settings.spinnerColor || '#09f'};
                     border: none;
                     border-radius: 24px;
-                    box-shadow: 0 2px 8px 0 #4444;
+                    box-shadow: 0 2px 8px 0 ${settings.spinnerColor || '#09f'}44;
                     cursor: pointer;
                     transition: background 0.2s, box-shadow 0.2s;
                     outline: none;
                     letter-spacing: 1px;
                 ">Load Game</button>
+            </div>
+        </div>
+        <div id="desc-modal" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:3000;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);">
+            <div style="background:#222;padding:32px 24px;border-radius:16px;max-width:90vw;max-height:80vh;overflow:auto;box-shadow:0 8px 32px #000a;color:#fff;position:relative;">
+                <button id="desc-close-btn" style="position:absolute;top:12px;right:16px;background:none;border:none;color:${settings.spinnerColor || '#09f'};font-size:1.6em;cursor:pointer;">&times;</button>
+                <h2 style="color:${settings.spinnerColor || '#09f'};margin-top:0;margin-bottom:12px;font-size:1.3em;">About This Game</h2>
+                <div style="font-size:1.1em;line-height:1.5;color:#eee;">${description}</div>
             </div>
         </div>
     </div>
@@ -1511,7 +1580,7 @@ html {
     font-size: 2em;
     font-weight: 700;
     letter-spacing: 1px;
-    color: #4F8EF7;
+    color:  ${settings.spinnerColor || '#09f'};
 }
 
 #load-game-modal label {
@@ -1537,7 +1606,7 @@ html {
     padding: 10px 24px;
     border-radius: 8px;
     border: none;
-    background: #4F8EF7;
+    background: ${settings.spinnerColor || '#4F8EF7'};
     color: #fff;
     font-weight: 600;
     font-size: 1em;
@@ -1552,7 +1621,7 @@ html {
 }
 
 #load-game-modal button:hover {
-    background: #3574c3;
+    background: ${settings.spinnerColor || '#3574c3'};
 }
 
 #load-game-modal hr {
@@ -1561,6 +1630,171 @@ html {
     margin: 18px 0;
 }
 
+* Style the file input for the load game modal */
+#load-game-modal input[type="file"] {
+    background: #2d3e5c; /* Slightly darker than spinner color */
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 1em;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 8px #4F8EF744;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+
+#load-game-modal input[type="file"]:hover,
+#load-game-modal input[type="file"]:focus {
+    background: #22304a; /* Even darker on hover/focus */
+    outline: none;
+}
+
+/* --- Loading Screen --- */
+#loading-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: #111;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+}
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.loading-logo {
+    display: block;
+    margin: 0 auto 32px auto;
+    max-width: 60vw;
+    max-height: 60vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+.game-title {
+    font-size: 2em;
+    font-weight: 700;
+    color: #4F8EF7;
+    margin-bottom: 16px;
+    text-align: center;
+    letter-spacing: 1px;
+}
+#start-game-btn, #load-game-btn {
+    margin-top: 8px;
+    padding: 16px 48px;
+    font-size: 1.4em;
+    font-weight: bold;
+    color: #fff;
+    background: #4F8EF7;
+    border: none;
+    border-radius: 32px;
+    box-shadow: 0 2px 16px 0 #4F8EF744;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    outline: none;
+    letter-spacing: 1px;
+    touch-action: manipulation;
+}
+#load-game-btn {
+    margin-top: 12px;
+    padding: 12px 32px;
+    font-size: 1.1em;
+    border-radius: 24px;
+    box-shadow: 0 2px 8px 0 #4F8EF744;
+}
+#desc-btn {
+    margin-top: 8px;
+    padding: 0 16px;
+    font-size: 1.4em;
+    font-weight: bold;
+    color: #4F8EF7;
+    background: #222;
+    border: 2px solid #4F8EF7;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    outline: none;
+    height: 48px;
+    width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+#desc-btn:active, #desc-btn:focus {
+    background: #333;
+    border-color: #3574c3;
+}
+#desc-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 3000;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+}
+#desc-modal > div {
+    background: #222;
+    padding: 32px 24px;
+    border-radius: 16px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow: auto;
+    box-shadow: 0 8px 32px #000a;
+    color: #fff;
+    position: relative;
+}
+#desc-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #4F8EF7;
+    font-size: 1.6em;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+#desc-modal h2 {
+    color: #4F8EF7;
+    margin-top: 0;
+    margin-bottom: 12px;
+    font-size: 1.3em;
+}
+#desc-modal div {
+    font-size: 1.1em;
+    line-height: 1.5;
+    color: #eee;
+}
+@media (max-width: 600px) {
+    #desc-modal > div {
+        padding: 18px 8px;
+        min-width: 90vw;
+    }
+    #desc-modal h2 {
+        font-size: 1.1em;
+    }
+    .game-title {
+        font-size: 1.2em;
+    }
+    #start-game-btn, #load-game-btn {
+        font-size: 1em;
+        padding: 10px 24px;
+    }
+    #desc-btn {
+        font-size: 1em;
+        height: 36px;
+        width: 36px;
+    }
+}
+    
 @media (max-width: 600px) {
     #load-game-modal > div {
         padding: 18px 8px;
