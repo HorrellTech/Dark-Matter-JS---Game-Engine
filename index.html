@@ -345,6 +345,71 @@
             border: 1px solid #333;
             display: block;
         }
+
+        #game-example-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            list-style: none;
+            margin-bottom: 2rem;
+            padding: 0;
+            max-height: 220px;      /* Adjust height as needed */
+            overflow-y: auto;
+            border-radius: 10px;
+            border: 1px solid #222;
+            background: #18181b;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        #game-example-list li {
+            width: 100%;
+        }
+        /* Optional: style scrollbar for modern look */
+        #game-example-list::-webkit-scrollbar {
+            width: 8px;
+            background: #222;
+        }
+        #game-example-list::-webkit-scrollbar-thumb {
+            background: #6366f1;
+            border-radius: 8px;
+        }
+
+        #floating-editor-btn {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            z-index: 1500;
+            background: linear-gradient(135deg, #6366f1 60%, #8b5cf6 100%);
+            color: #fff;
+            border: none;
+            border-radius: 50px;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: 700;
+            box-shadow: 0 0 24px 8px #6366f1a0, 0 2px 8px #0008;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: glowPulse 2s infinite alternate;
+        }
+        #floating-editor-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 32px 12px #8b5cf6cc, 0 2px 12px #000a;
+        }
+        @keyframes glowPulse {
+            from { box-shadow: 0 0 24px 8px #6366f1a0, 0 2px 8px #0008; }
+            to   { box-shadow: 0 0 40px 16px #8b5cf6cc, 0 2px 16px #000a; }
+        }
+
+        /* Responsive: 1 column on mobile, 2 on tablet */
+        @media (max-width: 900px) {
+            #game-example-list {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 600px) {
+            #game-example-list {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 
@@ -536,23 +601,23 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
             <ul id="game-example-list" style="list-style:none; display:flex; gap:1rem; margin-bottom:2rem; padding:0;">
                 <li>
                     <a href="#" class="game-example-link" data-src="tutorial_images/matterjsexample1.html"
-                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.08); transition:background 0.2s;">
+                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.00); transition:background 0.2s;">
                         Matter.js RigidBody Example (WebGL)</a>
                 </li>
                 <li>
                     <a href="#" class="game-example-link" data-src="tutorial_images/matterjsvehicleexample.html"
-                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.08); transition:background 0.2s;">
+                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.00); transition:background 0.2s;">
                         Matter.js Vehicle Example (WebGL)</a>
                 </li>
                 <li>
                     <a href="#" class="game-example-link" data-src="tutorial_images/imagesParticle.html"
-                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.08); transition:background 0.2s;">
+                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.00); transition:background 0.2s;">
                         Images & Particle System (WebGL)</a>
                 </li>
                 <li>
                     <a href="#" class="game-example-link" data-src="tutorial_images/planets.html"
-                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.08); transition:background 0.2s;">
-                        Infinite Space Exploration</a>
+                        style="color:#6366f1; font-weight:600; text-decoration:none; padding:0.5rem 1rem; border-radius:8px; background:rgba(99,102,241,0.00); transition:background 0.2s;">
+                        Infinite Space Exploration (WebGL)</a>
                 </li>
                 <!-- Add more examples here as needed -->
             </ul>
@@ -1007,6 +1072,11 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
                 }
             });
 
+            // Floating button logic
+            document.getElementById('floating-editor-btn').onclick = function () {
+                window.open('DarkMatter.html', '_blank');
+            };
+
             // Example usage: addNavLink('API', 'api');
         }
     </script>
@@ -1016,6 +1086,10 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
         <img id="modal-img" src="" alt="Full Size"
             style="max-width:90vw; max-height:90vh; border-radius:12px; box-shadow:0 0 40px #000;">
     </div>
+
+    <button id="floating-editor-btn" title="Open Editor">
+        🚀 Editor
+    </button>
 </body>
 
 </html>
