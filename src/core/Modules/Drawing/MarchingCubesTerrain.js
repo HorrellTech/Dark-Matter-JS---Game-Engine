@@ -23,12 +23,21 @@ class MarchingCubesTerrain extends Module {
         this.biomeScale = 0.005;
         this.showDebug = false;
 
+        // Generation type configuration
+        this.generationType = "Random"; // Random, Maze, HeightConstrained, PerlinNoise, SimplexNoise, Voronoi
+        this.mazeComplexity = 0.7; // 0-1, higher values create more complex mazes
+        this.minHeight = 500; // Minimum height for HeightConstrained generation
+        this.voronoiSites = 50; // Number of sites for Voronoi generation
+        this.voronoiRelaxation = 1; // Number of Lloyd relaxation iterations
+
         //  Rigidbody management properties
         this.enableRigidbodies = false; // Enable/disable rigidbody generation
         this.rigidbodyRadius = 100; // Default radius for rigidbody activation
         this.activeRigidbodies = new Map(); // Track active rigidbodies by grid key
         this.rigidbodyGridSize = 64; // Size of rigidbody grid cells (larger than terrain grid)
         this.rigidbodyCleanupThreshold = 200; // Distance threshold for cleanup
+        this.activeActivationPoints = new Map(); // Track all active activation regions
+        this.activationPointId = 0; // Unique ID for activation points
 
         // Biome configurations
         this.biomes = {
@@ -156,6 +165,58 @@ class MarchingCubesTerrain extends Module {
             }
         });
 
+        // Generation type properties
+        this.exposeProperty("generationType", "select", "Random", {
+            description: "Terrain generation algorithm",
+            //options: ["Random", "Maze", "HeightConstrained", "PerlinNoise", "SimplexNoise", "Voronoi"],
+            options: ["Random", "HeightConstrained", "SimplexNoise"],
+            onChange: (val) => {
+                this.generationType = val;
+                this.clearCache();
+            }
+        });
+
+        /*this.exposeProperty("mazeComplexity", "number", 0.7, {
+            description: "Maze complexity (0-1, higher = more complex)",
+            min: 0,
+            max: 1,
+            step: 0.1,
+            onChange: (val) => {
+                this.mazeComplexity = Math.max(0, Math.min(1, val));
+                this.clearCache();
+            }
+        });*/
+
+        this.exposeProperty("minHeight", "number", 500, {
+            description: "Minimum height for HeightConstrained generation",
+            min: 0,
+            max: 2000,
+            onChange: (val) => {
+                this.minHeight = Math.max(0, val);
+                this.clearCache();
+            }
+        });
+
+        /*this.exposeProperty("voronoiSites", "number", 50, {
+            description: "Number of sites for Voronoi generation",
+            min: 10,
+            max: 200,
+            onChange: (val) => {
+                this.voronoiSites = Math.max(10, Math.min(200, val));
+                this.clearCache();
+            }
+        });
+
+        this.exposeProperty("voronoiRelaxation", "number", 1, {
+            description: "Lloyd relaxation iterations for Voronoi",
+            min: 0,
+            max: 5,
+            onChange: (val) => {
+                this.voronoiRelaxation = Math.max(0, Math.min(5, val));
+                this.clearCache();
+            }
+        });*/
+
         this.exposeProperty("enableRigidbodies", "boolean", false, {
             description: "Enable automatic rigidbody generation for terrain",
             onChange: (val) => {
@@ -242,8 +303,245 @@ class MarchingCubesTerrain extends Module {
 
     // Improved noise function using multiple octaves
     noise(x, y) {
-        let n = Math.sin(x * 12.9898 + y * 78.233 + this.seed * 37.719) * 43758.5453;
+        // Handle negative coordinates and very large coordinates properly
+        const safeX = x === -0 ? 0 : x; // Handle negative zero
+        const safeY = y === -0 ? 0 : y; // Handle negative zero
+
+        let n = Math.sin(safeX * 12.9898 + safeY * 78.233 + this.seed * 37.719) * 43758.5453;
         return (n - Math.floor(n));
+    }
+
+    // Main generation function that dispatches to appropriate algorithm
+    generateHeight(x, y) {
+        switch (this.generationType) {
+            case "Random":
+                return this.octaveNoise(x, y);
+            case "Maze":
+                return this.generateMazeHeight(x, y);
+            case "HeightConstrained":
+                return this.generateHeightConstrained(x, y);
+            case "PerlinNoise":
+                return this.perlinNoise(x, y);
+            case "SimplexNoise":
+                return this.simplexNoise(x, y);
+            case "Voronoi":
+                return this.voronoiNoise(x, y);
+            default:
+                return this.octaveNoise(x, y);
+        }
+    }
+
+    // Height-constrained generation (only generates terrain above minHeight)
+    generateHeightConstrained(x, y) {
+        const baseHeight = this.octaveNoise(x, y);
+
+        // Only generate terrain above the minimum height
+        if (y < this.minHeight) {
+            // Create a smooth transition zone
+            const transitionHeight = 100; // pixels
+            const distanceFromMin = this.minHeight - y;
+
+            if (distanceFromMin < transitionHeight) {
+                const fadeFactor = distanceFromMin / transitionHeight;
+                return baseHeight * fadeFactor * fadeFactor; // Smooth quadratic fade
+            } else {
+                return 0; // No terrain below minimum height
+            }
+        }
+
+        return baseHeight;
+    }
+
+    // Maze-based height generation with improved randomness
+    generateMazeHeight(x, y) {
+        // Generate a maze for this grid area
+        const gridSize = this.gridSize * this.gridResolution;
+        const gridX = Math.floor(x / gridSize);
+        const gridY = Math.floor(y / gridSize);
+
+        // Create a deterministic maze based on grid position and seed
+        const mazeSeed = gridX * 10000 + gridY * 100 + this.seed;
+        const random = this.seededRandom(mazeSeed);
+
+        const mazeWidth = Math.floor(this.gridResolution / 2);
+        const mazeHeight = Math.floor(this.gridResolution / 2);
+
+        // Generate maze pattern with improved algorithm
+        const maze = this.generateImprovedMazePattern(mazeWidth, mazeHeight, random, this.mazeComplexity);
+
+        // Convert to height values with more variation
+        return this.improvedMazeToHeightPattern(maze, x, y, this.gridSize);
+    }
+
+    // Seeded random number generator for deterministic maze generation
+    seededRandom(seed) {
+        let x = Math.sin(seed) * 10000;
+        return function() {
+            x = Math.sin(x) * 10000;
+            return x - Math.floor(x);
+        };
+    }
+
+    // Generate improved maze pattern with more randomness and variation
+    generateImprovedMazePattern(width, height, random, complexity = 0.7) {
+        const maze = Array(height).fill().map(() => Array(width).fill(1));
+
+        // Use Prim's algorithm for more organic maze generation
+        const frontiers = new Set();
+        const visited = new Set();
+
+        // Start from a random position
+        const startX = Math.floor(random() * width);
+        const startY = Math.floor(random() * height);
+        visited.add(`${startX},${startY}`);
+        maze[startY][startX] = 0;
+
+        // Add initial frontiers
+        this.addFrontiers(startX, startY, width, height, frontiers, visited);
+
+        while (frontiers.size > 0) {
+            // Pick random frontier
+            const frontierArray = Array.from(frontiers);
+            const randomIndex = Math.floor(random() * frontierArray.length);
+            const frontier = frontierArray[randomIndex];
+            frontiers.delete(frontier);
+
+            const [x, y] = frontier.split(',').map(Number);
+            const neighbors = this.getValidNeighbors(x, y, width, height, visited);
+
+            if (neighbors.length > 0) {
+                // Pick random neighbor
+                const neighborIndex = Math.floor(random() * neighbors.length);
+                const [nx, ny] = neighbors[neighborIndex];
+
+                // Carve path
+                const wallX = (x + nx) / 2;
+                const wallY = (y + ny) / 2;
+                maze[wallY][wallX] = 0;
+                maze[y][x] = 0;
+
+                visited.add(frontier);
+                this.addFrontiers(x, y, width, height, frontiers, visited);
+            }
+        }
+
+        // Add some randomness by removing some walls based on complexity
+        if (complexity < 1.0) {
+            this.addMazeImperfections(maze, random, complexity);
+        }
+
+        return maze;
+    }
+
+    // Add frontier cells around a carved cell
+    addFrontiers(x, y, width, height, frontiers, visited) {
+        const directions = [[0, 2], [2, 0], [0, -2], [-2, 0]];
+
+        directions.forEach(([dx, dy]) => {
+            const nx = x + dx;
+            const ny = y + dy;
+
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const key = `${nx},${ny}`;
+                if (!visited.has(key)) {
+                    frontiers.add(key);
+                }
+            }
+        });
+    }
+
+    // Get valid neighbors for maze generation
+    getValidNeighbors(x, y, width, height, visited) {
+        const neighbors = [];
+        const directions = [[0, 2], [2, 0], [0, -2], [-2, 0]];
+
+        directions.forEach(([dx, dy]) => {
+            const nx = x + dx;
+            const ny = y + dy;
+
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                const key = `${nx},${ny}`;
+                if (visited.has(key)) {
+                    neighbors.push([nx, ny]);
+                }
+            }
+        });
+
+        return neighbors;
+    }
+
+    // Add imperfections to make maze less perfect and more varied
+    addMazeImperfections(maze, random, complexity) {
+        const height = maze.length;
+        const width = maze[0].length;
+
+        // Remove some walls to create loops and alternative paths
+        const wallsToRemove = Math.floor((height * width * (1 - complexity)) / 4);
+
+        for (let i = 0; i < wallsToRemove; i++) {
+            const x = Math.floor(random() * width);
+            const y = Math.floor(random() * height);
+
+            // Only remove walls, not paths
+            if (maze[y][x] === 1) {
+                // Check if removing this wall creates a valid opening
+                const neighbors = this.getAdjacentCells(x, y, width, height);
+                const pathCount = neighbors.filter(([nx, ny]) => maze[ny][nx] === 0).length;
+
+                // Only remove if it connects to exactly one path (creates a dead end)
+                if (pathCount === 1) {
+                    maze[y][x] = 0;
+                }
+            }
+        }
+    }
+
+    // Get adjacent cells (including diagonals)
+    getAdjacentCells(x, y, width, height) {
+        const cells = [];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                    cells.push([nx, ny]);
+                }
+            }
+        }
+        return cells;
+    }
+
+    // Convert improved maze pattern to height values with more variation
+    improvedMazeToHeightPattern(maze, x, y, cellSize) {
+        const mazeX = Math.floor(x / cellSize);
+        const mazeY = Math.floor(y / cellSize);
+
+        if (mazeX >= 0 && mazeX < maze[0].length && mazeY >= 0 && mazeY < maze.length) {
+            const cellValue = maze[mazeY][mazeX];
+
+            // Create more varied height patterns
+            let baseHeight;
+            if (cellValue === 0) {
+                // Path cells - vary height based on position and noise
+                const positionNoise = this.noise(x * 0.05, y * 0.05);
+                const detailNoise = this.noise(x * 0.2, y * 0.2) * 0.3;
+                baseHeight = 0.6 + positionNoise * 0.3 + detailNoise;
+            } else {
+                // Wall cells - vary height for more organic look
+                const wallNoise = this.noise(x * 0.08, y * 0.08);
+                const heightVariation = this.noise(x * 0.15, y * 0.15) * 0.2;
+                baseHeight = 0.1 + wallNoise * 0.2 + heightVariation;
+            }
+
+            // Add some micro-detail
+            const microNoise = this.noise(x * 0.5, y * 0.5) * 0.05;
+            const finalHeight = Math.max(0, Math.min(1, baseHeight + microNoise));
+
+            return finalHeight;
+        }
+
+        return 0.1; // Default wall height for out-of-bounds
     }
 
     // Multi-octave noise function
@@ -261,6 +559,246 @@ class MarchingCubesTerrain extends Module {
         }
 
         return value / maxValue;
+    }
+
+    // Improved Perlin noise function with proper gradients and permutation table
+    perlinNoise(x, y) {
+        // Create permutation table based on seed for deterministic randomness
+        const perm = this.generatePermutationTable(this.seed);
+
+        // Handle negative coordinates properly for infinite world generation
+        const X = ((Math.floor(x) % 256) + 256) % 256;
+        const Y = ((Math.floor(y) % 256) + 256) % 256;
+
+        const xf = x - Math.floor(x);
+        const yf = y - Math.floor(y);
+
+        // Smooth the fractional parts
+        const u = this.fade(xf);
+        const v = this.fade(yf);
+
+        // Hash coordinates of the 4 square corners
+        const A = perm[X] + Y;
+        const AA = perm[A];
+        const AB = perm[A + 1];
+        const B = perm[X + 1] + Y;
+        const BA = perm[B];
+        const BB = perm[B + 1];
+
+        // Add blended results from 4 corners of the square
+        const x1 = this.lerp(this.grad(AA, xf, yf), this.grad(BA, xf - 1, yf), u);
+        const x2 = this.lerp(this.grad(AB, xf, yf - 1), this.grad(BB, xf - 1, yf - 1), u);
+
+        return this.lerp(x1, x2, v);
+    }
+
+    // Generate permutation table for Perlin noise
+    generatePermutationTable(seed) {
+        const p = new Array(256);
+        for (let i = 0; i < 256; i++) {
+            p[i] = i;
+        }
+
+        // Shuffle using seed
+        let n = 0;
+        for (let i = 255; i > 0; i--) {
+            n = (n + seed + i) % (i + 1);
+            const temp = p[i];
+            p[i] = p[n];
+            p[n] = temp;
+        }
+
+        // Duplicate the array to avoid overflow
+        return [...p, ...p];
+    }
+
+    // Fade function for smooth interpolation
+    fade(t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+
+    // Linear interpolation
+    lerp(a, b, t) {
+        return a + t * (b - a);
+    }
+
+    // Gradient function for Perlin noise
+    grad(hash, x, y) {
+        const h = hash & 15;
+        const gradX = h < 8 ? (h < 4 ? x : y) : (h === 12 || h === 14 ? x : -y);
+        const gradY = h < 4 ? y : (h === 12 || h === 14 ? -x : (h & 2 ? -y : x));
+        return (h & 1 ? -gradX : gradX) + (h & 2 ? -gradY : gradY);
+    }
+
+    // Improved Simplex noise implementation
+    simplexNoise(x, y) {
+        // Simplex constants
+        const F2 = 0.5 * (Math.sqrt(3) - 1);
+        const G2 = (3 - Math.sqrt(3)) / 6;
+        const F3 = 1 / 3;
+        const G3 = 1 / 6;
+
+        // Skew the input space to determine which simplex cell we're in
+        const s = (x + y) * F2;
+        const xs = x + s;
+        const ys = y + s;
+        // Handle negative coordinates properly for infinite world generation
+        const i = Math.floor(xs < 0 ? xs - 1 : xs);
+        const j = Math.floor(ys < 0 ? ys - 1 : ys);
+
+        // Unskew the cell origin back to (x,y) space
+        const t = (i + j) * G2;
+        const X0 = i - t;
+        const Y0 = j - t;
+        const x0 = x - X0;
+        const y0 = y - Y0;
+
+        // Determine which simplex we are in
+        const i1 = x0 > y0 ? 1 : 0;
+        const j1 = x0 > y0 ? 0 : 1;
+
+        // Offsets for middle corner in (x,y) unskewed coords
+        const x1 = x0 - i1 + G2;
+        const y1 = y0 - j1 + G2;
+        const x2 = x0 - 1 + 2 * G2;
+        const y2 = y0 - 1 + 2 * G2;
+
+        // Generate permutation table for this seed
+        const perm = this.generatePermutationTable(this.seed);
+
+        // Calculate the contribution from the three corners
+        const t0 = 0.5 - x0 * x0 - y0 * y0;
+        const n0 = t0 < 0 ? 0 : Math.pow(t0, 4) * this.dot2D(perm[i + perm[j]], x0, y0);
+
+        const t1 = 0.5 - x1 * x1 - y1 * y1;
+        const n1 = t1 < 0 ? 0 : Math.pow(t1, 4) * this.dot2D(perm[i + i1 + perm[j + j1]], x1, y1);
+
+        const t2 = 0.5 - x2 * x2 - y2 * y2;
+        const n2 = t2 < 0 ? 0 : Math.pow(t2, 4) * this.dot2D(perm[i + 1 + perm[j + 1]], x2, y2);
+
+        // Add contributions from each corner and scale the result
+        return 45.0 * (n0 + n1 + n2);
+    }
+
+    // 2D dot product for simplex noise
+    dot2D(hash, x, y) {
+        const h = hash & 7;
+        const u = h < 4 ? x : y;
+        const v = h < 4 ? y : x;
+        return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+    }
+
+    // Voronoi diagram generation
+    voronoiNoise(x, y) {
+        let minDist = Infinity;
+        let minDist2 = Infinity;
+
+        // Generate sites based on seed AND world coordinates for infinite generation
+        const sites = [];
+        const gridSize = 2000; // Size of each Voronoi cell in world units
+        const gridX = Math.floor(x / gridSize);
+        const gridY = Math.floor(y / gridSize);
+
+        // Generate sites for current grid and neighboring grids
+        for (let gx = gridX - 1; gx <= gridX + 1; gx++) {
+            for (let gy = gridY - 1; gy <= gridY + 1; gy++) {
+                for (let i = 0; i < this.voronoiSites; i++) {
+                    // Include grid coordinates in the seed for unique patterns per grid
+                    const siteSeed = gx * 1000000 + gy * 10000 + i * 100 + this.seed;
+                    const siteX = gx * gridSize + this.noise(siteSeed, 0) * gridSize;
+                    const siteY = gy * gridSize + this.noise(siteSeed + 100, 0) * gridSize;
+                    sites.push({ x: siteX, y: siteY });
+                }
+            }
+        }
+
+        // Apply Lloyd relaxation if enabled
+        for (let iter = 0; iter < this.voronoiRelaxation; iter++) {
+            sites.forEach(site => {
+                let sumX = 0, sumY = 0, count = 0;
+                sites.forEach(otherSite => {
+                    if (otherSite !== site) {
+                        const dx = otherSite.x - site.x;
+                        const dy = otherSite.y - site.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 1000) { // Only consider nearby sites
+                            sumX += otherSite.x;
+                            sumY += otherSite.y;
+                            count++;
+                        }
+                    }
+                });
+                if (count > 0) {
+                    site.x = sumX / count;
+                    site.y = sumY / count;
+                }
+            });
+        }
+
+        // Find closest sites
+        sites.forEach(site => {
+            const dx = site.x - x * 100;
+            const dy = site.y - y * 100;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < minDist) {
+                minDist2 = minDist;
+                minDist = dist;
+            } else if (dist < minDist2) {
+                minDist2 = dist;
+            }
+        });
+
+        // Return F1-F2 distance for more interesting patterns
+        return (minDist2 - minDist) / 100;
+    }
+
+    // Maze generation using recursive backtracking
+    generateMaze(width, height) {
+        const maze = Array(height).fill().map(() => Array(width).fill(1)); // 1 = wall, 0 = path
+
+        function carve(x, y) {
+            const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+            // Shuffle directions for randomness
+            for (let i = directions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [directions[i], directions[j]] = [directions[j], directions[i]];
+            }
+
+            directions.forEach(([dx, dy]) => {
+                const nx = x + dx * 2;
+                const ny = y + dy * 2;
+
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height && maze[ny][nx] === 1) {
+                    maze[y + dy][x + dx] = 0; // Remove wall
+                    maze[ny][nx] = 0; // Create path
+                    carve(nx, ny);
+                }
+            });
+        }
+
+        // Start carving from a random position
+        const startX = Math.floor(Math.random() * Math.floor(width / 2)) * 2;
+        const startY = Math.floor(Math.random() * Math.floor(height / 2)) * 2;
+        maze[startY][startX] = 0;
+        carve(startX, startY);
+
+        return maze;
+    }
+
+    // Convert maze to height values
+    mazeToHeight(maze, x, y, cellSize) {
+        const mazeX = Math.floor(x / cellSize);
+        const mazeY = Math.floor(y / cellSize);
+
+        if (mazeX >= 0 && mazeX < maze[0].length && mazeY >= 0 && mazeY < maze.length) {
+            // Add some noise to make it less perfect
+            const baseHeight = maze[mazeY][mazeX] === 0 ? 0.8 : 0.2;
+            const noise = this.noise(x * 0.1, y * 0.1) * 0.1;
+            return Math.max(0, Math.min(1, baseHeight + noise));
+        }
+
+        return 0.2; // Default to wall height
     }
 
     // Determine biome based on noise values and height
@@ -334,10 +872,10 @@ class MarchingCubesTerrain extends Module {
                 const worldY = gridWorldY + cellY * this.gridSize;
 
                 // Generate corner height values (clockwise from top-left)
-                const tl = this.octaveNoise(worldX, worldY);
-                const tr = this.octaveNoise(worldX + this.gridSize, worldY);
-                const br = this.octaveNoise(worldX + this.gridSize, worldY + this.gridSize);
-                const bl = this.octaveNoise(worldX, worldY + this.gridSize);
+                const tl = this.generateHeight(worldX, worldY);
+                const tr = this.generateHeight(worldX + this.gridSize, worldY);
+                const br = this.generateHeight(worldX + this.gridSize, worldY + this.gridSize);
+                const bl = this.generateHeight(worldX, worldY + this.gridSize);
 
                 // Determine biome for this cell
                 const avgHeight = (tl + tr + br + bl) / 4;
@@ -641,6 +1179,12 @@ class MarchingCubesTerrain extends Module {
             toDelete.slice(toDelete.length / 2).forEach(key => {
                 this.gridCache.delete(key);
             });
+        }
+
+        if (this.showDebug) {
+            window.physicsManager.debugDraw = true;
+        } else {    
+            window.physicsManager.debugDraw = false;
         }
 
         //if (this.enableRigidbodies && window.physicsManager) {
@@ -1061,16 +1605,20 @@ class MarchingCubesTerrain extends Module {
     // Rigidbody API
     /**
      * NEW: Public API function to activate rigidbodies in a region
+     * @param {number} id - Unique identifier for the activation point
      * @param {number} worldX - World X position
      * @param {number} worldY - World Y position  
      * @param {number} radius - Radius to activate rigidbodies within
      */
-    activateRigidBodiesRegion(worldX, worldY, radius = this.rigidbodyRadius) {
+    activateRigidBodiesRegion(id, worldX, worldY, radius = this.rigidbodyRadius) {
         if (!this.enableRigidbodies || !window.physicsManager) {
             return;
         }
 
         const activationRadius = radius || this.rigidbodyRadius;
+
+        // NEW: Track this activation point instead of just using it once
+        this.addActivationPoint(id, worldX, worldY, activationRadius);
 
         // Get grid bounds for the activation region
         const minX = worldX - activationRadius;
@@ -1100,8 +1648,122 @@ class MarchingCubesTerrain extends Module {
             }
         }
 
-        // Remove rigidbodies that are too far from the activation point
-        this.cleanupDistantRigidbodies(worldX, worldY, activationRadius, shouldBeActive);
+        // NEW: Use the tracked activation points for cleanup instead of just current point
+        this.cleanupDistantRigidbodiesMultiPoint(shouldBeActive);
+    }
+
+    // NEW: Methods for tracking multiple activation points
+    addActivationPoint(id, worldX, worldY, radius) {
+        const pointId = id || ++this.activationPointId;
+        const activationPoint = {
+            id: pointId,
+            x: worldX,
+            y: worldY,
+            radius: radius,
+            timestamp: Date.now()
+        };
+
+        this.activeActivationPoints.set(pointId, activationPoint);
+
+        // Clean up old activation points (older than 30 seconds)
+        const thirtySecondsAgo = Date.now() - 30000;
+        for (const [id, point] of this.activeActivationPoints.entries()) {
+            if (point.timestamp < thirtySecondsAgo) {
+                this.activeActivationPoints.delete(id);
+            }
+        }
+
+        return pointId;
+    }
+
+    // NEW: Method to update existing activation point or create new one
+    updateActivationPoint(id, worldX, worldY, radius) {
+        // Check if activation point already exists
+        let existingPoint = null;
+        for (const [pointId, point] of this.activeActivationPoints.entries()) {
+            if (point.customId === id) {
+                existingPoint = point;
+                break;
+            }
+        }
+
+        if (existingPoint) {
+            // Update existing activation point
+            existingPoint.x = worldX;
+            existingPoint.y = worldY;
+            existingPoint.radius = radius;
+            existingPoint.timestamp = Date.now();
+        } else {
+            // Create new activation point with custom ID
+            const pointId = ++this.activationPointId;
+            const activationPoint = {
+                id: pointId,
+                customId: id, // Store the gameObject id for reference
+                x: worldX,
+                y: worldY,
+                radius: radius,
+                timestamp: Date.now()
+            };
+
+            this.activeActivationPoints.set(pointId, activationPoint);
+        }
+
+        // Clean up old activation points (older than 30 seconds)
+        const thirtySecondsAgo = Date.now() - 30000;
+        for (const [pointId, point] of this.activeActivationPoints.entries()) {
+            if (point.timestamp < thirtySecondsAgo) {
+                this.activeActivationPoints.delete(pointId);
+            }
+        }
+
+        return existingPoint ? existingPoint.id : this.activationPointId;
+    }
+
+    /**
+     * NEW: Clean up rigidbodies that are too far from ALL activation points
+     * @param {Set} shouldBeActive - Set of grid keys that should remain active
+     */
+    cleanupDistantRigidbodiesMultiPoint(shouldBeActive) {
+        const toRemove = [];
+
+        this.activeRigidbodies.forEach((rigidbodyData, gridKey) => {
+            // Skip if this rigidbody should remain active
+            if (shouldBeActive.has(gridKey)) {
+                rigidbodyData.lastActive = Date.now();
+                return;
+            }
+
+            // Check if this rigidbody is within range of ANY activation point
+            let isWithinAnyActivationPoint = false;
+
+            for (const activationPoint of this.activeActivationPoints.values()) {
+                const distance = Math.sqrt(
+                    Math.pow(rigidbodyData.worldX - activationPoint.x, 2) +
+                    Math.pow(rigidbodyData.worldY - activationPoint.y, 2)
+                );
+
+                if (distance <= activationPoint.radius + this.rigidbodyCleanupThreshold) {
+                    isWithinAnyActivationPoint = true;
+                    break;
+                }
+            }
+
+            // Remove if too far from ALL activation points
+            if (!isWithinAnyActivationPoint) {
+                toRemove.push(gridKey);
+            }
+        });
+
+        // Remove distant rigidbodies
+        toRemove.forEach(gridKey => {
+            this.removeRigidbody(gridKey);
+        });
+
+        if (toRemove.length > 0) {
+            console.log(`Cleaned up ${toRemove.length} distant rigidbodies (multi-point cleanup)`);
+        }
+
+        //this.activeActivationPoints.clear(); // Clear after cleanup
     }
 
     /**
@@ -1227,6 +1889,8 @@ class MarchingCubesTerrain extends Module {
                     lineWidth: 1
                 }
             });
+
+            Matter.Body.setStatic(body, true);
 
             // Create game object at the actual polygon position WITH viewport offset
             const gameObject = this.createRigidbodyGameObject(physicsCenterX, physicsCenterY);
@@ -1361,13 +2025,17 @@ class MarchingCubesTerrain extends Module {
             }
 
             // FIXED: Calculate the actual center of the polygon (world position)
-            let centerX = 0, centerY = 0;
-            validPoints.forEach(point => {
-                centerX += point.x;
-                centerY += point.y;
-            });
-            centerX /= validPoints.length;
-            centerY /= validPoints.length;
+            let centerX = 0, centerY = 0, area = 0;
+            for (let i = 0; i < validPoints.length; i++) {
+                const j = (i + 1) % validPoints.length;
+                const cross = validPoints[i].x * validPoints[j].y - validPoints[j].x * validPoints[i].y;
+                area += cross;
+                centerX += (validPoints[i].x + validPoints[j].x) * cross;
+                centerY += (validPoints[i].y + validPoints[j].y) * cross;
+            }
+            area /= 2;
+            centerX /= (6 * area);
+            centerY /= (6 * area);
 
             // FIXED: Apply viewport offset to match visual terrain position
             const viewportBounds = this.getViewportBounds();
@@ -1399,6 +2067,9 @@ class MarchingCubesTerrain extends Module {
                     lineWidth: 1
                 }
             });
+
+            
+            Matter.Body.setStatic(body, true);
 
             // FIXED: Verify the body was created successfully
             if (!body || !body.vertices) {
@@ -1542,7 +2213,13 @@ class MarchingCubesTerrain extends Module {
             biomes: this.biomes,
             enableRigidbodies: this.enableRigidbodies,
             rigidbodyRadius: this.rigidbodyRadius,
-            rigidbodyGridSize: this.rigidbodyGridSize
+            rigidbodyGridSize: this.rigidbodyGridSize,
+            // New generation type properties
+            generationType: this.generationType,
+            mazeComplexity: this.mazeComplexity,
+            minHeight: this.minHeight,
+            voronoiSites: this.voronoiSites,
+            voronoiRelaxation: this.voronoiRelaxation
         };
     }
 
@@ -1573,6 +2250,13 @@ class MarchingCubesTerrain extends Module {
         this.enableRigidbodies = data.enableRigidbodies || false;
         this.rigidbodyRadius = data.rigidbodyRadius || 100;
         this.rigidbodyGridSize = data.rigidbodyGridSize || 50;
+
+        // Restore new generation type properties
+        this.generationType = data.generationType || "Random";
+        this.mazeComplexity = data.mazeComplexity !== undefined ? data.mazeComplexity : 0.7;
+        this.minHeight = data.minHeight !== undefined ? data.minHeight : 500;
+        this.voronoiSites = data.voronoiSites !== undefined ? data.voronoiSites : 50;
+        this.voronoiRelaxation = data.voronoiRelaxation !== undefined ? data.voronoiRelaxation : 1;
 
         // Restore rigidbodies if they were active
         if (this.enableRigidbodies) {

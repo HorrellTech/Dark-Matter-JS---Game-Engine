@@ -19,7 +19,7 @@ class PhysicsManager {
         this.gameObjectBodies = new Map(); // Maps game objects to physics bodies
 
         // Debug drawing options
-        this.debugDraw = true;
+        this.debugDraw = false;
         this.wireframes = true;
 
         // Performance settings
@@ -140,12 +140,17 @@ class PhysicsManager {
             this.bodies.set(body, gameObject);
             this.gameObjectBodies.set(gameObject, body);
 
+            // FIXED: Make body static BEFORE adding to world to prevent collision resolution
+            if (body.isStatic) {
+                Matter.Body.setStatic(body, true);
+            }
+
             // Add body to the physics world if not already added
             if (this.engine && this.engine.world && !this.engine.world.bodies.includes(body)) {
                 Matter.Composite.add(this.engine.world, body);
             }
 
-            // Ensure static bodies are really static
+            // Ensure static bodies are really static (redundant but safe)
             if (body.isStatic) {
                 Matter.Body.setStatic(body, true);
             }

@@ -811,6 +811,7 @@ class ExportManager {
             'DrawText': 'src/core/Modules/Drawing/DrawText.js',
             'DrawLine': 'src/core/Modules/Drawing/DrawLine.js',
             'DrawGrid': 'src/core/Modules/Drawing/DrawGrid.js',
+            'MarchingCubesTerrain': 'src/core/Modules/Drawing/MarchingCubesTerrain.js',
 
             'audio-engine': 'src/MelodiCode/js/audio-engine.js',
             'code-interpreter': 'src/MelodiCode/js/code-interpreter.js',

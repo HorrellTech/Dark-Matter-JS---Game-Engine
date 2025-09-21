@@ -654,6 +654,7 @@ class RigidBody extends Module {
                     const pos2 = this.gameObject.getWorldPosition();
                     // Register this RigidBody with the terrain for activation
                     terrain.activateRigidBodiesRegion(
+                        this.gameObject.id,
                         pos2.x, 
                         pos2.y, 
                         this.marchingCubesRadius // 150 unit radius

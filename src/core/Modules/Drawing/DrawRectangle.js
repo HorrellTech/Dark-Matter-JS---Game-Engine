@@ -115,6 +115,7 @@ class DrawRectangle extends Module {
 
     toJSON() {
         return {
+            ...super.toJSON(),
             width: this.width,
             height: this.height,
             offset:  { x: this.offset.x, y: this.offset.y },
@@ -131,6 +132,7 @@ class DrawRectangle extends Module {
      * @returns {Object} Serialized data
      */
     fromJSON(data) {
+        super.fromJSON(data);
         if (data.width !== undefined) this.width = data.width;
         if (data.height !== undefined) this.height = data.height;
         if (data.offset) this.offset = data.offset;
