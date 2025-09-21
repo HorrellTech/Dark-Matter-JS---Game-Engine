@@ -1240,6 +1240,10 @@ class Engine {
                 });
         }
 
+        if (window.physicsManager && window.physicsManager.debugDraw) {
+            window.physicsManager.drawDebug(this.ctx);
+        }
+
         this.ctx.restore();
 
         // Draw GUI canvas AFTER restoring transform (GUI should not be affected by viewport)

@@ -536,7 +536,7 @@ class MarchingCubesTerrain extends Module {
     }
 
     // Get viewport bounds
-    getViewportBounds() {
+    /*getViewportBounds() {
         const viewport = window.engine.viewport;
         const viewportX = viewport.x || 0;
         const viewportY = viewport.y || 0;
@@ -556,16 +556,50 @@ class MarchingCubesTerrain extends Module {
             width: viewportWidth,
             height: viewportHeight
         };
+    }*/
+
+    getViewportBounds() {
+        const viewport = window.engine.viewport;
+        const viewportX = viewport.x || 0;
+        const viewportY = viewport.y || 0;
+        const viewportWidth = viewport.width || 800;
+        const viewportHeight = viewport.height || 600;
+
+        const halfWidth = viewportWidth / 2;
+        const halfHeight = viewportHeight / 2;
+
+        // Calculate proper viewport bounds with half viewport offset for grid centering
+        const left = viewportX - halfWidth - this.viewportMargin;
+        const right = viewportX + halfWidth + this.viewportMargin;
+        const top = viewportY - halfHeight - this.viewportMargin;
+        const bottom = viewportY + halfHeight + this.viewportMargin;
+
+        return {
+            left: left,
+            right: right,
+            top: top,
+            bottom: bottom,
+            centerX: viewportX,
+            centerY: viewportY,
+            width: viewportWidth,
+            height: viewportHeight,
+            halfWidth: halfWidth,
+            halfHeight: halfHeight
+        };
     }
 
     // Get visible grids for current viewport
     getVisibleGrids(viewportBounds) {
         const gridWorldSize = this.gridSize * this.gridResolution;
 
-        const minGridX = Math.floor(viewportBounds.left / gridWorldSize);
-        const maxGridX = Math.floor(viewportBounds.right / gridWorldSize);
-        const minGridY = Math.floor(viewportBounds.top / gridWorldSize);
-        const maxGridY = Math.floor(viewportBounds.bottom / gridWorldSize);
+        // Apply half viewport offset to center grid generation on viewport center
+        const offsetX = viewportBounds.halfWidth;
+        const offsetY = viewportBounds.halfHeight;
+
+        const minGridX = Math.floor((viewportBounds.left + offsetX) / gridWorldSize);
+        const maxGridX = Math.floor((viewportBounds.right + offsetX) / gridWorldSize);
+        const minGridY = Math.floor((viewportBounds.top + offsetY) / gridWorldSize);
+        const maxGridY = Math.floor((viewportBounds.bottom + offsetY) / gridWorldSize);
 
         const visibleGrids = [];
         for (let x = minGridX; x <= maxGridX; x++) {
@@ -618,8 +652,8 @@ class MarchingCubesTerrain extends Module {
 
     draw(ctx) {
         const viewportBounds = this.getViewportBounds();
-        const offsetX = viewportBounds.width / 2 - (viewportBounds.centerX);
-        const offsetY = viewportBounds.height / 2 - (viewportBounds.centerY);
+        const offsetX = viewportBounds.width / 2 - (viewportBounds.centerX) - viewportBounds.width / 2;
+        const offsetY = viewportBounds.height / 2 - (viewportBounds.centerY) - viewportBounds.height / 2;
 
         ctx.save();
 
@@ -721,8 +755,6 @@ class MarchingCubesTerrain extends Module {
                 });
             }
         });
-
-        window.physicsManager?.drawDebug(ctx);
     }
 
     drawBiomeGroup(ctx, cells, biome, offsetX, offsetY) {

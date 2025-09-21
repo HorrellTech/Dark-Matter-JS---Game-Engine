@@ -188,8 +188,8 @@ class PhysicsManager {
             const halfHeight = viewportHeight / 2;
             
             // Calculate offset from viewport center (same as MarchingCubesTerrain)
-            viewportOffsetX = halfWidth - viewport.x;
-            viewportOffsetY = halfHeight - viewport.y;
+            viewportOffsetX = 0;//halfWidth - viewport.x;
+            viewportOffsetY = 0;//halfHeight - viewport.y;
         }
 
         // Render all bodies
