@@ -41,6 +41,9 @@ class RigidBody extends Module {
         // Constraint options
         this.fixedRotation = false; // Prevent rotation
 
+        this.marchingCubesTerrain = ""; // Reference to MarchingCubesTerrain if used
+        this.marchingCubesRadius = 150; // Radius around body to activate terrain
+
         // Collision tracking
         this.inCollision = new Set();  // Set of bodies currently in contact
         this.bodyNeedsUpdate = false;  // Flag to update static bodies when moved
@@ -166,6 +169,15 @@ class RigidBody extends Module {
 
         this.exposeProperty("isSensor", "boolean", this.isSensor, {
             onChange: (val) => { this.isSensor = val; if (this.body) this.body.isSensor = val; }
+        });
+
+        this.exposeProperty("marchingCubesTerrain", "string", this.marchingCubesTerrain, {
+            onChange: (val) => { this.marchingCubesTerrain = val;  }
+        });
+
+        this.exposeProperty("marchingCubesRadius", "number", this.marchingCubesRadius, {
+            min: 10,
+            onChange: (val) => { this.marchingCubesRadius = val;  }
         });
 
         this.boundOnCollisionStart = this.onCollisionStart.bind(this);
@@ -632,6 +644,27 @@ class RigidBody extends Module {
                 this.body.angle = 0;
             }
         }
+
+        if(this.marchingCubesTerrain) {
+            try {
+                const terrainObject = this.getGameObjectByName(this.marchingCubesTerrain);
+                const terrain = terrainObject.getModule("MarchingCubesTerrain");
+
+                if (terrain) {
+                    const pos2 = this.gameObject.getWorldPosition();
+                    // Register this RigidBody with the terrain for activation
+                    terrain.activateRigidBodiesRegion(
+                        pos2.x, 
+                        pos2.y, 
+                        this.marchingCubesRadius // 150 unit radius
+                    );
+                } else {
+                    console.warn(`MarchingCubesTerrain object named "${this.marchingCubesTerrain}" not found.`);
+                }
+            } catch (error) {
+                console.error("Error accessing marching cubes terrain:", error);
+            }
+        }
     }
 
     /**
@@ -656,8 +689,8 @@ class RigidBody extends Module {
         const colliderRadius = (this.gameObject.size?.x * this.gameObject.scale.x || this.radius) / 2;
 
         ctx.save();
-        ctx.translate(pos.x, pos.y);
-        ctx.rotate(angle);
+        //ctx.translate(pos.x, pos.y);
+        //ctx.rotate(angle);
         
         // Set gizmo style
         ctx.strokeStyle = this.isSensor ? '#00ff00' : '#ffffff';
@@ -751,6 +784,8 @@ class RigidBody extends Module {
             frictionAir: this.frictionAir,
             restitution: this.restitution,
             fixedRotation: this.fixedRotation,
+            marchingCubesTerrain: this.marchingCubesTerrain,
+            marchingCubesRadius: this.marchingCubesRadius,
             isSensor: this.isSensor,
             useGravity: this.useGravity,
             sleepingAllowed: this.sleepingAllowed,
@@ -776,6 +811,8 @@ class RigidBody extends Module {
         this.frictionAir = data.frictionAir ?? this.frictionAir;
         this.restitution = data.restitution ?? this.restitution;
         this.fixedRotation = data.fixedRotation ?? false;
+        this.marchingCubesTerrain = data.marchingCubesTerrain ?? this.marchingCubesTerrain;
+        this.marchingCubesRadius = data.marchingCubesRadius ?? this.marchingCubesRadius;
         this.isSensor = data.isSensor ?? false;
         this.useGravity = data.useGravity ?? true;
         this.sleepingAllowed = data.sleepingAllowed ?? true;

@@ -70,6 +70,10 @@ class Module {
 
         /** @type {Array<string>} Required modules for this module */
         this._requirements = [];
+
+        this.input = null; // Reference to the Input system, set when attached to a GameObject
+
+        this.engine = null; // Reference to the main engine, set when attached to a GameObject
     }
 
     /**
@@ -79,6 +83,13 @@ class Module {
      */
     async preload() {
         // Override in subclass to implement custom loading behavior
+        if(!this.input) {
+            this.input = window.input;
+        }
+
+        if(!this.engine) {
+            this.engine = window.engine;
+        }
     }
 
     /**
@@ -216,6 +227,13 @@ class Module {
         if (this.gameObject) {
             this.gameObject.position = position;
         }
+    }
+
+    getGameObjectByName(name) {
+        if (window.engine) {
+            return window.engine.getGameObjectByName(name);
+        }
+        return null;
     }
 
     set gameObject(go) {

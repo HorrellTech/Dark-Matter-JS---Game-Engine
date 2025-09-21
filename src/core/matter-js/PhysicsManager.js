@@ -19,7 +19,7 @@ class PhysicsManager {
         this.gameObjectBodies = new Map(); // Maps game objects to physics bodies
 
         // Debug drawing options
-        this.debugDraw = false;
+        this.debugDraw = true;
         this.wireframes = true;
 
         // Performance settings
@@ -175,6 +175,23 @@ class PhysicsManager {
         // Save context state
         ctx.save();
 
+        // Get viewport bounds for terrain rigidbody offset calculation
+        const viewport = window.engine?.viewport;
+        let viewportOffsetX = 0;
+        let viewportOffsetY = 0;
+        
+        if (viewport) {
+            // Calculate viewport offset like MarchingCubesTerrain does
+            const viewportWidth = viewport.width || 800;
+            const viewportHeight = viewport.height || 600;
+            const halfWidth = viewportWidth / 2;
+            const halfHeight = viewportHeight / 2;
+            
+            // Calculate offset from viewport center (same as MarchingCubesTerrain)
+            viewportOffsetX = halfWidth - viewport.x;
+            viewportOffsetY = halfHeight - viewport.y;
+        }
+
         // Render all bodies
         const bodies = Matter.Composite.allBodies(this.world);
 
@@ -183,14 +200,22 @@ class PhysicsManager {
         for (let i = 0; i < bodies.length; i++) {
             const body = bodies[i];
             const vertices = body.vertices;
+            
+            // Check if this body belongs to a terrain rigidbody
+            const gameObject = this.bodies.get(body);
+            const isTerrainRigidbody = gameObject && gameObject.isTerrainRigidbody;
 
-            ctx.moveTo(vertices[0].x, vertices[0].y);
+            // Apply viewport offset for terrain rigidbodies
+            const offsetX = isTerrainRigidbody ? viewportOffsetX : 0;
+            const offsetY = isTerrainRigidbody ? viewportOffsetY : 0;
+
+            ctx.moveTo(vertices[0].x + offsetX, vertices[0].y + offsetY);
 
             for (let j = 1; j < vertices.length; j++) {
-                ctx.lineTo(vertices[j].x, vertices[j].y);
+                ctx.lineTo(vertices[j].x + offsetX, vertices[j].y + offsetY);
             }
 
-            ctx.lineTo(vertices[0].x, vertices[0].y);
+            ctx.lineTo(vertices[0].x + offsetX, vertices[0].y + offsetY);
         }
 
         ctx.lineWidth = 1;
@@ -216,16 +241,28 @@ class PhysicsManager {
 
             // Calculate points
             if (bodyA) {
-                pAx = bodyA.position.x + pointA.x;
-                pAy = bodyA.position.y + pointA.y;
+                // Check if bodyA is a terrain rigidbody
+                const gameObjectA = this.bodies.get(bodyA);
+                const isTerrainRigidbodyA = gameObjectA && gameObjectA.isTerrainRigidbody;
+                const offsetXA = isTerrainRigidbodyA ? viewportOffsetX : 0;
+                const offsetYA = isTerrainRigidbodyA ? viewportOffsetY : 0;
+                
+                pAx = bodyA.position.x + pointA.x + offsetXA;
+                pAy = bodyA.position.y + pointA.y + offsetYA;
             } else {
                 pAx = pointA.x;
                 pAy = pointA.y;
             }
 
             if (bodyB) {
-                pBx = bodyB.position.x + pointB.x;
-                pBy = bodyB.position.y + pointB.y;
+                // Check if bodyB is a terrain rigidbody
+                const gameObjectB = this.bodies.get(bodyB);
+                const isTerrainRigidbodyB = gameObjectB && gameObjectB.isTerrainRigidbody;
+                const offsetXB = isTerrainRigidbodyB ? viewportOffsetX : 0;
+                const offsetYB = isTerrainRigidbodyB ? viewportOffsetY : 0;
+                
+                pBx = bodyB.position.x + pointB.x + offsetXB;
+                pBy = bodyB.position.y + pointB.y + offsetYB;
             } else {
                 pBx = pointB.x;
                 pBy = pointB.y;
