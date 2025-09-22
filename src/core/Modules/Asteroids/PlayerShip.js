@@ -40,6 +40,10 @@ class PlayerShip extends Module {
         this.shipSize = 12;
         this.showThrust = true;
 
+        // Marching Cubes terrain reference
+        this.marchingCubesTerrain = null;
+        this.marchingCubesTerrainName = "MarchingCubesTerrain";
+
         // Expose properties for inspector
         this.exposeProperty("thrustPower", "number", 300, {
             description: "Thrust force applied when accelerating",
@@ -174,6 +178,40 @@ class PlayerShip extends Module {
                 this.showThrust = val;
             }
         });
+
+        /*this.exposeProperty("marchingCubesTerrainName", "string", "MarchingCubesTerrain", {
+            description: "Name of the Marching Cubes terrain object",
+            onChange: (val) => {
+                this.marchingCubesTerrainName = val;
+                this.findMarchingCubesTerrain();
+            }
+        });*/
+    }
+
+    /**
+     * Find and reference the Marching Cubes terrain object
+     */
+    findMarchingCubesTerrain() {
+        if (!window.engine || !window.engine.gameObjects) {
+            console.warn("Cannot find Marching Cubes terrain: No engine reference available");
+            return false;
+        }
+
+        // Try to find the terrain object by name
+        const terrainObject = this.getGameObjectByName(this.marchingCubesTerrainName);
+        if (terrainObject) {
+            this.marchingCubesTerrain = terrainObject.getModule("MarchingCubesTerrain");
+            if (this.marchingCubesTerrain) {
+                console.log(`Found Marching Cubes terrain: ${this.marchingCubesTerrainName}`);
+                return true;
+            } else {
+                //console.warn(`Object "${this.marchingCubesTerrainName}" found but has no MarchingCubesTerrain module`);
+                return false;
+            }
+        } else {
+            //console.warn(`Marching Cubes terrain object not found: ${this.marchingCubesTerrainName}`);
+            return false;
+        }
     }
 
     start() {
@@ -185,9 +223,14 @@ class PlayerShip extends Module {
     }
 
     loop(deltaTime) {
+        //if(!this.marchingCubesTerrain) {
+            //this.findMarchingCubesTerrain();
+        //}
+
         this.handleInput(deltaTime);
         this.updatePhysics(deltaTime);
         this.checkShipCollisions(deltaTime);
+        //this.checkTerrainCollisions(deltaTime);
         //this.applyScreenWrapping();
     }
 
@@ -510,11 +553,71 @@ class PlayerShip extends Module {
         this.bulletPrefabName = prefabName;
     }
 
-    
+    /**
+     * Check for collisions with Marching Cubes terrain
+     */
+    checkTerrainCollisions(deltaTime) {
+        if (!this.marchingCubesTerrain) {
+            // Try to find terrain if not already referenced
+            if (!this.findMarchingCubesTerrain()) {
+                return; // No terrain found, skip collision check
+            }
+        }
+
+        // Check collision at ship center with radius consideration
+        const shipRadius = this.shipSize * 0.5; // Use half ship size as radius
+        const collisionResult = this.marchingCubesTerrain.checkCollision(
+            this.gameObject.position.x, 
+            this.gameObject.position.y, 
+            true // Enable smooth collision detection
+        );
+
+        // Check if ship is colliding considering radius
+        if (collisionResult.collision && (this.gameObject.position.y - collisionResult.height) < shipRadius) {
+            this.handleTerrainCollision(collisionResult, deltaTime, shipRadius);
+        }
+    }
 
     /**
- * Check for collisions with other ships
- */
+     * Handle collision with terrain
+     */
+    handleTerrainCollision(collisionResult, deltaTime, shipRadius) {
+        // Assume terrain normal is upward (0, 1) for simplicity
+        const normal = { x: 0, y: 1 };
+        
+        // Calculate overlap (how much the ship is penetrating the terrain)
+        const overlap = shipRadius - (this.gameObject.position.y - collisionResult.height);
+        
+        // Push ship outside the terrain
+        this.gameObject.position.y += overlap + 1; // Add small buffer
+        
+        // Calculate bounce
+        const restitution = 0.5; // Bounciness factor
+        const dotProduct = this.velocity.x * normal.x + this.velocity.y * normal.y;
+        
+        // Reflect velocity over the normal
+        this.velocity.x -= 2 * dotProduct * normal.x * restitution;
+        this.velocity.y -= 2 * dotProduct * normal.y * restitution;
+        
+        // If velocity is very low after bounce, stop it to prevent jitter
+        const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
+        if (speed < 10) {
+            this.velocity.x = 0;
+            this.velocity.y = 0;
+        }
+        
+        // Optional: Add some damage from terrain collision
+        //if (this.takeDamage) {
+        //    const damage = 2; // Small amount of damage from terrain collision
+        //    this.takeDamage(damage);
+        //}
+        
+        console.log(`Ship collided with ${collisionResult.biome} terrain at height ${collisionResult.height}, bounced with overlap ${overlap}`);
+    }
+
+    /**
+     * Check for collisions with other ships
+     */
     checkShipCollisions(deltaTime) {
         if (!window.engine || !window.engine.gameObjects) return;
 

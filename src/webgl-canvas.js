@@ -4132,7 +4132,7 @@ class WebGLCanvas {
  * Evaluate gradient color at specific coordinates
  */
     evaluateGradient(gradient, x, y) {
-        if (!gradient.colorStops || gradient.colorStops.length === 0) {
+        if (!gradient || !gradient.colorStops || gradient.colorStops.length === 0) {
             return [1, 1, 1, 1]; // Default white
         }
 
@@ -4141,6 +4141,7 @@ class WebGLCanvas {
         }
 
         let t = 0;
+
         if (gradient.type === 'linear') {
             // Calculate position along gradient line
             const dx = gradient.x1 - gradient.x0;
@@ -4158,6 +4159,13 @@ class WebGLCanvas {
             const dy = y - gradient.y0;
             const dist = Math.sqrt(dx * dx + dy * dy);
             t = dist / gradient.r1;
+        } else if (gradient.type === 'conic') {
+            // Calculate angle from center
+            const dx = x - gradient.x;
+            const dy = y - gradient.y;
+            let angle = Math.atan2(dy, dx) - gradient.startAngle;
+            // Normalize angle to 0-1 range
+            t = (angle / (2 * Math.PI) + 0.5) % 1.0;
         }
 
         t = Math.max(0, Math.min(1, t));
@@ -5386,19 +5394,49 @@ class WebGLCanvas {
     * @param {number} width - Line width
     */
     drawLineJoin(seg1, seg2, width) {
+        // Calculate the join point
         const joinX = seg1.x2;
         const joinY = seg1.y2;
         const halfWidth = width / 2;
-
+        
+        // Calculate directions of both segments
+        const dir1X = seg1.x2 - seg1.x1;
+        const dir1Y = seg1.y2 - seg1.y1;
+        const len1 = Math.sqrt(dir1X * dir1X + dir1Y * dir1Y);
+        
+        const dir2X = seg2.x2 - seg2.x1;
+        const dir2Y = seg2.y2 - seg2.y1;
+        const len2 = Math.sqrt(dir2X * dir2X + dir2Y * dir2Y);
+        
+        if (len1 === 0 || len2 === 0) return;
+        
+        // Normalize directions
+        const nx1 = dir1X / len1;
+        const ny1 = dir1Y / len1;
+        const nx2 = dir2X / len2;
+        const ny2 = dir2Y / len2;
+        
+        // Calculate perpendicular vectors
+        const perp1X = -ny1;
+        const perp1Y = nx1;
+        const perp2X = -ny2;
+        const perp2Y = nx2;
+        
+        // Calculate the four corners of the join rectangle
+        const corners = [
+            { x: joinX - perp1X * halfWidth, y: joinY - perp1Y * halfWidth },
+            { x: joinX + perp1X * halfWidth, y: joinY + perp1Y * halfWidth },
+            { x: joinX + perp2X * halfWidth, y: joinY + perp2Y * halfWidth },
+            { x: joinX - perp2X * halfWidth, y: joinY - perp2Y * halfWidth }
+        ];
+        
+        // Draw the join rectangle
+        this.drawLineRectangle(corners);
+        
+        // For round joins, add a circle at the join point
         if (this.state.lineJoin === 'round') {
-            // Draw a circle at the join point
-            this.fillCircle(joinX, joinY, halfWidth);
-        } else if (this.state.lineJoin === 'bevel') {
-            // Calculate bevel join geometry (simplified)
-            // This is complex geometry, so for now just draw a circle
             this.fillCircle(joinX, joinY, halfWidth);
         }
-        // For 'miter', we don't need to do anything extra as the rectangles will overlap
     }
 
     /*
@@ -5465,26 +5503,35 @@ class WebGLCanvas {
             return;
         }
 
+        // Extend the line by 1 pixel in both directions
+        const extendDist = 1; // 1 pixel
+        const extendX = (dx / length) * extendDist;
+        const extendY = (dy / length) * extendDist;
+        const extendedX1 = x1 - extendX;
+        const extendedY1 = y1 - extendY;
+        const extendedX2 = x2 + extendX;
+        const extendedY2 = y2 + extendY;
+
         // Normalized perpendicular vector
         const perpX = -dy / length;
         const perpY = dx / length;
 
         // Half width offset
         const halfWidth = width / 2;
-        const offsetX = perpX * halfWidth;
-        const offsetY = perpY * halfWidth;
+        const offsetX = (perpX * halfWidth);
+        const offsetY = (perpY * halfWidth);
 
-        // Calculate the four corners of the line rectangle
+        // Calculate the four corners of the line rectangle using extended points
         const corners = [
-            { x: x1 - offsetX, y: y1 - offsetY }, // Bottom-left of line start
-            { x: x1 + offsetX, y: y1 + offsetY }, // Top-left of line start
-            { x: x2 + offsetX, y: y2 + offsetY }, // Top-right of line end
-            { x: x2 - offsetX, y: y2 - offsetY }  // Bottom-right of line end
+            { x: extendedX1 - offsetX, y: extendedY1 - offsetY }, // Bottom-left of line start
+            { x: extendedX1 + offsetX, y: extendedY1 + offsetY }, // Top-left of line start
+            { x: extendedX2 + offsetX, y: extendedY2 + offsetY }, // Top-right of line end
+            { x: extendedX2 - offsetX, y: extendedY2 - offsetY }  // Bottom-right of line end
         ];
 
         // Handle line caps
         if (this.state.lineCap !== 'butt') {
-            this.drawLineWithCaps(corners, x1, y1, x2, y2, width, dx, dy, length);
+            this.drawLineWithCaps(corners, extendedX1, extendedY1, extendedX2, extendedY2, width, dx, dy, length);
         } else {
             this.drawLineRectangle(corners);
         }
@@ -5566,40 +5613,41 @@ class WebGLCanvas {
     drawLineWithCaps(corners, x1, y1, x2, y2, width, dx, dy, length) {
         // Draw the main line rectangle
         this.drawLineRectangle(corners);
-
+        
         const halfWidth = width / 2;
-
+        
         if (this.state.lineCap === 'round') {
             // Draw round caps as circles
             this.fillCircle(x1, y1, halfWidth);
             this.fillCircle(x2, y2, halfWidth);
         } else if (this.state.lineCap === 'square') {
-            // Extend the line by half width on each end
-            const extendX = (dx / length) * halfWidth;
-            const extendY = (dy / length) * halfWidth;
-
-            // Extended corners
+            // Extend the line by half width plus a small epsilon to prevent gaps between line chains
+            const epsilon = 5; // Small extension to close gaps
+            const extendX = (dx / length) * (halfWidth + epsilon);
+            const extendY = (dy / length) * (halfWidth + epsilon);
+            
+            // Calculate perpendicular vectors
             const perpX = -dy / length;
             const perpY = dx / length;
             const offsetX = perpX * halfWidth;
             const offsetY = perpY * halfWidth;
-
-            // Start cap
+            
+            // Start cap - extend beyond the start point
             const startCap = [
                 { x: x1 - extendX - offsetX, y: y1 - extendY - offsetY },
                 { x: x1 - extendX + offsetX, y: y1 - extendY + offsetY },
                 { x: x1 + offsetX, y: y1 + offsetY },
                 { x: x1 - offsetX, y: y1 - offsetY }
             ];
-
-            // End cap
+            
+            // End cap - extend beyond the end point
             const endCap = [
                 { x: x2 - offsetX, y: y2 - offsetY },
                 { x: x2 + offsetX, y: y2 + offsetY },
                 { x: x2 + extendX + offsetX, y: y2 + extendY + offsetY },
                 { x: x2 + extendX - offsetX, y: y2 + extendY - offsetY }
             ];
-
+            
             this.drawLineRectangle(startCap);
             this.drawLineRectangle(endCap);
         }

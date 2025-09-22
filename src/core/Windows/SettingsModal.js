@@ -17,6 +17,7 @@ class SettingsModal {
             snapToGrid: false,
 
             // Rendering settings
+            canvasContext: '2d', // '2d' or 'webgl'
             antiAliasing: true,
             pixelPerfect: false,
             smoothing: true,
@@ -78,11 +79,12 @@ class SettingsModal {
             window.engine.renderConfig.smoothing = this.settings.smoothing;
             window.engine.renderConfig.pixelPerfect = this.settings.pixelPerfect;
             window.engine.setVSync(this.settings.enableVSync);
+            window.engine.useWebGL = (this.settings.canvasContext === 'webgl' || false);
         }
 
         // Apply auto-save settings
         if (window.autoSaveManager && this.settings.autoSave) {
-            window.autoSaveManager.setInterval(this.settings.autoSaveInterval * 1000);
+            //window.autoSaveManager.setInterval(this.settings.autoSaveInterval * 1000);
         }
 
         // Apply showSaveReminder to ProjectManager if available
@@ -167,6 +169,11 @@ class SettingsModal {
                         <div class="settings-panel" id="rendering-panel">
                             <h3>Rendering Settings</h3>
                             <div class="settings-group">
+                                <label>Canvas Context:</label>
+                                <select id="setting-canvas-context">
+                                    <option value="2d" ${this.settings.canvasContext === '2d' ? 'selected' : ''}>2D Context</option>
+                                    <option value="webgl" ${this.settings.canvasContext === 'webgl' ? 'selected' : ''}>WebGL Context</option>
+                                </select>
                                 <label>
                                     <input type="checkbox" id="setting-anti-aliasing" ${this.settings.antiAliasing ? 'checked' : ''}>
                                     Enable Anti-Aliasing
@@ -381,6 +388,8 @@ class SettingsModal {
     }
 
     applyChanges() {
+        const oldCanvasContext = this.settings.canvasContext;
+
         // Collect all settings from the form
         //this.settings.autoSave = this.modal.querySelector('#setting-auto-save').checked;
         //this.settings.autoSaveInterval = parseInt(this.modal.querySelector('#setting-auto-save-interval').value);
@@ -389,6 +398,7 @@ class SettingsModal {
         this.settings.snapToGrid = this.modal.querySelector('#setting-snap-to-grid').checked;
         this.settings.showSaveReminder = this.modal.querySelector('#setting-show-save-reminder').checked;
 
+        this.settings.canvasContext = this.modal.querySelector('#setting-canvas-context').value;
         this.settings.antiAliasing = this.modal.querySelector('#setting-anti-aliasing').checked;
         this.settings.pixelPerfect = this.modal.querySelector('#setting-pixel-perfect').checked;
         this.settings.smoothing = this.modal.querySelector('#setting-smoothing').checked;
@@ -413,10 +423,14 @@ class SettingsModal {
         if (window.engine) {
             window.engine.updateFPSLimit(this.settings.maxFPS);
         }
-        this.close();
 
-        // Show confirmation
-        this.showNotification('Settings applied successfully!');
+        if (oldCanvasContext !== this.settings.canvasContext) {
+            this.showNotification('Canvas context changed. Please refresh the page for changes to take effect.');
+        } else {
+            this.showNotification('Settings applied successfully!');
+        }
+
+        this.close();
     }
 
     resetToDefaults() {
@@ -480,6 +494,7 @@ class SettingsModal {
         this.modal.querySelector('#setting-snap-to-grid').checked = this.settings.snapToGrid;
         this.modal.querySelector('#setting-show-save-reminder').checked = this.settings.showSaveReminder;
 
+        this.modal.querySelector('#setting-canvas-context').value = this.settings.canvasContext;
         this.modal.querySelector('#setting-anti-aliasing').checked = this.settings.antiAliasing;
         this.modal.querySelector('#setting-pixel-perfect').checked = this.settings.pixelPerfect;
         this.modal.querySelector('#setting-smoothing').checked = this.settings.smoothing;

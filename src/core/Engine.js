@@ -1,7 +1,7 @@
 class Engine {
     constructor(canvas, options = {}) {
         this.canvas = canvas;
-        this.useWebGL = options.useWebGL || true; // New option to enable WebGLCanvas
+        this.useWebGL = options.useWebGL || false; // New option to enable WebGLCanvas
 
         this.guiCanvas = document.createElement('canvas');
         this.guiCanvas.width = 800;

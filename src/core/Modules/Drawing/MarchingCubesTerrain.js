@@ -16,7 +16,7 @@ class MarchingCubesTerrain extends Module {
         this.noisePersistence = 0.5;
         this.noiseLacunarity = 2.0;
         this.terrainHeight = 100;
-        this.lineWidth = 1.5;
+        this.lineWidth = 2;
         this.smoothTerrain = true;
         this.seed = 12345;
         this.viewportMargin = 200;
@@ -41,46 +41,69 @@ class MarchingCubesTerrain extends Module {
 
         // Biome configurations
         this.biomes = {
-            water: {
-                name: "Water",
-                color: "#1e90ff",
-                fillColor: "rgba(30, 144, 255, 0.8)",
-                heightRange: [0.0, 0.35],
-                temperature: "cold",
-                humidity: "wet"
-            },
-            sand: {
-                name: "Sand",
-                color: "#f4a460",
-                fillColor: "rgba(244, 164, 96, 0.8)",
-                heightRange: [0.25, 0.5],
-                temperature: "warm",
-                humidity: "dry"
-            },
             grass: {
                 name: "Grass",
                 color: "#4a7c59",
-                fillColor: "rgba(74, 124, 89, 0.8)",
+                fillColor: this.rgbaStringToHex("rgba(105, 69, 54, 0.8)"),
                 heightRange: [0.35, 0.75],
                 temperature: "temperate",
-                humidity: "moderate"
-            },
+                humidity: "moderate",
+                // New color variation properties
+                colorVariation: 0.1, // 0-1, amount of random color variation
+                darkenAmount: 0.2, // 0-1, how much to darken filled areas
+                lightenAmount: 0.1, // 0-1, how much to lighten filled areas
+                // Texture generation properties
+                textureScale: 0.02, // Scale for texture pattern generation
+                textureContrast: 0.3, // 0-1, contrast of texture pattern
+                // Square decoration properties
+                enableSquares: true, // Enable random squares around cells
+                squareCount: 3, // Number of squares per cell
+                squareSize: 4, // Size of decorative squares (pixels)
+                squareSpacing: 8, // Minimum spacing between squares
+                squareOpacity: 0.6 // Opacity of decorative squares
+            }/*,
             dirt: {
                 name: "Dirt",
-                color: "#8b4513",
-                fillColor: "rgba(139, 69, 19, 0.8)",
+                color: this.rgbaStringToHex("rgba(156, 110, 90, 0.8)"),
+                fillColor: this.rgbaStringToHex("rgba(105, 69, 54, 0.8)"),
                 heightRange: [0.35, 0.75],
                 temperature: "warm",
-                humidity: "dry"
+                humidity: "dry",
+                // New color variation properties
+                colorVariation: 0.4,
+                darkenAmount: 0.15,
+                lightenAmount: 0.05,
+                // Texture generation properties
+                textureScale: 0.015,
+                textureContrast: 0.6,
+                // Square decoration properties
+                enableSquares: true,
+                squareCount: 2,
+                squareSize: 3,
+                squareSpacing: 6,
+                squareOpacity: 0.5
             },
             stone: {
                 name: "Stone",
                 color: "#696969",
-                fillColor: "rgba(105, 105, 105, 0.8)",
+                fillColor: this.rgbaStringToHex("rgba(105, 105, 105, 0.8)"),
                 heightRange: [0.75, 1.0],
                 temperature: "cold",
-                humidity: "dry"
-            }
+                humidity: "dry",
+                // New color variation properties
+                colorVariation: 0.2,
+                darkenAmount: 0.3,
+                lightenAmount: 0.05,
+                // Texture generation properties
+                textureScale: 0.025,
+                textureContrast: 0.4,
+                // Square decoration properties
+                enableSquares: false,
+                squareCount: 1,
+                squareSize: 2,
+                squareSpacing: 4,
+                squareOpacity: 0.4
+            }*/
         };
 
         // Internal state
@@ -263,6 +286,117 @@ class MarchingCubesTerrain extends Module {
                     this.biomes[biomeKey].fillColor = val;
                 }
             });
+
+            this.exposeProperty(`${biomeKey}MinHeight`, "number", biome.heightRange[0], {
+                description: `${biome.name} minimum height`,
+                onChange: (val) => {
+                    this.biomes[biomeKey].heightRange[0] = Math.max(0, val);
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}MaxHeight`, "number", biome.heightRange[1], {
+                description: `${biome.name} maximum height`,
+                onChange: (val) => {
+                    this.biomes[biomeKey].heightRange[1] = Math.max(0, val);
+                }
+            });
+
+            // New color variation properties
+            this.exposeProperty(`${biomeKey}ColorVariation`, "number", biome.colorVariation, {
+                description: `${biome.name} color variation (0-1)`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.biomes[biomeKey].colorVariation = Math.max(0, Math.min(1, val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}DarkenAmount`, "number", biome.darkenAmount, {
+                description: `${biome.name} fill darken amount (0-1)`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.biomes[biomeKey].darkenAmount = Math.max(0, Math.min(1, val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}LightenAmount`, "number", biome.lightenAmount, {
+                description: `${biome.name} fill lighten amount (0-1)`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.biomes[biomeKey].lightenAmount = Math.max(0, Math.min(1, val));
+                }
+            });
+
+            // New texture properties
+            this.exposeProperty(`${biomeKey}TextureScale`, "number", biome.textureScale, {
+                description: `${biome.name} texture pattern scale`,
+                min: 0.001,
+                max: 0.1,
+                step: 0.001,
+                onChange: (val) => {
+                    this.biomes[biomeKey].textureScale = Math.max(0.001, Math.min(0.1, val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}TextureContrast`, "number", biome.textureContrast, {
+                description: `${biome.name} texture contrast (0-1)`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.biomes[biomeKey].textureContrast = Math.max(0, Math.min(1, val));
+                }
+            });
+
+            // New square decoration properties
+            this.exposeProperty(`${biomeKey}EnableSquares`, "boolean", biome.enableSquares, {
+                description: `Enable ${biome.name} decorative squares`,
+                onChange: (val) => {
+                    this.biomes[biomeKey].enableSquares = val;
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}SquareCount`, "number", biome.squareCount, {
+                description: `${biome.name} squares per cell`,
+                min: 0,
+                max: 10,
+                onChange: (val) => {
+                    this.biomes[biomeKey].squareCount = Math.max(0, Math.floor(val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}SquareSize`, "number", biome.squareSize, {
+                description: `${biome.name} square size (pixels)`,
+                min: 1,
+                max: 20,
+                onChange: (val) => {
+                    this.biomes[biomeKey].squareSize = Math.max(1, Math.floor(val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}SquareSpacing`, "number", biome.squareSpacing, {
+                description: `${biome.name} minimum square spacing`,
+                min: 2,
+                max: 50,
+                onChange: (val) => {
+                    this.biomes[biomeKey].squareSpacing = Math.max(2, Math.floor(val));
+                }
+            });
+
+            this.exposeProperty(`${biomeKey}SquareOpacity`, "number", biome.squareOpacity, {
+                description: `${biome.name} square opacity (0-1)`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.biomes[biomeKey].squareOpacity = Math.max(0, Math.min(1, val));
+                }
+            });
         });
     }
 
@@ -274,6 +408,233 @@ class MarchingCubesTerrain extends Module {
     clearCache() {
         this.gridCache.clear();
         this.activeGrids.clear();
+    }
+
+    rgbaToHex(r, g, b, a = 1) {
+        // Ensure values are within valid ranges
+        r = Math.max(0, Math.min(255, Math.round(r)));
+        g = Math.max(0, Math.min(255, Math.round(g)));
+        b = Math.max(0, Math.min(255, Math.round(b)));
+        a = Math.max(0, Math.min(1, a));
+
+        // Convert alpha from 0-1 to 0-255
+        const alpha = Math.round(a * 255);
+
+        // Convert to hex
+        const toHex = (n) => n.toString(16).padStart(2, '0');
+
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    rgbaStringToHex(rgba) {
+        const [r, g, b, a] = rgba.match(/\d+/g).map(Number);
+        return this.rgbaToHex(r, g, b, a);
+    }
+
+    generateBiomeColor(baseColor, variation = 0) {
+        if (variation === 0) return baseColor;
+        
+        // Convert hex to RGB
+        const hex = baseColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        
+        // Create a seed based on color and position for consistent variation
+        const colorSeed = this.seed + r * 1000 + g * 100 + b * 10;
+        const random = this.seededRandomGeneral(colorSeed);
+        
+        // Apply random variation
+        const variationAmount = variation * 100;
+        const newR = Math.max(0, Math.min(255, r + (random() - 0.5) * variationAmount * 2));
+        const newG = Math.max(0, Math.min(255, g + (random() - 0.5) * variationAmount * 2));
+        const newB = Math.max(0, Math.min(255, b + (random() - 0.5) * variationAmount * 2));
+        
+        return this.rgbaToHex(newR, newG, newB);
+    }
+
+    // New method to darken/lighten colors
+    adjustColorBrightness(color, darkenAmount = 0, lightenAmount = 0) {
+        const hex = color.replace('#', '');
+        let r = parseInt(hex.substr(0, 2), 16);
+        let g = parseInt(hex.substr(2, 2), 16);
+        let b = parseInt(hex.substr(4, 2), 16);
+        
+        // Apply darkening
+        if (darkenAmount > 0) {
+            const darkenFactor = 1 - darkenAmount;
+            r = Math.floor(r * darkenFactor);
+            g = Math.floor(g * darkenFactor);
+            b = Math.floor(b * darkenFactor);
+        }
+        
+        // Apply lightening
+        if (lightenAmount > 0) {
+            const lightenFactor = 1 + lightenAmount;
+            r = Math.min(255, Math.floor(r * lightenFactor));
+            g = Math.min(255, Math.floor(g * lightenFactor));
+            b = Math.min(255, Math.floor(b * lightenFactor));
+        }
+        
+        return this.rgbaToHex(r, g, b);
+    }
+
+    applyTextureOverlay(baseColor, textureIntensity, contrast = 0.5) {
+        // Create texture pattern using noise
+        const textureColor = this.generateTextureColor(textureIntensity, contrast);
+        
+        // Apply texture as overlay - mix base color with texture pattern
+        const hex = baseColor.replace('#', '');
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        
+        // Mix base color with texture pattern
+        const mixRatio = textureIntensity * 0.3; // Control texture strength
+        const texR = Math.floor(r * (1 - mixRatio) + textureColor.r * mixRatio);
+        const texG = Math.floor(g * (1 - mixRatio) + textureColor.g * mixRatio);
+        const texB = Math.floor(b * (1 - mixRatio) + textureColor.b * mixRatio);
+        
+        return this.rgbaToHex(texR, texG, texB);
+    }
+
+    generateTextureColor(intensity, contrast) {
+        // Create varied texture colors based on intensity
+        const baseIntensity = intensity * contrast;
+        
+        // Generate different texture colors for variety
+        const textureVariations = [
+            { r: 30, g: 20, b: 10 },   // Dark brown
+            { r: 50, g: 40, b: 30 },   // Medium brown
+            { r: 20, g: 30, b: 15 },   // Dark green
+            { r: 40, g: 35, b: 25 },   // Light brown
+            { r: 25, g: 25, b: 35 }    // Dark blue-gray
+        ];
+        
+        // Select texture color based on intensity
+        const colorIndex = Math.floor(intensity * textureVariations.length);
+        const selectedColor = textureVariations[Math.min(colorIndex, textureVariations.length - 1)];
+        
+        // Apply intensity variation
+        const intensityFactor = 0.7 + baseIntensity * 0.6;
+        return {
+            r: Math.floor(selectedColor.r * intensityFactor),
+            g: Math.floor(selectedColor.g * intensityFactor),
+            b: Math.floor(selectedColor.b * intensityFactor)
+        };
+    }
+
+    // New method to generate tilable texture pattern
+    generateTexturePattern(x, y, scale, contrast) {
+        // Create a more complex tilable noise pattern
+        const noise1 = this.octaveNoise(x * scale, y * scale);
+        const noise2 = this.octaveNoise(x * scale * 2.1, y * scale * 1.7);
+        const noise3 = this.octaveNoise(x * scale * 4.3, y * scale * 3.9);
+        const noise4 = this.octaveNoise(x * scale * 7.1, y * scale * 5.3);
+        
+        // Combine noises for more complex texture
+        let texture = (noise1 * 0.4 + noise2 * 0.3 + noise3 * 0.2 + noise4 * 0.1);
+        
+        // Apply contrast and create more variation
+        texture = (texture - 0.5) * contrast * 1.5 + 0.5;
+        
+        // Add some cellular-like patterns for more realistic texture
+        const cellular = Math.sin(x * scale * 3) * Math.cos(y * scale * 3) * 0.1;
+        texture += cellular;
+        
+        return Math.max(0, Math.min(1, texture));
+    }
+
+    // New method to generate random squares around a cell
+    generateDecorativeSquares(cellX, cellY, cellSize, biome, polygons) {
+        const squares = [];
+        const squareCount = biome.squareCount;
+        const squareSize = biome.squareSize;
+        const minSpacing = biome.squareSpacing;
+        
+        // Create seed based on cell position and biome for consistent generation
+        const cellSeed = cellX * 1000000 + cellY * 10000 + this.seed;
+        const random = this.seededRandomGeneral(cellSeed);
+        
+        for (let i = 0; i < squareCount; i++) {
+            let attempts = 0;
+            let validPosition = false;
+            let squareX, squareY;
+            
+            // Try to find a valid position (not too close to other squares and in filled area)
+            while (!validPosition && attempts < 50) {
+                squareX = cellX + random() * cellSize;
+                squareY = cellY + random() * cellSize;
+                
+                validPosition = true;
+                
+                // Check distance from other squares
+                for (const existingSquare of squares) {
+                    const distance = Math.sqrt(
+                        Math.pow(squareX - existingSquare.x, 2) + 
+                        Math.pow(squareY - existingSquare.y, 2)
+                    );
+                    
+                    if (distance < minSpacing) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+                
+                // Check if all corners of the square are within any filled polygon area
+                if (validPosition) {
+                    const halfSize = squareSize / 2;
+                    const corners = [
+                        { x: squareX - halfSize, y: squareY - halfSize }, // Top-left
+                        { x: squareX + halfSize, y: squareY - halfSize }, // Top-right
+                        { x: squareX + halfSize, y: squareY + halfSize }, // Bottom-right
+                        { x: squareX - halfSize, y: squareY + halfSize }  // Bottom-left
+                    ];
+                    
+                    let allCornersInside = true;
+                    for (const corner of corners) {
+                        let cornerInside = false;
+                        for (const polygon of polygons) {
+                            if (this.isPointInPolygon(corner.x, corner.y, polygon.points)) {
+                                cornerInside = true;
+                                break;
+                            }
+                        }
+                        if (!cornerInside) {
+                            allCornersInside = false;
+                            break;
+                        }
+                    }
+                    
+                    if (!allCornersInside) {
+                        validPosition = false;
+                    }
+                }
+                
+                attempts++;
+            }
+            
+            if (validPosition) {
+                // Generate seeded random color variations for this square
+                const squareSeed = cellSeed + i * 1000; // Unique seed per square
+                const squareRandom = this.seededRandomGeneral(squareSeed);
+                
+                // Generate random darken/lighten amounts based on biome ranges
+                const darkenAmount = squareRandom() * biome.darkenAmount * 2; // 0 to 2x biome amount
+                const lightenAmount = squareRandom() * biome.lightenAmount * 2; // 0 to 2x biome amount
+                
+                squares.push({
+                    x: squareX,
+                    y: squareY,
+                    size: squareSize + random() * squareSize * 0.5, // Vary size slightly
+                    opacity: biome.squareOpacity * (0.5 + random() * 0.5), // Vary opacity
+                    darkenAmount: darkenAmount,
+                    lightenAmount: lightenAmount
+                });
+            }
+        }
+        
+        return squares;
     }
 
     // Fixed marching squares lookup table - corrected bit order and edge connections
@@ -373,10 +734,19 @@ class MarchingCubesTerrain extends Module {
         return this.improvedMazeToHeightPattern(maze, x, y, this.gridSize);
     }
 
-    // Seeded random number generator for deterministic maze generation
+     // Seeded random number generator for deterministic maze generation
     seededRandom(seed) {
         let x = Math.sin(seed) * 10000;
-        return function() {
+        return function () {
+            x = Math.sin(x) * 10000;
+            return x - Math.floor(x);
+        };
+    }
+
+    // General seeded random number generator for consistent generation
+    seededRandomGeneral(seed) {
+        let x = Math.sin(seed) * 10000;
+        return function () {
             x = Math.sin(x) * 10000;
             return x - Math.floor(x);
         };
@@ -807,22 +1177,12 @@ class MarchingCubesTerrain extends Module {
         const temperatureNoise = this.octaveNoise(x * this.biomeScale * 1.3, y * this.biomeScale * 0.7);
         const humidityNoise = this.octaveNoise(x * this.biomeScale * 0.8, y * this.biomeScale * 1.5);
 
-        // Priority-based biome determination (no overlaps)
-        if (height < 0.25) {
-            return 'water';
-        }
-
-        if (height < 0.35) {
-            // Coastal areas - mix of sand and water
-            return biomeNoise < 0.3 ? 'sand' : 'water';
-        }
-
-        if (height < 0.5) {
+        /*if (height < 0.5) {
             // Lowland areas
             if (temperatureNoise > 0.7) {
                 return 'dirt';
             }
-            return biomeNoise < 0.5 ? 'sand' : 'grass';
+            return biomeNoise < 0.5 ? 'grass' : 'dirt';
         }
 
         if (height < 0.75) {
@@ -831,10 +1191,10 @@ class MarchingCubesTerrain extends Module {
                 return 'dirt';
             }
             return 'grass';
-        }
+        }*/
 
         // High altitude areas
-        return 'stone';
+        return 'grass';
     }
 
     // Get grid coordinates for world position
@@ -888,11 +1248,22 @@ class MarchingCubesTerrain extends Module {
                     biome: biome,
                     avgHeight: avgHeight,
                     contours: [],
-                    polygons: []
+                    polygons: [],
+                    // New texture and decoration data
+                    texturePattern: this.generateTexturePattern(worldX, worldY, 
+                        this.biomes[biome].textureScale, this.biomes[biome].textureContrast),
+                    decorativeSquares: [] // Initialize as empty array
                 };
 
                 // Generate marching squares contours and polygons
                 this.generateContours(cell);
+
+                // Generate decorative squares AFTER polygons are created
+                if (this.biomes[biome].enableSquares) {
+                    cell.decorativeSquares = this.generateDecorativeSquares(
+                        worldX, worldY, this.gridSize, this.biomes[biome], cell.polygons
+                    );
+                }
 
                 cells.push(cell);
             }
@@ -1183,7 +1554,7 @@ class MarchingCubesTerrain extends Module {
 
         if (this.showDebug) {
             window.physicsManager.debugDraw = true;
-        } else {    
+        } else {
             window.physicsManager.debugDraw = false;
         }
 
@@ -1203,6 +1574,8 @@ class MarchingCubesTerrain extends Module {
 
         // Group cells by biome for efficient rendering
         const biomeGroups = {};
+        let grassCells = []; // Separate grass cells to draw last
+
         Object.keys(this.biomes).forEach(biome => {
             biomeGroups[biome] = [];
         });
@@ -1213,19 +1586,29 @@ class MarchingCubesTerrain extends Module {
             if (cells) {
                 cells.forEach(cell => {
                     if (cell.polygons && cell.polygons.length > 0) {
-                        biomeGroups[cell.biome].push(cell);
+                        if (cell.biome === 'grass') {
+                            grassCells.push(cell);
+                        } else {
+                            biomeGroups[cell.biome].push(cell);
+                        }
                     }
                 });
             }
         });
 
-        // Draw each biome group
+        // Draw all non-grass biome groups first
         Object.entries(biomeGroups).forEach(([biomeKey, cells]) => {
-            if (cells.length === 0) return;
+            if (cells.length === 0 || biomeKey === 'grass') return;
 
             const biome = this.biomes[biomeKey];
             this.drawBiomeGroup(ctx, cells, biome, offsetX, offsetY);
         });
+
+        // Draw grass biome last so its lines appear on top
+        if (grassCells.length > 0) {
+            const grassBiome = this.biomes.grass;
+            this.drawBiomeGroup(ctx, grassCells, grassBiome, offsetX, offsetY);
+        }
 
         this.drawGridOverlay(ctx, offsetX, offsetY);
 
@@ -1309,12 +1692,26 @@ class MarchingCubesTerrain extends Module {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Draw filled terrain areas
+        // Draw filled terrain areas with texture and color variation
         cells.forEach(cell => {
             cell.polygons.forEach(polygon => {
                 if (polygon.points.length >= 3) {
+                    // Generate varied fill color for this cell
+                    const baseFillColor = this.generateBiomeColor(biome.fillColor, biome.colorVariation);
+                    const adjustedFillColor = this.adjustColorBrightness(
+                        baseFillColor, biome.darkenAmount, biome.lightenAmount
+                    );
+                    
+                    // Apply texture as overlay pattern
+                    const textureIntensity = cell.texturePattern;
+                    const finalFillColor = this.applyTextureOverlay(
+                        baseFillColor, textureIntensity, biome.textureContrast
+                    );
+                    
+                    ctx.fillStyle = finalFillColor;
+                    
+                    // Draw the filled polygon
                     ctx.beginPath();
-
                     const firstPoint = polygon.points[0];
                     ctx.moveTo(firstPoint.x + offsetX, firstPoint.y + offsetY);
 
@@ -1329,8 +1726,34 @@ class MarchingCubesTerrain extends Module {
             });
         });
 
-        // Draw contour lines for terrain edges
+        // Draw decorative squares
+        if (biome.enableSquares) {
+            cells.forEach(cell => {
+                cell.decorativeSquares.forEach(square => {
+                    // Use the stored color information for each square
+                    const squareColor = this.adjustColorBrightness(
+                        biome.fillColor, 
+                        square.darkenAmount, 
+                        square.lightenAmount
+                    );
+                    
+                    ctx.fillStyle = squareColor;
+                    ctx.globalAlpha = square.opacity;
+                    ctx.fillRect(
+                        square.x + offsetX - square.size / 2,
+                        square.y + offsetY - square.size / 2,
+                        square.size,
+                        square.size
+                    );
+                });
+            });
+            
+            ctx.globalAlpha = 1.0; // Reset alpha
+        }
+
+        // Draw contour lines for terrain edges (unchanged)
         if (this.lineWidth > 0) {
+            ctx.strokeStyle = biome.color;
             ctx.beginPath();
             cells.forEach(cell => {
                 cell.contours.forEach(contour => {
@@ -1345,6 +1768,58 @@ class MarchingCubesTerrain extends Module {
             });
             ctx.stroke();
         }
+    }
+
+    // New utility method for color blending
+    blendColors(color1, color2, ratio) {
+        const hex1 = color1.replace('#', '');
+        const hex2 = color2.replace('#', '');
+        
+        const r1 = parseInt(hex1.substr(0, 2), 16);
+        const g1 = parseInt(hex1.substr(2, 2), 16);
+        const b1 = parseInt(hex1.substr(4, 2), 16);
+        
+        const r2 = parseInt(hex2.substr(0, 2), 16);
+        const g2 = parseInt(hex2.substr(2, 2), 16);
+        const b2 = parseInt(hex2.substr(4, 2), 16);
+        
+        const r = Math.round(r1 * (1 - ratio) + r2 * ratio);
+        const g = Math.round(g1 * (1 - ratio) + g2 * ratio);
+        const b = Math.round(b1 * (1 - ratio) + b2 * ratio);
+        
+        return this.rgbaToHex(r, g, b);
+    }
+
+    expandPolygon(points, expansion = 1) {
+        if (points.length < 3) return points;
+
+        // Calculate polygon center
+        let centerX = 0, centerY = 0;
+        points.forEach(point => {
+            centerX += point.x;
+            centerY += point.y;
+        });
+        centerX /= points.length;
+        centerY /= points.length;
+
+        // Expand each point away from center
+        return points.map(point => {
+            const dx = point.x - centerX;
+            const dy = point.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance === 0) return point; // Avoid division by zero
+
+            // Calculate unit vector away from center
+            const unitX = dx / distance;
+            const unitY = dy / distance;
+
+            // Move point outward by expansion amount
+            return {
+                x: point.x + unitX * expansion,
+                y: point.y + unitY * expansion
+            };
+        });
     }
 
     drawGizmos(ctx) {
@@ -2068,7 +2543,7 @@ class MarchingCubesTerrain extends Module {
                 }
             });
 
-            
+
             Matter.Body.setStatic(body, true);
 
             // FIXED: Verify the body was created successfully
@@ -2099,11 +2574,8 @@ class MarchingCubesTerrain extends Module {
      */
     getBiomeFriction(biome) {
         const frictionMap = {
-            water: 0.1,
-            sand: 0.6,
-            grass: 0.7,
-            dirt: 0.8,
-            stone: 0.9
+            grass: 0.7//,
+            //dirt: 0.8
         };
         return frictionMap[biome] || 0.7;
     }

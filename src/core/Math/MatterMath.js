@@ -323,6 +323,24 @@ class MatterMath {
         return (direction);
     }
 
+    // Seeded random number generator for deterministic maze generation
+    seededRandom(seed) {
+        let x = Math.sin(seed) * 10000;
+        return function () {
+            x = Math.sin(x) * 10000;
+            return x - Math.floor(x);
+        };
+    }
+
+    // General seeded random number generator for consistent generation
+    seededRandomGeneral(seed) {
+        let x = Math.sin(seed) * 10000;
+        return function () {
+            x = Math.sin(x) * 10000;
+            return x - Math.floor(x);
+        };
+    }
+
     // Execute javascript code from a string
     executeString(string) {
         try {

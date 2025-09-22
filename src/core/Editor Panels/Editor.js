@@ -447,7 +447,7 @@ class Editor {
             this.camera.position.x = centerX - dx * (this.camera.zoom / oldZoom);
             this.camera.position.y = centerY - dy * (this.camera.zoom / oldZoom);
 
-            this.refreshCanvas();
+            //this.refreshCanvas();
             this.updateZoomLevelDisplay();
         }
     }
@@ -474,7 +474,7 @@ class Editor {
             this.camera.position.x = centerX - dx * (this.camera.zoom / oldZoom);
             this.camera.position.y = centerY - dy * (this.camera.zoom / oldZoom);
 
-            this.refreshCanvas();
+            //this.refreshCanvas();
             this.updateZoomLevelDisplay();
         }
     }
@@ -950,7 +950,7 @@ class Editor {
                     this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
                 }
                 this.activeScene.dirty = true;
-                this.refreshCanvas();
+               // this.refreshCanvas();
                 return;
             }
 
@@ -1008,7 +1008,7 @@ class Editor {
             this.camera.position.y = center.y - dy * (this.camera.zoom / oldZoom);
 
             this.updateZoomLevelDisplay();
-            this.refreshCanvas();
+            //this.refreshCanvas();
         }
     }
 

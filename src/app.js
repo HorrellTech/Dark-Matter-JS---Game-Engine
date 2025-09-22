@@ -739,7 +739,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // PLAY
     // Initialize the engine
     const gameCanvas = document.getElementById('gameCanvas');
-    const engine = new Engine(gameCanvas);
+    const engine = new Engine(gameCanvas, {
+        useWebGL: false
+    });
 
     if (!window.engine) {
         window.engine = engine;
