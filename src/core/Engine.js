@@ -703,6 +703,11 @@ class Engine {
             this.animationFrameId = null; // Ensure no stale frame
         }
 
+        // Stop all melodicode audio
+        if (this.melodicode && typeof this.melodicode.stop === 'function') {
+            this.melodicode.stop();
+        }
+
         this.clearDecals();
 
         // Preserve shake object structure when resetting viewport
