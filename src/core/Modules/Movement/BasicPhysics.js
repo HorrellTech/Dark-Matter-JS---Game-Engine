@@ -18,7 +18,7 @@ class BasicPhysics extends Module {
         this.fixedPosition = false; // If true, object does not move
         this.fixedRotation = false; // If true, object does not rotate
         this.physicsLayer = 0; // Only interacts with objects on same layer
-        this.useCollision = true; // Enable/disable collision detection
+        this.useCollision = false; // Enable/disable collision detection
         this.colliderType = "rectangle"; // "circle" or "rectangle"
         this.polygonVertices = []; // Array of {x, y} points for custom polygon
         this.polygon = null; // Will hold the Polygon instance
@@ -278,6 +278,12 @@ class BasicPhysics extends Module {
     setAngularVelocity(angVel) {
         if (this.fixedPosition || this.fixedRotation) return;
         this.angularVelocity = angVel;
+    }
+
+    setGravity(x, y) {
+        if (this.fixedPosition) return;
+        this.gravity.x = x;
+        this.gravity.y = y;
     }
 
     getSpeed() {

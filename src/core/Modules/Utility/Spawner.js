@@ -19,7 +19,8 @@ class Spawner extends Module {
 
         // Spawn object properties
         this.spawnObjectName = "SpawnedObject";
-        this.spawnType = "prefab"; // prefab, template, basic
+        this.destroyOriginal = false; // If true, destroys the original template after spawning
+        this.spawnType = "gameobject"; // prefab, gameobject, basic
         this.inheritPosition = true;
         this.inheritRotation = false;
         this.inheritScale = false;
@@ -40,6 +41,9 @@ class Spawner extends Module {
         this.velocityDirection = new Vector2(0, -1);
         this.velocityMagnitude = 100;
         this.velocityVariation = 20;
+        this.useGravity = false;
+        this.gravityDirection = new Vector2(0, 1);
+        this.gravityMagnitude = 9.81;
         this.randomDirection = false;
         this.velocityConeAngle = 0; // NEW: Cone angle for velocity spread (degrees)
         this.velocityDirection = new Vector2(0, -1); // Direction for cone emission
@@ -54,6 +58,8 @@ class Spawner extends Module {
         this.timer = 0;
         this.spawnedCount = 0;
         this.spawnedObjects = [];
+
+        this.gameObjectReference = null; // Reference to the original template object
 
         // Expose properties - FIXED to use this.property instead of bare property
         this.exposeProperty("spawnMode", "enum", this.spawnMode, {
@@ -108,8 +114,15 @@ class Spawner extends Module {
             }
         });
 
+        this.exposeProperty("destroyOriginal", "boolean", this.destroyOriginal, {
+            description: "Destroy the original template game object after spawning",
+            onChange: (value) => {
+                this.destroyOriginal = value;
+            }
+        });
+
         this.exposeProperty("spawnType", "enum", this.spawnType, {
-            options: ["prefab", "template", "basic"],
+            options: ["gameobject", "prefab", "basic"],
             description: "Type of object to spawn",
             onChange: (value) => {
                 this.spawnType = value;
@@ -182,6 +195,30 @@ class Spawner extends Module {
             description: "Base direction for velocity cone",
             onChange: (value) => {
                 this.velocityDirection = value;
+            }
+        });
+
+        this.exposeProperty("useGravity", "boolean", this.useGravity, {
+            description: "Apply gravity to spawned objects",
+            onChange: (value) => {
+                this.useGravity = value;
+            }
+        });
+
+        this.exposeProperty("gravityDirection", "vector2", this.gravityDirection, {
+            description: "Direction of gravity",
+            onChange: (value) => {
+                this.gravityDirection = value;
+            }
+        });
+
+        this.exposeProperty("gravityMagnitude", "number", this.gravityMagnitude, {
+            min: 0,
+            max: 100,
+            step: 0.1,
+            description: "Magnitude of gravity",
+            onChange: (value) => {
+                this.gravityMagnitude = value;
             }
         });
 
@@ -336,7 +373,7 @@ class Spawner extends Module {
         // Try based on spawnType setting first
         if (this.spawnType === "prefab") {
             spawnedObject = this.trySpawnPrefab();
-        } else if (this.spawnType === "template") {
+        } else if (this.spawnType === "gameobject") {
             spawnedObject = this.trySpawnTemplate();
         } else if (this.spawnType === "basic") {
             spawnedObject = this.createBasicObject();
@@ -351,18 +388,18 @@ class Spawner extends Module {
         // Only try fallbacks if the preferred method completely failed
         console.log(`Spawner: Preferred method "${this.spawnType}" failed, trying fallbacks...`);
 
-        if (this.spawnType !== "prefab") {
-            spawnedObject = this.trySpawnPrefab();
+        if (this.spawnType !== "gameobject") {
+            spawnedObject = this.trySpawnTemplate();
             if (spawnedObject) {
-                console.log(`Spawner: Fallback prefab spawn succeeded`);
+                console.log(`Spawner: Fallback template spawn succeeded`);
                 return spawnedObject;
             }
         }
 
-        if (this.spawnType !== "template") {
-            spawnedObject = this.trySpawnTemplate();
+        if (this.spawnType !== "prefab") {
+            spawnedObject = this.trySpawnPrefab();
             if (spawnedObject) {
-                console.log(`Spawner: Fallback template spawn succeeded`);
+                console.log(`Spawner: Fallback prefab spawn succeeded`);
                 return spawnedObject;
             }
         }
@@ -511,6 +548,10 @@ class Spawner extends Module {
             this.applyVelocityToObject(spawnedObject);
         }
 
+        if (this.useGravity) {
+            this.applyGravityToObject(spawnedObject);
+        }
+
         // Set lifetime if enabled
         if (this.setLifetime) {
             this.applyLifetimeToObject(spawnedObject);
@@ -571,6 +612,30 @@ class Spawner extends Module {
             
         } catch (error) {
             console.error('Error applying velocity to spawned object:', error);
+        }
+    }
+
+    applyGravityToObject(spawnedObject) {
+        try {
+            // Check if object already has BasicPhysics
+            let basicPhysics = spawnedObject.getModule('BasicPhysics');
+            if (!basicPhysics) {
+                basicPhysics = new BasicPhysics();
+                spawnedObject.addModule(basicPhysics);
+
+                // If the GO is already started, ensure the module initializes
+                if (typeof basicPhysics.start === 'function' && (spawnedObject._started || spawnedObject.started || spawnedObject._hasStarted)) {
+                    try { basicPhysics.start(); } catch { }
+                }
+            }
+
+            basicPhysics.gravityEnabled = this.useGravity;
+
+            // Apply gravity
+            basicPhysics.setGravity(this.gravityDirection.x * this.gravityMagnitude, this.gravityDirection.y * this.gravityMagnitude);
+
+        } catch (error) {
+            console.error('Error applying gravity to spawned object:', error);
         }
     }
 

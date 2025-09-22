@@ -692,7 +692,23 @@ class ExportManager {
             });
         }
 
-        modules.push(...this.collectModulesObjectSpecific(data));
+        // Also collect ALL modules defined in the getModuleFilePath mapping
+        const allModuleMappings = this.getModuleFilePath();
+        for (const className in allModuleMappings) {
+            // Only add if not already included
+            if (!modules.find(m => m.className === className)) {
+                modules.push({
+                    className: className,
+                    filePath: allModuleMappings[className]
+                });
+            }
+        }
+
+        // collect object-specific modules if scene data is available
+        if (data && data.scenes && data.scenes.length > 0) {
+            const objectSpecificModules = this.collectModulesObjectSpecific(data);
+            modules = modules.concat(objectSpecificModules);
+        }
 
         // Remove duplicates
         const uniqueModules = Array.from(new Set(modules.map(m => m.className)))
@@ -806,6 +822,7 @@ class ExportManager {
             'DrawHeart': 'src/core/Modules/Drawing/DrawHeart.js',
             'DrawShield': 'src/core/Modules/Drawing/DrawShield.js',
             'DrawCapsule': 'src/core/Modules/Drawing/DrawCapsule.js',
+            'DrawDiamond': 'src/core/Modules/Drawing/DrawDiamond.js',
             'DrawStar': 'src/core/Modules/Drawing/DrawStar.js',
             'DrawIcon': 'src/core/Modules/Drawing/DrawIcon.js',
             'DrawText': 'src/core/Modules/Drawing/DrawText.js',
@@ -854,6 +871,11 @@ class ExportManager {
             'AudioPlayer': 'src/core/Modules/AudioPlayer.js',
             'BehaviorTrigger': 'src/core/Modules/BehaviorTrigger.js'
         };
+
+        // If no className provided, return the entire mapping
+        if (!className) {
+            return moduleMap;
+        }
 
         return moduleMap[className] || `src/core/Modules/${className}.js`;
     }
@@ -929,31 +951,31 @@ class ExportManager {
      * Generate HTML content
      */
     generateHTML(data, settings) {
-    const title = settings.customTitle || 'Dark Matter Game';
-    const description = settings.customDescription || 'A game created with Dark Matter JS Engine';
+        const title = settings.customTitle || 'Dark Matter Game';
+        const description = settings.customDescription || 'A game created with Dark Matter JS Engine';
 
-    const logoSrc = settings.logoImage ? settings.logoImage : './loading.png';
+        const logoSrc = settings.logoImage ? settings.logoImage : './loading.png';
 
-    // Use viewport dimensions or default to full screen
-    const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
-    const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
+        // Use viewport dimensions or default to full screen
+        const canvasWidth = settings.viewport?.width || window.innerWidth || 800;
+        const canvasHeight = settings.viewport?.height || window.innerHeight || 600;
 
-    let scriptAndStyleTags = '';
-    if (!settings.standalone) {
-        scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
-        scriptAndStyleTags += `<script src="game.js"></script>\n`;
-        if (data.customScripts && data.customScripts.length > 0) {
-            for (const script of data.customScripts) {
-                scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
+        let scriptAndStyleTags = '';
+        if (!settings.standalone) {
+            scriptAndStyleTags += `<link rel="stylesheet" href="style.css">\n    `;
+            scriptAndStyleTags += `<script src="game.js"></script>\n`;
+            if (data.customScripts && data.customScripts.length > 0) {
+                for (const script of data.customScripts) {
+                    scriptAndStyleTags += `    <script src="scripts/${script.path ? script.path.split('/').pop() : script.name}"></script>\n`;
+                }
             }
-        }
-    } else {
-        scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
+        } else {
+            scriptAndStyleTags = `<style id="game-styles">/* CSS will be injected here */</style>
     <script id="game-script">/* JavaScript will be injected here */</script>`;
-    }
+        }
 
-    // Remove loading text, spinner, and progress bar from loading screen
-    return `<!DOCTYPE html>
+        // Remove loading text, spinner, and progress bar from loading screen
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1223,7 +1245,7 @@ class ExportManager {
     </div>
 </body>
 </html>`;
-}
+    }
 
     /**
      * Generate JavaScript content
