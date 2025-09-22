@@ -219,7 +219,7 @@ class ParticleSystem extends Module {
 
         // Visual properties
         this.exposeProperty("particleShape", "enum", this.particleShape, {
-            options: ["circle", "square", "line", "image"],
+            options: ["circle", "square", "line", "image", "gameobject"],
             description: "Shape of individual particles",
             onChange: (val) => {
                 this.particleShape = val;

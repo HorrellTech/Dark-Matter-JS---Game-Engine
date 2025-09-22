@@ -41,6 +41,8 @@ class Spawner extends Module {
         this.velocityMagnitude = 100;
         this.velocityVariation = 20;
         this.randomDirection = false;
+        this.velocityConeAngle = 0; // NEW: Cone angle for velocity spread (degrees)
+        this.velocityDirection = new Vector2(0, -1); // Direction for cone emission
 
         // Lifetime properties
         this.setLifetime = false;
@@ -163,6 +165,23 @@ class Spawner extends Module {
             description: "Give spawned objects random rotation",
             onChange: (value) => {
                 this.randomRotation = value;
+            }
+        });
+
+        this.exposeProperty("velocityConeAngle", "number", this.velocityConeAngle, {
+            min: 0,
+            max: 180,
+            step: 1,
+            description: "Cone angle spread for velocity (degrees)",
+            onChange: (value) => {
+                this.velocityConeAngle = value;
+            }
+        });
+
+        this.exposeProperty("velocityDirection", "vector2", this.velocityDirection, {
+            description: "Base direction for velocity cone",
+            onChange: (value) => {
+                this.velocityDirection = value;
             }
         });
 
@@ -503,26 +522,37 @@ class Spawner extends Module {
      */
     applyVelocityToObject(spawnedObject) {
         try {
-            // Import RigidBody module if not available globally
-            if (typeof RigidBody === 'undefined' && window.RigidBody) {
-                RigidBody = window.RigidBody;
-            }
+            // Check if object already has BasicPhysics
+            let basicPhysics = spawnedObject.getModule('BasicPhysics');
 
-            // Check if object already has a RigidBody
-            let rigidBody = spawnedObject.getModule('RigidBody');
-
-            if (!rigidBody) {
-                rigidBody = new RigidBody();
-                spawnedObject.addModule(rigidBody);
+            if (!basicPhysics) {
+                basicPhysics = new BasicPhysics();
+                spawnedObject.addModule(basicPhysics);
 
                 // If the GO is already started, ensure the module initializes
-                if (typeof rigidBody.start === 'function' && (spawnedObject._started || spawnedObject.started || spawnedObject._hasStarted)) {
-                    try { rigidBody.start(); } catch { }
+                if (typeof basicPhysics.start === 'function' && (spawnedObject._started || spawnedObject.started || spawnedObject._hasStarted)) {
+                    try { basicPhysics.start(); } catch { }
                 }
             }
 
+            // Calculate base direction
             let direction = new Vector2(this.velocityDirection.x, this.velocityDirection.y);
-            if (this.randomDirection) {
+            direction = direction.normalize();
+            
+            // Apply cone randomness if specified
+            if (this.velocityConeAngle > 0) {
+                const halfAngle = (this.velocityConeAngle * Math.PI / 180) / 2;
+                const randomAngle = (Math.random() - 0.5) * halfAngle * 2;
+                
+                // Rotate the direction by the random angle
+                const cos = Math.cos(randomAngle);
+                const sin = Math.sin(randomAngle);
+                direction = new Vector2(
+                    direction.x * cos - direction.y * sin,
+                    direction.x * sin + direction.y * cos
+                );
+            } else if (this.randomDirection) {
+                // Original random direction behavior
                 const angle = Math.random() * Math.PI * 2;
                 direction = new Vector2(Math.cos(angle), Math.sin(angle));
             }
@@ -536,12 +566,9 @@ class Spawner extends Module {
                 direction.y * magnitude
             );
 
-            // Set initial velocity after a short delay to ensure physics is initialized
-            setTimeout(() => {
-                if (rigidBody.body && typeof rigidBody.setVelocity === 'function') {
-                    rigidBody.setVelocity(velocity);
-                }
-            }, 50);
+            // Apply velocity immediately
+            basicPhysics.setVelocity(velocity.x, velocity.y);
+            
         } catch (error) {
             console.error('Error applying velocity to spawned object:', error);
         }
@@ -724,6 +751,8 @@ class Spawner extends Module {
         json.setLifetime = this.setLifetime;
         json.lifetime = this.lifetime;
         json.lifetimeVariation = this.lifetimeVariation;
+        json.velocityConeAngle = this.velocityConeAngle;
+        json.velocityDirection = { x: this.velocityDirection.x, y: this.velocityDirection.y };
         return json;
     }
 
@@ -760,6 +789,10 @@ class Spawner extends Module {
         if (json.setLifetime !== undefined) this.setLifetime = json.setLifetime;
         if (json.lifetime !== undefined) this.lifetime = json.lifetime;
         if (json.lifetimeVariation !== undefined) this.lifetimeVariation = json.lifetimeVariation;
+        if (json.velocityConeAngle !== undefined) this.velocityConeAngle = json.velocityConeAngle;
+        if (json.velocityDirection !== undefined) {
+            this.velocityDirection = new Vector2(json.velocityDirection.x, json.velocityDirection.y);
+        }
     }
 }
 
