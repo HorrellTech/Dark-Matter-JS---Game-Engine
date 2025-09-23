@@ -1,5 +1,5 @@
 class DrawInfiniteStarFieldParallax extends Module {
-    static namespace = "Asteroids";
+    static namespace = "Parallax Backgrounds";
     static description = "Infinite scrolling star field with parallax layers for top-down view";
     static allowMultiple = false;
 

@@ -58,7 +58,34 @@ class GameObject {
     generateRandomColor() {
         // Generate a semi-bright color for better visibility on dark backgrounds
         const hue = Math.floor(Math.random() * 360);
-        return `hsl(${hue}, 70%, 60%)`;
+        const saturation = 70;
+        const lightness = 60;
+        
+        // Convert HSL to hex
+        const c = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100;
+        const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+        const m = lightness / 100 - c / 2;
+        
+        let r, g, b;
+        if (hue >= 0 && hue < 60) {
+            r = c; g = x; b = 0;
+        } else if (hue >= 60 && hue < 120) {
+            r = x; g = c; b = 0;
+        } else if (hue >= 120 && hue < 180) {
+            r = 0; g = c; b = x;
+        } else if (hue >= 180 && hue < 240) {
+            r = 0; g = x; b = c;
+        } else if (hue >= 240 && hue < 300) {
+            r = x; g = 0; b = c;
+        } else {
+            r = c; g = 0; b = x;
+        }
+        
+        r = Math.round((r + m) * 255);
+        g = Math.round((g + m) * 255);
+        b = Math.round((b + m) * 255);
+        
+        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
     }
 
     // Track original position (useful when cloning)
@@ -1555,101 +1582,6 @@ class GameObject {
 
         // Generate a new unique ID for the cloned GameObject
         cloned.id = crypto.randomUUID ? crypto.randomUUID() : `go-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-        return cloned;
-
-        // Copy basic properties
-        /*cloned.position = this.position.clone();
-        cloned.scale = this.scale.clone();
-        cloned.size = this.size.clone();
-        cloned.origin = this.origin.clone();
-        cloned.angle = this.angle;
-        cloned.depth = this.depth;
-        cloned.active = this.active;
-        cloned.visible = this.visible;
-        cloned.tags = [...this.tags];
-        cloned.editorColor = this.editorColor;
-        cloned.collisionEnabled = this.collisionEnabled;
-        cloned.collisionLayer = this.collisionLayer;
-        cloned.collisionMask = this.collisionMask;
-
-        // Copy original position if it exists
-        if (this._originalPosition) {
-            cloned._originalPosition = { x: this._originalPosition.x, y: this._originalPosition.y };
-        }
-
-        // Clone modules with proper reference handling
-        for (const module of this.modules) {
-            try {
-                // First get the module class
-                let ModuleClass = module.constructor;
-                if (!ModuleClass && module.type) {
-                    ModuleClass = window.moduleRegistry?.getModuleClass(module.type)
-                        || window[module.type];
-                }
-
-                if (!ModuleClass) {
-                    console.warn(`Could not find class for module type ${module.type}`);
-                    createPlaceholderModule(cloned, { id: module.id, type: module.type }, module.type);
-                    continue;
-                }
-
-                // Create a new module instance
-                const clonedModule = new ModuleClass();
-
-                // Generate a new unique ID for the cloned module
-                clonedModule.id = crypto.randomUUID();
-
-                // Store the module type explicitly
-                clonedModule.type = module.type || ModuleClass.name;
-
-                // IMPORTANT: Set the gameObject reference first so that 
-                // fromJSON has the correct reference when restoring properties
-                clonedModule.gameObject = cloned;
-
-                // Now restore data from the original module
-                const data = module.toJSON();
-                if (data) {
-                    clonedModule.fromJSON(data);
-                }
-
-                // Proper attachment
-                clonedModule.attachTo(cloned);
-
-                // Add the module to the cloned game object's modules array
-                cloned.modules.push(clonedModule);
-
-                // Call onAttach explicitly if it exists
-                if (typeof clonedModule.onAttach === 'function') {
-                    clonedModule.onAttach(cloned);
-                }
-
-                // Deep scan for any missed references
-                deepScanAndReplaceReferences(clonedModule, originalGameObject, cloned);
-
-            } catch (error) {
-                console.error(`Error cloning module ${module.type || module.constructor?.name}:`, error);
-            }
-        }
-
-        // Clone children recursively
-        for (const child of this.children) {
-            const clonedChild = child.clone();
-            cloned.addChild(clonedChild);
-        }
-
-        // Final pass to catch any remaining references
-        for (const module of cloned.modules) {
-            // Replace any remaining references to the original GameObject
-            deepScanAndReplaceAllReferences(module, originalGameObject, cloned);
-
-            // Also check for private properties
-            for (const key in module) {
-                if (key.startsWith('_') && module[key] === originalGameObject) {
-                    module[key] = cloned;
-                }
-            }
-        }*/
 
         return cloned;
     }

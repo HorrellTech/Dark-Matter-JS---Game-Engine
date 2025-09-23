@@ -236,6 +236,31 @@ class Module {
         return null;
     }
 
+    /** 
+     *  Create a new instance of a GameObject by name
+     */
+    instanceCreate(x, y, gameObjectName, destroyOriginal = true) {
+        if (window.engine) {
+            const obj = this.getGameObjectByName(gameObjectName);
+
+            if (obj) {
+                const clone = obj.clone();
+                
+                clone.position.x = x;
+                clone.position.y = y;
+                
+                if (destroyOriginal) {
+                    if (obj.parent) {
+                        obj.parent.removeChild(obj);
+                    }
+                    obj.onDestroy();
+                }
+
+                return clone;
+            }
+        }
+    }
+
     set gameObject(go) {
         this._gameObject = go;
 

@@ -831,6 +831,13 @@ stopSound() {
                     </ul>
                 `
                     },
+                    "Creating Instances Of Objects": {
+                        content: `
+                    <h2>Creating Instances of GameObjects</h2>
+                    <p>Use <code>this.instanceCreate(x, y, gameObjectName, destroyOriginal = true)</code> to create copies of existing GameObjects in the scene:</p>
+                    <pre><code>let newObject = this.instanceCreate(100, 200, "EnemyShip");</code></pre>
+                    `
+                    },
                     "Default Properties": {
                         content: `
                     <h2>Important default properties</h2>

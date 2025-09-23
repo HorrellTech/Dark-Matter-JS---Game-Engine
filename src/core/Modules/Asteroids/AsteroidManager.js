@@ -7,7 +7,7 @@ class AsteroidManager extends Module {
         super("AsteroidManager");
 
         // Prefab settings
-        this.asteroidPrefabName = "Asteroid";
+        this.asteroidObjectName = "Asteroid";
 
         // Spawning properties
         this.maxAsteroids = 15;
@@ -38,10 +38,10 @@ class AsteroidManager extends Module {
         this.totalCount = 0; // Track total including split asteroids
 
         // Expose properties for inspector
-        this.exposeProperty("asteroidPrefabName", "string", "Asteroid", {
+        this.exposeProperty("asteroidObjectName", "string", "Asteroid", {
             description: "Name of asteroid prefab to spawn",
             onChange: (val) => {
-                this.asteroidPrefabName = val;
+                this.asteroidObjectName = val;
             }
         });
 
@@ -248,7 +248,7 @@ class AsteroidManager extends Module {
         const spawnPos = this.getRandomSpawnPosition();
 
         // Try to instantiate from prefab first
-        let asteroid = await this.tryInstantiatePrefab(spawnPos.x, spawnPos.y);
+        let asteroid = await this.tryInstanceCreate(spawnPos.x, spawnPos.y);
 
         // If prefab instantiation failed, create manually
         if (!asteroid) {
@@ -267,68 +267,12 @@ class AsteroidManager extends Module {
         }
     }
 
-    async tryInstantiatePrefab(x, y) {
-        if (!this.asteroidPrefabName) return null;
+    async tryInstanceCreate(x, y) {
+        if (!this.asteroidObjectName) return null;
 
-        // First check if we're in the editor and can access the prefab manager directly
-        if (window.editor && window.editor.hierarchy && window.editor.hierarchy.prefabManager) {
-            const prefabManager = window.editor.hierarchy.prefabManager;
+        
 
-            // console.log(`Available prefabs:`, prefabManager.getAvailablePrefabs());
-
-            if (prefabManager.hasPrefab(this.asteroidPrefabName)) {
-                // console.log(`Found prefab: ${this.asteroidPrefabName}, attempting to instantiate...`);
-                const asteroid = prefabManager.instantiatePrefabByName(this.asteroidPrefabName, new Vector2(x, y));
-                if (asteroid) {
-                    // console.log(`Successfully instantiated prefab: ${this.asteroidPrefabName}`);
-
-                    // Verify that the returned object is a proper GameObject
-                    if (typeof asteroid.getModule !== 'function') {
-                        // console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
-                        return null;
-                    }
-
-                    return asteroid;
-                }
-            }
-        }
-
-        // Try different prefab name variations with the engine
-        const prefabVariations = [
-            this.asteroidPrefabName,
-            `Prefabs/${this.asteroidPrefabName}`,
-            `${this.asteroidPrefabName}.prefab`,
-            `Prefabs/${this.asteroidPrefabName}.prefab`
-        ];
-
-        for (const prefabName of prefabVariations) {
-            try {
-                // console.log(`Checking prefab: ${prefabName}`);
-                if (window.engine && window.engine.hasPrefab && window.engine.hasPrefab(prefabName)) {
-                    // console.log(`Found prefab: ${prefabName}, attempting to instantiate...`);
-                    const asteroid = await window.engine.instantiatePrefab(prefabName, x, y);
-                    if (asteroid) {
-                        // console.log(`Successfully instantiated prefab: ${prefabName}`);
-
-                        // Verify that the returned object is a proper GameObject
-                        if (typeof asteroid.getModule !== 'function') {
-                            // console.error(`Invalid GameObject returned from prefab instantiation:`, asteroid);
-                            return null;
-                        }
-
-                        return asteroid;
-                    } else {
-                        // console.warn(`Prefab instantiation returned null for: ${prefabName}`);
-                    }
-                } else {
-                    // console.log(`Prefab not found: ${prefabName}`);
-                }
-            } catch (error) {
-                // console.warn(`Failed to instantiate prefab "${prefabName}":`, error);
-            }
-        }
-
-        // console.log(`No prefab found for "${this.asteroidPrefabName}", creating manually`);
+        // console.log(`No prefab found for "${this.asteroidObjectName}", creating manually`);
         return null;
     }
 
@@ -582,10 +526,10 @@ class AsteroidManager extends Module {
             ctx.fillText(`Managed: ${this.managedAsteroids.length}/${this.maxAsteroids}`, 10, 120);
             ctx.fillText(`Total in Scene: ${this.totalCount}`, 10, 135);
             ctx.fillText(`Total Spawned: ${this.totalSpawned}`, 10, 150);
-            ctx.fillText(`Prefab: ${this.asteroidPrefabName}`, 10, 165);
+            ctx.fillText(`Prefab: ${this.asteroidObjectName}`, 10, 165);
 
             // Check if prefab exists
-            const prefabExists = window.engine.hasPrefab && window.engine.hasPrefab(this.asteroidPrefabName);
+            const prefabExists = window.engine.hasPrefab && window.engine.hasPrefab(this.asteroidObjectName);
             ctx.fillStyle = prefabExists ? "green" : "orange";
             ctx.fillText(`Prefab Status: ${prefabExists ? "Found" : "Manual Creation"}`, 10, 180);
 
@@ -601,7 +545,7 @@ class AsteroidManager extends Module {
 
     toJSON() {
         return {
-            asteroidPrefabName: this.asteroidPrefabName,
+            asteroidObjectName: this.asteroidObjectName,
             maxAsteroids: this.maxAsteroids,
             spawnDistance: this.spawnDistance,
             despawnDistance: this.despawnDistance,
@@ -619,7 +563,7 @@ class AsteroidManager extends Module {
     }
 
     fromJSON(data) {
-        this.asteroidPrefabName = data.asteroidPrefabName || "Asteroid";
+        this.asteroidObjectName = data.asteroidObjectName || "Asteroid";
         this.maxAsteroids = data.maxAsteroids || 15;
         this.spawnDistance = data.spawnDistance || 200;
         this.despawnDistance = data.despawnDistance || 400;

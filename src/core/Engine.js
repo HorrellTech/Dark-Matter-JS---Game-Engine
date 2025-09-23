@@ -430,6 +430,19 @@ class Engine {
         return findInObjects(this.gameObjects);
     }
 
+    addGameObject(gameObject, parent = null, isDynamic = false) {
+        if (parent) {
+            parent.addChild(gameObject);
+        } else {
+            this.gameObjects.push(gameObject);
+        }
+        if (isDynamic) {
+            this.dynamicObjects.add(gameObject);
+            gameObject._isDynamic = true; // Mark for editor awareness
+        }
+        return gameObject;
+    }
+
     getAllObjects(objects = this.gameObjects, visited = new Set()) {
         let result = [];
         objects.forEach(obj => {

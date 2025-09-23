@@ -168,6 +168,60 @@ class Inspector {
         });
     }
 
+    rgbaToHex(r, g, b, a = 1) {
+        // Ensure values are within valid ranges
+        r = Math.max(0, Math.min(255, Math.round(r)));
+        g = Math.max(0, Math.min(255, Math.round(g)));
+        b = Math.max(0, Math.min(255, Math.round(b)));
+        a = Math.max(0, Math.min(1, a));
+
+        // Convert alpha from 0-1 to 0-255
+        const alpha = Math.round(a * 255);
+
+        // Convert to hex
+        const toHex = (n) => n.toString(16).padStart(2, '0');
+
+        // Include alpha in hex only if it's not fully opaque (a < 1)
+        if (a < 1) {
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}${toHex(alpha)}`;
+        } else {
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+        }
+    }
+
+    rgbaStringToHex(color) {
+        // Handle object-based color representations (e.g., {r, g, b, a})
+        if (typeof color === 'object' && color !== null && 'r' in color && 'g' in color && 'b' in color) {
+            return this.rgbaToHex(color.r, color.g, color.b, color.a || 1);
+        }
+
+        const namedColors = {
+            'lightgreen': '#90EE90',
+            'light green': '#90EE90',
+            'green': '#008000',
+            'red': '#FF0000',
+            'blue': '#0000FF',
+            'white': '#FFFFFF',
+            'black': '#000000'
+            // Add more color names as needed
+        };
+
+        // Check for named colors first
+        if (typeof color === 'string' && namedColors[color.toLowerCase()]) {
+            return namedColors[color.toLowerCase()];
+        }
+
+        // Try to parse as RGBA string (support floats for alpha)Can we add a failsafe for if its a hex value taken in and just use that, or any other color values?
+        const rgbaMatch = color.match(/(\d+(?:\.\d+)?)/g);
+        if (rgbaMatch && rgbaMatch.length >= 3) {
+            const [r, g, b, a] = rgbaMatch.map(Number);
+            return this.rgbaToHex(r, g, b, a);
+        }
+
+        // Fallback: return the input if it's a string, otherwise default to white
+        return typeof color === 'string' ? color : '#ffffff';
+    }
+
     createAddComponentButton() {
         const addComponentBtn = document.createElement('button');
         addComponentBtn.className = 'add-component-btn';
@@ -640,7 +694,7 @@ class Inspector {
                 </div>
                 <div class="property-row">
                     <label title="Color in editor view">Color</label>
-                    <input type="color" class="editor-color" value="${this.inspectedObject.editorColor}" title="Color in editor view">
+                    <input type="color" class="editor-color" value="${this.rgbaStringToHex(this.inspectedObject.editorColor)}" title="Color in editor view">
                 </div>
             </div>
         `;
@@ -690,15 +744,16 @@ class Inspector {
         colorInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
 
-            // Update the object's color
-            this.inspectedObject.editorColor = colorInput.value;
+            // Update the object's color - ensure consistent format
+            const newColor = colorInput.value;
+            this.inspectedObject.editorColor = newColor;
 
             // Update the hierarchy icon color
             const hierarchyIcon = document.querySelector(
                 `.hierarchy-item[data-id="${this.inspectedObject.id}"] .hierarchy-icon i`
             );
             if (hierarchyIcon) {
-                hierarchyIcon.style.color = colorInput.value;
+                hierarchyIcon.style.color = newColor;
             }
 
             this.editor.refreshCanvas();
@@ -813,7 +868,7 @@ class Inspector {
         transformModule.querySelector('.rotation').value = this.inspectedObject.angle;
         transformModule.querySelector('.depth').value = this.inspectedObject.depth;
         transformModule.querySelector('.depth-to-y').checked = this.inspectedObject.depthToY;
-        transformModule.querySelector('.editor-color').value = this.inspectedObject.editorColor || '#ffffff';
+        transformModule.querySelector('.editor-color').value = this.rgbaStringToHex(this.inspectedObject.editorColor) || '#ffffff';
 
         // Update hierarchy icon color
         const hierarchyIcon = document.querySelector(
