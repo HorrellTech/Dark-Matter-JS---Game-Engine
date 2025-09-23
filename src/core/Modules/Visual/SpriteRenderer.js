@@ -346,118 +346,118 @@ class SpriteRenderer extends Module {
      * @returns {Promise<HTMLImageElement>} - Loaded image
      */
     async loadImageFromFileBrowser(path) {
-    try {
-        const fileBrowser = window.editor.fileBrowser;
+        try {
+            const fileBrowser = window.editor.fileBrowser;
 
-        // Read the file content from FileBrowser
-        const content = await fileBrowser.readFile(path);
-        if (!content) {
-            throw new Error(`Could not read file from FileBrowser: ${path}`);
-        }
-
-        console.log('FileBrowser content type:', typeof content, content.substring ? content.substring(0, 50) + '...' : 'Binary data');
-
-        // Check if content is already a data URL (for images)
-        if (typeof content === 'string' && content.startsWith('data:image')) {
-            console.log('Loading image from data URL via FileBrowser');
-            const image = await this.loadImageFromDataURL(content);
-            
-            // Auto-size the sprite to match the image if dimensions are default
-            if (this.width === 64 && this.height === 64) {
-                this.width = image.naturalWidth;
-                this.height = image.naturalHeight;
-                console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
-                
-                // Refresh inspector to show new dimensions
-                if (window.editor && window.editor.inspector) {
-                    window.editor.inspector.refreshModuleUI(this);
-                }
+            // Read the file content from FileBrowser
+            const content = await fileBrowser.readFile(path);
+            if (!content) {
+                throw new Error(`Could not read file from FileBrowser: ${path}`);
             }
-            
-            return image;
-        }
-        // Handle cases where FileBrowser returns the content differently
-        else if (typeof content === 'string' && !content.startsWith('data:')) {
-            // If it's a string but not a data URL, it might be base64 or raw content
-            // Try to construct a data URL
-            try {
-                // Detect image type from path
-                const extension = path.split('.').pop().toLowerCase();
-                let mimeType = 'image/png'; // default
-                
-                if (extension === 'jpg' || extension === 'jpeg') {
-                    mimeType = 'image/jpeg';
-                } else if (extension === 'gif') {
-                    mimeType = 'image/gif';
-                } else if (extension === 'webp') {
-                    mimeType = 'image/webp';
-                } else if (extension === 'svg') {
-                    mimeType = 'image/svg+xml';
-                }
 
-                let dataUrl;
-                if (content.startsWith('data:')) {
-                    // Already has data URL prefix, might be malformed
-                    dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
-                } else {
-                    // Assume it's base64 data
-                    dataUrl = `data:${mimeType};base64,${content}`;
-                }
+            console.log('FileBrowser content type:', typeof content, content.substring ? content.substring(0, 50) + '...' : 'Binary data');
 
-                console.log('Attempting to load as constructed data URL');
-                const image = await this.loadImageFromDataURL(dataUrl);
-                
+            // Check if content is already a data URL (for images)
+            if (typeof content === 'string' && content.startsWith('data:image')) {
+                console.log('Loading image from data URL via FileBrowser');
+                const image = await this.loadImageFromDataURL(content);
+
                 // Auto-size the sprite to match the image if dimensions are default
                 if (this.width === 64 && this.height === 64) {
                     this.width = image.naturalWidth;
                     this.height = image.naturalHeight;
                     console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
-                    
+
                     // Refresh inspector to show new dimensions
                     if (window.editor && window.editor.inspector) {
                         window.editor.inspector.refreshModuleUI(this);
                     }
                 }
-                
-                return image;
-            } catch (error) {
-                console.error('Failed to construct data URL:', error);
-                throw new Error(`File content is not a valid image: ${path}`);
-            }
-        }
-        // Handle binary content (Blob/ArrayBuffer)
-        else if (content instanceof Blob || content instanceof ArrayBuffer) {
-            console.log('Converting binary content to data URL');
-            let blob = content;
-            if (content instanceof ArrayBuffer) {
-                blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
-            }
 
-            const dataUrl = await this.blobToDataURL(blob);
-            const image = await this.loadImageFromDataURL(dataUrl);
-            
-            // Auto-size the sprite to match the image if dimensions are default
-            if (this.width === 64 && this.height === 64) {
-                this.width = image.naturalWidth;
-                this.height = image.naturalHeight;
-                console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
-                
-                // Refresh inspector to show new dimensions
-                if (window.editor && window.editor.inspector) {
-                    window.editor.inspector.refreshModuleUI(this);
+                return image;
+            }
+            // Handle cases where FileBrowser returns the content differently
+            else if (typeof content === 'string' && !content.startsWith('data:')) {
+                // If it's a string but not a data URL, it might be base64 or raw content
+                // Try to construct a data URL
+                try {
+                    // Detect image type from path
+                    const extension = path.split('.').pop().toLowerCase();
+                    let mimeType = 'image/png'; // default
+
+                    if (extension === 'jpg' || extension === 'jpeg') {
+                        mimeType = 'image/jpeg';
+                    } else if (extension === 'gif') {
+                        mimeType = 'image/gif';
+                    } else if (extension === 'webp') {
+                        mimeType = 'image/webp';
+                    } else if (extension === 'svg') {
+                        mimeType = 'image/svg+xml';
+                    }
+
+                    let dataUrl;
+                    if (content.startsWith('data:')) {
+                        // Already has data URL prefix, might be malformed
+                        dataUrl = content.startsWith('data:') ? content : `data:${mimeType};base64,${content}`;
+                    } else {
+                        // Assume it's base64 data
+                        dataUrl = `data:${mimeType};base64,${content}`;
+                    }
+
+                    console.log('Attempting to load as constructed data URL');
+                    const image = await this.loadImageFromDataURL(dataUrl);
+
+                    // Auto-size the sprite to match the image if dimensions are default
+                    if (this.width === 64 && this.height === 64) {
+                        this.width = image.naturalWidth;
+                        this.height = image.naturalHeight;
+                        console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+
+                        // Refresh inspector to show new dimensions
+                        if (window.editor && window.editor.inspector) {
+                            window.editor.inspector.refreshModuleUI(this);
+                        }
+                    }
+
+                    return image;
+                } catch (error) {
+                    console.error('Failed to construct data URL:', error);
+                    throw new Error(`File content is not a valid image: ${path}`);
                 }
             }
-            
-            return image;
+            // Handle binary content (Blob/ArrayBuffer)
+            else if (content instanceof Blob || content instanceof ArrayBuffer) {
+                console.log('Converting binary content to data URL');
+                let blob = content;
+                if (content instanceof ArrayBuffer) {
+                    blob = new Blob([content], { type: `image/${path.split('.').pop().toLowerCase()}` });
+                }
+
+                const dataUrl = await this.blobToDataURL(blob);
+                const image = await this.loadImageFromDataURL(dataUrl);
+
+                // Auto-size the sprite to match the image if dimensions are default
+                if (this.width === 64 && this.height === 64) {
+                    this.width = image.naturalWidth;
+                    this.height = image.naturalHeight;
+                    console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+
+                    // Refresh inspector to show new dimensions
+                    if (window.editor && window.editor.inspector) {
+                        window.editor.inspector.refreshModuleUI(this);
+                    }
+                }
+
+                return image;
+            }
+            else {
+                throw new Error(`Unsupported file content type for image: ${typeof content}`);
+            }
+        } catch (error) {
+            console.error('Error loading image from FileBrowser:', error);
+            throw error;
         }
-        else {
-            throw new Error(`Unsupported file content type for image: ${typeof content}`);
-        }
-    } catch (error) {
-        console.error('Error loading image from FileBrowser:', error);
-        throw error;
     }
-}
 
     async blobToDataURL(blob) {
         return new Promise((resolve, reject) => {
@@ -688,49 +688,49 @@ class SpriteRenderer extends Module {
  * @param {string} originalPath - Original path that failed
  * @returns {Promise<HTMLImageElement>} - Promise that resolves when image loads
  */
-async directUrlFallback(img, originalPath) {
-    // Only use direct URL loading as a last resort and warn about it
-    console.warn('Using direct URL fallback - this may not work in all environments:', originalPath);
-    
-    // Remove leading slashes and normalize
-    const cleanPath = originalPath.replace(/^\/+/, '').replace(/\\/g, '/');
+    async directUrlFallback(img, originalPath) {
+        // Only use direct URL loading as a last resort and warn about it
+        console.warn('Using direct URL fallback - this may not work in all environments:', originalPath);
 
-    // Generate minimal possible paths to try
-    const possiblePaths = [
-        cleanPath, // Relative to current directory
-        `assets/${cleanPath}`,
-        `images/${cleanPath}`,
-        originalPath // Original path as-is
-    ];
+        // Remove leading slashes and normalize
+        const cleanPath = originalPath.replace(/^\/+/, '').replace(/\\/g, '/');
 
-    console.log('Trying direct URL paths:', possiblePaths);
+        // Generate minimal possible paths to try
+        const possiblePaths = [
+            cleanPath, // Relative to current directory
+            `assets/${cleanPath}`,
+            `images/${cleanPath}`,
+            originalPath // Original path as-is
+        ];
 
-    // Try each path until one works
-    for (const testPath of possiblePaths) {
-        try {
-            const success = await this.testImagePath(testPath);
-            if (success) {
-                console.log('Successfully loaded image from direct URL:', testPath);
-                return new Promise((resolve, reject) => {
-                    img.onload = () => {
-                        this._image = img;
-                        this._imageWidth = img.naturalWidth || img.width;
-                        this._imageHeight = img.naturalHeight || img.height;
-                        this._isLoaded = true;
-                        resolve(img);
-                    };
-                    img.onerror = reject;
-                    img.src = testPath;
-                });
+        console.log('Trying direct URL paths:', possiblePaths);
+
+        // Try each path until one works
+        for (const testPath of possiblePaths) {
+            try {
+                const success = await this.testImagePath(testPath);
+                if (success) {
+                    console.log('Successfully loaded image from direct URL:', testPath);
+                    return new Promise((resolve, reject) => {
+                        img.onload = () => {
+                            this._image = img;
+                            this._imageWidth = img.naturalWidth || img.width;
+                            this._imageHeight = img.naturalHeight || img.height;
+                            this._isLoaded = true;
+                            resolve(img);
+                        };
+                        img.onerror = reject;
+                        img.src = testPath;
+                    });
+                }
+            } catch (error) {
+                // Continue to next path
+                continue;
             }
-        } catch (error) {
-            // Continue to next path
-            continue;
         }
-    }
 
-    throw new Error(`Could not load image from any of the attempted paths for: ${originalPath}`);
-}
+        throw new Error(`Could not load image from any of the attempted paths for: ${originalPath}`);
+    }
 
     /**
      * Test if an image can be loaded from a specific path
