@@ -20,7 +20,9 @@ class AssetManagerWindow extends EditorWindow {
 
         this.knownAssets = [
             'sprite_sheet_animation_tool.dmjs',
-            'texture_generator_tool.dmjs'
+            'texture_generator_tool.dmjs',
+            'basic_drawing_module.dmjs',
+            'marching_squares.dmjs'
             // Add more known asset filenames here
         ];
 
