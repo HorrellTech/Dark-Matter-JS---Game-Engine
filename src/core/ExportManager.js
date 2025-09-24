@@ -814,7 +814,7 @@ class ExportManager {
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
 
             // Drawing Modules
-            'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
+            /*'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
             'DrawRectangle': 'src/core/Modules/Drawing/DrawRectangle.js',
             'DrawPolygon': 'src/core/Modules/Drawing/DrawPolygon.js',
             'DrawPlatformerHills': 'src/core/Modules/Platform Game/DrawPlatformerHills.js',
@@ -828,11 +828,11 @@ class ExportManager {
             'DrawText': 'src/core/Modules/Drawing/DrawText.js',
             'DrawLine': 'src/core/Modules/Drawing/DrawLine.js',
             'DrawGrid': 'src/core/Modules/Drawing/DrawGrid.js',
-            'MarchingCubesTerrain': 'src/core/Modules/Drawing/MarchingCubesTerrain.js',
+            'MarchingCubesTerrain': 'src/core/Modules/Drawing/MarchingCubesTerrain.js',*/
 
             // Asteroid Modules
             'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
-            'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
+            //'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
             'AsteroidsPlanet': 'src/core/Modules/Asteroids/AsteroidsPlanet.js',
             'EnemyShip': 'src/core/Modules/Asteroids/EnemyShip.js',
             'AsteroidsBullet': 'src/core/Modules/Asteroids/AsteroidsBullet.js',
@@ -847,12 +847,12 @@ class ExportManager {
             'ParticleSystem': 'src/core/Modules/Effects/ParticleSystem.js',
 
             // Lighting Modules
-            'DarknessModule': 'src/core/Modules/Lighting/DarknessModule.js',
-            'PointLightModule': 'src/core/Modules/Lighting/PointLightModule.js',
+            /*'DarknessModule': 'src/core/Modules/Lighting/DarknessModule.js',
+            'PointLightModule': 'src/core/Modules/Lighting/PointLightModule.js',*/
 
             // Snake Game Modules
-            'SnakePlayer': 'src/core/Modules/Snake/SnakePlayer.js',
-            'SnakeSegment': 'src/core/Modules/Snake/SnakeApple.js',
+            /*'SnakePlayer': 'src/core/Modules/Snake/SnakePlayer.js',
+            'SnakeSegment': 'src/core/Modules/Snake/SnakeApple.js',*/
 
             // Physics and Collision Modules
             'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',

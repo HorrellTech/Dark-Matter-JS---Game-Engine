@@ -22,7 +22,8 @@ class AssetManagerWindow extends EditorWindow {
             'sprite_sheet_animation_tool.dmjs',
             'texture_generator_tool.dmjs',
             'basic_drawing_module.dmjs',
-            'marching_squares.dmjs'
+            'marching_squares.dmjs',
+            'infinite_2d_parallax_starfield.dmjs'
             // Add more known asset filenames here
         ];
 
@@ -335,6 +336,130 @@ class AssetManagerWindow extends EditorWindow {
         }
     }
 
+    showImageModal(imageSrc, imageName = 'Asset Image') {
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.className = 'image-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            cursor: pointer;
+        `;
+
+        // Create modal content container
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = `
+            position: relative;
+            max-width: 90vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        `;
+
+        // Create image element
+        const image = document.createElement('img');
+        image.src = imageSrc;
+        image.style.cssText = `
+            width: 512px;
+            height: 512px;
+            object-fit: cover;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        `;
+
+        // Create image info bar
+        const imageInfo = document.createElement('div');
+        imageInfo.style.cssText = `
+            color: #fff;
+            text-align: center;
+            margin-top: 16px;
+            font-size: 14px;
+            opacity: 0.8;
+        `;
+        imageInfo.textContent = imageName;
+
+        // Create close button
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: -20px;
+            right: -20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 32px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        `;
+
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.3)';
+        });
+
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+        });
+
+        // Event listeners
+        const closeModal = () => {
+            if (modal.parentNode) {
+                modal.parentNode.removeChild(modal);
+            }
+        };
+
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModal();
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // Add keyboard support (ESC to close)
+        const handleKeyPress = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', handleKeyPress);
+            }
+        };
+        document.addEventListener('keydown', handleKeyPress);
+
+        modalContent.appendChild(closeBtn);
+        modalContent.appendChild(image);
+        modalContent.appendChild(imageInfo);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        // Add loading state
+        image.onload = () => {
+            imageInfo.textContent = `${imageName} (${image.naturalWidth} × ${image.naturalHeight})`;
+        };
+
+        image.onerror = () => {
+            imageInfo.textContent = `${imageName} (Failed to load)`;
+            image.style.display = 'none';
+        };
+    }
+
     showPackagePreview(asset, packageData) {
         // Create modal overlay
         const modal = document.createElement('div');
@@ -364,7 +489,7 @@ class AssetManagerWindow extends EditorWindow {
         border: 1px solid #555;
     `;
 
-        // Header with icon support
+        // Header with image and info layout
         const header = document.createElement('div');
         header.style.cssText = `
         padding: 20px;
@@ -373,25 +498,30 @@ class AssetManagerWindow extends EditorWindow {
         border-radius: 8px 8px 0 0;
     `;
 
-        // Build icon HTML
-        let iconHtml = '';
+        // Build image HTML (256x256)
+        let imageHtml = '';
         if (asset.customIcon && asset.customIcon.data) {
-            iconHtml = `<img src="${asset.customIcon.data}" style="width: 32px; height: 32px; border-radius: 4px; margin-right: 12px; object-fit: cover;">`;
+            imageHtml = `<img src="${asset.customIcon.data}" style="width: 256px; height: 256px; border-radius: 8px; object-fit: cover; margin-right: 20px;">`;
         } else {
-            iconHtml = `<i class="fas ${asset.icon}" style="margin-right: 12px;"></i>`;
+            imageHtml = `<div style="width: 256px; height: 256px; border-radius: 8px; background: rgba(0, 120, 212, 0.1); border: 1px solid rgba(0, 120, 212, 0.3); display: flex; align-items: center; justify-content: center; margin-right: 20px;">
+                <i class="fas ${asset.icon}" style="font-size: 48px; color: #0078d4;"></i>
+            </div>`;
         }
 
         header.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div style="display: flex; align-items: center;">
-                ${iconHtml}
-                <div>
+            <div style="display: flex; align-items: flex-start;">
+                ${imageHtml}
+                <div style="flex: 1;">
                     <h2 style="margin: 0 0 8px 0; color: #fff; font-size: 20px;">
                         ${asset.name}
                     </h2>
-                    <p style="margin: 0; color: #bbb; font-size: 14px; line-height: 1.4;">
-                        ${asset.description}
-                    </p>
+                    <div style="margin-bottom: 8px;">
+                        <div style="margin-bottom: 4px;"><strong style="color: #aaa;">Author:</strong> <span style="color: #fff;">${asset.author || 'Unknown'}</span></div>
+                        <div style="margin-bottom: 4px;"><strong style="color: #aaa;">Version:</strong> <span style="color: #fff;">${asset.version || 'Unknown'}</span></div>
+                        <div style="margin-bottom: 4px;"><strong style="color: #aaa;">Type:</strong> <span style="color: #fff;">${asset.type}</span></div>
+                        <div><strong style="color: #aaa;">Size:</strong> <span style="color: #fff;">${asset.size}</span></div>
+                    </div>
                 </div>
             </div>
             <button class="close-preview" style="
@@ -404,6 +534,9 @@ class AssetManagerWindow extends EditorWindow {
                 margin-left: 16px;
             ">×</button>
         </div>
+        <div style="margin-top: 16px; color: #bbb; font-size: 14px; line-height: 1.4;">
+            ${asset.description}
+        </div>
     `;
 
         // Body
@@ -411,70 +544,6 @@ class AssetManagerWindow extends EditorWindow {
         body.style.cssText = `
         padding: 20px;
     `;
-
-        // Package metadata
-        const metadataSection = document.createElement('div');
-        metadataSection.style.cssText = `
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
-        margin-bottom: 24px;
-        padding: 16px;
-        background: #3d3d3d;
-        border-radius: 6px;
-        border: 1px solid #555;
-    `;
-
-        const leftMeta = document.createElement('div');
-        leftMeta.innerHTML = `
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Author:</strong>
-            <span style="color: #fff; margin-left: 8px;">${asset.author || 'Unknown'}</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Version:</strong>
-            <span style="color: #fff; margin-left: 8px;">${asset.version || 'Unknown'}</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Type:</strong>
-            <span style="color: #fff; margin-left: 8px;">${asset.type}</span>
-        </div>
-        ${asset.customIcon ? `
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Icon:</strong>
-            <span style="color: #fff; margin-left: 8px;">Custom (${asset.customIcon.originalName || 'Unknown'})</span>
-        </div>
-        ` : ''}
-    `;
-
-        const rightMeta = document.createElement('div');
-        rightMeta.innerHTML = `
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">File Size:</strong>
-            <span style="color: #fff; margin-left: 8px;">${asset.size}</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Assets:</strong>
-            <span style="color: #fff; margin-left: 8px;">${asset.assetCount || 0}</span>
-        </div>
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Created:</strong>
-            <span style="color: #fff; margin-left: 8px; font-size: 12px;">
-                ${asset.timestamp ? new Date(asset.timestamp).toLocaleString() : 'Unknown'}
-            </span>
-        </div>
-        ${asset.customIcon ? `
-        <div style="margin-bottom: 12px;">
-            <strong style="color: #aaa;">Icon Size:</strong>
-            <span style="color: #fff; margin-left: 8px; font-size: 12px;">
-                128x128 (${this.formatFileSize(asset.customIcon.size || 0)})
-            </span>
-        </div>
-        ` : ''}
-    `;
-
-        metadataSection.appendChild(leftMeta);
-        metadataSection.appendChild(rightMeta);
 
         // Package contents
         const contentsSection = document.createElement('div');
@@ -528,7 +597,6 @@ class AssetManagerWindow extends EditorWindow {
             contentsSection.appendChild(dirSection);
         }
 
-        body.appendChild(metadataSection);
         body.appendChild(contentsSection);
 
         modalContent.appendChild(header);
@@ -544,6 +612,14 @@ class AssetManagerWindow extends EditorWindow {
         closeBtn.addEventListener('click', closeModal);
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
+        });
+
+        // Add click handlers for images in the package preview
+        modal.addEventListener('click', (e) => {
+            if (e.target.tagName === 'IMG') {
+                e.stopPropagation();
+                this.handleImageClick(e.target.src, e.target.alt || 'Package Image');
+            }
         });
 
         document.body.appendChild(modal);
@@ -762,6 +838,14 @@ class AssetManagerWindow extends EditorWindow {
         // Click to toggle
         item.addEventListener('click', (e) => {
             if (e.target !== checkbox && e.target !== previewBtn) {
+                // Check if the click was on an image
+                const clickedElement = e.target;
+                if (clickedElement.tagName === 'IMG') {
+                    e.stopPropagation();
+                    this.handleImageClick(clickedElement.src, asset.name);
+                    return;
+                }
+
                 checkbox.checked = !checkbox.checked;
                 checkbox.dispatchEvent(new Event('change'));
             }
@@ -773,6 +857,11 @@ class AssetManagerWindow extends EditorWindow {
         item.appendChild(previewBtn);
 
         return item;
+    }
+
+    handleImageClick(imageSrc, assetName) {
+        // Show the image in a modal
+        this.showImageModal(imageSrc, assetName);
     }
 
     selectAllAssets() {

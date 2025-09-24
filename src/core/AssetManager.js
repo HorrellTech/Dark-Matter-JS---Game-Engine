@@ -1345,12 +1345,12 @@ class AssetManager {
                 img.src = imageDataUrl;
             });
 
-            // Resize to 128x128
-            canvas.width = 128;
-            canvas.height = 128;
+            // Resize to 512x512
+            canvas.width = 512;
+            canvas.height = 512;
 
             // Draw image with proper scaling to maintain aspect ratio
-            const { width, height, x, y } = this.calculateImageFit(img.width, img.height, 128, 128);
+            const { width, height, x, y } = this.calculateImageFit(img.width, img.height, 512, 512);
 
             // Fill background with transparent pixels
             ctx.clearRect(0, 0, 128, 128);
@@ -1371,7 +1371,7 @@ class AssetManager {
             // Update preview
             iconPreview.innerHTML = `
                 <img src="${resizedDataUrl}" style="width: 64px; height: 64px; border-radius: 4px; border: 1px solid #555;">
-                <span style="font-size: 12px; color: #aaa;">${file.name} (128x128)</span>
+                <span style="font-size: 12px; color: #aaa;">${file.name} (512x512)</span>
             `;
 
             removeIconBtn.style.display = 'inline-block';
