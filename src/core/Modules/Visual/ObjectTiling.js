@@ -19,7 +19,7 @@ class ObjectTiling extends Module {
         this.spacingX = 0; // Additional spacing between tiles horizontally
         this.spacingY = 0; // Additional spacing between tiles vertically
         this.chunkSize = 512; // Size of chunks for infinite mode (in world units)
-        this.paddingChunks = 1; // Extra chunks to preload around viewport
+        this.paddingChunks = 2; // Extra chunks to preload around viewport
 
         // Internal
         this._originalObject = null; // Reference to the original object
@@ -276,8 +276,8 @@ class ObjectTiling extends Module {
         if (!this._originalObject || !this.gameObject) return [];
         
         const objects = [];
-        const tilesPerChunkX = Math.floor(this.chunkSize / (this.tileWidth + this.spacingX));
-        const tilesPerChunkY = Math.floor(this.chunkSize / (this.tileHeight + this.spacingY));
+        const tilesPerChunkX = Math.ceil(this.chunkSize / (this.tileWidth + this.spacingX)) + 1; // Add +1 for overlap
+        const tilesPerChunkY = Math.ceil(this.chunkSize / (this.tileHeight + this.spacingY)) + 1; // Add +1 for overlap
         
         for (let x = 0; x < tilesPerChunkX; x++) {
             for (let y = 0; y < tilesPerChunkY; y++) {

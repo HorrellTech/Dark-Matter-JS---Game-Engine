@@ -802,12 +802,13 @@ class ExportManager {
         const moduleMap = {
             // Visual Modules
             'SpriteRenderer': 'src/core/Modules/Visual/SpriteRenderer.js',
-            'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
-
+            'SpriteRendererBackground': 'src/core/Modules/Visual/SpriteRendererBackground.js',
+            //'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
+            'ObjectTiling': 'src/core/Modules/Visual/ObjectTiling.js',
             // Utility Modules
             'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',
-            'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
+            //'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
             // Controller Modules
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',

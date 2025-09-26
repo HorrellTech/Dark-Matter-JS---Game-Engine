@@ -236,23 +236,25 @@ class AsteroidManager extends Module {
             const timePerSpawn = 1 / this.spawnRate;
 
             if (timeSinceLastSpawn >= timePerSpawn) {
-                await this.spawnAsteroid();
+                this.spawnAsteroid();
                 this.lastSpawnTime = currentTime;
             }
         }
     }
 
-    async spawnAsteroid() {
+    spawnAsteroid() {
         if (!window.engine || !window.engine.viewport) return;
 
         const spawnPos = this.getRandomSpawnPosition();
 
+        spawnPos.x = window.engine.birw
+
         // Try to instantiate from prefab first
-        let asteroid = await this.tryInstanceCreate(spawnPos.x, spawnPos.y);
+        let asteroid = this.tryInstanceCreate(spawnPos.x, spawnPos.y);
 
         // If prefab instantiation failed, create manually
         if (!asteroid) {
-            asteroid = this.createAsteroidManually(spawnPos.x, spawnPos.y);
+            //asteroid = this.createAsteroidManually(spawnPos.x, spawnPos.y);
         }
 
         if (asteroid) {
@@ -267,13 +269,10 @@ class AsteroidManager extends Module {
         }
     }
 
-    async tryInstanceCreate(x, y) {
+    tryInstanceCreate(x, y) {
         if (!this.asteroidObjectName) return null;
 
-        
-
-        // console.log(`No prefab found for "${this.asteroidObjectName}", creating manually`);
-        return null;
+        return this.instanceCreate(x, y, this.asteroidObjectName);
     }
 
     createAsteroidManually(x, y) {
@@ -340,10 +339,11 @@ class AsteroidManager extends Module {
                 targetY += (Math.random() - 0.5) * randomRange;
             }
 
-            asteroidModule.setMovementTowards(targetX, targetY, this.speedMultiplier);
+            // Instead of completely overriding, let the asteroid keep its random movement
+            // and only apply a gentle influence toward the center
+            asteroidModule.applyCenterAttraction(targetX, targetY, this.speedMultiplier);
         } else {
-            // Random movement
-            asteroidModule.randomizeMovement();
+            // Random movement - already handled in start(), just apply speed multiplier
             asteroidModule.speed *= this.speedMultiplier;
             asteroidModule.updateVelocity();
         }
@@ -365,11 +365,11 @@ class AsteroidManager extends Module {
 
         const viewport = window.engine.viewport;
 
-        // If viewport x,y is top-left corner
-        const viewportLeft = viewport.x;
-        const viewportRight = viewport.x + viewport.width;
-        const viewportTop = viewport.y;
-        const viewportBottom = viewport.y + viewport.height;
+        // Assume viewport x,y is the center of the viewport
+        const viewportLeft = viewport.x - (viewport.width / 2);
+        const viewportRight = viewport.x + (viewport.width / 2);
+        const viewportTop = viewport.y - (viewport.height / 2);
+        const viewportBottom = viewport.y + (viewport.height / 2);
 
         // Choose random spawn zone
         const zone = this.spawnZones[Math.floor(Math.random() * this.spawnZones.length)];
@@ -378,32 +378,32 @@ class AsteroidManager extends Module {
 
         switch (zone) {
             case "top":
-                // Spawn above the viewport
-                x = viewportLeft - this.spawnDistance + Math.random() * (viewport.width + this.spawnDistance * 2);
-                y = viewportTop - this.spawnDistance - Math.random() * 100; // Ensure it's outside
+                // Spawn above the viewport with guaranteed distance
+                x = viewportLeft + Math.random() * viewport.width;
+                y = viewportTop - this.spawnDistance - (Math.random() * 50 + 50); // Extra buffer
                 break;
 
             case "bottom":
-                // Spawn below the viewport
-                x = viewportLeft - this.spawnDistance + Math.random() * (viewport.width + this.spawnDistance * 2);
-                y = viewportBottom + this.spawnDistance + Math.random() * 100; // Ensure it's outside
+                // Spawn below the viewport with guaranteed distance
+                x = viewportLeft + Math.random() * viewport.width;
+                y = viewportBottom + this.spawnDistance + (Math.random() * 50 + 50); // Extra buffer
                 break;
 
             case "left":
-                // Spawn to the left of viewport
-                x = viewportLeft - this.spawnDistance - Math.random() * 100; // Ensure it's outside
-                y = viewportTop - this.spawnDistance + Math.random() * (viewport.height + this.spawnDistance * 2);
+                // Spawn to the left of viewport with guaranteed distance
+                x = viewportLeft - this.spawnDistance - (Math.random() * 50 + 50); // Extra buffer
+                y = viewportTop + Math.random() * viewport.height;
                 break;
 
             case "right":
-                // Spawn to the right of viewport
-                x = viewportRight + this.spawnDistance + Math.random() * 100; // Ensure it's outside
-                y = viewportTop - this.spawnDistance + Math.random() * (viewport.height + this.spawnDistance * 2);
+                // Spawn to the right of viewport with guaranteed distance
+                x = viewportRight + this.spawnDistance + (Math.random() * 50 + 50); // Extra buffer
+                y = viewportTop + Math.random() * viewport.height;
                 break;
 
             default:
                 // Fallback to right side
-                x = viewportRight + this.spawnDistance + Math.random() * 100;
+                x = viewportRight + this.spawnDistance + (Math.random() * 50 + 50);
                 y = viewportTop + Math.random() * viewport.height;
         }
 
@@ -418,10 +418,10 @@ class AsteroidManager extends Module {
         const viewport = window.engine.viewport;
 
         // If viewport x,y is top-left corner
-        const despawnLeft = viewport.x - this.despawnDistance;
-        const despawnRight = viewport.x + viewport.width + this.despawnDistance;
-        const despawnTop = viewport.y - this.despawnDistance;
-        const despawnBottom = viewport.y + viewport.height + this.despawnDistance;
+        const despawnLeft = viewport.x - (viewport.width / 2) - this.despawnDistance;
+        const despawnRight = viewport.x + (viewport.width / 2) + this.despawnDistance;
+        const despawnTop = viewport.y - (viewport.height / 2) - this.despawnDistance;
+        const despawnBottom = viewport.y + (viewport.height / 2) + this.despawnDistance;
 
         // Only despawn our managed asteroids, let split chunks handle themselves
         for (let i = this.managedAsteroids.length - 1; i >= 0; i--) {
@@ -545,6 +545,7 @@ class AsteroidManager extends Module {
 
     toJSON() {
         return {
+            ...super.toJSON(),
             asteroidObjectName: this.asteroidObjectName,
             maxAsteroids: this.maxAsteroids,
             spawnDistance: this.spawnDistance,
@@ -563,6 +564,7 @@ class AsteroidManager extends Module {
     }
 
     fromJSON(data) {
+        super.fromJSON(data);
         this.asteroidObjectName = data.asteroidObjectName || "Asteroid";
         this.maxAsteroids = data.maxAsteroids || 15;
         this.spawnDistance = data.spawnDistance || 200;

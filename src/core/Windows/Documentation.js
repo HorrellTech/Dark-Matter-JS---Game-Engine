@@ -833,8 +833,9 @@ stopSound() {
                     },
                     "Creating Instances Of Objects": {
                         content: `
-                    <h2>Creating Instances of GameObjects</h2>
-                    <p>Use <code>this.instanceCreate(x, y, gameObjectName, destroyOriginal = true)</code> to create copies of existing GameObjects in the scene:</p>
+                    <h2>Creating new Instances of GameObjects</h2>
+                    <p>Use <code>this.instanceCreate(x, y, gameObjectName, destroyOriginal = true)</code> to 
+                    create copies of existing GameObjects in the scene:</p>
                     <pre><code>let newObject = this.instanceCreate(100, 200, "EnemyShip");</code></pre>
                     `
                     },
@@ -865,7 +866,30 @@ stopSound() {
                     </ul>
                 `
                     },
-                    "Exposing Properties": {
+                    "Canvas Types": {
+                        content: `
+                    <h2>Canvas Types</h2>
+                    <p>Modules can draw to different canvas layers:</p>
+                    <ul>
+                        <li><code>ctx = this.getMainCanvas()</code>: Set the canvas to the Main game canvas (default)</li>
+                        <li><code>ctx = this.getBackgroundCanvas()</code>: Set the canvas to the Background canvas (for parallax layers)</li>
+                        <li><code>ctx = this.getGUICanvas()</code>: Set the canvas to the GUI canvas (for UI elements)</li>
+                    </ul>
+                `
+                    },
+                    "Additional Shortcut Methods": {
+                        content: `
+                    <h2>Additional Shortcut Methods ('this.' = current module)</h2>
+                    <ul>
+                        <li><code>this.viewport</code>: Get the current engine viewport (x, y, width, height) x and y are 
+                            viewport center</li>
+                        <li><code>this.getObjectByName(gameObjectName)</code>: Get the first GameObject by its name from the current scene</li>
+                        <li><code>this.instanceNearest(gameObjectName, range = Infinity)</code>: Get the nearest instance of a 
+                            GameObject by name within a certain distance</li>
+                    </ul>
+                `
+                    },
+                    "Exposing Properties (For the Inspector panel)": {
                         content: `
                     <h2>Exposing Properties</h2>
                     <p>Use <code>exposeProperty()</code> to make module properties editable in the Inspector:</p>
@@ -893,7 +917,7 @@ stopSound() {
                     </ul>
                 `
                     },
-                    "Serialization": {
+                    "Serialization (Saving/loading State)": {
                         content: `
                     <h2>Serialization</h2>
                     <p>Modules can be serialized to JSON for saving/loading:</p>
@@ -905,7 +929,7 @@ stopSound() {
             speed: this.speed,
             color: this.color
         }   
-    };}</code></pre>
+    }</code></pre>
                     <p>Implement <code>fromJSON(data)</code> to restore state from JSON.</p>
                     <pre><code>fromJSON(data) {
     super.fromJSON(data); // Restore base properties

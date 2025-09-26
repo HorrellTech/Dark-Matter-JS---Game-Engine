@@ -169,10 +169,29 @@ class Asteroid extends Module {
     }
 
     randomizeMovement() {
-        // Random direction
-        const angle = Math.random() * Math.PI * 2;
-        this.direction.x = Math.cos(angle);
-        this.direction.y = Math.sin(angle);
+        // Check if we should bias toward center (this would need to be set by the manager)
+        if (this.shouldMoveTowardCenter) {
+            // Bias direction toward center instead of completely random
+            const centerX = window.engine ? window.engine.viewport.x : 0;
+            const centerY = window.engine ? window.engine.viewport.y : 0;
+            const pos = this.gameObject.position;
+
+            const dx = centerX - pos.x;
+            const dy = centerY - pos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0) {
+                // Calculate direction directly toward center with minimal randomness
+                const baseAngle = Math.atan2(dy, dx);
+                // Reduce randomness to ±15 degrees instead of ±45
+                const randomAngle = baseAngle + (Math.random() - 0.5) * Math.PI * 0.3;
+                this.direction = { x: Math.cos(randomAngle), y: Math.sin(randomAngle) };
+            }
+        } else {
+            // Original random direction
+            const angle = Math.random() * Math.PI * 2;
+            this.direction = { x: Math.cos(angle), y: Math.sin(angle) };
+        }
 
         // Random speed within range
         const speedRange = this.maxSpeed - this.minSpeed;
@@ -192,14 +211,14 @@ class Asteroid extends Module {
 
         for (let i = 0; i < this.pointCount; i++) {
             const angle = i * angleStep;
-            
+
             // Add random variation to radius
             const variation = 1 + (Math.random() - 0.5) * this.shapeVariation;
             const radius = this.size * variation;
-            
+
             const x = Math.cos(angle) * radius;
             const y = Math.sin(angle) * radius;
-            
+
             this.shape.push({ x, y });
         }
     }
@@ -236,22 +255,22 @@ class Asteroid extends Module {
         // Check collision with all bullets
         for (let i = window.engine.gameObjects.length - 1; i >= 0; i--) {
             const obj = window.engine.gameObjects[i];
-            
+
             // Look for bullet modules (check common bullet module names)
-            const bulletModule = obj.getModule("AsteroidsBullet") || 
-                                obj.getModule("Bullet") || 
-                                obj.getModule("PlayerBullet");
-            
+            const bulletModule = obj.getModule("AsteroidsBullet") ||
+                obj.getModule("Bullet") ||
+                obj.getModule("PlayerBullet");
+
             if (bulletModule && obj !== this.gameObject) {
                 const bulletPos = obj.position;
                 const distance = Math.sqrt(
-                    Math.pow(pos.x - bulletPos.x, 2) + 
+                    Math.pow(pos.x - bulletPos.x, 2) +
                     Math.pow(pos.y - bulletPos.y, 2)
                 );
 
                 if (distance < this.bulletCollisionRadius) {
                     this.onHit(bulletModule);
-                    
+
                     // Destroy the bullet
                     window.engine.gameObjects.splice(i, 1);
                     break;
@@ -262,7 +281,7 @@ class Asteroid extends Module {
 
     onHit(bulletModule) {
         this.health--;
-        
+
         if (this.health <= 0) {
             if (this.size > this.minSplitSize) {
                 this.split();
@@ -278,7 +297,7 @@ class Asteroid extends Module {
         for (let i = 0; i < this.splitCount; i++) {
             // Create new asteroid GameObject
             const chunk = new GameObject(`Asteroid_Chunk_${Date.now()}_${i}`);
-            
+
             // Add asteroid module
             const asteroidModule = new Asteroid();
             chunk.addModule(asteroidModule);
@@ -300,8 +319,7 @@ class Asteroid extends Module {
             // Give chunks random velocities
             const chunkAngle = angle + (Math.random() - 0.5) * 1;
             const chunkSpeed = this.speed * (0.8 + Math.random() * 0.6);
-            asteroidModule.direction.x = Math.cos(chunkAngle);
-            asteroidModule.direction.y = Math.sin(chunkAngle);
+            asteroidModule.direction = { x: Math.cos(chunkAngle), y: Math.sin(chunkAngle) };
             asteroidModule.speed = chunkSpeed;
             asteroidModule.rotationSpeed = (Math.random() - 0.5) * 180;
 
@@ -409,33 +427,67 @@ class Asteroid extends Module {
         this.updateCollisionRadius();
     }
 
+    // New method to apply gentle attraction toward center while preserving randomness
+    applyCenterAttraction(targetX, targetY, speedMultiplier = 1) {
+        const pos = this.gameObject.position;
+        const dx = targetX - pos.x;
+        const dy = targetY - pos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > 0) {
+            // Create attraction force that's stronger to effectively pull toward center
+            const attractionStrength = 2.0; // Increased from 0.3 to 2.0 for stronger pull
+            const attractionX = (dx / distance) * attractionStrength;
+            const attractionY = (dy / distance) * attractionStrength;
+
+            // Apply attraction to existing velocity
+            this.velocity.x += attractionX;
+            this.velocity.y += attractionY;
+
+            // Update direction to match new velocity
+            const velocityLength = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
+            if (velocityLength > 0) {
+                this.direction = { x: this.velocity.x / velocityLength, y: this.velocity.y / velocityLength };
+            }
+
+            // Apply speed multiplier
+            this.speed *= speedMultiplier;
+            this.updateVelocity();
+        }
+    }
+
     // Utility method to set random movement towards a target direction
     setMovementTowards(targetX, targetY, speedMultiplier = 1) {
         const pos = this.gameObject.position;
         const dx = targetX - pos.x;
         const dy = targetY - pos.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        
+
         if (distance > 0) {
-            this.direction.x = dx / distance;
-            this.direction.y = dy / distance;
-            
-            // Add some randomness
-            const randomAngle = (Math.random() - 0.5) * 0.5; // ±~14 degrees
-            const cos = Math.cos(randomAngle);
-            const sin = Math.sin(randomAngle);
-            const newX = this.direction.x * cos - this.direction.y * sin;
-            const newY = this.direction.x * sin + this.direction.y * cos;
-            
-            this.direction.x = newX;
-            this.direction.y = newY;
-            this.speed *= speedMultiplier;
+            // Instead of completely replacing direction, blend with existing random direction
+            const targetDirection = { x: dx / distance, y: dy / distance };
+
+            // Blend the target direction with the existing random direction
+            // This preserves the randomization from start() while still moving toward the target
+            const blendFactor = 0.7; // 70% toward target, 30% keep original randomness
+            const blendedX = this.direction.x * (1 - blendFactor) + targetDirection.x * blendFactor;
+            const blendedY = this.direction.y * (1 - blendFactor) + targetDirection.y * blendFactor;
+
+            // Normalize the blended direction
+            const length = Math.sqrt(blendedX * blendedX + blendedY * blendedY);
+            if (length > 0) {
+                this.direction = { x: blendedX / length, y: blendedY / length };
+            }
+
+            // Apply speed multiplier but don't completely override speed
+            this.speed = this.speed * speedMultiplier;
             this.updateVelocity();
         }
     }
 
     toJSON() {
         return {
+            ...super.toJSON(),
             size: this.size,
             minSize: this.minSize,
             maxSize: this.maxSize,
@@ -463,6 +515,7 @@ class Asteroid extends Module {
     }
 
     fromJSON(data) {
+        super.fromJSON(data);
         this.size = data.size || 40;
         this.minSize = data.minSize || 15;
         this.maxSize = data.maxSize || 80;

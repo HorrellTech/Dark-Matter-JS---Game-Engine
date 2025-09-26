@@ -229,6 +229,41 @@ class Module {
         }
     }
 
+    getBackgroundCanvas() {
+        return window.engine ? window.engine.backgroundCanvas : null;
+    }
+
+    getMainCanvas() {
+        return window.engine ? window.engine.mainCanvas : null;
+    }
+
+    getGUICanvas() {
+        return window.engine ? window.engine.guiCanvas : null;
+    }
+
+    /**
+     * Get the current viewport from the engine
+     * @returns {Object|null} The current viewport or null if not available
+     */
+    get viewport() {
+        return window.engine ? window.engine.viewport : null;
+    }
+
+    /** 
+     * Find the nearest instance of a GameObject by name within a certain distance of this object
+     * @param {string} gameObjectName - The name of the GameObject to find
+     * @param {number} distance - Maximum distance to search (default: Infinity)
+     * @return {GameObject|null} The nearest GameObject or null if none found
+     */
+    instanceNearest(gameObjectName, distance = Infinity) {
+        this.gameObject.getNearestObject(gameObjectName, distance);
+    }
+        
+    /**
+     * Get a GameObject by its name
+     * @param {string} name - The name of the GameObject to find
+     * @returns {GameObject|null} The found GameObject or null if not found
+     */
     getGameObjectByName(name) {
         if (window.engine) {
             return window.engine.getGameObjectByName(name);
@@ -241,7 +276,19 @@ class Module {
      */
     instanceCreate(x, y, gameObjectName, destroyOriginal = true) {
         if (window.engine) {
-            const obj = this.getGameObjectByName(gameObjectName);
+            // First check if the object exists in objectsToCreate
+            let obj = null;
+            if (window.engine.objectsToCreate && window.engine.objectsToCreate.has(gameObjectName)) {
+                obj = window.engine.objectsToCreate.get(gameObjectName);
+            } else {
+                // Fall back to getting from the scene
+                obj = this.getGameObjectByName(gameObjectName);
+            }
+
+            // This preserves the original pristine object for future cloning
+            if (window.engine.objectsToCreate && !window.engine.objectsToCreate.has(gameObjectName)) {
+                window.engine.objectsToCreate.set(gameObjectName, obj);
+            }
 
             if (obj) {
                 const clone = obj.clone();
@@ -250,13 +297,22 @@ class Module {
                 clone.position.y = y;
                 
                 if (destroyOriginal) {
+                    
                     if (obj.parent) {
                         obj.parent.removeChild(obj);
                     }
                     obj.onDestroy();
                 }
 
+                clone.start();
+                window.engine.addGameObject(clone);
+
+                console.log(`Module ${this.name} created instance of '${gameObjectName}' at (${Math.round(x)}, ${Math.round(y)})`);
+
                 return clone;
+            }
+            else {
+                console.warn(`Module ${this.name} failed to instanceCreate: GameObject '${gameObjectName}' not found.`);
             }
         }
     }

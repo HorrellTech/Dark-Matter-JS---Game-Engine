@@ -23,7 +23,8 @@ class AssetManagerWindow extends EditorWindow {
             'texture_generator_tool.dmjs',
             'basic_drawing_module.dmjs',
             'marching_squares.dmjs',
-            'infinite_2d_parallax_starfield.dmjs'
+            'infinite_2d_parallax_starfield.dmjs',
+            'top_down_cars_and_road_cone.dmjs'
             // Add more known asset filenames here
         ];
 

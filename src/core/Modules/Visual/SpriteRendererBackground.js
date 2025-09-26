@@ -4,18 +4,18 @@
  * This module renders sprite images and supports sprite properties 
  * like size, pivot, and flip modes.
  */
-class SpriteRenderer extends Module {
+class SpriteRendererBackground extends Module {
     static allowMultiple = false;
     static namespace = "Visual";
     static description = "Displays a sprite/image";
     static iconClass = "fas fa-image";
 
     constructor() {
-        super("SpriteRenderer");
+        super("SpriteRendererBackground");
 
         // Import AssetReference if it's not already available
         if (!window.AssetReference) {
-            console.warn("AssetReference not found, SpriteRenderer may not work correctly");
+            console.warn("AssetReference not found, SpriteRendererBackground may not work correctly");
         }
 
         // Sprite image reference - use a safe way to create an AssetReference
@@ -299,7 +299,7 @@ class SpriteRenderer extends Module {
         }
 
         try {
-            console.log('Loading image for SpriteRenderer:', this.imageAsset.path);
+            console.log('Loading image for SpriteRendererBackground:', this.imageAsset.path);
 
             // PRIORITY 1: Load from AssetManager (both editor and exported games)
             if (this.imageAsset.path) {
@@ -887,6 +887,7 @@ class SpriteRenderer extends Module {
             } else {
                 ctx = this.getMainCanvas();
             }*/
+            ctx = this.getBackgroundCanvas();
 
             // Draw based on scale mode - Always use drawWithScaleMode
             this.drawWithScaleMode(ctx, -pivotX, -pivotY);
@@ -927,7 +928,7 @@ class SpriteRenderer extends Module {
 
         // Register a custom UI creator for this module type
         window.editor.inspector.registerCustomUIHandler(
-            'SpriteRenderer',
+            'SpriteRendererBackground',
             'imageAsset',
             (element, module) => {
                 // Set up drag and drop for the image preview
@@ -1544,7 +1545,7 @@ class SpriteRenderer extends Module {
     }
 
     /**
-     * Add custom styles for the SpriteRenderer's UI
+     * Add custom styles for the SpriteRendererBackground's UI
      */
     addCustomStyles() {
         // Check if styles already exist
@@ -1735,4 +1736,4 @@ class SpriteRenderer extends Module {
 }
 
 // Register module globally
-window.SpriteRenderer = SpriteRenderer;
+window.SpriteRendererBackground = SpriteRendererBackground;

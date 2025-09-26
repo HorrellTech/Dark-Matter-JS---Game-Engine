@@ -249,6 +249,8 @@ class Engine {
         this.dynamicObjects = new Set();
         this.originalGameObjects = [];
 
+        this.objectsToCreate = new Map(); // Map to track objects to create by name
+
         this.maxFPS = 120; // Default, will be updated from settings
         this._minFrameInterval = 1000 / this.maxFPS;
         this._lastFrameTime = 0;
