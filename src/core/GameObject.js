@@ -1140,7 +1140,7 @@ class GameObject {
     static fromJSON(json) {
         const obj = new GameObject(json.name);
         // Restore ID if available
-        if (json.id) obj.id = json.id;
+        obj.id = crypto.randomUUID();
 
         obj.colliderWidth = json.colliderWidth || 0;
         obj.colliderHeight = json.colliderHeight || 0;

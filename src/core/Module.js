@@ -317,6 +317,42 @@ class Module {
         }
     }
 
+    /**
+     * Create a new instance of a prefab by name
+     * @param {number} x - X position to spawn the prefab
+     * @param {number} y - Y position to spawn the prefab  
+     * @param {string} prefabName - Name of the prefab to instantiate
+     * @returns {GameObject|null} The instantiated prefab GameObject or null if not found
+     */
+    async instanceCreateFromPrefab(x, y, prefabName) {
+        if (!window.engine) {
+            console.warn(`Module ${this.name} failed to prefabCreate: Engine not available.`);
+            return null;
+        }
+
+        if (!prefabName) {
+            console.warn(`Module ${this.name} failed to prefabCreate: No prefab name provided.`);
+            return null;
+        }
+
+        try {
+            // Use the engine's instantiatePrefab method
+            const instantiated = await window.engine.instantiatePrefab(prefabName, x, y);
+            
+            if (instantiated) {
+                console.log(`Module ${this.name} created prefab instance '${prefabName}' at (${Math.round(x)}, ${Math.round(y)})`);
+                return instantiated;
+            } else {
+                console.warn(`Module ${this.name} failed to prefabCreate: Prefab '${prefabName}' not found.`);
+                console.log('Available prefabs:', window.engine.getAvailablePrefabs());
+                return null;
+            }
+        } catch (error) {
+            console.error(`Module ${this.name} error creating prefab '${prefabName}':`, error);
+            return null;
+        }
+    }
+
     set gameObject(go) {
         this._gameObject = go;
 

@@ -1379,6 +1379,8 @@ class HierarchyManager {
 
         const instantiated = this.deserializeGameObject(gameObjectData);
 
+        instantiated.id = crypto.randomUUID();
+
         // Set position - this is the key part for canvas drops
         if (position) {
             instantiated.position.x = position.x;

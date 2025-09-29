@@ -1493,6 +1493,7 @@ class Engine {
         try {
             // Create GameObject
             const gameObject = GameObject.fromJSON(prefabData);
+            gameObject.id = 
             gameObject.position = new Vector2(x, y);
             return gameObject;
 
