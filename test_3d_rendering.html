@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Rendering Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #333;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        canvas {
+            border: 2px solid #fff;
+            margin: 20px;
+            background: #000;
+        }
+        .controls {
+            margin: 20px;
+            padding: 20px;
+            background: #444;
+            border-radius: 8px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+        }
+        input, select {
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>3D Rendering Test</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <div class="controls">
+        <h2>Camera Controls</h2>
+        <div class="control-group">
+            <label for="cameraX">Camera X:</label>
+            <input type="number" id="cameraX" value="0" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cameraY">Camera Y:</label>
+            <input type="number" id="cameraY" value="0" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cameraZ">Camera Z:</label>
+            <input type="number" id="cameraZ" value="-500" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cameraRotX">Camera Rot X:</label>
+            <input type="number" id="cameraRotX" value="0" step="5">
+        </div>
+        <div class="control-group">
+            <label for="cameraRotY">Camera Rot Y:</label>
+            <input type="number" id="cameraRotY" value="0" step="5">
+        </div>
+        <div class="control-group">
+            <label for="fov">Field of View:</label>
+            <input type="number" id="fov" value="60" min="30" max="120" step="5">
+        </div>
+
+        <h2>Cube Controls</h2>
+        <div class="control-group">
+            <label for="cubeX">Cube X:</label>
+            <input type="number" id="cubeX" value="0" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cubeY">Cube Y:</label>
+            <input type="number" id="cubeY" value="0" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cubeZ">Cube Z:</label>
+            <input type="number" id="cubeZ" value="0" step="10">
+        </div>
+        <div class="control-group">
+            <label for="cubeRotX">Cube Rot X:</label>
+            <input type="number" id="cubeRotX" value="0" step="5">
+        </div>
+        <div class="control-group">
+            <label for="cubeRotY">Cube Rot Y:</label>
+            <input type="number" id="cubeRotY" value="0" step="5">
+        </div>
+        <div class="control-group">
+            <label for="cubeRotZ">Cube Rot Z:</label>
+            <input type="number" id="cubeRotZ" value="0" step="5">
+        </div>
+        <div class="control-group">
+            <label for="cubeSize">Cube Size:</label>
+            <input type="number" id="cubeSize" value="100" min="50" max="300" step="10">
+        </div>
+        <div class="control-group">
+            <label for="renderMode">Render Mode:</label>
+            <select id="renderMode">
+                <option value="wireframe">Wireframe</option>
+                <option value="solid">Solid</option>
+                <option value="both">Both</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <button id="updateBtn">Update Scene</button>
+            <button id="resetBtn">Reset Camera</button>
+        </div>
+    </div>
+
+    <script src="src/core/Math/Vector3.js"></script>
+    <script src="src/core/Math/Vector2.js"></script>
+    <script src="src/core/Module.js"></script>
+    <script src="src/core/GameObject.js"></script>
+    <script src="src/core/3D/Camera3D.js"></script>
+    <script src="src/core/3D/CubeMesh3D.js"></script>
+    <script src="src/core/Engine.js"></script>
+
+    <script>
+        // Initialize the engine
+        const canvas = document.getElementById('gameCanvas');
+        const engine = new Engine(canvas);
+
+        // Create a simple scene
+        let scene = {
+            name: "3D Test Scene",
+            settings: {
+                backgroundColor: "#000000",
+                viewportWidth: 800,
+                viewportHeight: 600
+            },
+            gameObjects: []
+        };
+
+        // Create camera
+        const cameraObj = new GameObject("Camera");
+        const camera3D = new Camera3D();
+        cameraObj.addModule(camera3D);
+        camera3D._isActive = true;
+        scene.gameObjects.push(cameraObj);
+
+        // Create cube
+        const cubeObj = new GameObject("Cube");
+        const cubeMesh = new CubeMesh3D();
+        cubeObj.addModule(cubeMesh);
+        scene.gameObjects.push(cubeObj);
+
+        // Load the scene
+        engine.loadScene(scene);
+
+        // Start the engine
+        engine.start();
+
+        // Control variables
+        let camera = camera3D;
+        let cube = cubeMesh;
+
+        // Update function
+        function updateScene() {
+            // Update camera
+            camera.position.x = parseFloat(document.getElementById('cameraX').value);
+            camera.position.y = parseFloat(document.getElementById('cameraY').value);
+            camera.position.z = parseFloat(document.getElementById('cameraZ').value);
+            camera.rotation.x = parseFloat(document.getElementById('cameraRotX').value);
+            camera.rotation.y = parseFloat(document.getElementById('cameraRotY').value);
+            camera.fieldOfView = parseFloat(document.getElementById('fov').value);
+
+            // Update cube
+            cube.position.x = parseFloat(document.getElementById('cubeX').value);
+            cube.position.y = parseFloat(document.getElementById('cubeY').value);
+            cube.position.z = parseFloat(document.getElementById('cubeZ').value);
+            cube.rotation.x = parseFloat(document.getElementById('cubeRotX').value);
+            cube.rotation.y = parseFloat(document.getElementById('cubeRotY').value);
+            cube.rotation.z = parseFloat(document.getElementById('cubeRotZ').value);
+            cube.size = parseFloat(document.getElementById('cubeSize').value);
+            cube.renderMode = document.getElementById('renderMode').value;
+
+            console.log('Scene updated');
+        }
+
+        function resetCamera() {
+            document.getElementById('cameraX').value = '0';
+            document.getElementById('cameraY').value = '0';
+            document.getElementById('cameraZ').value = '-500';
+            document.getElementById('cameraRotX').value = '0';
+            document.getElementById('cameraRotY').value = '0';
+            document.getElementById('fov').value = '60';
+            updateScene();
+        }
+
+        // Event listeners
+        document.getElementById('updateBtn').addEventListener('click', updateScene);
+        document.getElementById('resetBtn').addEventListener('click', resetCamera);
+
+        // Auto-update on input change
+        document.querySelectorAll('input, select').forEach(control => {
+            control.addEventListener('change', updateScene);
+        });
+
+        console.log('3D Test Scene initialized');
+        console.log('Camera:', camera);
+        console.log('Cube:', cube);
+    </script>
+</body>
+</html>

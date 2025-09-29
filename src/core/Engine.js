@@ -1236,6 +1236,9 @@ class Engine {
             this.ctx.restore();
         }
 
+        // Draw 3D cameras first (they render to textures)
+        this.draw3DCameras();
+
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
 
@@ -1275,6 +1278,65 @@ class Engine {
         }
 
         if (this.ctx.flush) this.ctx.flush(); // Ensure all drawing commands are executed
+    }
+
+    /**
+     * Draw all active 3D cameras and their render textures
+     */
+    draw3DCameras() {
+        if (!this.gameObjects) return;
+
+        // Find all active 3D cameras
+        const activeCameras = [];
+
+        const findActiveCameras = (objects) => {
+            objects.forEach(obj => {
+                if (obj.active !== false) {
+                    const camera3D = obj.getModule && obj.getModule("Camera3D");
+                    if (camera3D && camera3D.isActive && camera3D.getRenderedTexture) {
+                        activeCameras.push(camera3D);
+                    }
+
+                    // Search in children
+                    if (obj.children && obj.children.length > 0) {
+                        findActiveCameras(obj.children);
+                    }
+                }
+            });
+        };
+
+        findActiveCameras(this.gameObjects);
+
+        // Draw each active camera's render texture
+        activeCameras.forEach(camera => {
+            try {
+                const renderTexture = camera.getRenderedTexture();
+                if (renderTexture) {
+                    // Calculate the position and size to draw the 3D render texture
+                    // Center it on the screen and scale it to fit the viewport
+                    const viewportWidth = camera.viewportWidth || 800;
+                    const viewportHeight = camera.viewportHeight || 600;
+
+                    // Calculate scaling to fit the viewport while maintaining aspect ratio
+                    const scaleX = this.canvas.width / viewportWidth;
+                    const scaleY = this.canvas.height / viewportHeight;
+                    const scale = Math.min(scaleX, scaleY);
+
+                    const drawWidth = viewportWidth * scale;
+                    const drawHeight = viewportHeight * scale;
+                    const drawX = (this.canvas.width - drawWidth) / 2;
+                    const drawY = (this.canvas.height - drawHeight) / 2;
+
+                    // Draw the render texture
+                    this.ctx.drawImage(
+                        renderTexture,
+                        drawX, drawY, drawWidth, drawHeight
+                    );
+                }
+            } catch (error) {
+                console.error('Error drawing 3D camera:', error);
+            }
+        });
     }
 
     applyViewportTransform() {

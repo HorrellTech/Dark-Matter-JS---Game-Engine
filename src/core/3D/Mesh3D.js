@@ -5,63 +5,91 @@
  */
 class Mesh3D extends Module {
     static namespace = "WIP";
-    
+
     /**
      * Create a new Mesh3D
      */
     constructor() {
         super("Mesh3D");
-        
+
         // Mesh data
         this.vertices = []; // Array of Vector3 objects
         this.edges = [];    // Array of pairs of vertex indices
         this.faces = [];    // Array of arrays of vertex indices
-        
+
         // Mesh properties
         this.position = new Vector3(0, 0, 0);
         this.rotation = new Vector3(0, 0, 0);
         this.scale = new Vector3(1, 1, 1);
-        
+
         // Appearance
         this.wireframeColor = "#FFFFFF";
         this.faceColor = "#3F51B5";
         this.renderMode = "wireframe"; // "wireframe", "solid", or "both"
-        
+
+        // Axis visualization
+        this._showAxisLines = false;
+        this._axisLength = 150;
+
         // Expose properties to the inspector
-        this.exposeProperty("wireframeColor", "color", "#FFFFFF");
-        this.exposeProperty("faceColor", "color", "#3F51B5");
-        this.exposeProperty("renderMode", "enum", "wireframe", {
-            options: ["wireframe", "solid", "both"]
+        this.exposeProperty("position", "vector3", this.position, {
+            onChange: (val) => this.position = val
         });
-        
+        this.exposeProperty("rotation", "vector3", this.rotation, {
+            onChange: (val) => this.rotation = val
+        });
+        this.exposeProperty("scale", "vector3", this.scale, {
+            onChange: (val) => this.scale = val
+        });
+        this.exposeProperty("wireframeColor", "color", "#FFFFFF", {
+            onChange: (val) => this.wireframeColor = val
+        });
+        this.exposeProperty("faceColor", "color", "#3F51B5", {
+            onChange: (val) => this.faceColor = val
+        });
+        this.exposeProperty("renderMode", "enum", "wireframe", {
+            options: ["wireframe", "solid", "both"],
+            onChange: (val) => this.renderMode = val
+        });
+
+        this.exposeProperty("showAxisLines", "boolean", false, {
+            onChange: (val) => this._showAxisLines = val
+        });
+
+        this.exposeProperty("axisLength", "number", 150, {
+            min: 50,
+            max: 500,
+            onChange: (val) => this._axisLength = val
+        });
+
         // Initialize with a default cube
         this.createCube(100);
     }
-    
+
     /**
      * Create a cube mesh
      * @param {number} size - Size of the cube
      */
     createCube(size = 100) {
         const s = size / 2;
-        
+
         this.vertices = [
             new Vector3(-s, -s, -s), // 0: back-bottom-left
-            new Vector3(s, -s, -s),  // 1: back-bottom-right
+            new Vector3(-s, s, -s),  // 1: back-bottom-right
             new Vector3(s, s, -s),   // 2: back-top-right
-            new Vector3(-s, s, -s),  // 3: back-top-left
+            new Vector3(s, -s, -s),  // 3: back-top-left
             new Vector3(-s, -s, s),  // 4: front-bottom-left
-            new Vector3(s, -s, s),   // 5: front-bottom-right
+            new Vector3(-s, s, s),   // 5: front-bottom-right
             new Vector3(s, s, s),    // 6: front-top-right
-            new Vector3(-s, s, s)    // 7: front-top-left
+            new Vector3(s, -s, s)    // 7: front-top-left
         ];
-        
+
         this.edges = [
             [0, 1], [1, 2], [2, 3], [3, 0], // back face
             [4, 5], [5, 6], [6, 7], [7, 4], // front face
             [0, 4], [1, 5], [2, 6], [3, 7]  // connecting edges
         ];
-        
+
         this.faces = [
             [0, 1, 2, 3], // back face
             [4, 5, 6, 7], // front face
@@ -71,7 +99,7 @@ class Mesh3D extends Module {
             [0, 1, 5, 4]  // bottom face
         ];
     }
-    
+
     /**
      * Create a pyramid mesh
      * @param {number} baseSize - Size of the base
@@ -80,7 +108,7 @@ class Mesh3D extends Module {
     createPyramid(baseSize = 100, height = 150) {
         const s = baseSize / 2;
         const h = height / 2;
-        
+
         this.vertices = [
             new Vector3(-s, -h, -s), // 0: base back-left
             new Vector3(s, -h, -s),  // 1: base back-right
@@ -88,12 +116,12 @@ class Mesh3D extends Module {
             new Vector3(-s, -h, s),  // 3: base front-left
             new Vector3(0, h, 0)     // 4: apex
         ];
-        
+
         this.edges = [
             [0, 1], [1, 2], [2, 3], [3, 0], // base
             [0, 4], [1, 4], [2, 4], [3, 4]  // edges to apex
         ];
-        
+
         this.faces = [
             [0, 1, 2, 3], // base
             [0, 1, 4],    // back face
@@ -102,7 +130,7 @@ class Mesh3D extends Module {
             [3, 0, 4]     // left face
         ];
     }
-    
+
     /**
      * Create a sphere mesh (approximation using triangles)
      * @param {number} radius - Radius of the sphere
@@ -113,51 +141,51 @@ class Mesh3D extends Module {
         this.vertices = [];
         this.edges = [];
         this.faces = [];
-        
+
         // Create vertices using spherical coordinates
         for (let lat = 0; lat <= detail; lat++) {
             const theta = lat * Math.PI / detail;
             const sinTheta = Math.sin(theta);
             const cosTheta = Math.cos(theta);
-            
+
             for (let lon = 0; lon <= detail; lon++) {
                 const phi = lon * 2 * Math.PI / detail;
                 const sinPhi = Math.sin(phi);
                 const cosPhi = Math.cos(phi);
-                
+
                 const x = radius * sinTheta * cosPhi;
                 const y = radius * cosTheta;
                 const z = radius * sinTheta * sinPhi;
-                
+
                 this.vertices.push(new Vector3(x, y, z));
             }
         }
-        
+
         // Create faces and edges
         for (let lat = 0; lat < detail; lat++) {
             for (let lon = 0; lon < detail; lon++) {
                 const first = lat * (detail + 1) + lon;
                 const second = first + detail + 1;
-                
+
                 // Create two triangular faces
                 this.faces.push([first, first + 1, second + 1]);
                 this.faces.push([first, second + 1, second]);
-                
+
                 // Add edges
                 this.edges.push([first, first + 1]);
                 this.edges.push([first, second]);
-                
+
                 if (lat === detail - 1) {
                     this.edges.push([second, second + 1]);
                 }
-                
+
                 if (lon === detail - 1) {
                     this.edges.push([first + 1, second + 1]);
                 }
             }
         }
     }
-    
+
     /**
      * Create a custom mesh from vertices, edges, and faces
      * @param {Array<Vector3>} vertices - Array of 3D points
@@ -169,7 +197,7 @@ class Mesh3D extends Module {
         this.edges = edges || [];
         this.faces = faces || [];
     }
-    
+
     /**
      * Draw the mesh to the canvas
      * @param {CanvasRenderingContext2D} ctx - The canvas context to draw on
@@ -182,93 +210,360 @@ class Mesh3D extends Module {
             this.drawPlaceholder(ctx);
             return;
         }
-        
+
+        // Use render texture method if camera supports it
+        if (camera.getRenderTextureContext && camera.render3D) {
+            this.drawToRenderTexture(camera.getRenderTextureContext(), camera);
+        } else {
+            // Fallback to direct drawing
+            this.drawDirect(ctx, camera);
+        }
+    }
+
+    /**
+     * Draw directly to a canvas context (fallback method)
+     * @param {CanvasRenderingContext2D} ctx - The canvas context to draw on
+     * @param {Camera3D} camera - The camera to use for projection
+     */
+    drawDirect(ctx, camera) {
         // Transform vertices based on mesh position/rotation/scale and game object transform
         const transformedVertices = this.transformVertices();
-        
+
         // Project the 3D vertices to 2D screen space
-        const projectedVertices = transformedVertices.map(vertex => 
+        const projectedVertices = transformedVertices.map(vertex =>
             camera.projectPoint(vertex)
         );
-        
+
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Z of the face vertices
-                const avgZ = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].z;
+                // Calculate average Y of the face vertices (camera space Y for depth in Z-up system)
+                const avgY = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].y;
                 }, 0) / face.length;
-                
-                return { index, avgZ };
+
+                return { face, avgY };
             })
-            .sort((a, b) => b.avgZ - a.avgZ) // Sort back-to-front
-            .map(item => this.faces[item.index]);
-        
+            .sort((a, b) => a.avgY - b.avgY) // Sort front-to-back (lower Y values first)
+            .map(item => item.face);
+
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
             ctx.fillStyle = this.faceColor;
-            
+
             for (const face of sortedFaces) {
                 if (face.length < 3) continue; // Need at least 3 points to draw a face
-                
+
                 // Check if all vertices are visible
-                const isVisible = face.every(vertexIndex => projectedVertices[vertexIndex] !== null);
+                const isVisible = face.every(vertexIndex =>
+                    projectedVertices[vertexIndex] !== null &&
+                    vertexIndex < projectedVertices.length
+                );
                 if (!isVisible) continue;
-                
+
                 // Draw the face
                 ctx.beginPath();
                 ctx.moveTo(projectedVertices[face[0]].x, projectedVertices[face[0]].y);
-                
+
                 for (let i = 1; i < face.length; i++) {
                     ctx.lineTo(projectedVertices[face[i]].x, projectedVertices[face[i]].y);
                 }
-                
+
                 ctx.closePath();
                 ctx.fill();
             }
         }
-        
+
         // Draw edges
         if (this.renderMode === "wireframe" || this.renderMode === "both") {
             ctx.strokeStyle = this.wireframeColor;
             ctx.lineWidth = 1;
-            
+
             for (const [from, to] of this.edges) {
-                // Check if both vertices are visible
-                if (projectedVertices[from] === null || projectedVertices[to] === null) {
+                // Check if both vertices are valid and visible
+                if (from >= projectedVertices.length ||
+                    to >= projectedVertices.length ||
+                    projectedVertices[from] === null ||
+                    projectedVertices[to] === null) {
                     continue;
                 }
-                
+
                 ctx.beginPath();
                 ctx.moveTo(projectedVertices[from].x, projectedVertices[from].y);
                 ctx.lineTo(projectedVertices[to].x, projectedVertices[to].y);
                 ctx.stroke();
             }
         }
+
+        // Draw axis lines if enabled
+        if (this.showAxisLines) {
+            this.drawAxisLines(ctx, projectedVertices);
+        }
     }
-    
+
     /**
-     * Draw a placeholder shape when no camera is available
-     * @param {CanvasRenderingContext2D} ctx - The canvas context
+     * Draw the mesh to a render texture
+     * @param {CanvasRenderingContext2D} ctx - The render texture context
+     * @param {Camera3D} camera - The camera to use for projection
      */
+    drawToRenderTexture(ctx, camera) {
+        // Transform vertices based on mesh position/rotation/scale and game object transform
+        const transformedVertices = this.transformVertices();
+
+        // Project the 3D vertices to 2D screen space
+        const projectedVertices = transformedVertices.map(vertex =>
+            camera.projectPoint(vertex)
+        );
+
+        // Sort faces by depth for basic depth sorting (painter's algorithm)
+        const sortedFaces = [...this.faces]
+            .map((face, index) => {
+                // Calculate average Y of the face vertices (camera space Y for depth in Z-up system)
+                const avgY = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].y;
+                }, 0) / face.length;
+
+                return { face, avgY };
+            })
+            .sort((a, b) => a.avgY - b.avgY) // Sort front-to-back (lower Y values first)
+            .map(item => item.face);
+
+        // Draw faces in sorted order
+        if (this.renderMode === "solid" || this.renderMode === "both") {
+            ctx.fillStyle = this.faceColor;
+
+            for (const face of sortedFaces) {
+                if (face.length < 3) continue; // Need at least 3 points to draw a face
+
+                // Check if vertices are valid and get projected vertices
+                const validVertices = [];
+                for (const vertexIndex of face) {
+                    if (vertexIndex < projectedVertices.length &&
+                        projectedVertices[vertexIndex] !== null) {
+                        validVertices.push(projectedVertices[vertexIndex]);
+                    }
+                }
+
+                if (validVertices.length < 3) continue;
+
+                // Draw the face using valid vertices
+                ctx.beginPath();
+                ctx.moveTo(validVertices[0].x, validVertices[0].y);
+
+                for (let i = 1; i < validVertices.length; i++) {
+                    ctx.lineTo(validVertices[i].x, validVertices[i].y);
+                }
+
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        // Draw edges
+        if (this.renderMode === "wireframe" || this.renderMode === "both") {
+            ctx.strokeStyle = this.wireframeColor;
+            ctx.lineWidth = 2;
+
+            for (const [from, to] of this.edges) {
+                // Check if both vertices are valid and visible
+                if (from >= projectedVertices.length ||
+                    to >= projectedVertices.length ||
+                    projectedVertices[from] === null ||
+                    projectedVertices[to] === null) {
+                    continue;
+                }
+
+                const fromVertex = projectedVertices[from];
+                const toVertex = projectedVertices[to];
+
+                ctx.beginPath();
+                ctx.moveTo(fromVertex.x, fromVertex.y);
+                ctx.lineTo(toVertex.x, toVertex.y);
+                ctx.stroke();
+            }
+        }
+
+        // Draw axis lines if enabled
+        if (this.showAxisLines) {
+            this.drawAxisLines(ctx, projectedVertices);
+        }
+    }
+
+    /**
+      * Draw colored axis lines for visualization
+      * @param {CanvasRenderingContext2D} ctx - The render texture context
+      * @param {Array<Vector2>} vertices - The projected vertices array
+      */
+    drawAxisLines(ctx, vertices) {
+        if (vertices.length === 0) return;
+
+        // Calculate center point from valid vertices
+        let centerX = 0, centerY = 0;
+        let validVertices = 0;
+
+        for (const vertex of vertices) {
+            if (vertex !== null) {
+                centerX += vertex.x;
+                centerY += vertex.y;
+                validVertices++;
+            }
+        }
+
+        if (validVertices === 0) return;
+
+        centerX /= validVertices;
+        centerY /= validVertices;
+
+        const axisLength = this.axisLength;
+        const centerPoint = new Vector2(centerX, centerY);
+
+        // Define axis endpoints in 3D space (relative to mesh position) - Z-up coordinate system
+        const axes = {
+            x: new Vector3(axisLength, 0, 0),    // Red - X axis (forward/back)
+            y: new Vector3(0, axisLength, 0),    // Blue - Y axis (left/right)
+            z: new Vector3(0, 0, axisLength)     // Green - Z axis (up/down)
+        };
+
+        // Project axis endpoints to screen space
+        const projectedAxes = {};
+        for (const [axis, endpoint] of Object.entries(axes)) {
+            const worldPoint = new Vector3(
+                endpoint.x + this.position.x,
+                endpoint.y + this.position.y,
+                endpoint.z + this.position.z
+            );
+            projectedAxes[axis] = this.projectPointRelative(worldPoint, centerPoint);
+        }
+
+        // Draw axis lines with colors
+        const axisColors = {
+            x: '#ff0000', // Red - X axis (forward/back)
+            y: '#0000ff', // Blue - Y axis (left/right)
+            z: '#00ff00'  // Green - Z axis (up/down)
+        };
+
+        const axisLabels = {
+            x: 'X',
+            y: 'Y',
+            z: 'Z'
+        };
+
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (const [axis, color] of Object.entries(axisColors)) {
+            const endPoint = projectedAxes[axis];
+            if (!endPoint) continue;
+
+            // Draw axis line
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(endPoint.x, endPoint.y);
+            ctx.stroke();
+
+            // Draw axis label at the end
+            ctx.fillStyle = color;
+            ctx.fillText(axisLabels[axis], endPoint.x, endPoint.y);
+
+            // Draw arrowhead (small triangle)
+            this.drawArrowhead(ctx, centerX, centerY, endPoint.x, endPoint.y, color);
+        }
+
+        // Draw axis legend
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('X: Forward/Back (Red)', centerX + 10, centerY - 30);
+        ctx.fillText('Y: Left/Right (Blue)', centerX + 10, centerY - 18);
+        ctx.fillText('Z: Up/Down (Green)', centerX + 10, centerY - 6);
+    }
+
+    /**
+      * Project a point relative to an origin for axis drawing
+      * @param {Vector3} worldPoint - The world point to project
+      * @param {Vector2} origin - The origin point
+      * @returns {Vector2|null} The projected point
+      */
+    projectPointRelative(worldPoint, origin) {
+        // Find active camera
+        const camera = this.findActiveCamera();
+        if (!camera) return null;
+
+        // Project the point
+        const projected = camera.projectPoint(worldPoint);
+        return projected;
+    }
+
+    /**
+      * Draw an arrowhead at the end of an axis line
+      * @param {CanvasRenderingContext2D} ctx - The canvas context
+      * @param {number} fromX - Start X coordinate
+      * @param {number} fromY - Start Y coordinate
+      * @param {number} toX - End X coordinate
+      * @param {number} toY - End Y coordinate
+      * @param {string} color - The color of the arrowhead
+      */
+    drawArrowhead(ctx, fromX, fromY, toX, toY, color) {
+        const headLength = 8;
+        const headAngle = Math.PI / 6; // 30 degrees
+
+        // Calculate direction vector
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+        if (length === 0) return;
+
+        // Calculate unit vector
+        const unitX = dx / length;
+        const unitY = dy / length;
+
+        // Calculate perpendicular vector for arrowhead
+        const perpX = -unitY;
+        const perpY = unitX;
+
+        // Calculate arrowhead points
+        const arrowX1 = toX - headLength * (unitX * Math.cos(headAngle) - perpX * Math.sin(headAngle));
+        const arrowY1 = toY - headLength * (unitY * Math.cos(headAngle) - perpY * Math.sin(headAngle));
+        const arrowX2 = toX - headLength * (unitX * Math.cos(headAngle) + perpX * Math.sin(headAngle));
+        const arrowY2 = toY - headLength * (unitY * Math.cos(headAngle) + perpY * Math.sin(headAngle));
+
+        // Draw arrowhead
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(arrowX1, arrowY1);
+        ctx.moveTo(toX, toY);
+        ctx.lineTo(arrowX2, arrowY2);
+        ctx.stroke();
+    }
+
+    /**
+      * Draw a placeholder shape when no camera is available
+      * @param {CanvasRenderingContext2D} ctx - The canvas context
+      */
     drawPlaceholder(ctx) {
         // Draw a simple cube wireframe
         ctx.strokeStyle = this.wireframeColor;
         ctx.lineWidth = 1;
-        
+
         // Size based on scale
         const size = 25;
-        
+
         // Draw front face
         ctx.beginPath();
         ctx.rect(-size, -size, size * 2, size * 2);
         ctx.stroke();
-        
+
         // Draw back face (offset for perspective effect)
         ctx.beginPath();
         ctx.rect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
         ctx.stroke();
-        
+
         // Draw connecting lines
         ctx.beginPath();
         ctx.moveTo(-size, -size);
@@ -280,7 +575,7 @@ class Mesh3D extends Module {
         ctx.moveTo(-size, size);
         ctx.lineTo(-size * 0.7, size * 0.7);
         ctx.stroke();
-        
+
         // Draw "Mesh3D" text
         ctx.fillStyle = this.wireframeColor;
         ctx.font = '12px Arial';
@@ -288,42 +583,42 @@ class Mesh3D extends Module {
         ctx.textBaseline = 'middle';
         ctx.fillText('Mesh3D', 0, 0);
     }
-    
+
     /**
      * Find the active camera in the scene
      * @returns {Camera3D|null} The active camera or null
      */
     findActiveCamera() {
         const allObjects = this.getAllGameObjects();
-        
+
         for (const obj of allObjects) {
             const camera = obj.getModule("Camera3D");
             if (camera && camera.isActive) {
                 return camera;
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Get all game objects in the scene
      * @returns {Array<GameObject>} All game objects
      */
     getAllGameObjects() {
         if (!this.gameObject) return [];
-        
+
         // Use the editor's method to get all game objects if available
         if (window.editor && window.editor.getAllGameObjects) {
             return window.editor.getAllGameObjects();
         }
-        
+
         // Fallback to recursively finding game objects
         const allObjects = [];
-        
-        const scene = window.editor ? window.editor.activeScene : 
-                    (window.engine ? window.engine.scene : null);
-        
+
+        const scene = window.editor ? window.editor.activeScene :
+            (window.engine ? window.engine.scene : null);
+
         if (scene && scene.gameObjects) {
             const findObjects = (objects) => {
                 objects.forEach(obj => {
@@ -333,64 +628,134 @@ class Mesh3D extends Module {
                     }
                 });
             };
-            
+
             findObjects(scene.gameObjects);
         }
-        
+
         return allObjects;
     }
-    
+
     /**
-     * Transform vertices based on mesh and game object transforms
-     * @returns {Array<Vector3>} Transformed vertices
-     */
+      * Transform vertices based on mesh and game object transforms
+      * @returns {Array<Vector3>} Transformed vertices
+      */
     transformVertices() {
-        if (!this.gameObject) return this.vertices;
-        
-        // Get the game object's world position, rotation, and scale
-        const objPos = this.gameObject.getWorldPosition();
-        const objRot = this.gameObject.getWorldRotation();
-        const objScale = this.gameObject.getWorldScale();
-        
-        // Convert to 3D
-        const objPos3D = new Vector3(objPos.x, objPos.y, 0);
-        const objRot3D = new Vector3(0, 0, objRot * (Math.PI / 180)); // Convert to radians
+        // Get game object transforms if available
+        let objPos = { x: 0, y: 0 };
+        let objRot = 0;
+        let objScale = { x: 1, y: 1 };
+
+        if (this.gameObject) {
+            objPos = this.gameObject.getWorldPosition ? this.gameObject.getWorldPosition() : { x: 0, y: 0 };
+            objRot = this.gameObject.getWorldRotation ? this.gameObject.getWorldRotation() : 0;
+            objScale = this.gameObject.getWorldScale ? this.gameObject.getWorldScale() : { x: 1, y: 1 };
+        }
+
+        // Determine game object world depth (Z). Prefer getWorldDepth(), then depth, then position.z, else 0.
+        let objDepth = 0;
+        if (this.gameObject) {
+            if (typeof this.gameObject.getWorldDepth === 'function') {
+                objDepth = this.gameObject.getWorldDepth();
+            } else if (typeof this.gameObject.depth === 'number') {
+                objDepth = this.gameObject.depth;
+            } else if (this.gameObject.position && typeof this.gameObject.position.z === 'number') {
+                objDepth = this.gameObject.position.z;
+            }
+        }
+
+        // Convert to 3D (use game object depth for Z)
+        const objPos3D = new Vector3(objPos.x, objPos.y, objDepth);
         const objScale3D = new Vector3(objScale.x, objScale.y, 1);
-        
+
         return this.vertices.map(vertex => {
-            // Apply mesh scale
-            let v = new Vector3(
-                vertex.x * this.scale.x,
-                vertex.y * this.scale.y,
-                vertex.z * this.scale.z
-            );
-            
-            // Apply mesh rotation
-            v = v.rotateX(this.rotation.x * (Math.PI / 180));
-            v = v.rotateY(this.rotation.y * (Math.PI / 180));
-            v = v.rotateZ(this.rotation.z * (Math.PI / 180));
-            
-            // Apply mesh position
-            v = v.add(this.position);
-            
-            // Apply game object transform
-            // First scale
-            v = new Vector3(
-                v.x * objScale3D.x,
-                v.y * objScale3D.y,
-                v.z * objScale3D.z
-            );
-            
-            // Then rotate (just Z rotation for now as GameObject is 2D)
-            v = v.rotateZ(objRot3D.z);
-            
-            // Finally translate
-            v = v.add(objPos3D);
-            
+            // Start with the base vertex
+            let v = vertex.clone ? vertex.clone() : new Vector3(vertex.x, vertex.y, vertex.z);
+
+            // Step 1: Apply mesh scale
+            v.x *= this.scale.x;
+            v.y *= this.scale.y;
+            v.z *= this.scale.z;
+
+            // Step 2: Apply game object rotation first (convert degrees to radians)
+            // In 2D-to-3D system, game object rotation is applied around Z-axis
+            if (objRot !== 0) {
+                const rotRad = objRot * (Math.PI / 180);
+                v = this.rotateZ(v, rotRad);
+            }
+
+            // Step 3: Apply mesh rotation (convert degrees to radians)
+            // X-axis: roll, Y-axis: yaw, Z-axis: pitch
+            if (this.rotation.x !== 0) v = this.rotateX(v, this.rotation.x * (Math.PI / 180)); // Roll
+            if (this.rotation.y !== 0) v = this.rotateY(v, this.rotation.y * (Math.PI / 180)); // Yaw
+            if (this.rotation.z !== 0) v = this.rotateZ(v, this.rotation.z * (Math.PI / 180)); // Pitch
+
+            // Step 4: Apply mesh position (translate)
+            v.x += this.position.x;
+            v.y += this.position.y;
+            v.z += this.position.z;
+
+            // Step 5: Apply game object scale
+            v.x *= objScale3D.x;
+            v.y *= objScale3D.y;
+            v.z *= objScale3D.z;
+
+            // Step 6: Apply game object position (translate) including depth
+            v.x += objPos3D.x;
+            v.y += objPos3D.y;
+            v.z += objPos3D.z;
+
             return v;
         });
     }
-    
+
+    /**
+     * Rotate a vector around the X axis
+     * @param {Vector3} v - Vector to rotate
+     * @param {number} angle - Angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateX(v, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return new Vector3(
+            v.x,
+            v.y * cos - v.z * sin,
+            v.y * sin + v.z * cos
+        );
+    }
+
+    /**
+     * Rotate a vector around the Y axis
+     * @param {Vector3} v - Vector to rotate
+     * @param {number} angle - Angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateY(v, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return new Vector3(
+            v.x * cos + v.z * sin,
+            v.y,
+            -v.x * sin + v.z * cos
+        );
+    }
+
+    /**
+     * Rotate a vector around the Z axis
+     * @param {Vector3} v - Vector to rotate
+     * @param {number} angle - Angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateZ(v, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return new Vector3(
+            v.x * cos - v.y * sin,
+            v.x * sin + v.y * cos,
+            v.z
+        );
+    }
+
     /**
      * Draw in the editor
      * @param {CanvasRenderingContext2D} ctx - The canvas context
@@ -399,6 +764,54 @@ class Mesh3D extends Module {
         // Use the same draw method for both runtime and editor
         this.draw(ctx);
     }
+
+    /**
+      * Serialize the mesh to JSON
+      * @returns {Object} JSON representation of the mesh
+      */
+    toJSON() {
+        return {
+            _type: "Mesh3D",
+            vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
+            edges: this.edges.map(edge => [...edge]),
+            faces: this.faces.map(face => [...face]),
+            position: { x: this.position.x, y: this.position.y, z: this.position.z },
+            rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+            scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+            wireframeColor: this.wireframeColor,
+            faceColor: this.faceColor,
+            renderMode: this.renderMode,
+            _showAxisLines: this._showAxisLines,
+            _axisLength: this._axisLength
+        };
+    }
+
+    /**
+      * Deserialize the mesh from JSON
+      * @param {Object} json - JSON representation of the mesh
+      */
+    fromJSON(json) {
+        if (json.vertices) {
+            this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
+        }
+        if (json.edges) this.edges = json.edges;
+        if (json.faces) this.faces = json.faces;
+        if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
+        if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
+        if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
+        if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
+        if (json.faceColor !== undefined) this.faceColor = json.faceColor;
+        if (json.renderMode !== undefined) this.renderMode = json.renderMode;
+        if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
+        if (json._axisLength !== undefined) this._axisLength = json._axisLength;
+    }
+
+    // Getters and setters for properties
+    get showAxisLines() { return this._showAxisLines; }
+    set showAxisLines(value) { this._showAxisLines = value; }
+
+    get axisLength() { return this._axisLength; }
+    set axisLength(value) { this._axisLength = Math.max(50, Math.min(500, value)); }
 }
 
 // Register the Mesh3D module

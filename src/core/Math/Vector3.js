@@ -164,6 +164,50 @@ class Vector3 {
     toString() {
         return `(${this.x}, ${this.y}, ${this.z})`;
     }
+
+    /**
+     * Common unit directions and helpers
+     */
+    static forward() { return new Vector3(1, 0, 0); } // engine convention: X = forward
+    static right()   { return new Vector3(0, 1, 0); } // Y = right
+    static up()      { return new Vector3(0, 0, 1); } // Z = up
+
+    /**
+     * Build a direction vector from Euler angles (degrees).
+     * Rotation order: yaw (Z), pitch (Y), roll (X).
+     * @param {number} yawDeg - rotation around Z axis in degrees (turn left/right)
+     * @param {number} pitchDeg - rotation around Y axis in degrees (tilt up/down)
+     * @param {number} rollDeg - rotation around X axis in degrees (roll)
+     * @returns {Vector3} Unit direction vector pointing "forward" for given euler
+     */
+    static forwardFromEulerDeg(yawDeg = 0, pitchDeg = 0, rollDeg = 0) {
+        const yaw = yawDeg * (Math.PI / 180);
+        const pitch = pitchDeg * (Math.PI / 180);
+        const roll = rollDeg * (Math.PI / 180);
+
+        // Start with engine forward (1,0,0)
+        let v = Vector3.forward();
+        v = v.rotateZ(yaw);
+        v = v.rotateY(pitch);
+        v = v.rotateX(roll);
+        return v.normalize();
+    }
+
+    /**
+     * Rotate an arbitrary vector by Euler angles (degrees).
+     * Order: yaw(Z) then pitch(Y) then roll(X)
+     * @param {Vector3} v - vector to rotate
+     * @param {number} yawDeg
+     * @param {number} pitchDeg
+     * @param {number} rollDeg
+     * @returns {Vector3}
+     */
+    static rotateByEulerDeg(v, yawDeg = 0, pitchDeg = 0, rollDeg = 0) {
+        const yaw = yawDeg * (Math.PI / 180);
+        const pitch = pitchDeg * (Math.PI / 180);
+        const roll = rollDeg * (Math.PI / 180);
+        return v.rotateZ(yaw).rotateY(pitch).rotateX(roll);
+    }
 }
 
 // Make the Vector3 class available globally

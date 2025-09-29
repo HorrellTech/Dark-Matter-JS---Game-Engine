@@ -258,6 +258,12 @@ class Module {
     instanceNearest(gameObjectName, distance = Infinity) {
         this.gameObject.getNearestObject(gameObjectName, distance);
     }
+
+    getAllGameObjects() {
+        if (!window.engine) return null;
+
+        return window.engine.getAllObjects();
+    }
         
     /**
      * Get a GameObject by its name
@@ -268,6 +274,7 @@ class Module {
         if (window.engine) {
             return window.engine.getGameObjectByName(name);
         }
+
         return null;
     }
 
