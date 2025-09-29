@@ -832,13 +832,13 @@ class ExportManager {
             'MarchingCubesTerrain': 'src/core/Modules/Drawing/MarchingCubesTerrain.js',*/
 
             // Asteroid Modules
-            'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
+            //'PlayerShip': 'src/core/Modules/Asteroids/PlayerShip.js',
             //'DrawInfiniteStarFieldParallax': 'src/core/Modules/Asteroids/DrawInfiniteStarFieldParallax.js',
-            'AsteroidsPlanet': 'src/core/Modules/Asteroids/AsteroidsPlanet.js',
-            'EnemyShip': 'src/core/Modules/Asteroids/EnemyShip.js',
-            'AsteroidsBullet': 'src/core/Modules/Asteroids/AsteroidsBullet.js',
-            'Asteroid': 'src/core/Modules/Asteroids/Asteroid.js',
-            'AsteroidManager': 'src/core/Modules/Asteroids/AsteroidManager.js',
+            //'AsteroidsPlanet': 'src/core/Modules/Asteroids/AsteroidsPlanet.js',
+            //'EnemyShip': 'src/core/Modules/Asteroids/EnemyShip.js',
+            //'AsteroidsBullet': 'src/core/Modules/Asteroids/AsteroidsBullet.js',
+            //'Asteroid': 'src/core/Modules/Asteroids/Asteroid.js',
+            //'AsteroidManager': 'src/core/Modules/Asteroids/AsteroidManager.js',
 
             // Animation Modules
             'Tween': 'src/core/Modules/Animation/Tween.js',
