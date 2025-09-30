@@ -237,14 +237,14 @@ class Mesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Y of the face vertices (camera space Y for depth in Z-up system)
-                const avgY = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].y;
+                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
+                const avgX = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].x;
                 }, 0) / face.length;
 
-                return { face, avgY };
+                return { face, avgX };
             })
-            .sort((a, b) => a.avgY - b.avgY) // Sort front-to-back (lower Y values first)
+            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -318,14 +318,14 @@ class Mesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Y of the face vertices (camera space Y for depth in Z-up system)
-                const avgY = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].y;
+                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
+                const avgX = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].x;
                 }, 0) / face.length;
 
-                return { face, avgY };
+                return { face, avgX };
             })
-            .sort((a, b) => a.avgY - b.avgY) // Sort front-to-back (lower Y values first)
+            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order

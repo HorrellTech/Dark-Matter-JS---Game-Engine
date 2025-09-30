@@ -1,20 +1,20 @@
 /**
- * CubeMesh3D - A specialized 3D mesh module for cubes with customizable properties
+ * SphereMesh3D - A specialized 3D mesh module for spheres with customizable properties
  * 
- * This module creates and renders a 3D cube mesh with configurable dimensions,
- * colors, and rendering options.
+ * This module creates and renders a 3D sphere mesh with configurable radius,
+ * colors, and rendering options using UV sphere topology.
  */
-class CubeMesh3D extends Module {
+class SphereMesh3D extends Module {
     static namespace = "WIP";
 
     /**
-     * Create a new CubeMesh3D
+     * Create a new SphereMesh3D
      */
     constructor() {
-        super("CubeMesh3D");
+        super("SphereMesh3D");
 
-        // Cube properties
-        this._size = 100;
+        // Sphere properties
+        this._radius = 50;
         this._position = new Vector3(0, 0, 0);
         this._rotation = new Vector3(0, 0, 0);
         this._scale = new Vector3(1, 1, 1);
@@ -28,7 +28,9 @@ class CubeMesh3D extends Module {
         this._showAxisLines = false;
         this._axisLength = 150;
 
-        this._subdivisions = 1; // Number of subdivisions per face
+        // Sphere resolution
+        this._segments = 16; // Horizontal segments (longitude)
+        this._rings = 12;    // Vertical rings (latitude)
 
         // Mesh data
         this.vertices = [];
@@ -36,12 +38,12 @@ class CubeMesh3D extends Module {
         this.faces = [];
 
         // Expose properties to the inspector
-        this.exposeProperty("size", "number", 100, {
+        this.exposeProperty("radius", "number", 50, {
             min: 1,
             max: 500,
             onChange: (val) => {
-                this._size = val;
-                this.updateCube();
+                this._radius = val;
+                this.updateSphere();
             }
         });
 
@@ -57,22 +59,34 @@ class CubeMesh3D extends Module {
             onChange: (val) => this._scale = val
         });
 
-        this.exposeProperty("subdivisions", "number", 1, {
-            min: 1,
-            max: 10,
+        this.exposeProperty("segments", "number", 16, {
+            min: 3,
+            max: 64,
             step: 1,
             onChange: (val) => {
-                this._subdivisions = Math.floor(val);
-                this.updateCube();
+                this._segments = Math.floor(val);
+                this.updateSphere();
+            }
+        });
+
+        this.exposeProperty("rings", "number", 12, {
+            min: 2,
+            max: 64,
+            step: 1,
+            onChange: (val) => {
+                this._rings = Math.floor(val);
+                this.updateSphere();
             }
         });
 
         this.exposeProperty("wireframeColor", "color", "#FFFFFF", {
             onChange: (val) => this._wireframeColor = val
         });
+
         this.exposeProperty("faceColor", "color", "#3F51B5", {
             onChange: (val) => this._faceColor = val
         });
+
         this.exposeProperty("renderMode", "enum", "wireframe", {
             options: ["wireframe", "solid", "both"],
             onChange: (val) => this._renderMode = val
@@ -88,100 +102,84 @@ class CubeMesh3D extends Module {
             onChange: (val) => this._axisLength = val
         });
 
-        // Initialize cube geometry
-        this.updateCube();
+        // Initialize sphere geometry
+        this.updateSphere();
     }
 
     /**
-     * Update the cube geometry based on current size
+     * Update the sphere geometry based on current radius and resolution
      */
-    updateCube() {
-        const s = this.size / 2;
-        const divs = this._subdivisions;
+    updateSphere() {
+        const r = this.radius;
+        const segments = this._segments;
+        const rings = this._rings;
 
         this.vertices = [];
         this.edges = [];
         this.faces = [];
 
-        // Create a vertex map to avoid duplicates
-        const vertexMap = new Map();
+        // Generate vertices using UV sphere topology
+        // Top pole
+        this.vertices.push(new Vector3(0, 0, r));
 
-        const getOrCreateVertex = (x, y, z) => {
-            // Round to avoid floating point issues
-            const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
-            if (vertexMap.has(key)) {
-                return vertexMap.get(key);
+        // Generate vertices for each ring (excluding poles)
+        for (let ring = 1; ring < rings; ring++) {
+            const phi = Math.PI * ring / rings; // Latitude angle (0 to PI)
+            const z = r * Math.cos(phi);
+            const ringRadius = r * Math.sin(phi);
+
+            for (let seg = 0; seg < segments; seg++) {
+                const theta = 2 * Math.PI * seg / segments; // Longitude angle (0 to 2PI)
+                const x = ringRadius * Math.cos(theta);
+                const y = ringRadius * Math.sin(theta);
+                this.vertices.push(new Vector3(x, y, z));
             }
-            const index = this.vertices.length;
-            this.vertices.push(new Vector3(x, y, z));
-            vertexMap.set(key, index);
-            return index;
-        };
+        }
 
-        // Generate subdivided faces
-        const createFace = (getVertex) => {
-            const faceVerts = [];
-            for (let i = 0; i <= divs; i++) {
-                faceVerts[i] = [];
-                for (let j = 0; j <= divs; j++) {
-                    faceVerts[i][j] = getVertex(i, j);
-                }
+        // Bottom pole
+        this.vertices.push(new Vector3(0, 0, -r));
+
+        // Generate faces
+        // Top cap (connecting to top pole)
+        for (let seg = 0; seg < segments; seg++) {
+            const nextSeg = (seg + 1) % segments;
+            this.faces.push([
+                0, // Top pole
+                1 + nextSeg,
+                1 + seg
+            ]);
+        }
+
+        // Middle quads
+        for (let ring = 0; ring < rings - 2; ring++) {
+            const currentRingStart = 1 + ring * segments;
+            const nextRingStart = 1 + (ring + 1) * segments;
+
+            for (let seg = 0; seg < segments; seg++) {
+                const nextSeg = (seg + 1) % segments;
+
+                // Create quad face (split into two triangles for better rendering)
+                this.faces.push([
+                    currentRingStart + seg,
+                    currentRingStart + nextSeg,
+                    nextRingStart + nextSeg,
+                    nextRingStart + seg
+                ]);
             }
+        }
 
-            // Create quad faces from grid
-            for (let i = 0; i < divs; i++) {
-                for (let j = 0; j < divs; j++) {
-                    this.faces.push([
-                        faceVerts[i][j],
-                        faceVerts[i][j + 1],
-                        faceVerts[i + 1][j + 1],
-                        faceVerts[i + 1][j]
-                    ]);
-                }
-            }
-        };
+        // Bottom cap (connecting to bottom pole)
+        const lastRingStart = 1 + (rings - 2) * segments;
+        const bottomPoleIndex = this.vertices.length - 1;
 
-        // Bottom face (Z = -s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const y = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, y, -s);
-        });
-
-        // Top face (Z = s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const y = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, y, s);
-        });
-
-        // Back face (Y = -s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, -s, z);
-        });
-
-        // Front face (Y = s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, s, z);
-        });
-
-        // Right face (X = s)
-        createFace((i, j) => {
-            const y = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(s, y, z);
-        });
-
-        // Left face (X = -s)
-        createFace((i, j) => {
-            const y = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(-s, y, z);
-        });
+        for (let seg = 0; seg < segments; seg++) {
+            const nextSeg = (seg + 1) % segments;
+            this.faces.push([
+                bottomPoleIndex, // Bottom pole
+                lastRingStart + seg,
+                lastRingStart + nextSeg
+            ]);
+        }
 
         // Generate edges from faces (unique edges only)
         const edgeSet = new Set();
@@ -198,36 +196,23 @@ class CubeMesh3D extends Module {
     }
 
     /**
-     * Update transform values when properties change
-     */
-    updateTransform() {
-        // This method can be used to perform additional actions when transform changes
-        // For now, it's just a placeholder for future enhancements
-    }
-
-    /**
-     * Draw the cube to the canvas
+     * Draw the sphere to the canvas
      * @param {CanvasRenderingContext2D} ctx - The canvas context to draw on
      */
     draw(ctx) {
         try {
             // Find an active camera
             const camera = this.findActiveCamera();
-            //if (!camera) {
-            // Draw a placeholder if no camera is available
-            //this.drawPlaceholder(ctx);
-            //return;
-            // }
 
             // Use render texture method if camera supports it
-            if (camera.getRenderTextureContext && camera.render3D) {
+            if (camera && camera.getRenderTextureContext && camera.render3D) {
                 this.drawToRenderTexture(camera.getRenderTextureContext(), camera);
-            } else {
+            } else if (camera) {
                 // Fallback to direct drawing
                 this.drawDirect(ctx, camera);
             }
         } catch (e) {
-
+            // Silently fail
         }
     }
 
@@ -248,14 +233,14 @@ class CubeMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
+                // Calculate average X of the face vertices (camera space X for depth)
                 const avgX = face.reduce((sum, vertexIndex) => {
                     return sum + transformedVertices[vertexIndex].x;
                 }, 0) / face.length;
 
                 return { face, avgX };
             })
-            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
+            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -263,16 +248,14 @@ class CubeMesh3D extends Module {
             ctx.fillStyle = this.faceColor;
 
             for (const face of sortedFaces) {
-                if (face.length < 3) continue; // Need at least 3 points to draw a face
+                if (face.length < 3) continue;
 
-                // Check if all vertices are visible
                 const isVisible = face.every(vertexIndex =>
                     projectedVertices[vertexIndex] !== null &&
                     vertexIndex < projectedVertices.length
                 );
                 if (!isVisible) continue;
 
-                // Draw the face
                 ctx.beginPath();
                 ctx.moveTo(projectedVertices[face[0]].x, projectedVertices[face[0]].y);
 
@@ -291,7 +274,6 @@ class CubeMesh3D extends Module {
             ctx.lineWidth = 1;
 
             for (const [from, to] of this.edges) {
-                // Check if both vertices are valid and visible
                 if (from >= projectedVertices.length ||
                     to >= projectedVertices.length ||
                     projectedVertices[from] === null ||
@@ -308,7 +290,6 @@ class CubeMesh3D extends Module {
 
         // Draw axis lines if enabled
         if (this.showAxisLines && projectedVertices.length > 0) {
-            // Use the center of the cube as origin (average of all vertices)
             let centerX = 0, centerY = 0;
             let validVertices = 0;
 
@@ -329,47 +310,40 @@ class CubeMesh3D extends Module {
     }
 
     /**
-     * Draw the cube to a render texture
+     * Draw the sphere to a render texture
      * @param {CanvasRenderingContext2D} ctx - The render texture context
      * @param {Camera3D} camera - The camera to use for projection
      */
     drawToRenderTexture(ctx, camera) {
-        // Transform vertices based on mesh position/rotation/scale and game object transform
         const transformedVertices = this.transformVertices();
-
-        // Project the 3D vertices to 2D screen space
         const projectedVertices = transformedVertices.map(vertex =>
             camera.projectPoint(vertex)
         );
 
-        // Filter out invalid projected vertices
         const validProjectedVertices = projectedVertices.map((vertex, index) => {
             if (vertex === null) {
-                // Return a point outside the viewport for invalid vertices
                 return new Vector2(-1000, -1000);
             }
             return vertex;
         });
 
-        // Sort faces by depth for basic depth sorting (painter's algorithm)
+        // Sort faces by depth
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
                 const avgX = face.reduce((sum, vertexIndex) => {
                     return sum + transformedVertices[vertexIndex].x;
                 }, 0) / face.length;
 
                 return { face, avgX };
             })
-            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
+            .sort((a, b) => b.avgX - a.avgX)
             .map(item => item.face);
 
-        // Draw faces in sorted order
+        // Draw faces
         if (this.renderMode === "solid" || this.renderMode === "both") {
             ctx.fillStyle = this.faceColor;
 
             for (const face of sortedFaces) {
-                // Check if vertices are valid and get projected vertices
                 const validVertices = [];
                 for (const vertexIndex of face) {
                     if (vertexIndex < validProjectedVertices.length &&
@@ -380,7 +354,6 @@ class CubeMesh3D extends Module {
 
                 if (validVertices.length < 3) continue;
 
-                // Draw the face using valid vertices
                 ctx.beginPath();
                 ctx.moveTo(validVertices[0].x, validVertices[0].y);
 
@@ -396,10 +369,9 @@ class CubeMesh3D extends Module {
         // Draw edges
         if (this.renderMode === "wireframe" || this.renderMode === "both") {
             ctx.strokeStyle = this.wireframeColor;
-            ctx.lineWidth = 1; // Decreased line width for better visibility
+            ctx.lineWidth = 1;
 
             for (const [from, to] of this.edges) {
-                // Check if both vertices are valid and visible
                 if (from >= validProjectedVertices.length ||
                     to >= validProjectedVertices.length ||
                     validProjectedVertices[from].x < -999 ||
@@ -419,15 +391,15 @@ class CubeMesh3D extends Module {
 
         // Draw axis lines if enabled
         if (this.showAxisLines) {
-            this.drawAxisLines(ctx, validProjectedVertices[0]); // Use first vertex as origin
+            this.drawAxisLines(ctx, validProjectedVertices[0]);
         }
     }
 
     /**
-      * Draw colored axis lines for visualization
-      * @param {CanvasRenderingContext2D} ctx - The render texture context
-      * @param {Vector2} origin - The origin point to draw axes from
-      */
+     * Draw colored axis lines for visualization
+     * @param {CanvasRenderingContext2D} ctx - The render texture context
+     * @param {Vector2} origin - The origin point to draw axes from
+     */
     drawAxisLines(ctx, origin) {
         if (!origin) return;
 
@@ -435,14 +407,12 @@ class CubeMesh3D extends Module {
         const centerX = origin.x;
         const centerY = origin.y;
 
-        // Define axis endpoints in 3D space (relative to origin) - Z-up coordinate system
         const axes = {
-            x: new Vector3(axisLength, 0, 0),    // Red - X axis (forward/back)
-            y: new Vector3(0, axisLength, 0),    // Blue - Y axis (left/right)
-            z: new Vector3(0, 0, axisLength)     // Green - Z axis (up/down)
+            x: new Vector3(axisLength, 0, 0),
+            y: new Vector3(0, axisLength, 0),
+            z: new Vector3(0, 0, axisLength)
         };
 
-        // Project axis endpoints to screen space
         const projectedAxes = {};
         for (const [axis, endpoint] of Object.entries(axes)) {
             const worldPoint = new Vector3(
@@ -453,11 +423,10 @@ class CubeMesh3D extends Module {
             projectedAxes[axis] = this.projectPointRelative(worldPoint, origin);
         }
 
-        // Draw axis lines with colors
         const axisColors = {
-            x: '#ff0000', // Red - X axis (forward/back)
-            y: '#0000ff', // Blue - Y axis (left/right)
-            z: '#00ff00'  // Green - Z axis (up/down)
+            x: '#ff0000',
+            y: '#0000ff',
+            z: '#00ff00'
         };
 
         const axisLabels = {
@@ -474,7 +443,6 @@ class CubeMesh3D extends Module {
             const endPoint = projectedAxes[axis];
             if (!endPoint) continue;
 
-            // Draw axis line
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -482,74 +450,54 @@ class CubeMesh3D extends Module {
             ctx.lineTo(endPoint.x, endPoint.y);
             ctx.stroke();
 
-            // Draw axis label at the end
             ctx.fillStyle = color;
             ctx.fillText(axisLabels[axis], endPoint.x, endPoint.y);
 
-            // Draw arrowhead (small triangle)
             this.drawArrowhead(ctx, centerX, centerY, endPoint.x, endPoint.y, color);
         }
-
-        // Draw axis legend
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px Arial';
-        ctx.textAlign = 'left';
-        ctx.fillText('X: Forward/Back (Red)', centerX + 10, centerY - 30);
-        ctx.fillText('Y: Left/Right (Blue)', centerX + 10, centerY - 18);
-        ctx.fillText('Z: Up/Down (Green)', centerX + 10, centerY - 6);
     }
 
     /**
-      * Project a point relative to an origin for axis drawing
-      * @param {Vector3} worldPoint - The world point to project
-      * @param {Vector2} origin - The origin point
-      * @returns {Vector2|null} The projected point
-      */
+     * Project a point relative to an origin for axis drawing
+     * @param {Vector3} worldPoint - The world point to project
+     * @param {Vector2} origin - The origin point
+     * @returns {Vector2|null} The projected point
+     */
     projectPointRelative(worldPoint, origin) {
-        // Find active camera
         const camera = this.findActiveCamera();
         if (!camera) return null;
-
-        // Project the point
-        const projected = camera.projectPoint(worldPoint);
-        return projected;
+        return camera.projectPoint(worldPoint);
     }
 
     /**
-      * Draw an arrowhead at the end of an axis line
-      * @param {CanvasRenderingContext2D} ctx - The canvas context
-      * @param {number} fromX - Start X coordinate
-      * @param {number} fromY - Start Y coordinate
-      * @param {number} toX - End X coordinate
-      * @param {number} toY - End Y coordinate
-      * @param {string} color - The color of the arrowhead
-      */
+     * Draw an arrowhead at the end of an axis line
+     * @param {CanvasRenderingContext2D} ctx - The canvas context
+     * @param {number} fromX - Start X coordinate
+     * @param {number} fromY - Start Y coordinate
+     * @param {number} toX - End X coordinate
+     * @param {number} toY - End Y coordinate
+     * @param {string} color - The color of the arrowhead
+     */
     drawArrowhead(ctx, fromX, fromY, toX, toY, color) {
         const headLength = 8;
-        const headAngle = Math.PI / 6; // 30 degrees
+        const headAngle = Math.PI / 6;
 
-        // Calculate direction vector
         const dx = toX - fromX;
         const dy = toY - fromY;
         const length = Math.sqrt(dx * dx + dy * dy);
 
         if (length === 0) return;
 
-        // Calculate unit vector
         const unitX = dx / length;
         const unitY = dy / length;
-
-        // Calculate perpendicular vector for arrowhead
         const perpX = -unitY;
         const perpY = unitX;
 
-        // Calculate arrowhead points
         const arrowX1 = toX - headLength * (unitX * Math.cos(headAngle) - perpX * Math.sin(headAngle));
         const arrowY1 = toY - headLength * (unitY * Math.cos(headAngle) - perpY * Math.sin(headAngle));
         const arrowX2 = toX - headLength * (unitX * Math.cos(headAngle) + perpX * Math.sin(headAngle));
         const arrowY2 = toY - headLength * (unitY * Math.cos(headAngle) + perpY * Math.sin(headAngle));
 
-        // Draw arrowhead
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -558,48 +506,6 @@ class CubeMesh3D extends Module {
         ctx.moveTo(toX, toY);
         ctx.lineTo(arrowX2, arrowY2);
         ctx.stroke();
-    }
-
-    /**
-      * Draw a placeholder shape when no camera is available
-      * @param {CanvasRenderingContext2D} ctx - The canvas context
-      */
-    drawPlaceholder(ctx) {
-        // Draw a simple cube wireframe
-        ctx.strokeStyle = this.wireframeColor;
-        ctx.lineWidth = 1;
-
-        // Size based on scale
-        const size = 25;
-
-        // Draw front face
-        ctx.beginPath();
-        ctx.rect(-size, -size, size * 2, size * 2);
-        ctx.stroke();
-
-        // Draw back face (offset for perspective effect)
-        ctx.beginPath();
-        ctx.rect(-size * 0.7, -size * 0.7, size * 1.4, size * 1.4);
-        ctx.stroke();
-
-        // Draw connecting lines
-        ctx.beginPath();
-        ctx.moveTo(-size, -size);
-        ctx.lineTo(-size * 0.7, -size * 0.7);
-        ctx.moveTo(size, -size);
-        ctx.lineTo(size * 0.7, -size * 0.7);
-        ctx.moveTo(size, size);
-        ctx.lineTo(size * 0.7, size * 0.7);
-        ctx.moveTo(-size, size);
-        ctx.lineTo(-size * 0.7, size * 0.7);
-        ctx.stroke();
-
-        // Draw "Cube3D" text
-        ctx.fillStyle = this.wireframeColor;
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Cube3D', 0, 0);
     }
 
     /**
@@ -626,37 +532,14 @@ class CubeMesh3D extends Module {
     getGameObjects() {
         if (!this.gameObject) return [];
 
-
         return this.getAllGameObjects();
-
-        // Fallback to recursively finding game objects
-        const allObjects = [];
-
-        const scene = window.editor ? window.editor.activeScene :
-            (window.engine ? window.engine.scene : null);
-
-        if (scene && scene.gameObjects) {
-            const findObjects = (objects) => {
-                objects.forEach(obj => {
-                    allObjects.push(obj);
-                    if (obj.children && obj.children.length > 0) {
-                        findObjects(obj.children);
-                    }
-                });
-            };
-
-            findObjects(scene.gameObjects);
-        }
-
-        return allObjects;
     }
 
     /**
-      * Transform vertices based on mesh and game object transforms
-      * @returns {Array<Vector3>} Transformed vertices
-      */
+     * Transform vertices based on mesh and game object transforms
+     * @returns {Array<Vector3>} Transformed vertices
+     */
     transformVertices() {
-        // Get game object transforms if available
         let objPos = { x: 0, y: 0 };
         let objRot = 0;
         let objScale = { x: 1, y: 1 };
@@ -667,7 +550,6 @@ class CubeMesh3D extends Module {
             objScale = this.gameObject.getWorldScale ? this.gameObject.getWorldScale() : { x: 1, y: 1 };
         }
 
-        // Determine game object world depth (Z). Prefer getWorldDepth(), then depth, then position.z, else 0.
         let objDepth = 0;
         if (this.gameObject) {
             if (typeof this.gameObject.getWorldDepth === 'function') {
@@ -679,43 +561,39 @@ class CubeMesh3D extends Module {
             }
         }
 
-        // Convert to 3D (use game object depth for Z)
         const objPos3D = new Vector3(objPos.x, objPos.y, objDepth);
         const objScale3D = new Vector3(objScale.x, objScale.y, 1);
 
         return this.vertices.map(vertex => {
-            // Start with the base vertex
             let v = vertex.clone ? vertex.clone() : new Vector3(vertex.x, vertex.y, vertex.z);
 
-            // Step 1: Apply mesh scale
+            // Apply mesh scale
             v.x *= this.scale.x;
             v.y *= this.scale.y;
             v.z *= this.scale.z;
 
-            // Step 2: Apply game object rotation first (convert degrees to radians)
-            // In 2D-to-3D system, game object rotation is applied around Z-axis
+            // Apply game object rotation
             if (objRot !== 0) {
                 const rotRad = objRot * (Math.PI / 180);
                 v = this.rotateZ(v, rotRad);
             }
 
-            // Step 3: Apply mesh rotation (convert degrees to radians)
-            // X-axis: roll, Y-axis: yaw, Z-axis: pitch
-            if (this.rotation.x !== 0) v = this.rotateX(v, this.rotation.x * (Math.PI / 180)); // Roll
-            if (this.rotation.y !== 0) v = this.rotateY(v, this.rotation.y * (Math.PI / 180)); // Yaw
-            if (this.rotation.z !== 0) v = this.rotateZ(v, this.rotation.z * (Math.PI / 180)); // Pitch
+            // Apply mesh rotation
+            if (this.rotation.x !== 0) v = this.rotateX(v, this.rotation.x * (Math.PI / 180));
+            if (this.rotation.y !== 0) v = this.rotateY(v, this.rotation.y * (Math.PI / 180));
+            if (this.rotation.z !== 0) v = this.rotateZ(v, this.rotation.z * (Math.PI / 180));
 
-            // Step 4: Apply mesh position (translate)
+            // Apply mesh position
             v.x += this.position.x;
             v.y += this.position.y;
             v.z += this.position.z;
 
-            // Step 5: Apply game object scale
+            // Apply game object scale
             v.x *= objScale3D.x;
             v.y *= objScale3D.y;
             v.z *= objScale3D.z;
 
-            // Step 6: Apply game object position (translate) including depth
+            // Apply game object position
             v.x += objPos3D.x;
             v.y += objPos3D.y;
             v.z += objPos3D.z;
@@ -777,18 +655,17 @@ class CubeMesh3D extends Module {
      * @param {CanvasRenderingContext2D} ctx - The canvas context
      */
     drawInEditor(ctx) {
-        // Use the same draw method for both runtime and editor
         this.draw(ctx);
     }
 
     /**
-      * Serialize the cube mesh to JSON
-      * @returns {Object} JSON representation of the cube mesh
-      */
+     * Serialize the sphere mesh to JSON
+     * @returns {Object} JSON representation of the sphere mesh
+     */
     toJSON() {
         return {
-            _type: "CubeMesh3D",
-            _size: this._size,
+            _type: "SphereMesh3D",
+            _radius: this._radius,
             _position: { x: this._position.x, y: this._position.y, z: this._position.z },
             _rotation: { x: this._rotation.x, y: this._rotation.y, z: this._rotation.z },
             _scale: { x: this._scale.x, y: this._scale.y, z: this._scale.z },
@@ -797,18 +674,19 @@ class CubeMesh3D extends Module {
             _renderMode: this._renderMode,
             _showAxisLines: this._showAxisLines,
             _axisLength: this._axisLength,
-            _subdivisions: this._subdivisions
+            _segments: this._segments,
+            _rings: this._rings
         };
     }
 
     /**
-      * Deserialize the cube mesh from JSON
-      * @param {Object} json - JSON representation of the cube mesh
-      */
+     * Deserialize the sphere mesh from JSON
+     * @param {Object} json - JSON representation of the sphere mesh
+     */
     fromJSON(json) {
-        if (json._size !== undefined) {
-            this._size = json._size;
-            this.updateCube();
+        if (json._radius !== undefined) {
+            this._radius = json._radius;
+            this.updateSphere();
         }
         if (json._position) this._position = new Vector3(json._position.x, json._position.y, json._position.z);
         if (json._rotation) this._rotation = new Vector3(json._rotation.x, json._rotation.y, json._rotation.z);
@@ -818,20 +696,27 @@ class CubeMesh3D extends Module {
         if (json._renderMode !== undefined) this._renderMode = json._renderMode;
         if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
         if (json._axisLength !== undefined) this._axisLength = json._axisLength;
-        if (json._subdivisions !== undefined) this._subdivisions = json._subdivisions;
+        if (json._segments !== undefined) this._segments = json._segments;
+        if (json._rings !== undefined) this._rings = json._rings;
     }
 
-    // Getters and setters for properties
-    get size() { return this._size; }
-    set size(value) {
-        this._size = value;
-        this.updateCube();
+    // Getters and setters
+    get radius() { return this._radius; }
+    set radius(value) {
+        this._radius = value;
+        this.updateSphere();
     }
 
-    get subdivisions() { return this._subdivisions; }
-    set subdivisions(value) {
-        this._subdivisions = Math.floor(Math.max(1, Math.min(10, value)));
-        this.updateCube();
+    get segments() { return this._segments; }
+    set segments(value) {
+        this._segments = Math.floor(Math.max(3, Math.min(64, value)));
+        this.updateSphere();
+    }
+
+    get rings() { return this._rings; }
+    set rings(value) {
+        this._rings = Math.floor(Math.max(2, Math.min(64, value)));
+        this.updateSphere();
     }
 
     get position() { return this._position; }
@@ -859,5 +744,5 @@ class CubeMesh3D extends Module {
     set axisLength(value) { this._axisLength = Math.max(50, Math.min(500, value)); }
 }
 
-// Register the CubeMesh3D module
-window.CubeMesh3D = CubeMesh3D;
+// Register the SphereMesh3D module
+window.SphereMesh3D = SphereMesh3D;

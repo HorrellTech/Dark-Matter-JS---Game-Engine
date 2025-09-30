@@ -115,7 +115,7 @@ class Engine {
             fullscreen: false,
             maintainAspectRatio: true,
             pixelPerfect: false,
-            smoothing: true,
+            smoothing: false,
             // Add DPI awareness
             pixelRatio: window.devicePixelRatio || 1
         };
@@ -1236,9 +1236,6 @@ class Engine {
             this.ctx.restore();
         }
 
-        // Draw 3D cameras first (they render to textures)
-        this.draw3DCameras();
-
         // Draw all game objects, sorted by depth
         const allObjects = this.getAllObjects(this.gameObjects);
 
@@ -1266,6 +1263,9 @@ class Engine {
         if (window.physicsManager && window.physicsManager.debugDraw) {
             window.physicsManager.drawDebug(this.ctx);
         }
+        
+        // Draw 3D cameras first (they render to textures)
+        this.draw3DCameras();
 
         this.ctx.restore();
 
