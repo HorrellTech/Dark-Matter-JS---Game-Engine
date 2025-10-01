@@ -96,12 +96,35 @@
             <input type="number" id="cubeSize" value="100" min="50" max="300" step="10">
         </div>
         <div class="control-group">
+            <label for="cubeSubdivisions">Cube Subdivisions:</label>
+            <input type="number" id="cubeSubdivisions" value="1" min="1" max="5" step="1">
+        </div>
+        <div class="control-group">
             <label for="renderMode">Render Mode:</label>
             <select id="renderMode">
                 <option value="wireframe">Wireframe</option>
                 <option value="solid">Solid</option>
                 <option value="both">Both</option>
             </select>
+        </div>
+        <div class="control-group">
+            <label for="renderingMethod">Rendering Method:</label>
+            <select id="renderingMethod">
+                <option value="painter">Painter's Algorithm</option>
+                <option value="zbuffer">Z-Buffer</option>
+                <option value="scanline">Scanline</option>
+                <option value="raytrace">Raytrace (Optimized)</option>
+                <option value="hzb">Hierarchical Z-Buffer</option>
+                <option value="depthpass">DepthPass (New!)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="fpsDisplay">FPS:</label>
+            <span id="fpsDisplay">0</span>
+        </div>
+        <div class="control-group">
+            <button id="benchmarkBtn">Run Benchmark</button>
+            <span id="benchmarkResults"></span>
         </div>
         <div class="control-group">
             <button id="updateBtn">Update Scene</button>
@@ -157,6 +180,11 @@
         let camera = camera3D;
         let cube = cubeMesh;
 
+        // Performance tracking
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let fps = 0;
+
         // Update function
         function updateScene() {
             // Update camera
@@ -167,6 +195,9 @@
             camera.rotation.y = parseFloat(document.getElementById('cameraRotY').value);
             camera.fieldOfView = parseFloat(document.getElementById('fov').value);
 
+            // Update rendering method
+            camera._renderingMethod = document.getElementById('renderingMethod').value;
+
             // Update cube
             cube.position.x = parseFloat(document.getElementById('cubeX').value);
             cube.position.y = parseFloat(document.getElementById('cubeY').value);
@@ -175,9 +206,72 @@
             cube.rotation.y = parseFloat(document.getElementById('cubeRotY').value);
             cube.rotation.z = parseFloat(document.getElementById('cubeRotZ').value);
             cube.size = parseFloat(document.getElementById('cubeSize').value);
+            cube.subdivisions = parseInt(document.getElementById('cubeSubdivisions').value);
             cube.renderMode = document.getElementById('renderMode').value;
 
+            // Force render the 3D scene
+            if (camera.render3D) {
+                camera.render3D();
+            }
+
             console.log('Scene updated');
+        }
+
+        // FPS tracking
+        function updateFPS() {
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
+                document.getElementById('fpsDisplay').textContent = fps;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            requestAnimationFrame(updateFPS);
+        }
+
+        // Benchmark function
+        function runBenchmark() {
+            const methods = ['painter', 'zbuffer', 'scanline', 'raytrace', 'hzb', 'depthpass'];
+            const results = {};
+            const benchmarkResults = document.getElementById('benchmarkResults');
+
+            benchmarkResults.textContent = 'Running benchmarks...';
+
+            let completed = 0;
+            methods.forEach(method => {
+                const startTime = performance.now();
+
+                // Run for 100 frames
+                for (let i = 0; i < 100; i++) {
+                    camera._renderingMethod = method;
+                    camera.render3D();
+                }
+
+                const endTime = performance.now();
+                const avgTime = (endTime - startTime) / 100;
+                results[method] = {
+                    avgFrameTime: avgTime,
+                    fps: Math.round(1000 / avgTime)
+                };
+                completed++;
+
+                if (completed === methods.length) {
+                    displayBenchmarkResults(results);
+                }
+            });
+        }
+
+        function displayBenchmarkResults(results) {
+            const benchmarkResults = document.getElementById('benchmarkResults');
+            let output = '<br><strong>Benchmark Results (100 frames each):</strong><br>';
+
+            Object.keys(results).forEach(method => {
+                const result = results[method];
+                output += `${method}: ${result.fps} FPS (${result.avgFrameTime.toFixed(2)}ms/frame)<br>`;
+            });
+
+            benchmarkResults.innerHTML = output;
         }
 
         function resetCamera() {
@@ -193,11 +287,15 @@
         // Event listeners
         document.getElementById('updateBtn').addEventListener('click', updateScene);
         document.getElementById('resetBtn').addEventListener('click', resetCamera);
+        document.getElementById('benchmarkBtn').addEventListener('click', runBenchmark);
 
         // Auto-update on input change
         document.querySelectorAll('input, select').forEach(control => {
             control.addEventListener('change', updateScene);
         });
+
+        // Start FPS tracking
+        updateFPS();
 
         console.log('3D Test Scene initialized');
         console.log('Camera:', camera);

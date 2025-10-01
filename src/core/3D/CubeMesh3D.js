@@ -118,7 +118,7 @@ class CubeMesh3D extends Module {
             return index;
         };
 
-        // Generate subdivided faces
+        // Generate subdivided faces (as triangles)
         const createFace = (getVertex) => {
             const faceVerts = [];
             for (let i = 0; i <= divs; i++) {
@@ -128,14 +128,20 @@ class CubeMesh3D extends Module {
                 }
             }
 
-            // Create quad faces from grid
+            // Create triangular faces from grid (2 triangles per quad) - Counter-clockwise winding
             for (let i = 0; i < divs; i++) {
                 for (let j = 0; j < divs; j++) {
+                    // First triangle - Counter-clockwise (bottom-left, bottom-right, top-right)
                     this.faces.push([
-                        faceVerts[i][j],
-                        faceVerts[i][j + 1],
-                        faceVerts[i + 1][j + 1],
-                        faceVerts[i + 1][j]
+                        faceVerts[i][j],        // bottom-left
+                        faceVerts[i + 1][j],    // bottom-right
+                        faceVerts[i + 1][j + 1] // top-right
+                    ]);
+                    // Second triangle - Counter-clockwise (bottom-left, top-right, top-left)
+                    this.faces.push([
+                        faceVerts[i][j],        // bottom-left
+                        faceVerts[i + 1][j + 1], // top-right
+                        faceVerts[i][j + 1]     // top-left
                     ]);
                 }
             }
@@ -148,17 +154,17 @@ class CubeMesh3D extends Module {
             return getOrCreateVertex(x, y, -s);
         });
 
-        // Top face (Z = s)
+        // Top face (Z = s) - Fixed winding order
         createFace((i, j) => {
             const x = -s + (2 * s * j) / divs;
-            const y = -s + (2 * s * i) / divs;
+            const y = s - (2 * s * i) / divs; // Flip Y coordinate to fix winding
             return getOrCreateVertex(x, y, s);
         });
 
-        // Back face (Y = -s)
+        // Back face (Y = -s) - Fixed winding order
         createFace((i, j) => {
             const x = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
+            const z = s - (2 * s * i) / divs; // Flip Z coordinate to fix winding
             return getOrCreateVertex(x, -s, z);
         });
 
@@ -169,10 +175,10 @@ class CubeMesh3D extends Module {
             return getOrCreateVertex(x, s, z);
         });
 
-        // Right face (X = s)
+        // Right face (X = s) - Fixed winding order
         createFace((i, j) => {
             const y = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
+            const z = s - (2 * s * i) / divs; // Flip Z coordinate to fix winding
             return getOrCreateVertex(s, y, z);
         });
 
@@ -248,14 +254,14 @@ class CubeMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
-                const avgX = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].x;
+                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
+                const avgZ = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].z;
                 }, 0) / face.length;
 
-                return { face, avgX };
+                return { face, avgZ };
             })
-            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
+            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -272,16 +278,44 @@ class CubeMesh3D extends Module {
                 );
                 if (!isVisible) continue;
 
-                // Draw the face
-                ctx.beginPath();
-                ctx.moveTo(projectedVertices[face[0]].x, projectedVertices[face[0]].y);
+                const faceVertices = face.map(idx => projectedVertices[idx]).filter(v => v !== null);
+                if (faceVertices.length < 3) continue;
 
-                for (let i = 1; i < face.length; i++) {
-                    ctx.lineTo(projectedVertices[face[i]].x, projectedVertices[face[i]].y);
+                // Triangulate faces with more than 3 vertices for proper rendering
+                if (faceVertices.length === 3) {
+                    // Triangle face - draw directly
+                    ctx.beginPath();
+                    ctx.moveTo(faceVertices[0].x, faceVertices[0].y);
+                    ctx.lineTo(faceVertices[1].x, faceVertices[1].y);
+                    ctx.lineTo(faceVertices[2].x, faceVertices[2].y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (faceVertices.length === 4) {
+                    // Quad face - triangulate into two triangles
+                    ctx.beginPath();
+                    ctx.moveTo(faceVertices[0].x, faceVertices[0].y);
+                    ctx.lineTo(faceVertices[1].x, faceVertices[1].y);
+                    ctx.lineTo(faceVertices[2].x, faceVertices[2].y);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.moveTo(faceVertices[0].x, faceVertices[0].y);
+                    ctx.lineTo(faceVertices[2].x, faceVertices[2].y);
+                    ctx.lineTo(faceVertices[3].x, faceVertices[3].y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Polygon with more vertices - triangulate using fan method
+                    for (let i = 1; i < faceVertices.length - 1; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(faceVertices[0].x, faceVertices[0].y);
+                        ctx.lineTo(faceVertices[i].x, faceVertices[i].y);
+                        ctx.lineTo(faceVertices[i + 1].x, faceVertices[i + 1].y);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
-
-                ctx.closePath();
-                ctx.fill();
             }
         }
 
@@ -354,14 +388,14 @@ class CubeMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average X of the face vertices (camera space X for depth - positive = forward)
-                const avgX = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].x;
+                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
+                const avgZ = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].z;
                 }, 0) / face.length;
 
-                return { face, avgX };
+                return { face, avgZ };
             })
-            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front (higher X values first = closer to camera)
+            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -380,16 +414,41 @@ class CubeMesh3D extends Module {
 
                 if (validVertices.length < 3) continue;
 
-                // Draw the face using valid vertices
-                ctx.beginPath();
-                ctx.moveTo(validVertices[0].x, validVertices[0].y);
+                // Triangulate faces with more than 3 vertices for proper rendering
+                if (validVertices.length === 3) {
+                    // Triangle face - draw directly
+                    ctx.beginPath();
+                    ctx.moveTo(validVertices[0].x, validVertices[0].y);
+                    ctx.lineTo(validVertices[1].x, validVertices[1].y);
+                    ctx.lineTo(validVertices[2].x, validVertices[2].y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (validVertices.length === 4) {
+                    // Quad face - triangulate into two triangles
+                    ctx.beginPath();
+                    ctx.moveTo(validVertices[0].x, validVertices[0].y);
+                    ctx.lineTo(validVertices[1].x, validVertices[1].y);
+                    ctx.lineTo(validVertices[2].x, validVertices[2].y);
+                    ctx.closePath();
+                    ctx.fill();
 
-                for (let i = 1; i < validVertices.length; i++) {
-                    ctx.lineTo(validVertices[i].x, validVertices[i].y);
+                    ctx.beginPath();
+                    ctx.moveTo(validVertices[0].x, validVertices[0].y);
+                    ctx.lineTo(validVertices[2].x, validVertices[2].y);
+                    ctx.lineTo(validVertices[3].x, validVertices[3].y);
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    // Polygon with more vertices - triangulate using fan method
+                    for (let i = 1; i < validVertices.length - 1; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(validVertices[0].x, validVertices[0].y);
+                        ctx.lineTo(validVertices[i].x, validVertices[i].y);
+                        ctx.lineTo(validVertices[i + 1].x, validVertices[i + 1].y);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
-
-                ctx.closePath();
-                ctx.fill();
             }
         }
 
@@ -418,8 +477,24 @@ class CubeMesh3D extends Module {
         }
 
         // Draw axis lines if enabled
-        if (this.showAxisLines) {
-            this.drawAxisLines(ctx, validProjectedVertices[0]); // Use first vertex as origin
+        if (this.showAxisLines && validProjectedVertices.length > 0) {
+            // Use the center of the cube as origin for axis lines
+            let centerX = 0, centerY = 0;
+            let validVertices = 0;
+
+            for (const vertex of validProjectedVertices) {
+                if (vertex && vertex.x > -999) {
+                    centerX += vertex.x;
+                    centerY += vertex.y;
+                    validVertices++;
+                }
+            }
+
+            if (validVertices > 0) {
+                centerX /= validVertices;
+                centerY /= validVertices;
+                this.drawAxisLines(ctx, new Vector2(centerX, centerY));
+            }
         }
     }
 
@@ -435,11 +510,11 @@ class CubeMesh3D extends Module {
         const centerX = origin.x;
         const centerY = origin.y;
 
-        // Define axis endpoints in 3D space (relative to origin) - Z-up coordinate system
+        // Define axis endpoints in 3D space (relative to origin) - Standard right-handed system
         const axes = {
-            x: new Vector3(axisLength, 0, 0),    // Red - X axis (forward/back)
-            y: new Vector3(0, axisLength, 0),    // Blue - Y axis (left/right)
-            z: new Vector3(0, 0, axisLength)     // Green - Z axis (up/down)
+            x: new Vector3(axisLength, 0, 0),    // Red - X axis (right/left)
+            y: new Vector3(0, axisLength, 0),    // Green - Y axis (up/down)
+            z: new Vector3(0, 0, axisLength)     // Blue - Z axis (forward/back)
         };
 
         // Project axis endpoints to screen space
@@ -453,11 +528,11 @@ class CubeMesh3D extends Module {
             projectedAxes[axis] = this.projectPointRelative(worldPoint, origin);
         }
 
-        // Draw axis lines with colors
+        // Draw axis lines with colors (standard right-handed system)
         const axisColors = {
-            x: '#ff0000', // Red - X axis (forward/back)
-            y: '#0000ff', // Blue - Y axis (left/right)
-            z: '#00ff00'  // Green - Z axis (up/down)
+            x: '#ff0000', // Red - X axis (right/left)
+            y: '#00ff00', // Green - Y axis (up/down)
+            z: '#0000ff'  // Blue - Z axis (forward/back)
         };
 
         const axisLabels = {
@@ -490,13 +565,13 @@ class CubeMesh3D extends Module {
             this.drawArrowhead(ctx, centerX, centerY, endPoint.x, endPoint.y, color);
         }
 
-        // Draw axis legend
+        // Draw axis legend (standard right-handed system)
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px Arial';
         ctx.textAlign = 'left';
-        ctx.fillText('X: Forward/Back (Red)', centerX + 10, centerY - 30);
-        ctx.fillText('Y: Left/Right (Blue)', centerX + 10, centerY - 18);
-        ctx.fillText('Z: Up/Down (Green)', centerX + 10, centerY - 6);
+        ctx.fillText('X: Right/Left (Red)', centerX + 10, centerY - 30);
+        ctx.fillText('Y: Up/Down (Green)', centerX + 10, centerY - 18);
+        ctx.fillText('Z: Forward/Back (Blue)', centerX + 10, centerY - 6);
     }
 
     /**

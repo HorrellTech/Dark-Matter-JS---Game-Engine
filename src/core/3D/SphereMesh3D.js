@@ -140,13 +140,13 @@ class SphereMesh3D extends Module {
         this.vertices.push(new Vector3(0, 0, -r));
 
         // Generate faces
-        // Top cap (connecting to top pole)
+        // Top cap (connecting to top pole) - Counter-clockwise winding
         for (let seg = 0; seg < segments; seg++) {
             const nextSeg = (seg + 1) % segments;
             this.faces.push([
                 0, // Top pole
-                1 + nextSeg,
-                1 + seg
+                1 + seg,
+                1 + nextSeg
             ]);
         }
 
@@ -158,17 +158,17 @@ class SphereMesh3D extends Module {
             for (let seg = 0; seg < segments; seg++) {
                 const nextSeg = (seg + 1) % segments;
 
-                // Create quad face (split into two triangles for better rendering)
+                // Create quad face (split into two triangles for better rendering) - Counter-clockwise winding
                 this.faces.push([
                     currentRingStart + seg,
-                    currentRingStart + nextSeg,
+                    nextRingStart + seg,
                     nextRingStart + nextSeg,
-                    nextRingStart + seg
+                    currentRingStart + nextSeg
                 ]);
             }
         }
 
-        // Bottom cap (connecting to bottom pole)
+        // Bottom cap (connecting to bottom pole) - Counter-clockwise winding
         const lastRingStart = 1 + (rings - 2) * segments;
         const bottomPoleIndex = this.vertices.length - 1;
 
@@ -176,8 +176,8 @@ class SphereMesh3D extends Module {
             const nextSeg = (seg + 1) % segments;
             this.faces.push([
                 bottomPoleIndex, // Bottom pole
-                lastRingStart + seg,
-                lastRingStart + nextSeg
+                lastRingStart + nextSeg,
+                lastRingStart + seg
             ]);
         }
 
@@ -233,14 +233,14 @@ class SphereMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average X of the face vertices (camera space X for depth)
-                const avgX = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].x;
+                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
+                const avgZ = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].z;
                 }, 0) / face.length;
 
-                return { face, avgX };
+                return { face, avgZ };
             })
-            .sort((a, b) => b.avgX - a.avgX) // Sort back-to-front
+            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -330,13 +330,13 @@ class SphereMesh3D extends Module {
         // Sort faces by depth
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                const avgX = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].x;
+                const avgZ = face.reduce((sum, vertexIndex) => {
+                    return sum + transformedVertices[vertexIndex].z;
                 }, 0) / face.length;
 
-                return { face, avgX };
+                return { face, avgZ };
             })
-            .sort((a, b) => b.avgX - a.avgX)
+            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces
