@@ -782,19 +782,19 @@ class Camera3D extends Module {
         const v1 = cameraSpaceVertices[1];
         const v2 = cameraSpaceVertices[2];
 
-        // Calculate face normal in camera space using right-hand rule
-        // For clockwise winding, we want the normal pointing towards the viewer for front faces
+        // Calculate face normal in camera space using cross product
+        // Camera looks along +X axis
         const edge1 = { x: v1.x - v0.x, y: v1.y - v0.y, z: v1.z - v0.z };
         const edge2 = { x: v2.x - v0.x, y: v2.y - v0.y, z: v2.z - v0.z };
 
-        // Use left-hand rule for clockwise winding to get correct normal direction
+        // Cross product (edge1 x edge2) - use right-hand rule
         const normal = {
             x: edge1.y * edge2.z - edge1.z * edge2.y,
             y: edge1.z * edge2.x - edge1.x * edge2.z,
             z: edge1.x * edge2.y - edge1.y * edge2.x
         };
 
-        // Normalize the normal vector
+        // Normalize
         const normalLength = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
         if (normalLength < 1e-10) return true; // Degenerate triangle
 
@@ -805,15 +805,25 @@ class Camera3D extends Module {
         };
 
         // View direction in camera space is along +X axis (camera looking towards +X)
-        const viewDir = { x: 1, y: 0, z: 0 };
+        // For a face to be front-facing, its normal should point towards the camera (negative X)
+        // So we want normalizedNormal.x < 0 for front faces
+        // Cull if normalizedNormal.x >= 0 (backfaces pointing away)
 
-        // Dot product between face normal and view direction
-        // For clockwise winding with correct normal direction, front faces have normals pointing towards camera
-        // So we cull faces where dot < 0 (normals pointing away from camera = backfaces)
-        const dot = normalizedNormal.x * viewDir.x + normalizedNormal.y * viewDir.y + normalizedNormal.z * viewDir.z;
+        // Use the centroid for more accurate culling
+        const centroidX = (v0.x + v1.x + v2.x) / 3;
+        const centroidY = (v0.y + v1.y + v2.y) / 3;
+        const centroidZ = (v0.z + v1.z + v2.z) / 3;
 
-        // For clockwise winding, we want to cull faces where dot < 0 (backfaces)
-        return dot < 0;
+        // Vector from centroid to camera (at origin)
+        const toCameraX = -centroidX;
+        const toCameraY = -centroidY;
+        const toCameraZ = -centroidZ;
+
+        // Dot product with normal - if positive, face is front-facing
+        const dot = normalizedNormal.x * toCameraX + normalizedNormal.y * toCameraY + normalizedNormal.z * toCameraZ;
+
+        // Cull if dot < 0 (backface)
+        return dot < -0.01; // Small epsilon for numerical stability
     }
 
     drawTexturedTriangle(ctx, vertices, uvs, texture) {
@@ -1463,50 +1473,49 @@ class Camera3D extends Module {
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
 
-        // Initialize z-buffer properly at the start
+        // Initialize z-buffer
         if (this._zBuffer) this._zBuffer.fill(Infinity);
 
-        // Handle background clearing based on background type
+        // Handle background clearing
         if (this._backgroundType === "transparent") {
-            // For transparent background, only clear pixels that will have geometry
-            // Leave non-geometry pixels as they are (transparent)
-        } else {
-            // For solid or sky/floor backgrounds, clear all pixels first
-            if (this._backgroundType === "solid") {
-                const bgColor = this.hexToRgb(this._backgroundColor);
-                for (let i = 0; i < data.length; i += 4) {
-                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
-                }
-            } else if (this._backgroundType === "skyfloor") {
-                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
-                const fovRadians = this._fieldOfView * (Math.PI / 180);
-                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
-                const maxPitch = fovRadians / 2;
-                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
-                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
-                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+            // Leave transparent pixels
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i + 3] === 0) continue; // Skip already transparent
+            }
+        } else if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+            }
+        } else if (this._backgroundType === "skyfloor") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+            const horizonY = Math.floor(h * clampedHorizon);
 
-                // Clamp horizon between 0 and 1 to avoid extreme cases
-                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
-                const horizonY = Math.floor(h * clampedHorizon);
-
-                for (let i = 0; i < data.length; i += 4) {
-                    const y = Math.floor((i / 4) / w);
-                    if (y < horizonY) {
-                        data[i] = this.hexToRgb(this._skyColor).r;
-                        data[i + 1] = this.hexToRgb(this._skyColor).g;
-                        data[i + 2] = this.hexToRgb(this._skyColor).b;
-                    } else {
-                        data[i] = this.hexToRgb(this._floorColor).r;
-                        data[i + 1] = this.hexToRgb(this._floorColor).g;
-                        data[i + 2] = this.hexToRgb(this._floorColor).b;
-                    }
-                    data[i + 3] = 255;
+            for (let i = 0; i < data.length; i += 4) {
+                const y = Math.floor((i / 4) / w);
+                if (y < horizonY) {
+                    data[i] = this.hexToRgb(this._skyColor).r;
+                    data[i + 1] = this.hexToRgb(this._skyColor).g;
+                    data[i + 2] = this.hexToRgb(this._skyColor).b;
+                } else {
+                    data[i] = this.hexToRgb(this._floorColor).r;
+                    data[i + 1] = this.hexToRgb(this._floorColor).g;
+                    data[i + 2] = this.hexToRgb(this._floorColor).b;
                 }
+                data[i + 3] = 255;
             }
         }
 
-        // Collect all triangles first for front-to-back sorting
+        // Use Uint32Array for 4x faster pixel writes
+        const buffer32 = new Uint32Array(imgData.data.buffer);
+
+        // Collect all triangles with metadata
         const allTriangles = [];
 
         allObjects.forEach(obj => {
@@ -1522,35 +1531,66 @@ class Camera3D extends Module {
                     idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
                 ).filter(v => v);
 
-                // Calculate world vertices for normal calculation
+                if (cameraVerts.length < 3) return;
+
+                // Clip against near plane FIRST
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                // Backface culling AFTER clipping
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
+                // Calculate world vertices for normal (use original vertices for lighting)
                 const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
                 if (worldVerts.length < 3) return;
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
                 const litColor = this.calculateLighting(worldNormal, faceColor);
 
-                // Clip against near plane first
-                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
-                if (clippedVerts.length < 3) return;
-
-                // Use consistent backface culling method (after clipping)
-                if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) {
-                        return;
-                    }
-                }
-
+                // Project clipped vertices
                 const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
                 const screenVerts = clippedVerts.map(cv => {
                     const proj = this.projectCameraPoint(cv, useExtendedFOV);
                     return proj ? { screen: proj, depth: cv.x } : null;
                 }).filter(v => v);
+
                 if (screenVerts.length < 3) return;
 
-                // Triangulate polygon and calculate min depth for sorting
+                // Pack color as 32-bit ABGR for fast writing
+                const packedColor = (255 << 24) | (litColor.b << 16) | (litColor.g << 8) | litColor.r;
+
+                // Triangulate polygon
                 for (let i = 1; i < screenVerts.length - 1; i++) {
-                    const tri = [screenVerts[0], screenVerts[i], screenVerts[i + 1]];
-                    const minDepth = Math.min(tri[0].depth, tri[1].depth, tri[2].depth);
-                    allTriangles.push({ tri, color: litColor, minDepth });
+                    const tri = {
+                        v0: screenVerts[0],
+                        v1: screenVerts[i],
+                        v2: screenVerts[i + 1],
+                        packedColor: packedColor,
+                        minDepth: Math.min(screenVerts[0].depth, screenVerts[i].depth, screenVerts[i + 1].depth),
+                        avgDepth: (screenVerts[0].depth + screenVerts[i].depth + screenVerts[i + 1].depth) / 3
+                    };
+
+                    // Calculate tight screen-space bounding box
+                    const x0 = tri.v0.screen.x, x1 = tri.v1.screen.x, x2 = tri.v2.screen.x;
+                    const y0 = tri.v0.screen.y, y1 = tri.v1.screen.y, y2 = tri.v2.screen.y;
+
+                    tri.bounds = {
+                        minX: Math.max(0, Math.floor(Math.min(x0, x1, x2))),
+                        maxX: Math.min(w - 1, Math.ceil(Math.max(x0, x1, x2))),
+                        minY: Math.max(0, Math.floor(Math.min(y0, y1, y2))),
+                        maxY: Math.min(h - 1, Math.ceil(Math.max(y0, y1, y2)))
+                    };
+
+                    // Skip degenerate triangles
+                    if (tri.bounds.minX > tri.bounds.maxX || tri.bounds.minY > tri.bounds.maxY) continue;
+
+                    // Calculate area for importance
+                    const area = Math.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)) / 2;
+                    if (area < 0.5) continue; // Skip tiny triangles
+
+                    tri.screenArea = area;
+                    allTriangles.push(tri);
                 }
             });
         });
@@ -1558,12 +1598,75 @@ class Camera3D extends Module {
         // Sort front-to-back for early Z rejection
         allTriangles.sort((a, b) => a.minDepth - b.minDepth);
 
-        // Rasterize all triangles with optimized scanline algorithm
-        allTriangles.forEach(({ tri, color }) => {
-            this.rasterizeTriangleOptimized2(tri[0], tri[1], tri[2], color, data, w, h);
+        // Optimized rasterization with scanline algorithm
+        allTriangles.forEach(tri => {
+            this.rasterizeTriangleZBuffer(tri, buffer32, this._zBuffer, w, h);
         });
 
         ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Highly optimized scanline rasterizer with proper depth interpolation
+    rasterizeTriangleZBuffer(tri, buffer32, zBuffer, w, h) {
+        const { v0, v1, v2, packedColor, bounds } = tri;
+        const { minX, maxX, minY, maxY } = bounds;
+
+        // Convert to integer screen coordinates
+        const x0 = Math.round(v0.screen.x), y0 = Math.round(v0.screen.y), z0 = v0.depth;
+        const x1 = Math.round(v1.screen.x), y1 = Math.round(v1.screen.y), z1 = v1.depth;
+        const x2 = Math.round(v2.screen.x), y2 = Math.round(v2.screen.y), z2 = v2.depth;
+
+        // Edge setup for inside testing
+        const dx01 = x1 - x0, dy01 = y1 - y0;
+        const dx12 = x2 - x1, dy12 = y2 - y1;
+        const dx20 = x0 - x2, dy20 = y0 - y2;
+
+        // Calculate triangle area for barycentric coordinates
+        const area = dx01 * (y2 - y0) - dy01 * (x2 - x0);
+        if (Math.abs(area) < 0.5) return; // Degenerate triangle
+
+        const invArea = 1.0 / area;
+        const epsilon = 0.001; // Small depth bias to prevent z-fighting
+
+        // Scanline rasterization with edge coherence
+        for (let y = minY; y <= maxY; y++) {
+            // Calculate edge functions at scanline start
+            let e0 = dx01 * (y - y0) - dy01 * (minX - x0);
+            let e1 = dx12 * (y - y1) - dy12 * (minX - x1);
+            let e2 = dx20 * (y - y2) - dy20 * (minX - x2);
+
+            // Edge increments
+            const e0_step = -dy01;
+            const e1_step = -dy12;
+            const e2_step = -dy20;
+
+            const rowOffset = y * w;
+
+            for (let x = minX; x <= maxX; x++) {
+                // Inside test
+                if (e0 >= 0 && e1 >= 0 && e2 >= 0) {
+                    // Calculate barycentric coordinates
+                    const u = e0 * invArea;
+                    const v = e1 * invArea;
+                    const ww = 1 - u - v;
+
+                    // Interpolate depth with perspective correction
+                    const depth = u * z0 + v * z1 + ww * z2;
+                    const idx = rowOffset + x;
+
+                    // Depth test with epsilon for stability
+                    if (depth >= this._nearPlane && depth <= this._farPlane && depth < zBuffer[idx] - epsilon) {
+                        zBuffer[idx] = depth;
+                        buffer32[idx] = packedColor;
+                    }
+                }
+
+                // Increment edge values
+                e0 += e0_step;
+                e1 += e1_step;
+                e2 += e2_step;
+            }
+        }
     }
 
     // WebGL-accelerated Z-buffer renderer
@@ -2040,6 +2143,91 @@ class Camera3D extends Module {
 
         // Copy WebGL canvas to 2D canvas
         this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+    }
+
+    /**
+ * Optimized pure raster rendering using scanline algorithm
+ * Fast forward rasterization without Z-buffer overhead
+ */
+    renderRasterOptimized() {
+        const allObjects = this.getGameObjects();
+        const ctx = this._renderTextureCtx;
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth;
+        const h = this._renderTextureHeight;
+
+        // Use Uint32Array for faster pixel writes
+        const buffer32 = new Uint32Array(imgData.data.buffer);
+
+        // Clear background efficiently
+        this.clearBackgroundFast(buffer32, w, h);
+
+        // Collect all triangles
+        const allTriangles = [];
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            mesh.faces.forEach(face => {
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+                if (cameraVerts.length < 3) return;
+
+                // Clip against near plane
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                // Backface culling
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Project vertices
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+                const screenVerts = clippedVerts.map(cv => {
+                    const proj = this.projectCameraPoint(cv, useExtendedFOV);
+                    return proj ? { screen: proj, depth: cv.x } : null;
+                }).filter(v => v);
+
+                if (screenVerts.length < 3) return;
+
+                // Pack color as 32-bit value (ABGR format for little-endian)
+                const packedColor = (255 << 24) | (litColor.b << 16) | (litColor.g << 8) | litColor.r;
+
+                // Triangulate and add to list
+                for (let i = 1; i < screenVerts.length - 1; i++) {
+                    allTriangles.push({
+                        v0: screenVerts[0],
+                        v1: screenVerts[i],
+                        v2: screenVerts[i + 1],
+                        packedColor: packedColor,
+                        avgDepth: (screenVerts[0].depth + screenVerts[i].depth + screenVerts[i + 1].depth) / 3
+                    });
+                }
+            });
+        });
+
+        // Sort back-to-front for painter's algorithm
+        allTriangles.sort((a, b) => b.avgDepth - a.avgDepth);
+
+        // Rasterize all triangles
+        allTriangles.forEach(tri => {
+            this.rasterizeTriangleFast(tri, buffer32, w, h);
+        });
+
+        ctx.putImageData(imgData, 0, 0);
     }
 
     // Optimized pure raster renderer for better performance
@@ -3176,6 +3364,101 @@ class Camera3D extends Module {
         return leftHit || rightHit;
     }
 
+    /**
+ * Fast background clearing using 32-bit writes
+ */
+    clearBackgroundFast(buffer32, w, h) {
+        if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
+            buffer32.fill(bgPixel);
+        } else if (this._backgroundType === "skyfloor") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+            const horizonY = Math.floor(h * clampedHorizon);
+
+            const skyColor = this.hexToRgb(this._skyColor);
+            const floorColor = this.hexToRgb(this._floorColor);
+            const skyPixel = (255 << 24) | (skyColor.b << 16) | (skyColor.g << 8) | skyColor.r;
+            const floorPixel = (255 << 24) | (floorColor.b << 16) | (floorColor.g << 8) | floorColor.r;
+
+            for (let y = 0; y < h; y++) {
+                const pixel = y < horizonY ? skyPixel : floorPixel;
+                const rowStart = y * w;
+                for (let x = 0; x < w; x++) {
+                    buffer32[rowStart + x] = pixel;
+                }
+            }
+        } else if (this._backgroundType === "transparent") {
+            buffer32.fill(0); // Fully transparent
+        }
+    }
+
+    /**
+     * Ultra-fast scanline triangle rasterization
+     * Uses edge-walking for maximum performance
+     */
+    rasterizeTriangleFast(tri, buffer32, w, h) {
+        const p0 = { x: Math.round(tri.v0.screen.x), y: Math.round(tri.v0.screen.y) };
+        const p1 = { x: Math.round(tri.v1.screen.x), y: Math.round(tri.v1.screen.y) };
+        const p2 = { x: Math.round(tri.v2.screen.x), y: Math.round(tri.v2.screen.y) };
+
+        // Calculate bounding box
+        const minX = Math.max(0, Math.min(p0.x, p1.x, p2.x));
+        const maxX = Math.min(w - 1, Math.max(p0.x, p1.x, p2.x));
+        const minY = Math.max(0, Math.min(p0.y, p1.y, p2.y));
+        const maxY = Math.min(h - 1, Math.max(p0.y, p1.y, p2.y));
+
+        if (minX > maxX || minY > maxY) return;
+
+        // Edge setup (once per triangle)
+        const v0x = p0.x, v0y = p0.y;
+        const v1x = p1.x, v1y = p1.y;
+        const v2x = p2.x, v2y = p2.y;
+
+        const e0_dx = v1x - v0x, e0_dy = v1y - v0y;
+        const e1_dx = v2x - v1x, e1_dy = v2y - v1y;
+        const e2_dx = v0x - v2x, e2_dy = v0y - v2y;
+
+        // Check if triangle is degenerate
+        const area = e0_dx * (v2y - v0y) - e0_dy * (v2x - v0x);
+        if (Math.abs(area) < 0.5) return;
+
+        const packedColor = tri.packedColor;
+
+        // Scanline loop with edge coherence
+        for (let y = minY; y <= maxY; y++) {
+            // Calculate edge values at start of scanline
+            let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
+            let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
+            let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+
+            // Edge increments for x-stepping
+            const w0_step = -e0_dy;
+            const w1_step = -e1_dy;
+            const w2_step = -e2_dy;
+
+            const rowOffset = y * w;
+
+            for (let x = minX; x <= maxX; x++) {
+                // Inside test using edge equations
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    buffer32[rowOffset + x] = packedColor;
+                }
+
+                // Increment edge values
+                w0 += w0_step;
+                w1 += w1_step;
+                w2 += w2_step;
+            }
+        }
+    }
+
     render3D() {
         if (!this._renderTextureCtx || !this._isActive) return;
         this.clearRenderTexture();
@@ -3410,13 +3693,16 @@ class Camera3D extends Module {
                 const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
                 if (cameraVerts.length < 3) return;
 
-                // Clip against near plane
+                // Clip against near plane BEFORE backface culling
                 const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
                 if (clippedVerts.length < 3) return;
 
-                // Backface culling
+                // Backface culling using consistent method (after clipping)
+                // This is the key fix - we need to cull based on the clipped vertices
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) return;
+                    if (this.shouldCullFace(clippedVerts)) {
+                        return; // Skip back-facing triangles
+                    }
                 }
 
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
@@ -3512,17 +3798,17 @@ class Camera3D extends Module {
                         if (cell.minDepth === Infinity) {
                             visibleCellCount++;
                         }
-                        // More conservative occlusion: only occlude if triangle is FULLY behind
-                        // Use a small epsilon to avoid false culling due to floating point errors
-                        else if (tri.maxDepth < cell.minDepth - 0.01) {
+                        // Use maxDepth for occlusion test - triangle must be COMPLETELY behind
+                        // This prevents clipping when triangles have overlapping depth ranges
+                        else if (tri.maxDepth < cell.minDepth - 0.1) {
                             // Triangle is fully behind in this cell - check next cell
                         }
                         else {
                             // Triangle is at least partially visible in this cell
                             visibleCellCount++;
-                            
-                            // Check for depth conflicts
-                            if (tri.minDepth < cell.minDepth) {
+
+                            // Check for depth conflicts - use a larger epsilon to reduce false conflicts
+                            if (tri.minDepth < cell.minDepth - 0.05) {
                                 hasConflict = true;
                             }
                         }
@@ -3530,8 +3816,8 @@ class Camera3D extends Module {
                 }
 
                 // Only skip if triangle is fully occluded in ALL cells it touches
-                // Require at least 50% of cells to be visible to avoid over-aggressive culling
-                if (visibleCellCount === 0 || (totalCells > 0 && visibleCellCount < totalCells * 0.3)) {
+                // Be more conservative - require fewer visible cells
+                if (visibleCellCount === 0) {
                     return; // Skip fully occluded triangles
                 }
 
@@ -3543,20 +3829,24 @@ class Camera3D extends Module {
                 // Draw the triangle directly to ImageData
                 this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h);
 
-                // Update depth grid for touched cells more conservatively
+                // Update depth grid more conservatively
+                // Only update minDepth if we're significantly closer
                 for (let cy = cellMinY; cy <= cellMaxY; cy++) {
                     for (let cx = cellMinX; cx <= cellMaxX; cx++) {
                         if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
 
                         const cell = depthGrid[cy][cx];
 
+                        // Use a larger epsilon to prevent z-fighting between coplanar triangles
+                        const epsilon = 0.05;
+
                         // Only update if this triangle is actually closer
-                        // Use a small epsilon to prevent z-fighting artifacts
-                        if (tri.minDepth < cell.minDepth - 0.001) {
+                        if (tri.minDepth < cell.minDepth - epsilon) {
                             cell.minDepth = tri.minDepth;
                             cell.polygonId = tri.id;
                             cell.isDirty = true;
                         }
+                        // Always track the farthest point we've seen
                         if (tri.maxDepth > cell.maxDepth) {
                             cell.maxDepth = tri.maxDepth;
                         }
