@@ -237,14 +237,18 @@ class Mesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
-                const avgZ = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].z;
-                }, 0) / face.length;
+                // Calculate centroid depth for more stable sorting
+                const centroidX = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].x, 0) / face.length;
+                const centroidY = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].y, 0) / face.length;
+                const centroidZ = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].z, 0) / face.length;
 
-                return { face, avgZ };
+                // Use centroid X as primary depth (camera looks along +X)
+                // Add small offset based on face center to handle coplanar faces
+                const sortDepth = centroidX + (centroidY + centroidZ) * 0.001;
+
+                return { face, sortDepth };
             })
-            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
+            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -318,14 +322,18 @@ class Mesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
-                const avgZ = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].z;
-                }, 0) / face.length;
+                // Calculate centroid depth for more stable sorting
+                const centroidX = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].x, 0) / face.length;
+                const centroidY = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].y, 0) / face.length;
+                const centroidZ = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].z, 0) / face.length;
 
-                return { face, avgZ };
+                // Use centroid X as primary depth (camera looks along +X)
+                // Add small offset based on face center to handle coplanar faces
+                const sortDepth = centroidX + (centroidY + centroidZ) * 0.001;
+
+                return { face, sortDepth };
             })
-            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
+            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order

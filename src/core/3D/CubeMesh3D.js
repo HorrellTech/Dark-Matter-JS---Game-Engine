@@ -93,115 +93,166 @@ class CubeMesh3D extends Module {
     }
 
     /**
-     * Update the cube geometry based on current size
-     */
-    updateCube() {
-        const s = this.size / 2;
-        const divs = this._subdivisions;
+      * Update the cube geometry based on current size
+      */
+     updateCube() {
+         const s = this.size / 2;
+         const divs = this._subdivisions;
 
-        this.vertices = [];
-        this.edges = [];
-        this.faces = [];
+         this.vertices = [];
+         this.edges = [];
+         this.faces = [];
 
-        // Create a vertex map to avoid duplicates
-        const vertexMap = new Map();
+         // Generate all vertices first (shared vertices for proper mesh connectivity)
+         const vertexMap = new Map();
 
-        const getOrCreateVertex = (x, y, z) => {
-            // Round to avoid floating point issues
-            const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
-            if (vertexMap.has(key)) {
-                return vertexMap.get(key);
-            }
-            const index = this.vertices.length;
-            this.vertices.push(new Vector3(x, y, z));
-            vertexMap.set(key, index);
-            return index;
-        };
+         // Helper function to get or create vertex index
+         const getVertexIndex = (x, y, z) => {
+             const key = `${x.toFixed(6)},${y.toFixed(6)},${z.toFixed(6)}`;
+             if (vertexMap.has(key)) {
+                 return vertexMap.get(key);
+             }
+             const index = this.vertices.length;
+             this.vertices.push(new Vector3(x, y, z));
+             vertexMap.set(key, index);
+             return index;
+         };
 
-        // Generate subdivided faces (as triangles)
-        const createFace = (getVertex) => {
-            const faceVerts = [];
-            for (let i = 0; i <= divs; i++) {
-                faceVerts[i] = [];
-                for (let j = 0; j <= divs; j++) {
-                    faceVerts[i][j] = getVertex(i, j);
-                }
-            }
+         // Generate vertices for all 6 faces
+         // Bottom face (Z = -s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const x = -s + (2 * s * j) / divs;
+                 const y = -s + (2 * s * i) / divs;
+                 getVertexIndex(x, y, -s);
+             }
+         }
 
-            // Create triangular faces from grid (2 triangles per quad) - Counter-clockwise winding
-            for (let i = 0; i < divs; i++) {
-                for (let j = 0; j < divs; j++) {
-                    // First triangle - Counter-clockwise (bottom-left, bottom-right, top-right)
-                    this.faces.push([
-                        faceVerts[i][j],        // bottom-left
-                        faceVerts[i + 1][j],    // bottom-right
-                        faceVerts[i + 1][j + 1] // top-right
-                    ]);
-                    // Second triangle - Counter-clockwise (bottom-left, top-right, top-left)
-                    this.faces.push([
-                        faceVerts[i][j],        // bottom-left
-                        faceVerts[i + 1][j + 1], // top-right
-                        faceVerts[i][j + 1]     // top-left
-                    ]);
-                }
-            }
-        };
+         // Top face (Z = s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const x = -s + (2 * s * j) / divs;
+                 const y = s - (2 * s * i) / divs; // Flip Y for correct winding
+                 getVertexIndex(x, y, s);
+             }
+         }
 
-        // Bottom face (Z = -s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const y = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, y, -s);
-        });
+         // Front face (Y = s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const x = -s + (2 * s * j) / divs;
+                 const z = -s + (2 * s * i) / divs;
+                 getVertexIndex(x, s, z);
+             }
+         }
 
-        // Top face (Z = s) - Fixed winding order
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const y = s - (2 * s * i) / divs; // Flip Y coordinate to fix winding
-            return getOrCreateVertex(x, y, s);
-        });
+         // Back face (Y = -s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const x = -s + (2 * s * j) / divs;
+                 const z = s - (2 * s * i) / divs; // Flip Z for correct winding
+                 getVertexIndex(x, -s, z);
+             }
+         }
 
-        // Back face (Y = -s) - Fixed winding order
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const z = s - (2 * s * i) / divs; // Flip Z coordinate to fix winding
-            return getOrCreateVertex(x, -s, z);
-        });
+         // Right face (X = s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const y = -s + (2 * s * j) / divs;
+                 const z = s - (2 * s * i) / divs; // Flip Z for correct winding
+                 getVertexIndex(s, y, z);
+             }
+         }
 
-        // Front face (Y = s)
-        createFace((i, j) => {
-            const x = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(x, s, z);
-        });
+         // Left face (X = -s)
+         for (let i = 0; i <= divs; i++) {
+             for (let j = 0; j <= divs; j++) {
+                 const y = -s + (2 * s * j) / divs;
+                 const z = -s + (2 * s * i) / divs;
+                 getVertexIndex(-s, y, z);
+             }
+         }
 
-        // Right face (X = s) - Fixed winding order
-        createFace((i, j) => {
-            const y = -s + (2 * s * j) / divs;
-            const z = s - (2 * s * i) / divs; // Flip Z coordinate to fix winding
-            return getOrCreateVertex(s, y, z);
-        });
+         // Create faces using shared vertices
+         // Bottom face (Z = -s)
+         this.createSubdividedFace(-s, 'z', divs, (i, j) => {
+             const x = -s + (2 * s * j) / divs;
+             const y = -s + (2 * s * i) / divs;
+             return getVertexIndex(x, y, -s);
+         });
 
-        // Left face (X = -s)
-        createFace((i, j) => {
-            const y = -s + (2 * s * j) / divs;
-            const z = -s + (2 * s * i) / divs;
-            return getOrCreateVertex(-s, y, z);
-        });
+         // Top face (Z = s)
+         this.createSubdividedFace(s, 'z', divs, (i, j) => {
+             const x = -s + (2 * s * j) / divs;
+             const y = s - (2 * s * i) / divs; // Flip Y for correct winding
+             return getVertexIndex(x, y, s);
+         });
 
-        // Generate edges from faces (unique edges only)
-        const edgeSet = new Set();
-        for (const face of this.faces) {
-            for (let i = 0; i < face.length; i++) {
-                const v1 = face[i];
-                const v2 = face[(i + 1) % face.length];
-                const edgeKey = v1 < v2 ? `${v1},${v2}` : `${v2},${v1}`;
-                edgeSet.add(edgeKey);
-            }
-        }
+         // Front face (Y = s)
+         this.createSubdividedFace(s, 'y', divs, (i, j) => {
+             const x = -s + (2 * s * j) / divs;
+             const z = -s + (2 * s * i) / divs;
+             return getVertexIndex(x, s, z);
+         });
 
-        this.edges = Array.from(edgeSet).map(key => key.split(',').map(Number));
-    }
+         // Back face (Y = -s)
+         this.createSubdividedFace(-s, 'y', divs, (i, j) => {
+             const x = -s + (2 * s * j) / divs;
+             const z = s - (2 * s * i) / divs; // Flip Z for correct winding
+             return getVertexIndex(x, -s, z);
+         });
+
+         // Right face (X = s)
+         this.createSubdividedFace(s, 'x', divs, (i, j) => {
+             const y = -s + (2 * s * j) / divs;
+             const z = s - (2 * s * i) / divs; // Flip Z for correct winding
+             return getVertexIndex(s, y, z);
+         });
+
+         // Left face (X = -s)
+         this.createSubdividedFace(-s, 'x', divs, (i, j) => {
+             const y = -s + (2 * s * j) / divs;
+             const z = -s + (2 * s * i) / divs;
+             return getVertexIndex(-s, y, z);
+         });
+
+         // Generate edges from faces (unique edges only)
+         const edgeSet = new Set();
+         for (const face of this.faces) {
+             for (let i = 0; i < face.length; i++) {
+                 const v1 = face[i];
+                 const v2 = face[(i + 1) % face.length];
+                 const edgeKey = v1 < v2 ? `${v1},${v2}` : `${v2},${v1}`;
+                 edgeSet.add(edgeKey);
+             }
+         }
+
+         this.edges = Array.from(edgeSet).map(key => key.split(',').map(Number));
+     }
+
+     /**
+      * Create a subdivided face using shared vertices
+      * @param {number} fixedCoord - The fixed coordinate value (e.g., Z = -s for bottom face)
+      * @param {string} axis - The axis being fixed ('x', 'y', or 'z')
+      * @param {number} divs - Number of subdivisions
+      * @param {function} getVertexIndex - Function to get vertex index for i,j coordinates
+      */
+     createSubdividedFace(fixedCoord, axis, divs, getVertexIndex) {
+         // Create triangular faces from grid (2 triangles per quad) - Counter-clockwise winding for outward-facing normals
+         for (let i = 0; i < divs; i++) {
+             for (let j = 0; j < divs; j++) {
+                 const v1 = getVertexIndex(i, j);
+                 const v2 = getVertexIndex(i + 1, j);
+                 const v3 = getVertexIndex(i + 1, j + 1);
+                 const v4 = getVertexIndex(i, j + 1);
+
+                 // First triangle - Counter-clockwise winding (v1 -> v2 -> v3)
+                 this.faces.push([v1, v2, v3]);
+                 // Second triangle - Counter-clockwise winding (v1 -> v3 -> v4)
+                 this.faces.push([v1, v3, v4]);
+             }
+         }
+     }
 
     /**
      * Update transform values when properties change
@@ -221,17 +272,17 @@ class CubeMesh3D extends Module {
             const camera = this.findActiveCamera();
             //if (!camera) {
             // Draw a placeholder if no camera is available
-            //this.drawPlaceholder(ctx);
+            this.drawPlaceholder(ctx);
             //return;
             // }
 
             // Use render texture method if camera supports it
-            if (camera.getRenderTextureContext && camera.render3D) {
-                this.drawToRenderTexture(camera.getRenderTextureContext(), camera);
-            } else {
+            //if (camera.getRenderTextureContext && camera.render3D) {
+                //this.drawToRenderTexture(camera.getRenderTextureContext(), camera);
+            //} else {
                 // Fallback to direct drawing
-                this.drawDirect(ctx, camera);
-            }
+                //this.drawDirect(ctx, camera);
+            //}
         } catch (e) {
 
         }
@@ -254,14 +305,29 @@ class CubeMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
-                const avgZ = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].z;
-                }, 0) / face.length;
+                // Calculate maximum depth for accurate sorting of subdivided faces
+                let maxDepth = -Infinity;
+                let centroidY = 0, centroidZ = 0;
 
-                return { face, avgZ };
+                for (const vertexIndex of face) {
+                    if (vertexIndex < transformedVertices.length) {
+                        const vertex = transformedVertices[vertexIndex];
+                        maxDepth = Math.max(maxDepth, vertex.x); // Use X as depth (camera looks along +X)
+                        centroidY += vertex.y;
+                        centroidZ += vertex.z;
+                    }
+                }
+
+                centroidY /= face.length;
+                centroidZ /= face.length;
+
+                // Use maximum depth as primary sorting criteria for subdivided faces
+                // Add small offset based on face center to handle coplanar faces
+                const sortDepth = maxDepth + (centroidY + centroidZ) * 0.001;
+
+                return { face, sortDepth };
             })
-            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
+            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -388,14 +454,29 @@ class CubeMesh3D extends Module {
         // Sort faces by depth for basic depth sorting (painter's algorithm)
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate average Z of the face vertices (camera space Z for depth - negative because camera looks down -Z)
-                const avgZ = face.reduce((sum, vertexIndex) => {
-                    return sum + transformedVertices[vertexIndex].z;
-                }, 0) / face.length;
+                // Calculate maximum depth for accurate sorting of subdivided faces
+                let maxDepth = -Infinity;
+                let centroidY = 0, centroidZ = 0;
 
-                return { face, avgZ };
+                for (const vertexIndex of face) {
+                    if (vertexIndex < transformedVertices.length) {
+                        const vertex = transformedVertices[vertexIndex];
+                        maxDepth = Math.max(maxDepth, vertex.x); // Use X as depth (camera looks along +X)
+                        centroidY += vertex.y;
+                        centroidZ += vertex.z;
+                    }
+                }
+
+                centroidY /= face.length;
+                centroidZ /= face.length;
+
+                // Use maximum depth as primary sorting criteria for subdivided faces
+                // Add small offset based on face center to handle coplanar faces
+                const sortDepth = maxDepth + (centroidY + centroidZ) * 0.001;
+
+                return { face, sortDepth };
             })
-            .sort((a, b) => a.avgZ - b.avgZ) // Sort back-to-front (lower Z values first = closer to camera)
+            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -645,7 +726,7 @@ class CubeMesh3D extends Module {
         ctx.lineWidth = 1;
 
         // Size based on scale
-        const size = 25;
+        const size = this.size * Math.max(this.scale.x, this.scale.y) / 2;
 
         // Draw front face
         ctx.beginPath();
@@ -893,7 +974,8 @@ class CubeMesh3D extends Module {
         if (json._renderMode !== undefined) this._renderMode = json._renderMode;
         if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
         if (json._axisLength !== undefined) this._axisLength = json._axisLength;
-        if (json._subdivisions !== undefined) this._subdivisions = json._subdivisions;
+        //if (json._subdivisions !== undefined) this._subdivisions = json._subdivisions;
+        this._subdivisions = 12;
     }
 
     // Getters and setters for properties

@@ -59,26 +59,28 @@ self.onmessage = function(e) {
 
 function isTriangleInFrustum(v0, v1, v2, nearPlane, farPlane) {
     // Check if triangle intersects the viewing frustum
-    // A triangle is visible if it intersects the frustum (between near and far planes)
-
-    // Count vertices in front of near plane and behind far plane
-    let inFrontNear = 0;
-    let behindFar = 0;
+    // Camera looks along +X axis, so X coordinate represents depth
+    // nearPlane is the minimum X value (closest to camera)
+    // farPlane is the maximum X value (farthest from camera)
 
     const vertices = [v0, v1, v2];
+
+    // Count vertices in front of near plane (X >= nearPlane) and behind far plane (X <= farPlane)
+    let inFrontNear = 0;
+    let behindFar = 0;
 
     for (const vertex of vertices) {
         if (vertex.x >= nearPlane) inFrontNear++;
         if (vertex.x <= farPlane) behindFar++;
     }
 
-    // If all vertices are behind the far plane, cull
+    // If all vertices are behind the far plane (X < farPlane for all), cull
     if (behindFar === 0) return false;
 
-    // If all vertices are in front of the near plane, include
+    // If all vertices are in front of the near plane (X >= nearPlane for all), include
     if (inFrontNear === 3) return true;
 
-    // If some vertices are in front of near plane, include (even if others are behind)
+    // If some vertices are in front of near plane, include (even if others are behind far plane)
     if (inFrontNear > 0) return true;
 
     // If no vertices are in front of near plane, but some are within far plane,

@@ -10,6 +10,10 @@ class Camera3D extends Module {
     constructor() {
         super("Camera3D");
 
+        this._renderTextureGL = null;
+        this._renderTextureGLCtx = null;
+        this._useWebGLAcceleration = false;
+
         this._position = new Vector3(0, 0, 0);
         this._rotation = new Vector3(0, 0, 0);
         this._fieldOfView = 60;
@@ -17,6 +21,9 @@ class Camera3D extends Module {
         this._farPlane = 5000;
         this._isActive = false;
         this._backgroundColor = "#000000";
+        this._skyColor = "#87CEEB";  // Sky blue
+        this._floorColor = "#8B4513"; // Brown
+        this._backgroundType = "skyfloor"; // "skyfloor", "transparent", "solid"
         this._renderTextureWidth = 320;
         this._renderTextureHeight = 240;
         this._renderTextureSmoothing = false;
@@ -25,7 +32,7 @@ class Camera3D extends Module {
         this.viewportWidth = 800;
         this.viewportHeight = 600;
         this.drawGizmoInRuntime = false;
-        this._renderingMethod = "painter";
+        this._renderingMethod = "raster";
         this._enableBackfaceCulling = false;
         this._disableCulling = true;
         this._cullingFieldOfView = 60; // Use same FOV as main camera for consistent culling
@@ -94,6 +101,16 @@ class Camera3D extends Module {
         this.exposeProperty("backgroundColor", "color", "#000000", {
             onChange: (val) => this._backgroundColor = val
         });
+        this.exposeProperty("skyColor", "color", "#87CEEB", {
+            onChange: (val) => this._skyColor = val
+        });
+        this.exposeProperty("floorColor", "color", "#8B4513", {
+            onChange: (val) => this._floorColor = val
+        });
+        this.exposeProperty("backgroundType", "dropdown", "skyfloor", {
+            options: ["skyfloor", "transparent", "solid"],
+            onChange: (val) => this._backgroundType = val
+        });
         this.exposeProperty("drawGizmoInRuntime", "boolean", false, {
             onChange: (val) => this.drawGizmoInRuntime = val
         });
@@ -114,8 +131,8 @@ class Camera3D extends Module {
         this.exposeProperty("renderTextureSmoothing", "boolean", false, {
             onChange: (val) => this._renderTextureSmoothing = val
         });
-        this.exposeProperty("renderingMethod", "dropdown", "painter", {
-            options: ["painter", "zbuffer", "raytrace", "depthpass", "raster", "hybrid"],
+        this.exposeProperty("renderingMethod", "dropdown", "raster", {
+            options: ["raster", "zbuffer", "depthpass", "painter", "hybrid", "webglcanvas", "doom", "ilpc", "fald"],
             onChange: (val) => {
                 this._renderingMethod = val;
                 if (val === "raytrace") {
@@ -160,7 +177,7 @@ class Camera3D extends Module {
         const aspect = this.viewportWidth / this.viewportHeight;
         const fovRadians = this.fieldOfView * (Math.PI / 180);
         const f = 1.0 / Math.tan(fovRadians * 0.5);
-        if (depth < 1e-6) return null;
+        if (depth < 1e-4) return null; // Increased from 1e-6 for better stability
         const ndcX = (cameraPoint.x / depth) * (f / aspect);  // X becomes screen X
         const ndcY = (cameraPoint.y / depth) * f;           // Y becomes screen Y
         const screenX = (ndcX * 0.5 + 0.5) * this.viewportWidth;
@@ -197,6 +214,341 @@ class Camera3D extends Module {
         return relativePos;
     }
 
+    createWebGLRenderTexture() {
+        if (!this._useWebGLAcceleration) return false;
+
+        try {
+            // Create offscreen canvas for WebGL
+            const glCanvas = document.createElement('canvas');
+            glCanvas.width = this._renderTextureWidth;
+            glCanvas.height = this._renderTextureHeight;
+
+            // Try to get WebGL context
+            const gl = glCanvas.getContext('webgl', {
+                alpha: true,
+                antialias: false,
+                preserveDrawingBuffer: true,
+                powerPreference: 'high-performance'
+            }) || glCanvas.getContext('experimental-webgl', {
+                alpha: true,
+                antialias: false,
+                preserveDrawingBuffer: true,
+                powerPreference: 'high-performance'
+            });
+
+            if (!gl) {
+                console.warn("WebGL not available, falling back to 2D canvas");
+                return false;
+            }
+
+            this._renderTextureGL = glCanvas;
+            this._renderTextureGLCtx = gl;
+
+            // Initialize WebGL shaders for triangle rasterization
+            this.initWebGLShaders();
+
+            return true;
+        } catch (e) {
+            console.warn("WebGL initialization failed:", e);
+            return false;
+        }
+    }
+
+    initWebGLRaytracingShaders() {
+        const gl = this._renderTextureGLCtx;
+
+        // Enable float texture extension if available
+        const floatExt = gl.getExtension('OES_texture_float');
+        if (!floatExt) {
+            console.warn('Float textures not supported, raytracing may not work correctly');
+            return false;
+        }
+
+        // Vertex shader - simple fullscreen quad
+        const vertexShaderSource = `
+        attribute vec2 a_position;
+        varying vec2 v_uv;
+        
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+            v_uv = a_position * 0.5 + 0.5;
+        }
+    `;
+
+        // Fragment shader - GPU raytracer
+        const fragmentShaderSource = `
+        precision highp float;
+        
+        varying vec2 v_uv;
+        
+        // Camera uniforms
+        uniform vec3 u_cameraPos;
+        uniform mat3 u_cameraRotation;
+        uniform float u_fov;
+        uniform float u_nearPlane;
+        uniform float u_farPlane;
+        uniform vec2 u_resolution;
+        
+        // Lighting uniforms
+        uniform vec3 u_lightDir;
+        uniform vec3 u_lightColor;
+        uniform float u_lightIntensity;
+        uniform float u_ambientIntensity;
+        
+        // Background uniforms
+        uniform vec3 u_skyColor;
+        uniform vec3 u_floorColor;
+        uniform float u_horizonY;
+        uniform int u_backgroundType;
+        uniform vec3 u_backgroundColor;
+        
+        // Triangle data
+        uniform sampler2D u_triangleData;
+        uniform int u_triangleCount;
+        uniform float u_texWidth;
+        
+        // Ray-triangle intersection (Möller–Trumbore algorithm)
+        bool rayTriangle(vec3 ro, vec3 rd, vec3 v0, vec3 v1, vec3 v2, out float t, out vec3 normal) {
+            vec3 e1 = v1 - v0;
+            vec3 e2 = v2 - v0;
+            vec3 h = cross(rd, e2);
+            float a = dot(e1, h);
+            
+            if (abs(a) < 0.0001) return false;
+            
+            float f = 1.0 / a;
+            vec3 s = ro - v0;
+            float u = f * dot(s, h);
+            
+            if (u < 0.0 || u > 1.0) return false;
+            
+            vec3 q = cross(s, e1);
+            float v = f * dot(rd, q);
+            
+            if (v < 0.0 || u + v > 1.0) return false;
+            
+            t = f * dot(e2, q);
+            
+            if (t > 0.00001) {
+                normal = normalize(cross(e1, e2));
+                return true;
+            }
+            
+            return false;
+        }
+        
+        // Fetch triangle vertices from texture
+        void getTriangle(int idx, out vec3 v0, out vec3 v1, out vec3 v2, out vec3 color) {
+            float texHeight = ceil(float(u_triangleCount) * 5.0 / u_texWidth);
+            
+            // Each triangle takes 5 texels: v0, v1, v2, color, normal
+            float baseIdx = float(idx) * 5.0;
+            float row = floor(baseIdx / u_texWidth);
+            float col = mod(baseIdx, u_texWidth);
+            
+            vec2 uv0 = vec2((col + 0.5) / u_texWidth, (row + 0.5) / texHeight);
+            vec2 uv1 = vec2((col + 1.5) / u_texWidth, (row + 0.5) / texHeight);
+            vec2 uv2 = vec2((col + 2.5) / u_texWidth, (row + 0.5) / texHeight);
+            vec2 uvC = vec2((col + 3.5) / u_texWidth, (row + 0.5) / texHeight);
+            
+            v0 = texture2D(u_triangleData, uv0).xyz;
+            v1 = texture2D(u_triangleData, uv1).xyz;
+            v2 = texture2D(u_triangleData, uv2).xyz;
+            color = texture2D(u_triangleData, uvC).xyz;
+        }
+        
+        // Main raytracing function
+        vec3 trace(vec3 ro, vec3 rd) {
+            float minT = u_farPlane;
+            vec3 hitColor = vec3(0.0);
+            vec3 hitNormal = vec3(0.0, 0.0, 1.0);
+            bool hit = false;
+            
+            // Test all triangles
+            for (int i = 0; i < 4096; i++) {
+                if (i >= u_triangleCount) break;
+                
+                vec3 v0, v1, v2, triColor;
+                getTriangle(i, v0, v1, v2, triColor);
+                
+                float t;
+                vec3 normal;
+                if (rayTriangle(ro, rd, v0, v1, v2, t, normal)) {
+                    if (t > u_nearPlane && t < minT && t < u_farPlane) {
+                        minT = t;
+                        hitColor = triColor;
+                        hitNormal = normal;
+                        hit = true;
+                    }
+                }
+            }
+            
+            if (hit) {
+                // Apply lighting
+                vec3 lightDir = normalize(u_lightDir);
+                float diffuse = max(0.0, -dot(hitNormal, lightDir)) * u_lightIntensity;
+                float lighting = u_ambientIntensity + diffuse * (1.0 - u_ambientIntensity);
+                return hitColor * lighting * u_lightColor;
+            }
+            
+            // Background
+            if (u_backgroundType == 0) {
+                return mix(u_floorColor, u_skyColor, step(u_horizonY, v_uv.y));
+            } else if (u_backgroundType == 2) {
+                return u_backgroundColor;
+            } else {
+                return vec3(0.0);
+            }
+        }
+        
+        void main() {
+            vec2 ndc = v_uv * 2.0 - 1.0;
+            ndc.y = -ndc.y;
+            
+            float aspect = u_resolution.x / u_resolution.y;
+            float tanHalfFov = tan(radians(u_fov) * 0.5);
+            
+            // Ray in camera space (X=forward, Y=right, Z=up)
+            vec3 rayDir = normalize(vec3(
+                1.0,
+                ndc.x * tanHalfFov * aspect,
+                ndc.y * tanHalfFov
+            ));
+            
+            // Transform ray to world space
+            rayDir = u_cameraRotation * rayDir;
+            
+            // Trace ray
+            vec3 color = trace(u_cameraPos, rayDir);
+            
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+
+        if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+            console.error('Vertex shader compile error:', gl.getShaderInfoLog(vertexShader));
+            return false;
+        }
+
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+
+        if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+            console.error('Fragment shader compile error:', gl.getShaderInfoLog(fragmentShader));
+            return false;
+        }
+
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Shader program link error:', gl.getProgramInfoLog(program));
+            return false;
+        }
+
+        this._glRaytraceProgram = program;
+
+        // Get uniform locations
+        this._glRaytraceUniforms = {
+            cameraPos: gl.getUniformLocation(program, 'u_cameraPos'),
+            cameraRotation: gl.getUniformLocation(program, 'u_cameraRotation'),
+            fov: gl.getUniformLocation(program, 'u_fov'),
+            nearPlane: gl.getUniformLocation(program, 'u_nearPlane'),
+            farPlane: gl.getUniformLocation(program, 'u_farPlane'),
+            resolution: gl.getUniformLocation(program, 'u_resolution'),
+            lightDir: gl.getUniformLocation(program, 'u_lightDir'),
+            lightColor: gl.getUniformLocation(program, 'u_lightColor'),
+            lightIntensity: gl.getUniformLocation(program, 'u_lightIntensity'),
+            ambientIntensity: gl.getUniformLocation(program, 'u_ambientIntensity'),
+            skyColor: gl.getUniformLocation(program, 'u_skyColor'),
+            floorColor: gl.getUniformLocation(program, 'u_floorColor'),
+            horizonY: gl.getUniformLocation(program, 'u_horizonY'),
+            backgroundType: gl.getUniformLocation(program, 'u_backgroundType'),
+            backgroundColor: gl.getUniformLocation(program, 'u_backgroundColor'),
+            triangleData: gl.getUniformLocation(program, 'u_triangleData'),
+            triangleCount: gl.getUniformLocation(program, 'u_triangleCount'),
+            texWidth: gl.getUniformLocation(program, 'u_texWidth')
+        };
+
+        // Create fullscreen quad
+        const quadBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, 1
+        ]), gl.STATIC_DRAW);
+
+        this._glRaytraceQuadBuffer = quadBuffer;
+        this._glRaytracePositionAttrib = gl.getAttribLocation(program, 'a_position');
+
+        return true;
+    }
+
+    // Initialize WebGL shaders for triangle rendering
+    initWebGLShaders() {
+        const gl = this._renderTextureGLCtx;
+
+        // Vertex shader
+        const vertexShaderSource = `
+            attribute vec3 a_position;
+            attribute vec3 a_color;
+            varying vec3 v_color;
+            uniform mat4 u_projection;
+            
+            void main() {
+                gl_Position = u_projection * vec4(a_position, 1.0);
+                v_color = a_color;
+            }
+        `;
+
+        // Fragment shader
+        const fragmentShaderSource = `
+            precision mediump float;
+            varying vec3 v_color;
+            
+            void main() {
+                gl_FragColor = vec4(v_color, 1.0);
+            }
+        `;
+
+        // Compile shaders
+        const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertexShader, vertexShaderSource);
+        gl.compileShader(vertexShader);
+
+        const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragmentShader, fragmentShaderSource);
+        gl.compileShader(fragmentShader);
+
+        // Create program
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        this._glProgram = program;
+        this._glPositionAttrib = gl.getAttribLocation(program, 'a_position');
+        this._glColorAttrib = gl.getAttribLocation(program, 'a_color');
+        this._glProjectionUniform = gl.getUniformLocation(program, 'u_projection');
+
+        // Enable depth testing
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
+    }
+
     subtractVector3(a, b) {
         return new Vector3(a.x - b.x, a.y - b.y, a.z - b.z);
     }
@@ -219,7 +571,7 @@ class Camera3D extends Module {
     clipPolygonAgainstNearPlane(vertices, nearPlane) {
         if (!vertices || vertices.length === 0) return [];
         const out = [];
-        const epsilon = 0.001; // Increased from 0.0001 for more stability
+        const epsilon = 0.01; // Increased for better edge case handling
 
         for (let i = 0; i < vertices.length; i++) {
             const a = vertices[i];
@@ -259,7 +611,7 @@ class Camera3D extends Module {
     clipPolygonAgainstFarPlane(vertices, farPlane) {
         if (!vertices || vertices.length === 0) return [];
         const out = [];
-        const epsilon = 0.001;
+        const epsilon = 0.01; // Increased for better edge case handling
 
         for (let i = 0; i < vertices.length; i++) {
             const a = vertices[i];
@@ -296,7 +648,7 @@ class Camera3D extends Module {
         const depth = cameraPoint.x;
         // Remove this check since we clip beforehand
         // if (depth <= this.nearPlane || depth >= this.farPlane) return null;
-        if (depth <= 1e-6) return null; // Only check for zero/negative depth
+        if (depth <= 1e-4) return null; // Increased from 1e-6 for better stability
 
         const aspect = this.viewportWidth / this.viewportHeight;
         const fovToUse = useCullingFov ? this._cullingFieldOfView : this.fieldOfView;
@@ -322,18 +674,23 @@ class Camera3D extends Module {
             return true;
         }
 
-        // Calculate if point is within FOV
+        // Calculate if point is within FOV with tolerance for edge cases
         const aspect = this.viewportWidth / this.viewportHeight;
         const fovRadians = this.fieldOfView * (Math.PI / 180);
         const tanHalfFov = Math.tan(fovRadians * 0.5);
 
-        // Check if point is within horizontal FOV
-        const horizontalBound = Math.abs(cameraPoint.y) / cameraPoint.x;
-        const maxHorizontal = tanHalfFov * aspect;
+        // Add small tolerance to handle floating point precision issues at edges
+        const tolerance = 0.02; // 2% tolerance
 
-        // Check if point is within vertical FOV
+        // Check if point is within horizontal FOV (with tolerance)
+        // cameraPoint.y maps to horizontal screen position, so no aspect ratio needed
+        const horizontalBound = Math.abs(cameraPoint.y) / cameraPoint.x;
+        const maxHorizontal = tanHalfFov * (1 + tolerance);
+
+        // Check if point is within vertical FOV (with tolerance)
+        // cameraPoint.z maps to vertical screen position, apply aspect ratio
         const verticalBound = Math.abs(cameraPoint.z) / cameraPoint.x;
-        const maxVertical = tanHalfFov;
+        const maxVertical = tanHalfFov * aspect * (1 + tolerance);
 
         return horizontalBound <= maxHorizontal && verticalBound <= maxVertical;
     }
@@ -350,6 +707,11 @@ class Camera3D extends Module {
             this._zBuffer = new Float32Array(this._renderTextureWidth * this._renderTextureHeight);
             this._imageData = this._renderTextureCtx.createImageData(this._renderTextureWidth, this._renderTextureHeight);
         }
+
+        // Try to create WebGL context for acceleration
+        if (this._renderingMethod === "raster") {
+            this.createWebGLRenderTexture();
+        }
     }
 
     getRenderTexture() { return this._renderTexture; }
@@ -358,8 +720,44 @@ class Camera3D extends Module {
     clearRenderTexture() {
         if (!this._renderTextureCtx) return;
         this._renderTextureCtx.imageSmoothingEnabled = this._renderTextureSmoothing;
-        this._renderTextureCtx.fillStyle = this._backgroundColor;
-        this._renderTextureCtx.fillRect(0, 0, this._renderTextureWidth, this._renderTextureHeight);
+
+        // Handle different background types
+        switch (this._backgroundType) {
+            case "skyfloor":
+                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                const fovRadians = this._fieldOfView * (Math.PI / 180);
+                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+                const maxPitch = fovRadians / 2;
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
+                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
+                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+
+                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+                const horizonY = Math.floor(this._renderTextureHeight * clampedHorizon);
+
+                // Draw sky (from top to horizon)
+                this._renderTextureCtx.fillStyle = this._skyColor;
+                this._renderTextureCtx.fillRect(0, 0, this._renderTextureWidth, horizonY);
+
+                // Draw floor (from horizon to bottom)
+                this._renderTextureCtx.fillStyle = this._floorColor;
+                this._renderTextureCtx.fillRect(0, horizonY, this._renderTextureWidth, this._renderTextureHeight - horizonY);
+                break;
+
+            case "transparent":
+                // Don't clear the background - leave it transparent
+                // This allows 2D drawing beneath the 3D canvas
+                break;
+
+            case "solid":
+            default:
+                // Fill with solid background color
+                this._renderTextureCtx.fillStyle = this._backgroundColor;
+                this._renderTextureCtx.fillRect(0, 0, this._renderTextureWidth, this._renderTextureHeight);
+                break;
+        }
+
         if (this._zBuffer) this._zBuffer.fill(Infinity);
     }
 
@@ -385,10 +783,11 @@ class Camera3D extends Module {
         const v2 = cameraSpaceVertices[2];
 
         // Calculate face normal in camera space using right-hand rule
-        // For counter-clockwise winding, this gives us the front-facing normal
+        // For clockwise winding, we want the normal pointing towards the viewer for front faces
         const edge1 = { x: v1.x - v0.x, y: v1.y - v0.y, z: v1.z - v0.z };
         const edge2 = { x: v2.x - v0.x, y: v2.y - v0.y, z: v2.z - v0.z };
 
+        // Use left-hand rule for clockwise winding to get correct normal direction
         const normal = {
             x: edge1.y * edge2.z - edge1.z * edge2.y,
             y: edge1.z * edge2.x - edge1.x * edge2.z,
@@ -409,12 +808,11 @@ class Camera3D extends Module {
         const viewDir = { x: 1, y: 0, z: 0 };
 
         // Dot product between face normal and view direction
-        // If dot > 0, face normal points towards camera (visible)
-        // If dot < 0, face normal points away from camera (backface)
+        // For clockwise winding with correct normal direction, front faces have normals pointing towards camera
+        // So we cull faces where dot < 0 (normals pointing away from camera = backfaces)
         const dot = normalizedNormal.x * viewDir.x + normalizedNormal.y * viewDir.y + normalizedNormal.z * viewDir.z;
 
-        // For counter-clockwise winding, we want to cull faces where dot < 0 (backfaces)
-        // But we need to ensure the cube faces are oriented correctly
+        // For clockwise winding, we want to cull faces where dot < 0 (backfaces)
         return dot < 0;
     }
 
@@ -467,31 +865,39 @@ class Camera3D extends Module {
             }
 
             mesh.faces.forEach((face, faceIndex) => {
-                // Get world space vertices
-                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(Boolean);
                 if (worldVerts.length < 3) return;
 
-                // Transform to camera space
-                const cameraSpaceVertices = worldVerts.map(v => this.worldToCameraSpace(v));
-                if (cameraSpaceVertices.length < 3) return;
+                let cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
 
-                // Backface culling - only if enabled
-                if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(cameraSpaceVertices)) return;
-                }
+                // Clip against near and far planes
+                cameraVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (cameraVerts.length < 3) return;
 
-                // Calculate world normal for lighting
-                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                cameraVerts = this.clipPolygonAgainstFarPlane(cameraVerts, this._farPlane);
+                if (cameraVerts.length < 3) return;
 
-                // Calculate sorting depth
-                const depths = cameraSpaceVertices.map(v => v.x);
-                const avgDepth = depths.reduce((a, b) => a + b, 0) / depths.length;
-                const minDepth = Math.min(...depths);
-                const sortDepth = avgDepth * 0.7 + minDepth * 0.3;
+                // Backface culling AFTER clipping
+                if (this._enableBackfaceCulling && !this._disableCulling && this.shouldCullFace(cameraVerts)) return;
+
+                // Project to screen - use extended FOV only when culling is enabled
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+                const projectedVerts = cameraVerts.map(cv => this.projectCameraPoint(cv, useExtendedFOV));
+
+                // Filter out null projections
+                const validProjectedVerts = projectedVerts.filter(v => v !== null);
+
+                // Skip if we don't have enough valid vertices after projection
+                if (validProjectedVerts.length < 3) return;
+
+                // Use MINIMUM depth (closest vertex) for more accurate sorting
+                // This ensures faces with any close vertex are drawn after faces that are entirely farther
+                const sortDepth = Math.min(...cameraVerts.map(v => v.x));
 
                 allFaces.push({
-                    cameraSpaceVertices,
-                    worldNormal,
+                    projectedVertices: validProjectedVerts,
+                    cameraSpaceVertices: cameraVerts,
+                    worldNormal: this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]),
                     mesh,
                     texture,
                     faceUVs: texture && uvCoords && uvCoords[faceIndex] ? uvCoords[faceIndex] : null,
@@ -500,78 +906,49 @@ class Camera3D extends Module {
             });
         });
 
-        // Sort back-to-front
+        // Sort back-to-front (far to near) for proper painter's algorithm
         allFaces.sort((a, b) => b.sortDepth - a.sortDepth);
 
         const ctx = this._renderTextureCtx;
+        this.clearRenderTexture();
 
         // Render each face
-        allFaces.forEach(({ cameraSpaceVertices, worldNormal, mesh, texture, faceUVs }) => {
-            // Clip against near plane
-            let clippedVerts = this.clipPolygonAgainstNearPlane(cameraSpaceVertices, this._nearPlane);
-            if (clippedVerts.length < 3) return;
-
-            // Clip against far plane
-            clippedVerts = this.clipPolygonAgainstFarPlane(clippedVerts, this._farPlane);
-            if (clippedVerts.length < 3) return;
-
-            // Project to screen space
-            const useExtendedFOV = !this._disableCulling;
-            const projectedVerts = clippedVerts.map(cv => this.projectCameraPoint(cv, useExtendedFOV));
-
-            // Filter to only valid projections, but keep vertex correspondence
-            const validVerts = [];
-            const validIndices = [];
-            for (let i = 0; i < projectedVerts.length; i++) {
-                if (projectedVerts[i] !== null) {
-                    validVerts.push(projectedVerts[i]);
-                    validIndices.push(i);
-                }
-            }
-
-            // Need at least 3 valid vertices to render
-            if (validVerts.length < 3) return;
-
+        allFaces.forEach(({ projectedVertices, worldNormal, mesh, texture, faceUVs }) => {
             // Calculate lighting
             const baseColor = mesh.faceColor || mesh._faceColor || "#888888";
             const litColor = this.calculateLighting(worldNormal, baseColor);
 
             ctx.save();
 
-            // Render textured triangles
             if (texture && faceUVs && faceUVs.length >= 3) {
-                for (let i = 1; i < validVerts.length - 1; i++) {
-                    const triVerts = [validVerts[0], validVerts[i], validVerts[i + 1]];
-                    // Map UVs using valid indices
-                    const triUVs = [
-                        faceUVs[Math.min(validIndices[0], faceUVs.length - 1)],
-                        faceUVs[Math.min(validIndices[i], faceUVs.length - 1)],
-                        faceUVs[Math.min(validIndices[i + 1], faceUVs.length - 1)]
-                    ];
+                // Textured rendering - triangulate the polygon
+                for (let i = 1; i < projectedVertices.length - 1; i++) {
+                    const triVerts = [projectedVertices[0], projectedVertices[i], projectedVertices[i + 1]];
+                    const triUVs = [faceUVs[0], faceUVs[i], faceUVs[i + 1]];
                     this.drawTexturedTriangle(ctx, triVerts, triUVs, texture);
                 }
             } else {
-                // Render solid color
+                // Solid color rendering
                 if (mesh.renderMode === "solid" || mesh.renderMode === "both") {
                     ctx.fillStyle = `rgb(${litColor.r}, ${litColor.g}, ${litColor.b})`;
                     ctx.beginPath();
-                    ctx.moveTo(validVerts[0].x, validVerts[0].y);
-                    for (let i = 1; i < validVerts.length; i++) {
-                        ctx.lineTo(validVerts[i].x, validVerts[i].y);
+                    ctx.moveTo(projectedVertices[0].x, projectedVertices[0].y);
+                    for (let i = 1; i < projectedVertices.length; i++) {
+                        ctx.lineTo(projectedVertices[i].x, projectedVertices[i].y);
                     }
                     ctx.closePath();
                     ctx.fill();
                 }
             }
 
-            // Render wireframe
+            // Wireframe rendering
             if (mesh.renderMode === "wireframe" || mesh.renderMode === "both") {
                 ctx.strokeStyle = mesh.wireframeColor || mesh._wireframeColor || "#ffffff";
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(validVerts[0].x, validVerts[0].y);
-                for (let i = 1; i < validVerts.length; i++) {
-                    ctx.lineTo(validVerts[i].x, validVerts[i].y);
+                ctx.moveTo(projectedVertices[0].x, projectedVertices[0].y);
+                for (let i = 1; i < projectedVertices.length; i++) {
+                    ctx.lineTo(projectedVertices[i].x, projectedVertices[i].y);
                 }
                 ctx.closePath();
                 ctx.stroke();
@@ -581,6 +958,33 @@ class Camera3D extends Module {
         });
     }
 
+    rasterizeTriangleWithDepth(ctx, v0, v1, v2, color) {
+        const p0 = { x: Math.round(v0.screen.x), y: Math.round(v0.screen.y), z: v0.depth };
+        const p1 = { x: Math.round(v1.screen.x), y: Math.round(v1.screen.y), z: v1.depth };
+        const p2 = { x: Math.round(v2.screen.x), y: Math.round(v2.screen.y), z: v2.depth };
+
+        const minX = Math.max(0, Math.min(p0.x, p1.x, p2.x));
+        const maxX = Math.min(this._renderTextureWidth - 1, Math.max(p0.x, p1.x, p2.x));
+        const minY = Math.max(0, Math.min(p0.y, p1.y, p2.y));
+        const maxY = Math.min(this._renderTextureHeight - 1, Math.max(p0.y, p1.y, p2.y));
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const bary = this.barycentric(p0, p1, p2, x, y);
+                if (bary.u >= 0 && bary.v >= 0 && bary.w >= 0) {
+                    const depth = bary.u * p0.z + bary.v * p1.z + bary.w * p2.z;
+                    const idx = y * this._renderTextureWidth + x;
+
+                    if (depth >= this._nearPlane && depth <= this._farPlane && depth < this._zBuffer[idx]) {
+                        this._zBuffer[idx] = depth;
+                        ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+            }
+        }
+    }
+
     // Combines spatial subdivision with Z-buffering for better performance
     renderHZB() {
         const allObjects = this.getGameObjects();
@@ -588,11 +992,45 @@ class Camera3D extends Module {
         const imgData = this._imageData;
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
 
-        // Clear buffer
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+        // Handle background clearing based on background type
+        if (this._backgroundType === "transparent") {
+            // For transparent background, only clear pixels that will have geometry
+            // Leave non-geometry pixels as they are (transparent)
+        } else {
+            // For solid or sky/floor backgrounds, clear all pixels first
+            if (this._backgroundType === "solid") {
+                const bgColor = this.hexToRgb(this._backgroundColor);
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+                }
+            } else if (this._backgroundType === "skyfloor") {
+                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                const fovRadians = this._fieldOfView * (Math.PI / 180);
+                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+                const maxPitch = fovRadians / 2;
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
+                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
+                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+
+                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+                const horizonY = Math.floor(h * clampedHorizon);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const y = Math.floor((i / 4) / w);
+                    if (y < horizonY) {
+                        data[i] = this.hexToRgb(this._skyColor).r;
+                        data[i + 1] = this.hexToRgb(this._skyColor).g;
+                        data[i + 2] = this.hexToRgb(this._skyColor).b;
+                    } else {
+                        data[i] = this.hexToRgb(this._floorColor).r;
+                        data[i + 1] = this.hexToRgb(this._floorColor).g;
+                        data[i + 2] = this.hexToRgb(this._floorColor).b;
+                    }
+                    data[i + 3] = 255;
+                }
+            }
         }
 
         // Build hierarchical structure (16x16 tiles)
@@ -639,7 +1077,7 @@ class Camera3D extends Module {
                 const clippedFar = clippedVerts.filter(v => v.x <= this._farPlane);
                 if (clippedFar.length < 3) return;
 
-                const useExtendedFOV = !this._disableCulling;
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
                 const screenVerts = clippedFar.map(cv => {
                     const proj = this.projectCameraPoint(cv, useExtendedFOV);
                     return proj ? { screen: proj, depth: cv.x } : null;
@@ -729,11 +1167,45 @@ class Camera3D extends Module {
         const imgData = this._imageData;
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
 
-        // Clear buffers
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+        // Handle background clearing based on background type
+        if (this._backgroundType === "transparent") {
+            // For transparent background, only clear pixels that will have geometry
+            // Leave non-geometry pixels as they are (transparent)
+        } else {
+            // For solid or sky/floor backgrounds, clear all pixels first
+            if (this._backgroundType === "solid") {
+                const bgColor = this.hexToRgb(this._backgroundColor);
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+                }
+            } else if (this._backgroundType === "skyfloor") {
+                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                const fovRadians = this._fieldOfView * (Math.PI / 180);
+                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+                const maxPitch = fovRadians / 2;
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
+                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
+                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+
+                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+                const horizonY = Math.floor(h * clampedHorizon);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const y = Math.floor((i / 4) / w);
+                    if (y < horizonY) {
+                        data[i] = this.hexToRgb(this._skyColor).r;
+                        data[i + 1] = this.hexToRgb(this._skyColor).g;
+                        data[i + 2] = this.hexToRgb(this._skyColor).b;
+                    } else {
+                        data[i] = this.hexToRgb(this._floorColor).r;
+                        data[i + 1] = this.hexToRgb(this._floorColor).g;
+                        data[i + 2] = this.hexToRgb(this._floorColor).b;
+                    }
+                    data[i + 3] = 255;
+                }
+            }
         }
         this._zBuffer.fill(Infinity);
 
@@ -825,7 +1297,7 @@ class Camera3D extends Module {
             const { v0, v1, v2, color } = tri;
 
             // Project to screen space
-            const useExtendedFOV = !this._disableCulling;
+            const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
             const p0 = this.projectCameraPoint(v0, useExtendedFOV);
             const p1 = this.projectCameraPoint(v1, useExtendedFOV);
             const p2 = this.projectCameraPoint(v2, useExtendedFOV);
@@ -990,10 +1462,53 @@ class Camera3D extends Module {
         const imgData = this._imageData;
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+
+        // Initialize z-buffer properly at the start
+        if (this._zBuffer) this._zBuffer.fill(Infinity);
+
+        // Handle background clearing based on background type
+        if (this._backgroundType === "transparent") {
+            // For transparent background, only clear pixels that will have geometry
+            // Leave non-geometry pixels as they are (transparent)
+        } else {
+            // For solid or sky/floor backgrounds, clear all pixels first
+            if (this._backgroundType === "solid") {
+                const bgColor = this.hexToRgb(this._backgroundColor);
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+                }
+            } else if (this._backgroundType === "skyfloor") {
+                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                const fovRadians = this._fieldOfView * (Math.PI / 180);
+                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+                const maxPitch = fovRadians / 2;
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
+                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
+                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+
+                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+                const horizonY = Math.floor(h * clampedHorizon);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const y = Math.floor((i / 4) / w);
+                    if (y < horizonY) {
+                        data[i] = this.hexToRgb(this._skyColor).r;
+                        data[i + 1] = this.hexToRgb(this._skyColor).g;
+                        data[i + 2] = this.hexToRgb(this._skyColor).b;
+                    } else {
+                        data[i] = this.hexToRgb(this._floorColor).r;
+                        data[i + 1] = this.hexToRgb(this._floorColor).g;
+                        data[i + 2] = this.hexToRgb(this._floorColor).b;
+                    }
+                    data[i + 3] = 255;
+                }
+            }
         }
+
+        // Collect all triangles first for front-to-back sorting
+        const allTriangles = [];
+
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
@@ -1001,7 +1516,7 @@ class Camera3D extends Module {
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
             const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
-            const rgb = this.hexToRgb(faceColor);
+
             mesh.faces.forEach(face => {
                 const cameraVerts = face.map(idx =>
                     idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
@@ -1012,13 +1527,6 @@ class Camera3D extends Module {
                 if (worldVerts.length < 3) return;
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
                 const litColor = this.calculateLighting(worldNormal, faceColor);
-                const rgb = litColor;
-
-                const screenVerts = clippedVerts.map(cv => {
-                    const proj = this.projectCameraPoint(cv);
-                    return proj ? { screen: proj, depth: cv.x } : null;
-                }).filter(v => v);
-                if (screenVerts.length < 3) return;
 
                 // Clip against near plane first
                 const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
@@ -1031,12 +1539,232 @@ class Camera3D extends Module {
                     }
                 }
 
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+                const screenVerts = clippedVerts.map(cv => {
+                    const proj = this.projectCameraPoint(cv, useExtendedFOV);
+                    return proj ? { screen: proj, depth: cv.x } : null;
+                }).filter(v => v);
+                if (screenVerts.length < 3) return;
+
+                // Triangulate polygon and calculate min depth for sorting
                 for (let i = 1; i < screenVerts.length - 1; i++) {
-                    this.rasterizeTriangle(screenVerts[0], screenVerts[i], screenVerts[i + 1], rgb, data, w, h);
+                    const tri = [screenVerts[0], screenVerts[i], screenVerts[i + 1]];
+                    const minDepth = Math.min(tri[0].depth, tri[1].depth, tri[2].depth);
+                    allTriangles.push({ tri, color: litColor, minDepth });
                 }
             });
         });
+
+        // Sort front-to-back for early Z rejection
+        allTriangles.sort((a, b) => a.minDepth - b.minDepth);
+
+        // Rasterize all triangles with optimized scanline algorithm
+        allTriangles.forEach(({ tri, color }) => {
+            this.rasterizeTriangleOptimized2(tri[0], tri[1], tri[2], color, data, w, h);
+        });
+
         ctx.putImageData(imgData, 0, 0);
+    }
+
+    // WebGL-accelerated Z-buffer renderer
+    renderZBufferWebGL() {
+        const gl = this._renderTextureGLCtx;
+        const allObjects = this.getGameObjects();
+
+        // Clear buffers - handle different background types
+        if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            gl.clearColor(bgColor.r / 255, bgColor.g / 255, bgColor.b / 255, 1.0);
+        } else if (this._backgroundType === "skyfloor") {
+            // For skyfloor, use a solid clear color (sky color) and let 2D rendering handle the gradient
+            const skyColor = this.hexToRgb(this._skyColor);
+            gl.clearColor(skyColor.r / 255, skyColor.g / 255, skyColor.b / 255, 1.0);
+        } else {
+            // Transparent
+            gl.clearColor(0, 0, 0, 0);
+        }
+
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        gl.useProgram(this._glProgram);
+
+        // Build proper projection matrix for X=forward, Y=right, Z=up
+        const aspect = this._renderTextureWidth / this._renderTextureHeight;
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const tanHalfFov = Math.tan(fovRadians / 2);
+        const near = this._nearPlane;
+        const far = this._farPlane;
+
+        // Create perspective projection matrix that maps camera space to clip space
+        // Camera space: X=depth(forward), Y=right, Z=up
+        // Clip space: X=right, Y=up, Z=depth (with perspective divide)
+        const projectionMatrix = new Float32Array([
+            1 / (aspect * tanHalfFov), 0, 0, 0,                                    // Maps Y(right) to clip X
+            0, 1 / tanHalfFov, 0, 0,                                              // Maps Z(up) to clip Y
+            0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near), // Maps X(depth) to clip Z
+            0, 0, -1, 0                                                            // Perspective divide by -X
+        ]);
+
+        gl.uniformMatrix4fv(this._glProjectionUniform, false, projectionMatrix);
+
+        // Collect all triangles
+        const allTriangles = [];
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            mesh.faces.forEach(face => {
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+                if (cameraVerts.length < 3) return;
+
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Clip against near plane
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                // Backface culling
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
+                // Triangulate polygon
+                for (let i = 1; i < clippedVerts.length - 1; i++) {
+                    allTriangles.push({
+                        vertices: [clippedVerts[0], clippedVerts[i], clippedVerts[i + 1]],
+                        color: litColor
+                    });
+                }
+            });
+        });
+
+        if (allTriangles.length === 0) {
+            // Copy WebGL canvas to 2D canvas even if empty
+            this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+            return;
+        }
+
+        // Batch render all triangles
+        const vertexData = [];
+        const colorData = [];
+
+        allTriangles.forEach(tri => {
+            tri.vertices.forEach(v => {
+                // Send vertices in camera space directly
+                // X=depth, Y=right, Z=up (shader will transform with projection matrix)
+                vertexData.push(v.x, v.y, v.z);
+                colorData.push(tri.color.r / 255, tri.color.g / 255, tri.color.b / 255);
+            });
+        });
+
+        // Create buffers
+        const vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(this._glPositionAttrib);
+        gl.vertexAttribPointer(this._glPositionAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorData), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(this._glColorAttrib);
+        gl.vertexAttribPointer(this._glColorAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        // Draw all triangles
+        gl.drawArrays(gl.TRIANGLES, 0, vertexData.length / 3);
+
+        // Copy WebGL canvas to 2D canvas
+        this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+    }
+
+    // Highly optimized triangle rasterization with scanline + early Z rejection
+    rasterizeTriangleOptimized2(v0, v1, v2, color, data, w, h) {
+        // Round to integer coordinates
+        const p0 = { x: Math.round(v0.screen.x), y: Math.round(v0.screen.y), z: v0.depth };
+        const p1 = { x: Math.round(v1.screen.x), y: Math.round(v1.screen.y), z: v1.depth };
+        const p2 = { x: Math.round(v2.screen.x), y: Math.round(v2.screen.y), z: v2.depth };
+
+        // Calculate bounding box
+        const minX = Math.max(0, Math.min(p0.x, p1.x, p2.x));
+        const maxX = Math.min(w - 1, Math.max(p0.x, p1.x, p2.x));
+        const minY = Math.max(0, Math.min(p0.y, p1.y, p2.y));
+        const maxY = Math.min(h - 1, Math.max(p0.y, p1.y, p2.y));
+
+        // Early rejection if triangle is completely outside screen
+        if (minX > maxX || minY > maxY) return;
+
+        // Precompute edge equations for fast inside testing
+        const v0x = p0.x, v0y = p0.y;
+        const v1x = p1.x, v1y = p1.y;
+        const v2x = p2.x, v2y = p2.y;
+
+        // Edge equations: e = (x2-x1)(y-y1) - (y2-y1)(x-x1)
+        const e0_dx = v1x - v0x, e0_dy = v1y - v0y;
+        const e1_dx = v2x - v1x, e1_dy = v2y - v1y;
+        const e2_dx = v0x - v2x, e2_dy = v0y - v2y;
+
+        // Calculate triangle area for barycentric coordinates
+        const area = e0_dx * (v2y - v0y) - e0_dy * (v2x - v0x);
+        if (Math.abs(area) < 0.001) return; // Degenerate triangle
+
+        const invArea = 1.0 / area;
+
+        // Precompute color values
+        const r = color.r, g = color.g, b = color.b;
+
+        // Scanline rasterization with edge coherence
+        for (let y = minY; y <= maxY; y++) {
+            // Calculate edge values at start of scanline
+            let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
+            let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
+            let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+
+            // Edge increments for x-stepping
+            const w0_step = -e0_dy;
+            const w1_step = -e1_dy;
+            const w2_step = -e2_dy;
+
+            for (let x = minX; x <= maxX; x++) {
+                // Inside test using edge equations
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    // Calculate barycentric coordinates for depth interpolation
+                    const u = w0 * invArea;
+                    const v = w1 * invArea;
+                    const ww = 1 - u - v;
+
+                    // Interpolate depth
+                    const depth = p0.z * u + p1.z * v + p2.z * ww;
+
+                    const idx = y * w + x;
+
+                    // Depth test with early rejection
+                    if (depth >= this._nearPlane && depth <= this._farPlane && depth < this._zBuffer[idx]) {
+                        this._zBuffer[idx] = depth;
+                        const pixelIdx = idx * 4;
+                        data[pixelIdx] = r;
+                        data[pixelIdx + 1] = g;
+                        data[pixelIdx + 2] = b;
+                        data[pixelIdx + 3] = 255;
+                    }
+                }
+
+                // Increment edge values
+                w0 += w0_step;
+                w1 += w1_step;
+                w2 += w2_step;
+            }
+        }
     }
 
     rasterizeTriangle(v0, v1, v2, color, data, w, h) {
@@ -1116,7 +1844,7 @@ class Camera3D extends Module {
                     }
                 }
 
-                const useExtendedFOV = !this._disableCulling;
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
                 const screenVerts = clippedVerts.map(cv => {
                     const proj = this.projectCameraPoint(cv, useExtendedFOV);
                     return proj ? { screen: proj, depth: cv.x } : null;
@@ -1192,126 +1920,271 @@ class Camera3D extends Module {
         }
     }
 
-    // Advanced hybrid rasterizer with tile-based optimization and optional ray-traced effects
-    renderRasterHybrid() {
+    // WebGL-accelerated raster rendering
+    renderRasterWebGL() {
+        const gl = this._renderTextureGLCtx;
         const allObjects = this.getGameObjects();
-        const ctx = this._renderTextureCtx;
-        const imgData = this._imageData;
-        const data = imgData.data;
-        const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
 
-        // Clear buffers
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+        // Clear buffers - handle different background types
+        if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            gl.clearColor(bgColor.r / 255, bgColor.g / 255, bgColor.b / 255, 1.0);
+        } else if (this._backgroundType === "skyfloor") {
+            // For skyfloor, use a solid clear color (sky color) and let 2D rendering handle the gradient
+            const skyColor = this.hexToRgb(this._skyColor);
+            gl.clearColor(skyColor.r / 255, skyColor.g / 255, skyColor.b / 255, 1.0);
+        } else {
+            // Transparent
+            gl.clearColor(0, 0, 0, 0);
         }
-        this._zBuffer.fill(Infinity);
 
-        // Tile-based rendering setup (8x8 tiles for better cache coherency)
-        const tileSize = 8;
-        const tilesX = Math.ceil(w / tileSize);
-        const tilesY = Math.ceil(h / tileSize);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        // Collect all triangles with preprocessing
+        gl.useProgram(this._glProgram);
+
+        // Build proper projection matrix for X=forward, Y=right, Z=up
+        const aspect = this._renderTextureWidth / this._renderTextureHeight;
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const tanHalfFov = Math.tan(fovRadians / 2);
+        const near = this._nearPlane;
+        const far = this._farPlane;
+
+        // Create perspective projection matrix that maps camera space to clip space
+        // Camera space: X=depth(forward), Y=right, Z=up
+        // Clip space: X=right, Y=up, Z=depth (with perspective divide)
+        const projectionMatrix = new Float32Array([
+            1 / (aspect * tanHalfFov), 0, 0, 0,                                    // Maps Y(right) to clip X
+            0, 1 / tanHalfFov, 0, 0,                                              // Maps Z(up) to clip Y
+            0, 0, -(far + near) / (far - near), -(2 * far * near) / (far - near), // Maps X(depth) to clip Z
+            0, 0, -1, 0                                                            // Perspective divide by -X
+        ]);
+
+        gl.uniformMatrix4fv(this._glProjectionUniform, false, projectionMatrix);
+
+        // Collect all triangles
         const allTriangles = [];
+
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
             if (!mesh) return;
+
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
+
             const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
 
             mesh.faces.forEach(face => {
-                const worldVerts = face.map(idx =>
-                    idx < transformedVertices.length ? transformedVertices[idx] : null
-                ).filter(v => v);
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
                 if (worldVerts.length < 3) return;
 
                 const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
                 if (cameraVerts.length < 3) return;
 
-                // Clip against near/far planes first (consistent with other methods)
-                let clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
-                if (clippedVerts.length < 3) return;
-                clippedVerts = this.clipPolygonAgainstFarPlane(clippedVerts, this._farPlane);
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Clip against near plane
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
                 if (clippedVerts.length < 3) return;
 
-                // Backface culling - check after clipping to ensure accuracy
+                // Backface culling
                 if (this._enableBackfaceCulling && !this._disableCulling) {
                     if (this.shouldCullFace(clippedVerts)) return;
                 }
 
-                // Calculate lighting
-                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
-                const litColor = this.calculateLighting(worldNormal, faceColor);
-
                 // Triangulate polygon
                 for (let i = 1; i < clippedVerts.length - 1; i++) {
-                    const v0 = clippedVerts[0], v1 = clippedVerts[i], v2 = clippedVerts[i + 1];
-
-                    // Backface culling already checked before clipping, no need to re-check
-
-                    // Project to screen space
-                    const useExtendedFOV = !this._disableCulling;
-                    const p0 = this.projectCameraPoint(v0, useExtendedFOV);
-                    const p1 = this.projectCameraPoint(v1, useExtendedFOV);
-                    const p2 = this.projectCameraPoint(v2, useExtendedFOV);
-
-                    if (!p0 || !p1 || !p2) continue;
-
                     allTriangles.push({
-                        v0: { x: p0.x, y: p0.y, z: v0.x },
-                        v1: { x: p1.x, y: p1.y, z: v1.x },
-                        v2: { x: p2.x, y: p2.y, z: v2.x },
-                        color: litColor,
-                        worldNormal,
-                        avgDepth: (v0.x + v1.x + v2.x) / 3
+                        vertices: [clippedVerts[0], clippedVerts[i], clippedVerts[i + 1]],
+                        color: litColor
                     });
                 }
             });
         });
 
-        // Sort triangles front-to-back for early depth rejection
-        allTriangles.sort((a, b) => a.avgDepth - b.avgDepth);
-
-        // Bin triangles into tiles
-        const tiles = Array.from({ length: tilesY }, () =>
-            Array.from({ length: tilesX }, () => [])
-        );
-
-        allTriangles.forEach(tri => {
-            const minX = Math.floor(Math.min(tri.v0.x, tri.v1.x, tri.v2.x) / tileSize);
-            const maxX = Math.floor(Math.max(tri.v0.x, tri.v1.x, tri.v2.x) / tileSize);
-            const minY = Math.floor(Math.min(tri.v0.y, tri.v1.y, tri.v2.y) / tileSize);
-            const maxY = Math.floor(Math.max(tri.v0.y, tri.v1.y, tri.v2.y) / tileSize);
-
-            for (let ty = Math.max(0, minY); ty <= Math.min(tilesY - 1, maxY); ty++) {
-                for (let tx = Math.max(0, minX); tx <= Math.min(tilesX - 1, maxX); tx++) {
-                    tiles[ty][tx].push(tri);
-                }
-            }
-        });
-
-        // Rasterize tiles with optimized inner loops
-        for (let ty = 0; ty < tilesY; ty++) {
-            for (let tx = 0; tx < tilesX; tx++) {
-                const tileTris = tiles[ty][tx];
-                if (tileTris.length === 0) continue;
-
-                const xStart = tx * tileSize;
-                const yStart = ty * tileSize;
-                const xEnd = Math.min(xStart + tileSize, w);
-                const yEnd = Math.min(yStart + tileSize, h);
-
-                // Rasterize all triangles in this tile
-                tileTris.forEach(tri => {
-                    this.rasterizeTriangleOptimized(tri, data, w, h, xStart, yStart, xEnd, yEnd);
-                });
-            }
+        if (allTriangles.length === 0) {
+            // Copy WebGL canvas to 2D canvas even if empty
+            this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+            return;
         }
 
-        ctx.putImageData(imgData, 0, 0);
+        // Batch render all triangles
+        const vertexData = [];
+        const colorData = [];
+
+        allTriangles.forEach(tri => {
+            tri.vertices.forEach(v => {
+                // Send vertices in camera space directly
+                // X=depth, Y=right, Z=up (shader will transform with projection matrix)
+                vertexData.push(v.x, v.y, v.z);
+                colorData.push(tri.color.r / 255, tri.color.g / 255, tri.color.b / 255);
+            });
+        });
+
+        // Create buffers
+        const vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexData), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(this._glPositionAttrib);
+        gl.vertexAttribPointer(this._glPositionAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        const colorBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorData), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(this._glColorAttrib);
+        gl.vertexAttribPointer(this._glColorAttrib, 3, gl.FLOAT, false, 0, 0);
+
+        // Draw all triangles
+        gl.drawArrays(gl.TRIANGLES, 0, vertexData.length / 3);
+
+        // Copy WebGL canvas to 2D canvas
+        this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+    }
+
+    // Optimized pure raster renderer for better performance
+    renderRasterHybrid() {
+        const allObjects = this.getGameObjects();
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth;
+        const h = this._renderTextureHeight;
+
+        // Use Uint32Array for faster pixel writes (write 4 bytes at once)
+        const buffer32 = new Uint32Array(imgData.data.buffer);
+        const zbuffer = this._zBuffer;
+
+        // Clear background with single color write
+        const bgColor = this.hexToRgb(this._backgroundColor);
+        const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
+
+        for (let i = 0; i < buffer32.length; i++) {
+            buffer32[i] = bgPixel;
+        }
+        zbuffer.fill(Infinity);
+
+        // Collect triangles (unchanged)
+        const allTriangles = [];
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            mesh.faces.forEach(face => {
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+                if (cameraVerts.length < 3) return;
+
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                let clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
+                const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+                const screenVerts = clippedVerts.map(cv => {
+                    const proj = this.projectCameraPoint(cv, useExtendedFOV);
+                    return proj ? { screen: proj, depth: cv.x } : null;
+                }).filter(v => v);
+
+                if (screenVerts.length < 3) return;
+
+                for (let i = 1; i < screenVerts.length - 1; i++) {
+                    allTriangles.push({
+                        v0: screenVerts[0],
+                        v1: screenVerts[i],
+                        v2: screenVerts[i + 1],
+                        color: litColor
+                    });
+                }
+            });
+        });
+
+        // Pre-compute color as packed 32-bit value
+        allTriangles.forEach(tri => {
+            const c = tri.color;
+            tri.packedColor = (255 << 24) | (c.b << 16) | (c.g << 8) | c.r;
+        });
+
+        // Rasterize with optimized inner loop
+        allTriangles.forEach(tri => {
+            this.rasterizeTriangleUltraFast(tri, buffer32, zbuffer, w, h);
+        });
+
+        this._renderTextureCtx.putImageData(imgData, 0, 0);
+    }
+
+    // Ultra-fast triangle rasterization using 32-bit writes
+    rasterizeTriangleUltraFast(tri, buffer32, zbuffer, w, h) {
+        const p0 = { x: Math.round(tri.v0.screen.x), y: Math.round(tri.v0.screen.y), z: tri.v0.depth };
+        const p1 = { x: Math.round(tri.v1.screen.x), y: Math.round(tri.v1.screen.y), z: tri.v1.depth };
+        const p2 = { x: Math.round(tri.v2.screen.x), y: Math.round(tri.v2.screen.y), z: tri.v2.depth };
+
+        const minX = Math.max(0, Math.min(p0.x, p1.x, p2.x));
+        const maxX = Math.min(w - 1, Math.max(p0.x, p1.x, p2.x));
+        const minY = Math.max(0, Math.min(p0.y, p1.y, p2.y));
+        const maxY = Math.min(h - 1, Math.max(p0.y, p1.y, p2.y));
+
+        if (minX > maxX || minY > maxY) return;
+
+        // Edge setup (once per triangle)
+        const v0x = p0.x, v0y = p0.y;
+        const v1x = p1.x, v1y = p1.y;
+        const v2x = p2.x, v2y = p2.y;
+
+        const e0_dx = v1x - v0x, e0_dy = v1y - v0y;
+        const e1_dx = v2x - v1x, e1_dy = v2y - v1y;
+        const e2_dx = v0x - v2x, e2_dy = v0y - v2y;
+
+        const area = e0_dx * (v2y - v0y) - e0_dy * (v2x - v0x);
+        if (Math.abs(area) < 0.001) return;
+
+        const invArea = 1.0 / area;
+        const packedColor = tri.packedColor;
+
+        // Scanline loop with edge coherence
+        for (let y = minY; y <= maxY; y++) {
+            let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
+            let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
+            let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+
+            const w0_step = -e0_dy;
+            const w1_step = -e1_dy;
+            const w2_step = -e2_dy;
+
+            const rowOffset = y * w;
+
+            for (let x = minX; x <= maxX; x++) {
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    const u = w0 * invArea;
+                    const v = w1 * invArea;
+                    const ww = 1 - u - v;
+
+                    const depth = p0.z * u + p1.z * v + p2.z * ww;
+                    const idx = rowOffset + x;
+
+                    if (depth >= this._nearPlane && depth <= this._farPlane && depth < zbuffer[idx]) {
+                        zbuffer[idx] = depth;
+                        buffer32[idx] = packedColor;
+                    }
+                }
+
+                w0 += w0_step;
+                w1 += w1_step;
+                w2 += w2_step;
+            }
+        }
     }
 
     // Optimized triangle rasterization with tight bounds and early rejection
@@ -1385,14 +2258,49 @@ class Camera3D extends Module {
         const imgData = this._imageData;
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
 
-        // First pass: Fast rasterization for base geometry
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+        // Handle background clearing based on background type
+        if (this._backgroundType === "transparent") {
+            // For transparent background, only clear pixels that will have geometry
+            // Leave non-geometry pixels as they are (transparent)
+        } else {
+            // For solid or sky/floor backgrounds, clear all pixels first
+            if (this._backgroundType === "solid") {
+                const bgColor = this.hexToRgb(this._backgroundColor);
+                for (let i = 0; i < data.length; i += 4) {
+                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+                }
+            } else if (this._backgroundType === "skyfloor") {
+                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                const fovRadians = this._fieldOfView * (Math.PI / 180);
+                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+                const maxPitch = fovRadians / 2;
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
+                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
+                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+
+                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+                const horizonY = Math.floor(h * clampedHorizon);
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const y = Math.floor((i / 4) / w);
+                    if (y < horizonY) {
+                        data[i] = this.hexToRgb(this._skyColor).r;
+                        data[i + 1] = this.hexToRgb(this._skyColor).g;
+                        data[i + 2] = this.hexToRgb(this._skyColor).b;
+                    } else {
+                        data[i] = this.hexToRgb(this._floorColor).r;
+                        data[i + 1] = this.hexToRgb(this._floorColor).g;
+                        data[i + 2] = this.hexToRgb(this._floorColor).b;
+                    }
+                    data[i + 3] = 255;
+                }
+            }
         }
         this._zBuffer.fill(Infinity);
 
+        // Collect triangles for both rasterization and ray tracing
         // Collect triangles for both rasterization and ray tracing
         const allTriangles = [];
         allObjects.forEach(obj => {
@@ -1412,12 +2320,17 @@ class Camera3D extends Module {
                 const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
                 if (cameraVerts.length < 3) return;
 
-                // Backface culling will be handled per-triangle after clipping
-
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
 
                 for (let i = 1; i < cameraVerts.length - 1; i++) {
                     const v0 = cameraVerts[0], v1 = cameraVerts[i], v2 = cameraVerts[i + 1];
+
+                    // Backface culling BEFORE clipping using original camera space vertices
+                    if (this._enableBackfaceCulling && !this._disableCulling) {
+                        if (this.shouldCullFace([v0, v1, v2])) {
+                            continue; // Cull back-facing triangles
+                        }
+                    }
 
                     // Clip triangle against near plane
                     const clippedV0 = this.clipPolygonAgainstNearPlane([v0], this._nearPlane);
@@ -1425,15 +2338,6 @@ class Camera3D extends Module {
                     const clippedV2 = this.clipPolygonAgainstNearPlane([v2], this._nearPlane);
 
                     if (clippedV0.length > 0 && clippedV1.length > 0 && clippedV2.length > 0) {
-                        const clippedTriangle = [clippedV0[0] || v0, clippedV1[0] || v1, clippedV2[0] || v2];
-
-                        // Backface culling after clipping
-                        if (this._enableBackfaceCulling && !this._disableCulling) {
-                            if (this.shouldCullFace(clippedTriangle)) {
-                                continue;
-                            }
-                        }
-
                         allTriangles.push({
                             v0: clippedV0[0] || v0,
                             v1: clippedV1[0] || v1,
@@ -1451,7 +2355,7 @@ class Camera3D extends Module {
 
         // Rasterize base geometry
         allTriangles.forEach(tri => {
-            const useExtendedFOV = !this._disableCulling;
+            const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
             const p0 = this.projectCameraPoint(tri.v0, useExtendedFOV);
             const p1 = this.projectCameraPoint(tri.v1, useExtendedFOV);
             const p2 = this.projectCameraPoint(tri.v2, useExtendedFOV);
@@ -1479,9 +2383,24 @@ class Camera3D extends Module {
         const visibleTriangles = [];
         allTriangles.forEach(tri => {
             // Quick frustum check - only include triangles that might be visible
+            // Camera looks along +X axis, so X coordinate represents depth
             const avgDepth = (tri.v0.x + tri.v1.x + tri.v2.x) / 3;
-            if (avgDepth >= this._nearPlane && avgDepth <= this._farPlane) {
-                // Check if triangle is within extended FOV for culling
+
+            // Check if triangle intersects frustum (between near and far planes)
+            const vertices = [tri.v0, tri.v1, tri.v2];
+            let inFrontNear = 0;
+            let behindFar = 0;
+
+            for (const vertex of vertices) {
+                if (vertex.x >= this._nearPlane) inFrontNear++;
+                if (vertex.x <= this._farPlane) behindFar++;
+            }
+
+            // Include triangle if it intersects the frustum
+            const isInFrustum = !(behindFar === 0) && (inFrontNear === 3 || inFrontNear > 0);
+
+            if (isInFrustum) {
+                // Additional FOV check for better culling
                 const useExtendedFov = !this._disableCulling;
                 const p0 = this.projectCameraPoint(tri.v0, useExtendedFov);
                 const p1 = this.projectCameraPoint(tri.v1, useExtendedFov);
@@ -1599,79 +2518,246 @@ class Camera3D extends Module {
         });
     }
 
-    renderRaytrace() {
+    renderWebGLRaytrace() {
+        const gl = this._renderTextureGLCtx;
+
+        if (!this._glRaytraceProgram) {
+            const success = this.initWebGLRaytracingShaders();
+            if (!success) {
+                console.warn("Failed to initialize raytracing shaders, falling back to raster");
+                this.renderRasterWebGL();
+                return;
+            }
+        }
+
         const allObjects = this.getGameObjects();
-        const ctx = this._renderTextureCtx;
-        const imgData = this._imageData;
-        const data = imgData.data;
-        const w = this._renderTextureWidth, h = this._renderTextureHeight;
-        const bgColor = this.hexToRgb(this._backgroundColor);
-        const aspect = w / h;
-        const fovRadians = this.fieldOfView * (Math.PI / 180);
-        const tanHalfFov = Math.tan(fovRadians * 0.5);
-        const allTriangles = [];
+        const triangles = [];
+
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
             if (!mesh) return;
+
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
-            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
-            const rgb = this.hexToRgb(faceColor);
-            mesh.faces.forEach(face => {
-                const cameraVerts = face.map(idx =>
-                    idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
-                ).filter(v => v);
-                if (cameraVerts.length < 3) return;
 
-                // Calculate world vertices for normal calculation
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            mesh.faces.forEach(face => {
                 const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
                 if (worldVerts.length < 3) return;
+
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+                if (cameraVerts.length < 3) return;
+
+                // Clip against near plane
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                // Backface culling
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
                 const litColor = this.calculateLighting(worldNormal, faceColor);
 
-                for (let i = 1; i < cameraVerts.length - 1; i++) {
-                    allTriangles.push({
-                        v0: cameraVerts[0], v1: cameraVerts[i], v2: cameraVerts[i + 1],
-                        color: litColor
+                for (let i = 1; i < clippedVerts.length - 1; i++) {
+                    triangles.push({
+                        v0: clippedVerts[0],
+                        v1: clippedVerts[i],
+                        v2: clippedVerts[i + 1],
+                        color: litColor,
+                        normal: worldNormal
                     });
                 }
             });
         });
-        for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
-                const pixelIdx = (y * w + x) * 4;
-                const u = (x / w) * 2 - 1;
-                const v = 1 - (y / h) * 2;
-                const rayDirX = 1;
-                const rayDirY = u * tanHalfFov * aspect;
-                const rayDirZ = v * tanHalfFov;
-                const rayLen = Math.sqrt(rayDirX * rayDirX + rayDirY * rayDirY + rayDirZ * rayDirZ);
-                const rayDir = { x: rayDirX / rayLen, y: rayDirY / rayLen, z: rayDirZ / rayLen };
-                const rayOrigin = { x: 0, y: 0, z: 0 };
-                let closestT = Infinity;
-                let hitColor = null;
-                allTriangles.forEach(tri => {
-                    const t = this.rayTriangleIntersect(rayOrigin, rayDir, tri.v0, tri.v1, tri.v2);
-                    if (t !== null && t < closestT && t >= this._nearPlane && t <= this._farPlane) {
-                        closestT = t;
-                        hitColor = tri.color;
-                    }
-                });
-                if (hitColor) {
-                    data[pixelIdx] = hitColor.r;
-                    data[pixelIdx + 1] = hitColor.g;
-                    data[pixelIdx + 2] = hitColor.b;
-                    data[pixelIdx + 3] = 255;
-                } else {
-                    data[pixelIdx] = bgColor.r;
-                    data[pixelIdx + 1] = bgColor.g;
-                    data[pixelIdx + 2] = bgColor.b;
-                    data[pixelIdx + 3] = 255;
-                }
-            }
+
+        if (triangles.length === 0) {
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+            return;
         }
-        ctx.putImageData(imgData, 0, 0);
+
+        // Pack triangle data
+        const texWidth = 64;
+        const texHeight = Math.ceil((triangles.length * 5) / texWidth);
+        const triangleData = new Float32Array(texWidth * texHeight * 4);
+
+        triangles.forEach((tri, idx) => {
+            const baseIdx = idx * 20;
+
+            // Vertex 0 (camera space)
+            triangleData[baseIdx + 0] = tri.v0.x;
+            triangleData[baseIdx + 1] = tri.v0.y;
+            triangleData[baseIdx + 2] = tri.v0.z;
+            triangleData[baseIdx + 3] = 1.0;
+
+            // Vertex 1 (camera space)
+            triangleData[baseIdx + 4] = tri.v1.x;
+            triangleData[baseIdx + 5] = tri.v1.y;
+            triangleData[baseIdx + 6] = tri.v1.z;
+            triangleData[baseIdx + 7] = 1.0;
+
+            // Vertex 2 (camera space)
+            triangleData[baseIdx + 8] = tri.v2.x;
+            triangleData[baseIdx + 9] = tri.v2.y;
+            triangleData[baseIdx + 10] = tri.v2.z;
+            triangleData[baseIdx + 11] = 1.0;
+
+            // Color (pre-lit)
+            triangleData[baseIdx + 12] = tri.color.r / 255;
+            triangleData[baseIdx + 13] = tri.color.g / 255;
+            triangleData[baseIdx + 14] = tri.color.b / 255;
+            triangleData[baseIdx + 15] = 1.0;
+
+            // Normal
+            triangleData[baseIdx + 16] = tri.normal.x;
+            triangleData[baseIdx + 17] = tri.normal.y;
+            triangleData[baseIdx + 18] = tri.normal.z;
+            triangleData[baseIdx + 19] = 0.0;
+        });
+
+        // Create texture ONCE and reuse it
+        if (!this._glTriangleTexture) {
+            this._glTriangleTexture = gl.createTexture();
+            this._glTriangleTextureWidth = 0;
+            this._glTriangleTextureHeight = 0;
+        }
+
+        gl.bindTexture(gl.TEXTURE_2D, this._glTriangleTexture);
+
+        // Always update texture data every frame (not just when size changes)
+        if (this._glTriangleTextureWidth !== texWidth || this._glTriangleTextureHeight !== texHeight) {
+            // Reallocate texture
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texWidth, texHeight, 0, gl.RGBA, gl.FLOAT, triangleData);
+            this._glTriangleTextureWidth = texWidth;
+            this._glTriangleTextureHeight = texHeight;
+        } else {
+            // Update existing texture (this needs to happen every frame!)
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, texWidth, texHeight, gl.RGBA, gl.FLOAT, triangleData);
+        }
+
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        // Calculate horizon for background
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+        const maxPitch = fovRadians / 2;
+        const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+        const horizonOffset = normalizedPitch * 0.5;
+        const horizonRatio = 0.5 + horizonOffset;
+        const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+
+        gl.useProgram(this._glRaytraceProgram);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this._glRaytraceQuadBuffer);
+        gl.enableVertexAttribArray(this._glRaytracePositionAttrib);
+        gl.vertexAttribPointer(this._glRaytracePositionAttrib, 2, gl.FLOAT, false, 0, 0);
+
+        // Camera is at origin in camera space (rays start from here)
+        gl.uniform3f(this._glRaytraceUniforms.cameraPos, 0, 0, 0);
+
+        // Camera rotation is identity in camera space (we already transformed to camera space)
+        gl.uniformMatrix3fv(this._glRaytraceUniforms.cameraRotation, false, [
+            1, 0, 0,
+            0, 1, 0,
+            0, 0, 1
+        ]);
+
+        gl.uniform1f(this._glRaytraceUniforms.fov, this._fieldOfView);
+        gl.uniform1f(this._glRaytraceUniforms.nearPlane, this._nearPlane);
+        gl.uniform1f(this._glRaytraceUniforms.farPlane, this._farPlane);
+        gl.uniform2f(this._glRaytraceUniforms.resolution, this._renderTextureWidth, this._renderTextureHeight);
+
+        const lightLen = Math.sqrt(this._lightDirection.x ** 2 + this._lightDirection.y ** 2 + this._lightDirection.z ** 2);
+        gl.uniform3f(this._glRaytraceUniforms.lightDir, this._lightDirection.x / lightLen, this._lightDirection.y / lightLen, this._lightDirection.z / lightLen);
+
+        const lightColor = this.hexToRgb(this._lightColor);
+        gl.uniform3f(this._glRaytraceUniforms.lightColor, lightColor.r / 255, lightColor.g / 255, lightColor.b / 255);
+
+        gl.uniform1f(this._glRaytraceUniforms.lightIntensity, this._lightIntensity);
+        gl.uniform1f(this._glRaytraceUniforms.ambientIntensity, this._ambientIntensity);
+
+        const skyColor = this.hexToRgb(this._skyColor);
+        const floorColor = this.hexToRgb(this._floorColor);
+        const bgColor = this.hexToRgb(this._backgroundColor);
+
+        gl.uniform3f(this._glRaytraceUniforms.skyColor, skyColor.r / 255, skyColor.g / 255, skyColor.b / 255);
+        gl.uniform3f(this._glRaytraceUniforms.floorColor, floorColor.r / 255, floorColor.g / 255, floorColor.b / 255);
+        gl.uniform1f(this._glRaytraceUniforms.horizonY, clampedHorizon);
+
+        let bgType = 0;
+        if (this._backgroundType === "transparent") bgType = 1;
+        else if (this._backgroundType === "solid") bgType = 2;
+        gl.uniform1i(this._glRaytraceUniforms.backgroundType, bgType);
+        gl.uniform3f(this._glRaytraceUniforms.backgroundColor, bgColor.r / 255, bgColor.g / 255, bgColor.b / 255);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this._glTriangleTexture);
+        gl.uniform1i(this._glRaytraceUniforms.triangleData, 0);
+        gl.uniform1i(this._glRaytraceUniforms.triangleCount, triangles.length);
+        gl.uniform1f(this._glRaytraceUniforms.texWidth, texWidth);
+
+        // Clear with appropriate background
+        if (this._backgroundType === "transparent") {
+            gl.clearColor(0, 0, 0, 0);
+        } else {
+            gl.clearColor(0, 0, 0, 1);
+        }
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Draw the fullscreen quad
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        // Check for GL errors
+        const error = gl.getError();
+        if (error !== gl.NO_ERROR) {
+            console.error('WebGL error:', error);
+        }
+
+        // Copy to 2D canvas
+        this._renderTextureCtx.drawImage(this._renderTextureGL, 0, 0);
+    }
+
+    calculateTriangleScreenBounds(tri, w, h, aspect, tanHalfFov) {
+        const verts = [tri.v0, tri.v1, tri.v2];
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let anyVisible = false;
+
+        for (const v of verts) {
+            // Skip if behind camera
+            if (v.x <= this._nearPlane || v.x >= this._farPlane) continue;
+
+            // Project to screen space
+            const ndcY = (v.y / v.x) / (tanHalfFov * aspect);
+            const ndcZ = (v.z / v.x) / tanHalfFov;
+
+            const screenX = (ndcY * 0.5 + 0.5) * w;
+            const screenY = (0.5 - ndcZ * 0.5) * h;
+
+            minX = Math.min(minX, screenX);
+            maxX = Math.max(maxX, screenX);
+            minY = Math.min(minY, screenY);
+            maxY = Math.max(maxY, screenY);
+            anyVisible = true;
+        }
+
+        if (!anyVisible) return null;
+
+        // Clamp to screen with generous margin for edge cases
+        return {
+            minX: Math.max(0, Math.floor(minX) - 2),
+            maxX: Math.min(w - 1, Math.ceil(maxX) + 2),
+            minY: Math.max(0, Math.floor(minY) - 2),
+            maxY: Math.min(h - 1, Math.ceil(maxY) + 2)
+        };
     }
 
     rayTriangleIntersect(origin, dir, v0, v1, v2) {
@@ -1697,6 +2783,238 @@ class Camera3D extends Module {
         if (v < 0 || u + v > 1) return null;
         const t = f * (edge2.x * q.x + edge2.y * q.y + edge2.z * q.z);
         return t > 0.0001 ? t : null;
+    }
+
+    /**
+     * Doom-style raycasting renderer
+     * Classic column-based raycasting similar to Doom (1993)
+     * - One ray per screen column
+     * - Vertical wall strips
+     * - Fast rendering optimized for corridor/maze environments
+     */
+    renderDoom() {
+        const ctx = this._renderTextureCtx;
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth;
+        const h = this._renderTextureHeight;
+        const halfH = h / 2;
+
+        // Clear background with sky/floor
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+        const maxPitch = fovRadians / 2;
+        const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+        const horizonOffset = normalizedPitch * 0.5;
+        const horizonRatio = 0.5 + horizonOffset;
+        const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+        const horizonY = Math.floor(h * clampedHorizon);
+
+        // Draw sky and floor
+        const skyColor = this.hexToRgb(this._skyColor);
+        const floorColor = this.hexToRgb(this._floorColor);
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const pixelIdx = (y * w + x) * 4;
+                if (y < horizonY) {
+                    data[pixelIdx] = skyColor.r;
+                    data[pixelIdx + 1] = skyColor.g;
+                    data[pixelIdx + 2] = skyColor.b;
+                } else {
+                    data[pixelIdx] = floorColor.r;
+                    data[pixelIdx + 1] = floorColor.g;
+                    data[pixelIdx + 2] = floorColor.b;
+                }
+                data[pixelIdx + 3] = 255;
+            }
+        }
+
+        // Get camera world position and rotation
+        const goPos = (this.gameObject && this.gameObject.getWorldPosition) ?
+            this.gameObject.getWorldPosition() : { x: 0, y: 0 };
+        let goDepth = 0;
+        if (this.gameObject) {
+            if (typeof this.gameObject.getWorldDepth === 'function') {
+                goDepth = this.gameObject.getWorldDepth();
+            } else if (typeof this.gameObject.depth === 'number') {
+                goDepth = this.gameObject.depth;
+            }
+        }
+        const camWorldX = (goPos.x || 0) + (this._position.x || 0);
+        const camWorldY = (goPos.y || 0) + (this._position.y || 0);
+        const camWorldZ = goDepth + (this._position.z || 0);
+
+        const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
+            this.gameObject.getWorldRotation() : 0;
+        const camYaw = (parentAngleDeg + (this._rotation.z || 0)) * (Math.PI / 180);
+
+        // Collect wall segments from all geometry
+        const allObjects = this.getGameObjects();
+        const wallSegments = [];
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("CubeMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+            const baseColor = this.hexToRgb(faceColor);
+
+            // For each face, extract wall-like edges (vertical segments)
+            mesh.faces.forEach(face => {
+                if (face.length < 3) return;
+
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                // Calculate face normal for lighting
+                const normal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(normal, baseColor);
+
+                // Check each edge of the face
+                for (let i = 0; i < worldVerts.length; i++) {
+                    const v0 = worldVerts[i];
+                    const v1 = worldVerts[(i + 1) % worldVerts.length];
+
+                    // Calculate vertical extent (Z difference)
+                    const zDiff = Math.abs(v0.z - v1.z);
+                    const xyDist = Math.sqrt((v0.x - v1.x) ** 2 + (v0.y - v1.y) ** 2);
+
+                    // Only consider edges that form vertical walls
+                    // Skip horizontal edges (floor/ceiling) and very short edges
+                    if (zDiff > 0.1 && xyDist > 0.01) {
+                        wallSegments.push({
+                            x0: v0.x - camWorldX,
+                            y0: v0.y - camWorldY,
+                            z0: v0.z - camWorldZ,
+                            x1: v1.x - camWorldX,
+                            y1: v1.y - camWorldY,
+                            z1: v1.z - camWorldZ,
+                            color: litColor
+                        });
+                    }
+                }
+            });
+        });
+
+        // Cast one ray per column
+        const aspect = w / h;
+        const tanHalfFov = Math.tan(fovRadians * 0.5);
+
+        for (let screenX = 0; screenX < w; screenX++) {
+            // Calculate ray angle relative to camera
+            const rayAngle = camYaw + Math.atan2(
+                (screenX / w - 0.5) * 2 * tanHalfFov * aspect,
+                1
+            );
+
+            const rayDirX = Math.cos(rayAngle);
+            const rayDirY = Math.sin(rayAngle);
+
+            // Find closest wall hit
+            let closestDist = Infinity;
+            let hitWall = null;
+            let hitZ = 0;
+            let wallT = 0; // Parameter along wall segment (0 to 1)
+
+            wallSegments.forEach(wall => {
+                // Convert wall to 2D line segment in world space
+                const x1 = wall.x0, y1 = wall.y0;
+                const x2 = wall.x1, y2 = wall.y1;
+
+                // Ray-line segment intersection (2D)
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+
+                // Ray: (0,0) + t * (rayDirX, rayDirY)
+                // Line: (x1,y1) + s * (dx, dy)
+
+                const det = rayDirX * dy - rayDirY * dx;
+                if (Math.abs(det) < 0.0001) return; // Parallel
+
+                // Solve for t (distance along ray) and s (parameter along line segment)
+                const t = (x1 * dy - y1 * dx) / det;
+                const s = (x1 * rayDirY - y1 * rayDirX) / det;
+
+                // Check if intersection is valid
+                if (t <= 0 || t > this._farPlane) return; // Behind camera or too far
+                if (s < 0 || s > 1) return; // Outside line segment
+
+                // Calculate perpendicular distance (fisheye correction)
+                const hitX = rayDirX * t;
+                const hitY = rayDirY * t;
+                const perpDist = Math.sqrt(hitX * hitX + hitY * hitY) * Math.cos(rayAngle - camYaw);
+
+                if (perpDist < closestDist && perpDist > this._nearPlane) {
+                    closestDist = perpDist;
+                    hitWall = wall;
+                    wallT = s;
+
+                    // Interpolate Z coordinate along wall segment
+                    hitZ = wall.z0 + s * (wall.z1 - wall.z0);
+                }
+            });
+
+            // Draw the wall column if we hit something
+            if (hitWall && closestDist < Infinity) {
+                // Calculate wall height on screen
+                const wallHeight = Math.abs(hitWall.z1 - hitWall.z0);
+                const wallBottom = Math.min(hitWall.z0, hitWall.z1);
+                const wallTop = Math.max(hitWall.z0, hitWall.z1);
+
+                // Project wall heights to screen space
+                const projectedWallHeight = (wallHeight / closestDist) * (h / (2 * tanHalfFov));
+                const projectedWallBottom = halfH - ((wallBottom - camWorldZ) / closestDist) * (h / (2 * tanHalfFov));
+                const projectedWallTop = halfH - ((wallTop - camWorldZ) / closestDist) * (h / (2 * tanHalfFov));
+
+                // Clamp to screen bounds
+                const drawTop = Math.max(0, Math.floor(projectedWallTop));
+                const drawBottom = Math.min(h - 1, Math.ceil(projectedWallBottom));
+
+                // Distance-based shading (fog effect)
+                const shadeFactor = Math.max(0.2, 1.0 - closestDist / this._farPlane);
+                const wallColor = {
+                    r: Math.round(hitWall.color.r * shadeFactor),
+                    g: Math.round(hitWall.color.g * shadeFactor),
+                    b: Math.round(hitWall.color.b * shadeFactor)
+                };
+
+                // Draw the vertical wall strip
+                for (let y = drawTop; y <= drawBottom; y++) {
+                    const pixelIdx = (y * w + screenX) * 4;
+                    data[pixelIdx] = wallColor.r;
+                    data[pixelIdx + 1] = wallColor.g;
+                    data[pixelIdx + 2] = wallColor.b;
+                    data[pixelIdx + 3] = 255;
+                }
+
+                // Floor rendering (below wall) - use actual wall distance
+                for (let y = drawBottom + 1; y < h; y++) {
+                    const pixelIdx = (y * w + screenX) * 4;
+                    const floorShadeFactor = Math.max(0.1, 1.0 - closestDist / this._farPlane);
+                    data[pixelIdx] = Math.round(floorColor.r * floorShadeFactor);
+                    data[pixelIdx + 1] = Math.round(floorColor.g * floorShadeFactor);
+                    data[pixelIdx + 2] = Math.round(floorColor.b * floorShadeFactor);
+                    data[pixelIdx + 3] = 255;
+                }
+
+                // Ceiling rendering (above wall) - use actual wall distance
+                for (let y = 0; y < drawTop; y++) {
+                    const pixelIdx = (y * w + screenX) * 4;
+                    const ceilingShadeFactor = Math.max(0.1, 1.0 - closestDist / this._farPlane);
+                    data[pixelIdx] = Math.round(skyColor.r * ceilingShadeFactor);
+                    data[pixelIdx + 1] = Math.round(skyColor.g * ceilingShadeFactor);
+                    data[pixelIdx + 2] = Math.round(skyColor.b * ceilingShadeFactor);
+                    data[pixelIdx + 3] = 255;
+                }
+            }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
     }
 
     // BVH Node class for acceleration structure
@@ -1863,13 +3181,30 @@ class Camera3D extends Module {
         this.clearRenderTexture();
         switch (this._renderingMethod) {
             case "painter": this.renderPainter(); break;
-            case "zbuffer": this.renderZBuffer(); break;
+            case "zbuffer":
+                if (this._renderTextureGLCtx) {
+                    this.renderZBufferWebGL();
+                } else {
+                    this.renderZBuffer();
+                }
+                break;
             case "scanline": this.renderScanline(); break;
-            case "raytrace": this.renderRaytrace(); break;
             case "hzb": this.renderHZB(); break;
             case "depthpass": this.renderDepthPass(); break;
-            case "raster": this.renderRasterHybrid(); break;
+            case "raster":
+                if (this._renderTextureGLCtx) {
+                    this.renderRasterWebGL();
+                } else {
+                    this.renderRasterOptimized();
+                }
+                break;
             case "hybrid": this.renderRaytraceHybrid(); break;
+            case "webglcanvas":
+                this.renderWebGLRaytrace();
+                break;
+            case "doom": this.renderDoom(); break;
+            case "ilpc": this.renderILPC(); break;
+            case "fald": this.renderFALD(); break;
             default: this.renderPainter();
         }
     }
@@ -1929,6 +3264,719 @@ class Camera3D extends Module {
         }
         // Return a default normal if calculation fails (shouldn't happen with valid triangles)
         return { x: 0, y: 0, z: 1 };
+    }
+
+    /**
+     * Fragment-Agnostic Layered Depth (FALD) Rendering
+     * 
+     * This rendering method combines:
+     * 1. Coarse back-to-front painter's algorithm sorting
+     * 2. Sparse depth grid for efficient occlusion testing
+     * 3. Two-pass rendering with conflict resolution
+     * 
+     * Advantages:
+     * - Near-perfect Z-ordering without full Z-buffer
+     * - Leverages native ctx.fill() performance
+     * - Low memory footprint with sparse depth grid
+     * - Scalable performance based on conflict count
+     */
+    renderFALD() {
+        const allObjects = this.getGameObjects();
+        const ctx = this._renderTextureCtx;
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth;
+        const h = this._renderTextureHeight;
+
+        // Clear background
+        this.clearFALDBackground(data, w, h);
+
+        // Configuration for depth grid
+        const CELL_SIZE = 16; // Pixels per depth cell
+        const gridWidth = Math.ceil(w / CELL_SIZE);
+        const gridHeight = Math.ceil(h / CELL_SIZE);
+
+        // Initialize sparse depth grid
+        const depthGrid = this.createDepthGrid(gridWidth, gridHeight);
+
+        // Phase 1: Collect and prepare triangles
+        const allTriangles = this.collectTrianglesForFALD(allObjects);
+
+        if (allTriangles.length === 0) {
+            ctx.putImageData(imgData, 0, 0);
+            return;
+        }
+
+        // Phase 2: Spatial partitioning and coarse sorting
+        const sortedChunks = this.partitionAndSortTriangles(allTriangles);
+
+        // Phase 3: Pass 1 - Back-to-front rendering with depth tracking
+        const conflictList = [];
+        this.renderFALDPass1(sortedChunks, ctx, depthGrid, CELL_SIZE, conflictList, w, h);
+
+        // Phase 4: Pass 2 - Front-to-back conflict resolution
+        if (conflictList.length > 0) {
+            this.renderFALDPass2(conflictList, ctx, depthGrid, CELL_SIZE, w, h);
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    /**
+     * Clear background with appropriate color scheme
+     */
+    clearFALDBackground(data, w, h) {
+        if (this._backgroundType === "transparent") {
+            // Leave transparent
+            for (let i = 0; i < data.length; i += 4) {
+                data[i + 3] = 0; // Fully transparent
+            }
+        } else if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = bgColor.r;
+                data[i + 1] = bgColor.g;
+                data[i + 2] = bgColor.b;
+                data[i + 3] = 255;
+            }
+        } else if (this._backgroundType === "skyfloor") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+            const horizonY = Math.floor(h * clampedHorizon);
+
+            const skyColor = this.hexToRgb(this._skyColor);
+            const floorColor = this.hexToRgb(this._floorColor);
+
+            for (let i = 0; i < data.length; i += 4) {
+                const y = Math.floor((i / 4) / w);
+                if (y < horizonY) {
+                    data[i] = skyColor.r;
+                    data[i + 1] = skyColor.g;
+                    data[i + 2] = skyColor.b;
+                } else {
+                    data[i] = floorColor.r;
+                    data[i + 1] = floorColor.g;
+                    data[i + 2] = floorColor.b;
+                }
+                data[i + 3] = 255;
+            }
+        }
+    }
+
+    /**
+     * Create sparse depth grid structure
+     */
+    createDepthGrid(gridWidth, gridHeight) {
+        const grid = [];
+        for (let y = 0; y < gridHeight; y++) {
+            grid[y] = [];
+            for (let x = 0; x < gridWidth; x++) {
+                grid[y][x] = {
+                    minDepth: Infinity,
+                    maxDepth: -Infinity,
+                    polygonId: -1,
+                    isDirty: false
+                };
+            }
+        }
+        return grid;
+    }
+
+    /**
+     * Collect all triangles from the scene with necessary metadata
+     */
+    collectTrianglesForFALD(allObjects) {
+        const triangles = [];
+        let triangleId = 0;
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            mesh.faces.forEach(face => {
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+                if (cameraVerts.length < 3) return;
+
+                // Clip against near plane
+                const clippedVerts = this.clipPolygonAgainstNearPlane(cameraVerts, this._nearPlane);
+                if (clippedVerts.length < 3) return;
+
+                // Backface culling
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(clippedVerts)) return;
+                }
+
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Triangulate the face
+                for (let i = 1; i < clippedVerts.length - 1; i++) {
+                    const tri = {
+                        id: triangleId++,
+                        v0: clippedVerts[0],
+                        v1: clippedVerts[i],
+                        v2: clippedVerts[i + 1],
+                        color: litColor,
+                        avgDepth: (clippedVerts[0].x + clippedVerts[i].x + clippedVerts[i + 1].x) / 3,
+                        minDepth: Math.min(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
+                        maxDepth: Math.max(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
+                        screenBounds: null // Will be calculated during projection
+                    };
+
+                    triangles.push(tri);
+                }
+            });
+        });
+
+        return triangles;
+    }
+
+    /**
+     * Partition triangles into spatial chunks and sort
+     */
+    partitionAndSortTriangles(triangles) {
+        // For now, use a simple depth-based chunking
+        // Sort all triangles by average depth (back to front)
+        const sorted = [...triangles].sort((a, b) => b.avgDepth - a.avgDepth);
+
+        // Group into chunks of roughly equal size
+        const CHUNK_SIZE = 50; // Triangles per chunk
+        const chunks = [];
+
+        for (let i = 0; i < sorted.length; i += CHUNK_SIZE) {
+            chunks.push(sorted.slice(i, i + CHUNK_SIZE));
+        }
+
+        return chunks;
+    }
+
+    /**
+ * Pass 1: Back-to-front rendering with occlusion testing
+ */
+    renderFALDPass1(chunks, ctx, depthGrid, cellSize, conflictList, w, h) {
+        const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+        const imgData = this._imageData;
+        const data = imgData.data;
+
+        // Process each chunk from back to front
+        chunks.forEach(chunk => {
+            chunk.forEach(tri => {
+                // Project vertices to screen space
+                const p0 = this.projectCameraPoint(tri.v0, useExtendedFOV);
+                const p1 = this.projectCameraPoint(tri.v1, useExtendedFOV);
+                const p2 = this.projectCameraPoint(tri.v2, useExtendedFOV);
+
+                if (!p0 || !p1 || !p2) return;
+
+                // Calculate screen bounds
+                const minX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
+                const maxX = Math.min(w - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
+                const minY = Math.max(0, Math.floor(Math.min(p0.y, p1.y, p2.y)));
+                const maxY = Math.min(h - 1, Math.ceil(Math.max(p0.y, p1.y, p2.y)));
+
+                tri.screenBounds = { minX, maxX, minY, maxY };
+                tri.projectedVerts = [p0, p1, p2];
+
+                // Calculate which depth cells this triangle touches
+                const cellMinX = Math.floor(minX / cellSize);
+                const cellMaxX = Math.floor(maxX / cellSize);
+                const cellMinY = Math.floor(minY / cellSize);
+                const cellMaxY = Math.floor(maxY / cellSize);
+
+                // Improved occlusion test: check multiple cells
+                let visibleCellCount = 0;
+                let totalCells = 0;
+                let hasConflict = false;
+
+                for (let cy = cellMinY; cy <= cellMaxY; cy++) {
+                    for (let cx = cellMinX; cx <= cellMaxX; cx++) {
+                        if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
+
+                        totalCells++;
+                        const cell = depthGrid[cy][cx];
+
+                        // If cell is uninitialized, triangle is visible in this cell
+                        if (cell.minDepth === Infinity) {
+                            visibleCellCount++;
+                        }
+                        // More conservative occlusion: only occlude if triangle is FULLY behind
+                        // Use a small epsilon to avoid false culling due to floating point errors
+                        else if (tri.maxDepth < cell.minDepth - 0.01) {
+                            // Triangle is fully behind in this cell - check next cell
+                        }
+                        else {
+                            // Triangle is at least partially visible in this cell
+                            visibleCellCount++;
+                            
+                            // Check for depth conflicts
+                            if (tri.minDepth < cell.minDepth) {
+                                hasConflict = true;
+                            }
+                        }
+                    }
+                }
+
+                // Only skip if triangle is fully occluded in ALL cells it touches
+                // Require at least 50% of cells to be visible to avoid over-aggressive culling
+                if (visibleCellCount === 0 || (totalCells > 0 && visibleCellCount < totalCells * 0.3)) {
+                    return; // Skip fully occluded triangles
+                }
+
+                // If there's a conflict, add to conflict list for second pass
+                if (hasConflict) {
+                    conflictList.push(tri);
+                }
+
+                // Draw the triangle directly to ImageData
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h);
+
+                // Update depth grid for touched cells more conservatively
+                for (let cy = cellMinY; cy <= cellMaxY; cy++) {
+                    for (let cx = cellMinX; cx <= cellMaxX; cx++) {
+                        if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
+
+                        const cell = depthGrid[cy][cx];
+
+                        // Only update if this triangle is actually closer
+                        // Use a small epsilon to prevent z-fighting artifacts
+                        if (tri.minDepth < cell.minDepth - 0.001) {
+                            cell.minDepth = tri.minDepth;
+                            cell.polygonId = tri.id;
+                            cell.isDirty = true;
+                        }
+                        if (tri.maxDepth > cell.maxDepth) {
+                            cell.maxDepth = tri.maxDepth;
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    /**
+     * Pass 2: Front-to-back conflict resolution
+     */
+    renderFALDPass2(conflictList, ctx, depthGrid, cellSize, w, h) {
+        // Sort conflicts front-to-back
+        conflictList.sort((a, b) => a.avgDepth - b.avgDepth);
+
+        const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+        const imgData = this._imageData;
+        const data = imgData.data;
+
+        conflictList.forEach(tri => {
+            // Re-project if needed
+            if (!tri.projectedVerts) {
+                const p0 = this.projectCameraPoint(tri.v0, useExtendedFOV);
+                const p1 = this.projectCameraPoint(tri.v1, useExtendedFOV);
+                const p2 = this.projectCameraPoint(tri.v2, useExtendedFOV);
+
+                if (!p0 || !p1 || !p2) return;
+                tri.projectedVerts = [p0, p1, p2];
+            }
+
+            // Identify conflicting cells
+            const [p0, p1, p2] = tri.projectedVerts;
+            const { minX, maxX, minY, maxY } = tri.screenBounds;
+
+            const cellMinX = Math.floor(minX / cellSize);
+            const cellMaxX = Math.floor(maxX / cellSize);
+            const cellMinY = Math.floor(minY / cellSize);
+            const cellMaxY = Math.floor(maxY / cellSize);
+
+            // Check which cells have conflicts
+            const conflictCells = [];
+            for (let cy = cellMinY; cy <= cellMaxY; cy++) {
+                for (let cx = cellMinX; cx <= cellMaxX; cx++) {
+                    if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
+
+                    const cell = depthGrid[cy][cx];
+                    // If this triangle is closer than what's in the cell, it's a conflict
+                    if (tri.minDepth < cell.minDepth - 0.01) { // Small epsilon for floating point
+                        conflictCells.push({ cx, cy });
+                    }
+                }
+            }
+
+            // If there are conflicts, redraw this triangle
+            if (conflictCells.length > 0) {
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h);
+
+                // Update depth grid
+                conflictCells.forEach(({ cx, cy }) => {
+                    const cell = depthGrid[cy][cx];
+                    cell.minDepth = Math.min(cell.minDepth, tri.minDepth);
+                    cell.maxDepth = Math.max(cell.maxDepth, tri.maxDepth);
+                    cell.polygonId = tri.id;
+                });
+            }
+        });
+    }
+
+    /**
+ * Rasterize triangle directly to ImageData buffer
+ * Uses edge function approach for fast inside testing
+ */
+    rasterizeFALDTriangle(p0, p1, p2, color, data, w, h) {
+        // Round to integer coordinates
+        const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
+        const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
+        const x2 = Math.round(p2.x), y2 = Math.round(p2.y);
+
+        // Calculate bounding box
+        const minX = Math.max(0, Math.min(x0, x1, x2));
+        const maxX = Math.min(w - 1, Math.max(x0, x1, x2));
+        const minY = Math.max(0, Math.min(y0, y1, y2));
+        const maxY = Math.min(h - 1, Math.max(y0, y1, y2));
+
+        // Early rejection
+        if (minX > maxX || minY > maxY) return;
+
+        // Edge function setup
+        const e0_dx = x1 - x0, e0_dy = y1 - y0;
+        const e1_dx = x2 - x1, e1_dy = y2 - y1;
+        const e2_dx = x0 - x2, e2_dy = y0 - y2;
+
+        // Precompute color values
+        const r = color.r, g = color.g, b = color.b;
+
+        // Scanline rasterization
+        for (let y = minY; y <= maxY; y++) {
+            // Calculate edge values at start of scanline
+            let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
+            let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
+            let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
+
+            // Edge increments for x-stepping
+            const w0_step = -e0_dy;
+            const w1_step = -e1_dy;
+            const w2_step = -e2_dy;
+
+            for (let x = minX; x <= maxX; x++) {
+                // Inside test using edge equations
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    const pixelIdx = (y * w + x) * 4;
+                    data[pixelIdx] = r;
+                    data[pixelIdx + 1] = g;
+                    data[pixelIdx + 2] = b;
+                    data[pixelIdx + 3] = 255;
+                }
+
+                // Increment edge values
+                w0 += w0_step;
+                w1 += w1_step;
+                w2 += w2_step;
+            }
+        }
+    }
+
+    /**
+     * Draw a triangle using native canvas fill (REMOVED - not used anymore)
+     */
+    drawFALDTriangle(ctx, p0, p1, p2, color) {
+        // This method is no longer used, but keeping for reference
+        ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    /**
+ * Iterative Layered Point Cloud (ILPC) Rendering
+ * Renders 3D scenes as adaptive point clouds with progressive refinement
+ */
+    renderILPC() {
+        const allObjects = this.getGameObjects();
+        const ctx = this._renderTextureCtx;
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth;
+        const h = this._renderTextureHeight;
+
+        // Clear background
+        if (this._backgroundType === "transparent") {
+            // Leave transparent
+        } else if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = bgColor.r;
+                data[i + 1] = bgColor.g;
+                data[i + 2] = bgColor.b;
+                data[i + 3] = 255;
+            }
+        } else if (this._backgroundType === "skyfloor") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+            const horizonY = Math.floor(h * clampedHorizon);
+
+            for (let i = 0; i < data.length; i += 4) {
+                const y = Math.floor((i / 4) / w);
+                if (y < horizonY) {
+                    data[i] = this.hexToRgb(this._skyColor).r;
+                    data[i + 1] = this.hexToRgb(this._skyColor).g;
+                    data[i + 2] = this.hexToRgb(this._skyColor).b;
+                } else {
+                    data[i] = this.hexToRgb(this._floorColor).r;
+                    data[i + 1] = this.hexToRgb(this._floorColor).g;
+                    data[i + 2] = this.hexToRgb(this._floorColor).b;
+                }
+                data[i + 3] = 255;
+            }
+        }
+
+        // Initialize 2D depth map (stores timestamp and radius for occlusion)
+        if (!this._ilpcDepthMap || this._ilpcDepthMap.length !== w * h) {
+            this._ilpcDepthMap = new Array(w * h);
+        }
+
+        // Clear depth map
+        for (let i = 0; i < this._ilpcDepthMap.length; i++) {
+            this._ilpcDepthMap[i] = { timestamp: 0, radius: 0, depth: Infinity };
+        }
+
+        // Current frame timestamp
+        const frameTimestamp = performance.now();
+
+        // Collect and generate point cloud from all meshes
+        const pointCloud = [];
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
+            if (!mesh) return;
+
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+
+            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            // Generate points from mesh faces
+            mesh.faces.forEach(face => {
+                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                if (worldVerts.length < 3) return;
+
+                // Calculate face normal for lighting
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Transform to camera space
+                const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
+
+                // Backface culling
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    if (this.shouldCullFace(cameraVerts)) return;
+                }
+
+                // Generate points for this face based on its area and distance
+                const points = this.generatePointsFromFace(cameraVerts, worldVerts, litColor);
+                pointCloud.push(...points);
+            });
+        });
+
+        // Frustum culling - remove points outside view
+        const frustumCulledPoints = pointCloud.filter(point => {
+            return point.cameraPos.x >= this._nearPlane &&
+                point.cameraPos.x <= this._farPlane;
+        });
+
+        // Sort points front-to-back by depth (camera X coordinate)
+        frustumCulledPoints.sort((a, b) => a.cameraPos.x - b.cameraPos.x);
+
+        // Calculate LOD pass count based on point density
+        const totalPoints = frustumCulledPoints.length;
+        const passCount = Math.min(3, Math.ceil(totalPoints / 1000) + 1);
+
+        // Render in multiple passes for progressive refinement
+        for (let pass = 0; pass < passCount; pass++) {
+            const passRatio = (pass + 1) / passCount;
+            const pointsThisPass = Math.ceil(totalPoints * passRatio);
+
+            // Determine which points to render this pass
+            let pointsToRender;
+            if (pass === 0) {
+                // First pass: evenly distributed sparse points
+                pointsToRender = frustumCulledPoints.filter((_, idx) => idx % 4 === 0);
+            } else if (pass === 1) {
+                // Second pass: fill in more points
+                pointsToRender = frustumCulledPoints.filter((_, idx) => idx % 2 === 0);
+            } else {
+                // Final pass: render all remaining points
+                pointsToRender = frustumCulledPoints;
+            }
+
+            // Render points for this pass
+            pointsToRender.forEach(point => {
+                this.renderILPCPoint(point, data, w, h, frameTimestamp);
+            });
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    /**
+     * Generate point samples from a mesh face
+     * Adaptive sampling based on face size and distance
+     */
+    generatePointsFromFace(cameraVerts, worldVerts, color) {
+        if (cameraVerts.length < 3) return [];
+
+        const points = [];
+
+        // Calculate average depth
+        const avgDepth = cameraVerts.reduce((sum, v) => sum + v.x, 0) / cameraVerts.length;
+
+        // Calculate face area in camera space (approximate)
+        const v0 = cameraVerts[0];
+        const v1 = cameraVerts[1];
+        const v2 = cameraVerts[2];
+
+        const edge1 = { x: v1.x - v0.x, y: v1.y - v0.y, z: v1.z - v0.z };
+        const edge2 = { x: v2.x - v0.x, y: v2.y - v0.y, z: v2.z - v0.z };
+
+        // Cross product magnitude / 2 = triangle area
+        const crossX = edge1.y * edge2.z - edge1.z * edge2.y;
+        const crossY = edge1.z * edge2.x - edge1.x * edge2.z;
+        const crossZ = edge1.x * edge2.y - edge1.y * edge2.x;
+        const area = Math.sqrt(crossX * crossX + crossY * crossY + crossZ * crossZ) / 2;
+
+        // Adaptive point density based on distance and area
+        // Closer and larger faces get more points
+        const distanceFactor = Math.max(1, avgDepth / 50);
+        const pointDensity = Math.max(1, Math.ceil((area * 20) / distanceFactor));
+        const numPoints = Math.min(pointDensity, 50); // Cap at 50 points per face
+
+        // Generate points using barycentric coordinates
+        for (let i = 0; i < numPoints; i++) {
+            // Random barycentric coordinates
+            let u = Math.random();
+            let v = Math.random();
+
+            // Ensure point is inside triangle
+            if (u + v > 1) {
+                u = 1 - u;
+                v = 1 - v;
+            }
+            const w = 1 - u - v;
+
+            // Interpolate position in camera space
+            const cameraPos = {
+                x: u * cameraVerts[0].x + v * cameraVerts[1].x + w * cameraVerts[2].x,
+                y: u * cameraVerts[0].y + v * cameraVerts[1].y + w * cameraVerts[2].y,
+                z: u * cameraVerts[0].z + v * cameraVerts[1].z + w * cameraVerts[2].z
+            };
+
+            // Calculate importance (edge points are more important)
+            const importance = Math.min(u, v, w) < 0.1 ? 2 : 1;
+
+            points.push({
+                cameraPos,
+                color,
+                importance,
+                radius: Math.max(1, 10 / avgDepth) // Screen-space radius based on depth
+            });
+        }
+
+        return points;
+    }
+
+    /**
+     * Render a single point with occlusion culling
+     */
+    renderILPCPoint(point, data, w, h, timestamp) {
+        const { cameraPos, color, radius } = point;
+
+        // Project to screen space
+        const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+        const projected = this.projectCameraPoint(cameraPos, useExtendedFOV);
+
+        if (!projected) return;
+
+        const cx = Math.round(projected.x);
+        const cy = Math.round(projected.y);
+
+        // Check bounds
+        if (cx < 0 || cx >= w || cy < 0 || cy >= h) return;
+
+        // Calculate screen-space radius (perspective scaling)
+        const screenRadius = Math.max(1, Math.ceil(radius / cameraPos.x));
+
+        // Occlusion culling - check if this point is occluded
+        const depthMapIdx = cy * w + cx;
+        const existing = this._ilpcDepthMap[depthMapIdx];
+
+        // If an existing point completely covers this one, skip it
+        if (existing && existing.timestamp === timestamp) {
+            const depthDiff = cameraPos.x - existing.depth;
+            const radiusDiff = existing.radius - screenRadius;
+
+            // Skip if behind existing point and fully covered
+            if (depthDiff > 0 && radiusDiff >= screenRadius) {
+                return;
+            }
+        }
+
+        // Draw the point
+        const halfRadius = Math.floor(screenRadius / 2);
+        const minX = Math.max(0, cx - halfRadius);
+        const maxX = Math.min(w - 1, cx + halfRadius);
+        const minY = Math.max(0, cy - halfRadius);
+        const maxY = Math.min(h - 1, cy + halfRadius);
+
+        // Draw as a small filled circle/square
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                // Optional: circular points (check distance from center)
+                const dx = x - cx;
+                const dy = y - cy;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq <= screenRadius * screenRadius) {
+                    const pixelIdx = (y * w + x) * 4;
+
+                    // Soft edges for better blending
+                    const falloff = 1.0 - Math.sqrt(distSq) / screenRadius;
+                    const alpha = Math.min(1, falloff * 1.5);
+
+                    // Blend with existing pixel
+                    const existingR = data[pixelIdx];
+                    const existingG = data[pixelIdx + 1];
+                    const existingB = data[pixelIdx + 2];
+
+                    data[pixelIdx] = Math.round(existingR * (1 - alpha) + color.r * alpha);
+                    data[pixelIdx + 1] = Math.round(existingG * (1 - alpha) + color.g * alpha);
+                    data[pixelIdx + 2] = Math.round(existingB * (1 - alpha) + color.b * alpha);
+                    data[pixelIdx + 3] = 255;
+                }
+            }
+        }
+
+        // Update depth map at point center
+        this._ilpcDepthMap[depthMapIdx] = {
+            timestamp,
+            radius: screenRadius,
+            depth: cameraPos.x
+        };
     }
 
     start() {
@@ -2008,7 +4056,10 @@ class Camera3D extends Module {
             _depthOfFieldEnabled: this._depthOfFieldEnabled,
             _focalDistance: this._focalDistance,
             _aperture: this._aperture,
-            _maxBlurRadius: this._maxBlurRadius
+            _maxBlurRadius: this._maxBlurRadius,
+            _skyColor: this._skyColor,
+            _floorColor: this._floorColor,
+            _backgroundType: this._backgroundType
         };
     }
 
@@ -2035,6 +4086,9 @@ class Camera3D extends Module {
         if (json._focalDistance !== undefined) this._focalDistance = json._focalDistance;
         if (json._aperture !== undefined) this._aperture = json._aperture;
         if (json._maxBlurRadius !== undefined) this._maxBlurRadius = json._maxBlurRadius;
+        if (json._skyColor !== undefined) { this._skyColor = json._skyColor; } else { this._skyColor = "#87CEEB"; }
+        if (json._floorColor !== undefined) { this._floorColor = json._floorColor; } else { this._floorColor = "#8B4513"; }
+        if (json._backgroundType !== undefined) { this._backgroundType = json._backgroundType; } else { this._backgroundType = "skyfloor"; }
         this.updateRenderTexture();
     }
 

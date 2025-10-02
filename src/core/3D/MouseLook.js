@@ -24,6 +24,8 @@ class MouseLook extends Module {
         this._invertX = false;
         this._invertY = false;
         this._smoothing = 0.1; // Lower = more responsive, higher = smoother
+        this._lockX = false; // Lock horizontal rotation
+        this._lockY = false; // Lock vertical rotation
         
         // Range limits
         this._minPitch = -89.9; // Minimum vertical angle (looking down)
@@ -41,7 +43,11 @@ class MouseLook extends Module {
         this.camera = null;
         
         // Activate mode
-        this._activateMode = "rightButton"; // Options: "always", "rightButton", "middleButton", "leftButton"
+        this._activateMode = "rightButton"; // Options: "always", "rightButton", "middleButton", "leftButton", "freeLook"
+        
+        // Pointer lock settings
+        this._lockCursor = false;
+        this._isPointerLocked = false;
         
         // Expose properties to the inspector
         this.exposeProperty("sensitivity", "number", 0.2, {
@@ -56,6 +62,14 @@ class MouseLook extends Module {
         });
         this.exposeProperty("invertY", "boolean", false, {
             onChange: (val) => this._invertY = val
+        });
+
+        this.exposeProperty("lockX", "boolean", false, {
+            onChange: (val) => this._lockX = val
+        });
+
+        this.exposeProperty("lockY", "boolean", false, {
+            onChange: (val) => this._lockY = val
         });
 
         this.exposeProperty("smoothing", "number", 0.1, {
@@ -78,14 +92,22 @@ class MouseLook extends Module {
         });
 
         this.exposeProperty("activateMode", "enum", "rightButton", {
-            options: ["always", "rightButton", "middleButton", "leftButton"],
+            options: ["always", "rightButton", "middleButton", "leftButton", "freeLook"],
             onChange: (val) => this._activateMode = val
+        });
+
+        this.exposeProperty("lockCursor", "boolean", false, {
+            onChange: (val) => this._lockCursor = val
         });
         
         // Bind methods to maintain 'this' context
         this.handleMouseDown = this.handleMouseDown.bind(this);
         this.handleMouseMove = this.handleMouseMove.bind(this);
         this.handleMouseUp = this.handleMouseUp.bind(this);
+        this.handlePointerLockChange = this.handlePointerLockChange.bind(this);
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+        this.handleCanvasFocus = this.handleCanvasFocus.bind(this);
+        this.handleCanvasBlur = this.handleCanvasBlur.bind(this);
     }
     
     /**
@@ -123,12 +145,30 @@ class MouseLook extends Module {
             canvas.addEventListener('mousedown', this.handleMouseDown);
             document.addEventListener('mousemove', this.handleMouseMove);
             document.addEventListener('mouseup', this.handleMouseUp);
+            document.addEventListener('pointerlockchange', this.handlePointerLockChange);
+            document.addEventListener('keydown', this.handleKeyDown);
+            canvas.addEventListener('focus', this.handleCanvasFocus);
+            canvas.addEventListener('blur', this.handleCanvasBlur);
+            
+            // Make canvas focusable if it isn't already
+            if (!canvas.hasAttribute('tabindex')) {
+                canvas.setAttribute('tabindex', '0');
+            }
         } else if (document.querySelector('canvas')) {
             // Fallback to any canvas in the document
             const canvas = document.querySelector('canvas');
             canvas.addEventListener('mousedown', this.handleMouseDown);
             document.addEventListener('mousemove', this.handleMouseMove);
             document.addEventListener('mouseup', this.handleMouseUp);
+            document.addEventListener('pointerlockchange', this.handlePointerLockChange);
+            document.addEventListener('keydown', this.handleKeyDown);
+            canvas.addEventListener('focus', this.handleCanvasFocus);
+            canvas.addEventListener('blur', this.handleCanvasBlur);
+            
+            // Make canvas focusable if it isn't already
+            if (!canvas.hasAttribute('tabindex')) {
+                canvas.setAttribute('tabindex', '0');
+            }
             console.log("MouseLook: Using fallback canvas");
         } else {
             console.warn("MouseLook: No canvas found for mouse events");
@@ -145,6 +185,67 @@ class MouseLook extends Module {
             canvas.removeEventListener('mousedown', this.handleMouseDown);
             document.removeEventListener('mousemove', this.handleMouseMove);
             document.removeEventListener('mouseup', this.handleMouseUp);
+            document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
+            document.removeEventListener('keydown', this.handleKeyDown);
+            canvas.removeEventListener('focus', this.handleCanvasFocus);
+            canvas.removeEventListener('blur', this.handleCanvasBlur);
+        }
+        
+        // Release pointer lock if active
+        if (this._isPointerLocked) {
+            document.exitPointerLock();
+        }
+    }
+
+    /**
+     * Handle canvas focus event
+     */
+    handleCanvasFocus() {
+        if (this._lockCursor && this._activateMode === "freeLook") {
+            this.requestPointerLock();
+        }
+    }
+
+    /**
+     * Handle canvas blur event
+     */
+    handleCanvasBlur() {
+        if (this._isPointerLocked) {
+            document.exitPointerLock();
+        }
+    }
+
+    /**
+     * Handle key down event
+     * @param {KeyboardEvent} event - The keyboard event
+     */
+    handleKeyDown(event) {
+        if (event.key === 'Escape' && this._isPointerLocked) {
+            document.exitPointerLock();
+        }
+    }
+
+    /**
+     * Handle pointer lock change event
+     */
+    handlePointerLockChange() {
+        const canvas = window.engine?.canvas || document.querySelector('canvas');
+        this._isPointerLocked = document.pointerLockElement === canvas;
+        
+        if (this._isPointerLocked) {
+            this._isLooking = true;
+        } else if (this._activateMode === "freeLook") {
+            this._isLooking = false;
+        }
+    }
+
+    /**
+     * Request pointer lock on the canvas
+     */
+    requestPointerLock() {
+        const canvas = window.engine?.canvas || document.querySelector('canvas');
+        if (canvas && !this._isPointerLocked) {
+            canvas.requestPointerLock();
         }
     }
     
@@ -155,11 +256,23 @@ class MouseLook extends Module {
     handleMouseDown(event) {
         if (!this.camera) return;
         
+        // Handle freeLook mode with pointer lock
+        if (this._activateMode === "freeLook") {
+            if (this._lockCursor && !this._isPointerLocked) {
+                this.requestPointerLock();
+            } else if (!this._lockCursor) {
+                this._isLooking = true;
+                this._lastMouseX = event.clientX;
+                this._lastMouseY = event.clientY;
+            }
+            return;
+        }
+        
         // Check if the correct mouse button was pressed
-        if (this.activateMode === "always" ||
-           (this.activateMode === "rightButton" && event.button === 2) ||
-           (this.activateMode === "middleButton" && event.button === 1) ||
-           (this.activateMode === "leftButton" && event.button === 0)) {
+        if (this._activateMode === "always" ||
+           (this._activateMode === "rightButton" && event.button === 2) ||
+           (this._activateMode === "middleButton" && event.button === 1) ||
+           (this._activateMode === "leftButton" && event.button === 0)) {
             
             this._isLooking = true;
             this._lastMouseX = event.clientX;
@@ -187,17 +300,25 @@ class MouseLook extends Module {
     handleMouseMove(event) {
         if (!this.camera || !this._isLooking) return;
         
-        // Calculate mouse movement
-        const deltaX = event.clientX - this._lastMouseX;
-        const deltaY = event.clientY - this._lastMouseY;
+        let deltaX, deltaY;
         
-        // Update last mouse position
-        this._lastMouseX = event.clientX;
-        this._lastMouseY = event.clientY;
+        // Use movementX/Y for pointer lock, otherwise calculate delta
+        if (this._isPointerLocked) {
+            deltaX = event.movementX || 0;
+            deltaY = event.movementY || 0;
+        } else {
+            // Calculate mouse movement
+            deltaX = event.clientX - this._lastMouseX;
+            deltaY = event.clientY - this._lastMouseY;
+            
+            // Update last mouse position
+            this._lastMouseX = event.clientX;
+            this._lastMouseY = event.clientY;
+        }
         
-        // Apply sensitivity and inversion
-        const yawDelta = deltaX * this.sensitivity * (this.invertX ? -1 : 1);
-        const pitchDelta = deltaY * this.sensitivity * (this.invertY ? -1 : 1);
+        // Apply sensitivity and inversion, respecting axis locks
+        const yawDelta = this._lockX ? 0 : deltaX * this.sensitivity * (this.invertX ? -1 : 1);
+        const pitchDelta = this._lockY ? 0 : deltaY * this.sensitivity * (this.invertY ? -1 : 1);
         
         // Update target rotation using Z-up convention where:
         // - Z = yaw (turn left/right)
@@ -217,10 +338,18 @@ class MouseLook extends Module {
     handleMouseUp(event) {
         if (!this.camera) return;
         
+        // Don't stop looking in freeLook mode without cursor lock or if pointer is locked
+        if (this._activateMode === "freeLook" && (this._isPointerLocked || !this._lockCursor)) {
+            if (!this._lockCursor) {
+                this._isLooking = false;
+            }
+            return;
+        }
+        
         // Check if the correct mouse button was released
-        if ((this.activateMode === "rightButton" && event.button === 2) ||
-            (this.activateMode === "middleButton" && event.button === 1) ||
-            (this.activateMode === "leftButton" && event.button === 0)) {
+        if ((this._activateMode === "rightButton" && event.button === 2) ||
+            (this._activateMode === "middleButton" && event.button === 1) ||
+            (this._activateMode === "leftButton" && event.button === 0)) {
             
             this._isLooking = false;
         }
@@ -233,25 +362,14 @@ class MouseLook extends Module {
     loop(deltaTime) {
         if (!this.camera) return;
         
-        if (this.activateMode === "always") {
+        // For "always" mode, automatically enable looking
+        if (this._activateMode === "always") {
             this._isLooking = true;
-            
-            // Get mouse movement from InputManager if available
-            if (window.input) {
-                const mouseDelta = window.input.getMouseDelta();
-                if (mouseDelta.x !== 0 || mouseDelta.y !== 0) {
-                    // Apply sensitivity and inversion
-                    const yawDelta = mouseDelta.x * this.sensitivity * (this.invertX ? -1 : 1);
-                    const pitchDelta = mouseDelta.y * this.sensitivity * (this.invertY ? -1 : 1);
-                    
-                    // Update target rotation
-                    this._targetRotation.z = (this._targetRotation.z + yawDelta) % 360;
-                    this._targetRotation.y = this._targetRotation.y - pitchDelta;
-
-                    // Clamp pitch (rotation.y)
-                    this._targetRotation.y = Math.max(this.minPitch, Math.min(this.maxPitch, this._targetRotation.y));
-                }
-            }
+        }
+        
+        // For "freeLook" mode without cursor lock, enable looking
+        if (this._activateMode === "freeLook" && !this._lockCursor) {
+            this._isLooking = true;
         }
         
         // Apply rotation with smoothing (Z-up: pitch = rotation.y, yaw = rotation.z, roll = rotation.x)
@@ -281,9 +399,12 @@ class MouseLook extends Module {
             _invertX: this._invertX,
             _invertY: this._invertY,
             _smoothing: this._smoothing,
+            _lockX: this._lockX,
+            _lockY: this._lockY,
             _minPitch: this._minPitch,
             _maxPitch: this._maxPitch,
-            _activateMode: this._activateMode
+            _activateMode: this._activateMode,
+            _lockCursor: this._lockCursor
         };
     }
 
@@ -296,9 +417,12 @@ class MouseLook extends Module {
         if (json._invertX !== undefined) this._invertX = json._invertX;
         if (json._invertY !== undefined) this._invertY = json._invertY;
         if (json._smoothing !== undefined) this._smoothing = json._smoothing;
+        if (json._lockX !== undefined) this._lockX = json._lockX;
+        if (json._lockY !== undefined) this._lockY = json._lockY;
         if (json._minPitch !== undefined) this._minPitch = json._minPitch;
         if (json._maxPitch !== undefined) this._maxPitch = json._maxPitch;
         if (json._activateMode !== undefined) this._activateMode = json._activateMode;
+        if (json._lockCursor !== undefined) this._lockCursor = json._lockCursor;
     }
 
     // Getters and setters for properties
@@ -311,6 +435,12 @@ class MouseLook extends Module {
     get invertY() { return this._invertY; }
     set invertY(value) { this._invertY = value; }
 
+    get lockX() { return this._lockX; }
+    set lockX(value) { this._lockX = value; }
+
+    get lockY() { return this._lockY; }
+    set lockY(value) { this._lockY = value; }
+
     get smoothing() { return this._smoothing; }
     set smoothing(value) { this._smoothing = Math.max(0, Math.min(0.99, value)); }
 
@@ -322,6 +452,9 @@ class MouseLook extends Module {
 
     get activateMode() { return this._activateMode; }
     set activateMode(value) { this._activateMode = value; }
+
+    get lockCursor() { return this._lockCursor; }
+    set lockCursor(value) { this._lockCursor = value; }
 }
 
 // Register the MouseLook module
