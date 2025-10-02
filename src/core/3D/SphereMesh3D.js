@@ -5,7 +5,7 @@
  * colors, and rendering options using UV sphere topology.
  */
 class SphereMesh3D extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
 
     /**
      * Create a new SphereMesh3D
@@ -36,6 +36,12 @@ class SphereMesh3D extends Module {
         this.vertices = [];
         this.edges = [];
         this.faces = [];
+
+        // Material system
+        this.material = null; // Material instance for advanced texturing
+
+        // UV coordinates for texture mapping
+        this.uvCoordinates = [];
 
         // Expose properties to the inspector
         this.exposeProperty("radius", "number", 50, {
@@ -102,8 +108,41 @@ class SphereMesh3D extends Module {
             onChange: (val) => this._axisLength = val
         });
 
+        this.exposeProperty("material", "module", null, {
+            moduleType: "Material",
+            onChange: (val) => this.material = val
+        });
+
         // Initialize sphere geometry
         this.updateSphere();
+
+        // Ensure material module exists on the game object
+        this.ensureMaterialModule();
+    }
+
+    start() {
+        // Ensure material module exists on start
+        this.ensureMaterialModule();
+    }
+
+    /**
+     * Ensure the game object has a Material module
+     */
+    ensureMaterialModule() {
+        if (!this.gameObject) return;
+
+        // Check if material module already exists
+        let materialModule = this.gameObject.getModule ? this.gameObject.getModule('Material') : null;
+        if (!materialModule) {
+            // Create and add a new material module
+            materialModule = new Material();
+            if (this.gameObject.addModule) {
+                this.gameObject.addModule(materialModule);
+            }
+        }
+
+        // Set the material reference
+        this.material = materialModule;
     }
 
     /**
@@ -193,6 +232,52 @@ class SphereMesh3D extends Module {
         }
 
         this.edges = Array.from(edgeSet).map(key => key.split(',').map(Number));
+
+        // Generate UV coordinates for texture mapping
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Generate UV coordinates for texture mapping
+     */
+    generateUVCoordinates() {
+        this.uvCoordinates = [];
+
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+
+            // Convert 3D spherical coordinates to 2D UV coordinates
+            // Normalize the vertex position to get spherical coordinates
+            const normalized = vertex.clone();
+            const length = Math.sqrt(vertex.x * vertex.x + vertex.y * vertex.y + vertex.z * vertex.z);
+
+            if (length > 0) {
+                normalized.x /= length;
+                normalized.y /= length;
+                normalized.z /= length;
+            }
+
+            // Calculate UV coordinates using spherical mapping
+            // U: longitude (0 to 1) - wraps around the sphere horizontally
+            // V: latitude (0 to 1) - from bottom to top pole
+            const u = 0.5 + (Math.atan2(normalized.x, normalized.z) / (2 * Math.PI));
+            const v = 0.5 - (Math.asin(normalized.y) / Math.PI);
+
+            this.uvCoordinates.push(new Vector2(u, v));
+        }
+    }
+
+    /**
+     * Get material color for a face, considering texture if available
+     */
+    getMaterialColor(faceIndex) {
+        if (!this.material) {
+            return this._faceColor;
+        }
+
+        // For now, use the diffuse color
+        // In a full implementation, this would sample the texture based on face UVs
+        return this.material.diffuseColor;
     }
 
     /**
@@ -249,9 +334,10 @@ class SphereMesh3D extends Module {
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
+                // Use material color if available, otherwise fall back to faceColor
+                const faceColor = this.material ? this.getMaterialColor(face) : this._faceColor;
+                ctx.fillStyle = faceColor;
                 if (face.length < 3) continue;
 
                 const isVisible = face.every(vertexIndex =>
@@ -350,9 +436,10 @@ class SphereMesh3D extends Module {
 
         // Draw faces
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
+                // Use material color if available, otherwise fall back to faceColor
+                const faceColor = this.material ? this.getMaterialColor(face) : this._faceColor;
+                ctx.fillStyle = faceColor;
                 const validVertices = [];
                 for (const vertexIndex of face) {
                     if (vertexIndex < validProjectedVertices.length &&
@@ -684,7 +771,8 @@ class SphereMesh3D extends Module {
             _showAxisLines: this._showAxisLines,
             _axisLength: this._axisLength,
             _segments: this._segments,
-            _rings: this._rings
+            _rings: this._rings,
+            material: this.material ? this.material.toJSON() : null
         };
     }
 
@@ -707,6 +795,15 @@ class SphereMesh3D extends Module {
         if (json._axisLength !== undefined) this._axisLength = json._axisLength;
         if (json._segments !== undefined) this._segments = json._segments;
         if (json._rings !== undefined) this._rings = json._rings;
+        if (json.material !== undefined) {
+            if (this.material && json.material) {
+                this.material.fromJSON(json.material);
+            } else if (json.material) {
+                // Create new material if one doesn't exist
+                this.material = new Material();
+                this.material.fromJSON(json.material);
+            }
+        }
     }
 
     // Getters and setters

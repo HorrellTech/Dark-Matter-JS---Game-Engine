@@ -5,7 +5,7 @@
  * colors, and rendering options.
  */
 class CubeMesh3D extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
 
     /**
      * Create a new CubeMesh3D
@@ -34,6 +34,12 @@ class CubeMesh3D extends Module {
         this.vertices = [];
         this.edges = [];
         this.faces = [];
+
+        // Material system
+        this.material = null; // Material instance for advanced texturing
+
+        // UV coordinates for texture mapping
+        this.uvCoordinates = [];
 
         // Expose properties to the inspector
         this.exposeProperty("size", "number", 100, {
@@ -88,13 +94,89 @@ class CubeMesh3D extends Module {
             onChange: (val) => this._axisLength = val
         });
 
+        this.exposeProperty("material", "module", null, {
+            moduleType: "Material",
+            onChange: (val) => this.material = val
+        });
+
         // Initialize cube geometry
         this.updateCube();
+
+        // Ensure material module exists on the game object
+        this.ensureMaterialModule();
+    }
+
+    start() {
+        // Ensure material module exists on start
+        this.ensureMaterialModule();
     }
 
     /**
-      * Update the cube geometry based on current size
-      */
+     * Ensure the game object has a Material module
+     */
+    ensureMaterialModule() {
+        if (!this.gameObject) return;
+
+        // Check if material module already exists
+        let materialModule = this.gameObject.getModule ? this.gameObject.getModule('Material') : null;
+        if (!materialModule) {
+            // Create and add a new material module
+            materialModule = new Material();
+            if (this.gameObject.addModule) {
+                this.gameObject.addModule(materialModule);
+            }
+        }
+
+        // Set the material reference
+        this.material = materialModule;
+    }
+
+    /**
+     * Generate UV coordinates for texture mapping
+     */
+    generateUVCoordinates() {
+        this.uvCoordinates = [];
+
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+
+            // Simple planar projection for UV mapping
+            let u, v;
+
+            if (Math.abs(vertex.x) > Math.abs(vertex.y) && Math.abs(vertex.x) > Math.abs(vertex.z)) {
+                // X-dominant face
+                u = (vertex.y + 1) / 2;
+                v = (vertex.z + 1) / 2;
+            } else if (Math.abs(vertex.y) > Math.abs(vertex.x) && Math.abs(vertex.y) > Math.abs(vertex.z)) {
+                // Y-dominant face
+                u = (vertex.x + 1) / 2;
+                v = (vertex.z + 1) / 2;
+            } else {
+                // Z-dominant face
+                u = (vertex.x + 1) / 2;
+                v = (vertex.y + 1) / 2;
+            }
+
+            this.uvCoordinates.push(new Vector2(u, v));
+        }
+    }
+
+    /**
+     * Get material color for a face, considering texture if available
+     */
+    getMaterialColor(faceIndex) {
+        if (!this.material) {
+            return this._faceColor;
+        }
+
+        // For now, use the diffuse color
+        // In a full implementation, this would sample the texture based on face UVs
+        return this.material.diffuseColor;
+    }
+
+    /**
+       * Update the cube geometry based on current size
+       */
      updateCube() {
          const s = this.size / 2;
          const divs = this._subdivisions;
@@ -332,9 +414,10 @@ class CubeMesh3D extends Module {
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
+                // Use material color if available, otherwise fall back to faceColor
+                const faceColor = this.material ? this.getMaterialColor(face) : this._faceColor;
+                ctx.fillStyle = faceColor;
                 if (face.length < 3) continue; // Need at least 3 points to draw a face
 
                 // Check if all vertices are visible
@@ -481,9 +564,10 @@ class CubeMesh3D extends Module {
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
+                // Use material color if available, otherwise fall back to faceColor
+                const faceColor = this.material ? this.getMaterialColor(face) : this._faceColor;
+                ctx.fillStyle = faceColor;
                 // Check if vertices are valid and get projected vertices
                 const validVertices = [];
                 for (const vertexIndex of face) {

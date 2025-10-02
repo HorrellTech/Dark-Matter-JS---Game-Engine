@@ -5,7 +5,7 @@
  * Supports: Painter's Algorithm, Z-Buffer, Scanline, and Raytracing.
  */
 class Camera3D extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
 
     constructor() {
         super("Camera3D");
@@ -32,7 +32,7 @@ class Camera3D extends Module {
         this.viewportWidth = 800;
         this.viewportHeight = 600;
         this.drawGizmoInRuntime = false;
-        this._renderingMethod = "raster";
+        this._renderingMethod = "fald";
         this._enableBackfaceCulling = false;
         this._disableCulling = true;
         this._cullingFieldOfView = 60; // Use same FOV as main camera for consistent culling
@@ -131,8 +131,8 @@ class Camera3D extends Module {
         this.exposeProperty("renderTextureSmoothing", "boolean", false, {
             onChange: (val) => this._renderTextureSmoothing = val
         });
-        this.exposeProperty("renderingMethod", "dropdown", "raster", {
-            options: ["raster", "zbuffer", "depthpass", "painter", "hybrid", "webglcanvas", "doom", "ilpc", "fald"],
+        this.exposeProperty("renderingMethod", "dropdown", "fald", {
+            options: ["raster", "zbuffer", "depthpass", "painter", "rasterRaytraceHybrid", "doom", "ilpc", "fald"],
             onChange: (val) => {
                 this._renderingMethod = val;
                 if (val === "raytrace") {
@@ -888,7 +888,9 @@ class Camera3D extends Module {
                 if (cameraVerts.length < 3) return;
 
                 // Backface culling AFTER clipping
-                if (this._enableBackfaceCulling && !this._disableCulling && this.shouldCullFace(cameraVerts)) return;
+                const material = mesh?.material;
+                const isDoubleSided = material ? material._doubleSided : false;
+                if (this._enableBackfaceCulling && !this._disableCulling && !isDoubleSided && this.shouldCullFace(cameraVerts)) return;
 
                 // Project to screen - use extended FOV only when culling is enabled
                 const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
@@ -1078,8 +1080,10 @@ class Camera3D extends Module {
 
                 // Backface culling using consistent method (after clipping)
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) {
-                        return; // Cull if facing away from camera
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) {
+                        return; // Cull if facing away from camera (unless double-sided)
                     }
                 }
                 const rgb = litColor;
@@ -1178,49 +1182,41 @@ class Camera3D extends Module {
         const data = imgData.data;
         const w = this._renderTextureWidth, h = this._renderTextureHeight;
 
-        // Handle background clearing based on background type
-        if (this._backgroundType === "transparent") {
-            // For transparent background, only clear pixels that will have geometry
-            // Leave non-geometry pixels as they are (transparent)
-        } else {
-            // For solid or sky/floor backgrounds, clear all pixels first
-            if (this._backgroundType === "solid") {
-                const bgColor = this.hexToRgb(this._backgroundColor);
-                for (let i = 0; i < data.length; i += 4) {
-                    data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
-                }
-            } else if (this._backgroundType === "skyfloor") {
-                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
-                const fovRadians = this._fieldOfView * (Math.PI / 180);
-                const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
-                const maxPitch = fovRadians / 2;
-                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
-                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
-                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
+        // **OPTIMIZATION 1: Use Uint32Array for 4x faster pixel writes**
+        const buffer32 = new Uint32Array(imgData.data.buffer);
 
-                // Clamp horizon between 0 and 1 to avoid extreme cases
-                const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
-                const horizonY = Math.floor(h * clampedHorizon);
+        // **OPTIMIZATION 2: Pre-pack background colors**
+        const skyColor = this.hexToRgb(this._skyColor);
+        const floorColor = this.hexToRgb(this._floorColor);
+        const skyPixel = (255 << 24) | (skyColor.b << 16) | (skyColor.g << 8) | skyColor.r;
+        const floorPixel = (255 << 24) | (floorColor.b << 16) | (floorColor.g << 8) | floorColor.r;
 
-                for (let i = 0; i < data.length; i += 4) {
-                    const y = Math.floor((i / 4) / w);
-                    if (y < horizonY) {
-                        data[i] = this.hexToRgb(this._skyColor).r;
-                        data[i + 1] = this.hexToRgb(this._skyColor).g;
-                        data[i + 2] = this.hexToRgb(this._skyColor).b;
-                    } else {
-                        data[i] = this.hexToRgb(this._floorColor).r;
-                        data[i + 1] = this.hexToRgb(this._floorColor).g;
-                        data[i + 2] = this.hexToRgb(this._floorColor).b;
-                    }
-                    data[i + 3] = 255;
-                }
+        // Clear background with single writes
+        if (this._backgroundType === "skyfloor") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+            const horizonY = Math.floor(h * clampedHorizon);
+
+            for (let i = 0; i < buffer32.length; i++) {
+                const y = Math.floor(i / w);
+                buffer32[i] = y < horizonY ? skyPixel : floorPixel;
             }
+        } else if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
+            buffer32.fill(bgPixel);
         }
+
         this._zBuffer.fill(Infinity);
 
-        // Pre-process triangles with accurate depth information
+        // **OPTIMIZATION 3: Pre-filter and batch triangles by depth ranges**
         const allTriangles = [];
+
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
@@ -1235,7 +1231,6 @@ class Camera3D extends Module {
                 ).filter(v => v);
 
                 if (worldVerts.length < 3) return;
-                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
 
                 const cameraVerts = face.map(idx =>
                     idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
@@ -1243,55 +1238,177 @@ class Camera3D extends Module {
 
                 if (cameraVerts.length < 3) return;
 
+                // **FIX 1: Do backface culling BEFORE clipping on original vertices**
+                if (this._enableBackfaceCulling && !this._disableCulling) {
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(cameraVerts)) {
+                        return; // Skip back-facing triangles entirely (unless double-sided)
+                    }
+                }
+
+                // **FIX 2: Calculate normal ONCE from original world vertices**
+                const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
+                const rgb = this.calculateLighting(worldNormal, faceColor);
+
                 for (let i = 1; i < cameraVerts.length - 1; i++) {
                     const v0 = cameraVerts[0], v1 = cameraVerts[i], v2 = cameraVerts[i + 1];
 
-                    // Clip triangles against near plane first
+                    // Clip against near plane
                     const clippedV0 = this.clipPolygonAgainstNearPlane([v0], this._nearPlane);
                     const clippedV1 = this.clipPolygonAgainstNearPlane([v1], this._nearPlane);
                     const clippedV2 = this.clipPolygonAgainstNearPlane([v2], this._nearPlane);
 
                     if (clippedV0.length === 0 || clippedV1.length === 0 || clippedV2.length === 0) {
-                        continue; // All vertices clipped away
+                        continue;
                     }
 
-                    // Use clipped vertices for backface culling
                     const clippedTriangle = [clippedV0[0] || v0, clippedV1[0] || v1, clippedV2[0] || v2];
 
-                    // Backface culling using consistent method (after clipping)
-                    if (this._enableBackfaceCulling && !this._disableCulling) {
-                        if (this.shouldCullFace(clippedTriangle)) {
-                            continue;
-                        }
-                    }
+                    // **OPTIMIZATION 4: Pre-pack color as 32-bit value**
+                    const packedColor = (255 << 24) | (rgb.b << 16) | (rgb.g << 8) | rgb.r;
 
-                    const rgb = this.calculateLighting(worldNormal, faceColor);
+                    // **OPTIMIZATION 5: Calculate min/max depth for early rejection**
+                    const minDepth = Math.min(clippedTriangle[0].x, clippedTriangle[1].x, clippedTriangle[2].x);
+                    const maxDepth = Math.max(clippedTriangle[0].x, clippedTriangle[1].x, clippedTriangle[2].x);
+
                     allTriangles.push({
-                        v0, v1, v2, color: rgb, worldNormal,
-                        worldVerts: [worldVerts[0], worldVerts[i], worldVerts[i + 1]]
+                        v0: clippedTriangle[0],
+                        v1: clippedTriangle[1],
+                        v2: clippedTriangle[2],
+                        packedColor,
+                        minDepth,
+                        maxDepth,
+                        avgDepth: (clippedTriangle[0].x + clippedTriangle[1].x + clippedTriangle[2].x) / 3
                     });
                 }
             });
         });
 
-        // Build hierarchical Z-buffer for accurate depth testing
-        const hzbSize = Math.max(w, h);
-        const hzbLevels = Math.ceil(Math.log2(hzbSize)) + 1;
-        const hzbBuffers = [];
+        // **OPTIMIZATION 6: Sort front-to-back for early Z rejection**
+        allTriangles.sort((a, b) => a.minDepth - b.minDepth);
 
-        // Create hierarchical Z-buffer levels
-        for (let level = 0; level < hzbLevels; level++) {
-            const levelSize = Math.max(1, hzbSize >> level);
-            hzbBuffers[level] = new Float32Array(levelSize * levelSize).fill(Infinity);
-        }
-
-        // Primary depth pass with hierarchical optimization
-        this.renderDepthPassPrimary(allTriangles, data, w, h, hzbBuffers);
-
-        // Depth of field effect
-        this.applyDepthOfField(data, w, h);
+        // **OPTIMIZATION 7: Optimized rasterization with early Z rejection**
+        this.renderDepthPassOptimized(allTriangles, buffer32, w, h);
 
         ctx.putImageData(imgData, 0, 0);
+    }
+
+    // **NEW: Highly optimized rasterization with tile-based early rejection**
+    renderDepthPassOptimized(triangles, buffer32, w, h) {
+        const zbuffer = this._zBuffer;
+        const tileSize = 16; // 16x16 tiles
+        const tilesX = Math.ceil(w / tileSize);
+        const tilesY = Math.ceil(h / tileSize);
+
+        // **OPTIMIZATION 8: Hierarchical Z-buffer (coarse depth map)**
+        const coarseZ = new Float32Array(tilesX * tilesY);
+        coarseZ.fill(Infinity);
+
+        triangles.forEach(tri => {
+            const { v0, v1, v2, packedColor, minDepth, maxDepth } = tri;
+
+            // Project to screen space
+            const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+            const p0 = this.projectCameraPoint(v0, useExtendedFOV);
+            const p1 = this.projectCameraPoint(v1, useExtendedFOV);
+            const p2 = this.projectCameraPoint(v2, useExtendedFOV);
+
+            if (!p0 || !p1 || !p2) return;
+
+            // Calculate tight bounding box
+            const minX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
+            const maxX = Math.min(w - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
+            const minY = Math.max(0, Math.floor(Math.min(p0.y, p1.y, p2.y)));
+            const maxY = Math.min(h - 1, Math.ceil(Math.max(p0.y, p1.y, p2.y)));
+
+            if (minX > maxX || minY > maxY) return;
+
+            // **OPTIMIZATION 9: Coarse tile rejection**
+            const tileMinX = Math.floor(minX / tileSize);
+            const tileMaxX = Math.floor(maxX / tileSize);
+            const tileMinY = Math.floor(minY / tileSize);
+            const tileMaxY = Math.floor(maxY / tileSize);
+
+            // Check if triangle is behind ALL tiles it overlaps
+            let canReject = true;
+            for (let ty = tileMinY; ty <= tileMaxY && canReject; ty++) {
+                for (let tx = tileMinX; tx <= tileMaxX && canReject; tx++) {
+                    const tileIdx = ty * tilesX + tx;
+                    if (minDepth < coarseZ[tileIdx]) {
+                        canReject = false;
+                    }
+                }
+            }
+
+            if (canReject) return; // Triangle is fully occluded
+
+            // Edge setup
+            const x0 = Math.round(p0.x), y0 = Math.round(p0.y), z0 = v0.x;
+            const x1 = Math.round(p1.x), y1 = Math.round(p1.y), z1 = v1.x;
+            const x2 = Math.round(p2.x), y2 = Math.round(p2.y), z2 = v2.x;
+
+            const e0_dx = x1 - x0, e0_dy = y1 - y0;
+            const e1_dx = x2 - x1, e1_dy = y2 - y1;
+            const e2_dx = x0 - x2, e2_dy = y0 - y2;
+
+            const area = e0_dx * (y2 - y0) - e0_dy * (x2 - x0);
+            if (Math.abs(area) < 0.5) return;
+
+            const invArea = 1.0 / area;
+
+            // **OPTIMIZATION 10: Scanline with early Z rejection per row**
+            for (let y = minY; y <= maxY; y++) {
+                let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
+                let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
+                let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
+
+                const w0_step = -e0_dy;
+                const w1_step = -e1_dy;
+                const w2_step = -e2_dy;
+
+                const rowOffset = y * w;
+
+                // **OPTIMIZATION 11: Track if ANY pixel in row passed Z test**
+                let rowHasWrites = false;
+
+                for (let x = minX; x <= maxX; x++) {
+                    if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                        const u = w0 * invArea;
+                        const v = w1 * invArea;
+                        const ww = 1 - u - v;
+
+                        const depth = z0 * u + z1 * v + z2 * ww;
+                        const idx = rowOffset + x;
+
+                        // **OPTIMIZATION 12: Epsilon comparison to prevent z-fighting**
+                        if (depth >= this._nearPlane && depth <= this._farPlane && depth < zbuffer[idx] - 0.001) {
+                            zbuffer[idx] = depth;
+                            buffer32[idx] = packedColor;
+                            rowHasWrites = true;
+                        }
+                    }
+
+                    w0 += w0_step;
+                    w1 += w1_step;
+                    w2 += w2_step;
+                }
+
+                // Early exit if no pixels passed Z test (occluded row)
+                if (!rowHasWrites && y > minY + 2) {
+                    // Skip to next likely visible row
+                    y = Math.min(maxY, y + 2);
+                }
+            }
+
+            // **OPTIMIZATION 13: Update coarse Z-buffer**
+            for (let ty = tileMinY; ty <= tileMaxY; ty++) {
+                for (let tx = tileMinX; tx <= tileMaxX; tx++) {
+                    const tileIdx = ty * tilesX + tx;
+                    coarseZ[tileIdx] = Math.min(coarseZ[tileIdx], minDepth);
+                }
+            }
+        });
     }
 
     // Primary depth pass with hierarchical Z-buffer optimization
@@ -1539,7 +1656,9 @@ class Camera3D extends Module {
 
                 // Backface culling AFTER clipping
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) return;
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) return;
                 }
 
                 // Calculate world vertices for normal (use original vertices for lighting)
@@ -1739,7 +1858,9 @@ class Camera3D extends Module {
 
                 // Backface culling
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) return;
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) return;
                 }
 
                 // Triangulate polygon
@@ -2093,7 +2214,9 @@ class Camera3D extends Module {
 
                 // Backface culling
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) return;
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) return;
                 }
 
                 // Triangulate polygon
@@ -2173,7 +2296,10 @@ class Camera3D extends Module {
 
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
-            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
+
+            // Check for Material module and use it for colors and textures
+            const material = mesh.material;
+            const faceColor = material ? material.diffuseColor : (mesh.faceColor || mesh._faceColor || "#888888");
 
             mesh.faces.forEach(face => {
                 const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
@@ -2188,7 +2314,9 @@ class Camera3D extends Module {
 
                 // Backface culling
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) return;
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) return;
                 }
 
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
@@ -2437,6 +2565,125 @@ class Camera3D extends Module {
         const b = v1.x - v0.x;
         const c = v0.x * v1.y - v0.y * v1.x;
         return { a, b, c };
+    }
+
+    // Simple raytrace rendering method
+    renderRaytrace() {
+        const allObjects = this.getGameObjects();
+        const ctx = this._renderTextureCtx;
+        const imgData = this._imageData;
+        const data = imgData.data;
+        const w = this._renderTextureWidth, h = this._renderTextureHeight;
+        const bgColor = this.hexToRgb(this._backgroundColor);
+        const aspect = w / h;
+        const fovRadians = this.fieldOfView * (Math.PI / 180);
+        const tanHalfFov = Math.tan(fovRadians * 0.5);
+        const allTriangles = [];
+
+        // Fill with background color
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = bgColor.r; data[i + 1] = bgColor.g; data[i + 2] = bgColor.b; data[i + 3] = 255;
+        }
+
+        allObjects.forEach(obj => {
+            if (!obj.active) return;
+            const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D");
+            if (!mesh) return;
+            const material = obj.getModule("Material");
+            const transformedVertices = mesh.transformVertices();
+            if (!transformedVertices || !mesh.faces) return;
+
+            // Get UV coordinates for texture mapping
+            const uvCoords = mesh.uvCoords || mesh.generateDefaultUVs();
+
+            mesh.faces.forEach((face, faceIndex) => {
+                const cameraVerts = face.map(idx =>
+                    idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
+                ).filter(v => v);
+                if (cameraVerts.length < 3) return;
+
+                // Get UV coordinates for this face
+                const faceUVs = uvCoords && uvCoords[faceIndex] ? uvCoords[faceIndex] : null;
+
+                for (let i = 1; i < cameraVerts.length - 1; i++) {
+                    // Calculate average color for this triangle using material system
+                    const color = this.calculateTriangleColor(material, faceUVs, [0, i, i + 1]);
+
+                    allTriangles.push({
+                        v0: cameraVerts[0], v1: cameraVerts[i], v2: cameraVerts[i + 1],
+                        color: color
+                    });
+                }
+            });
+        });
+
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                const pixelIdx = (y * w + x) * 4;
+                const u = (x / w) * 2 - 1;
+                const v = 1 - (y / h) * 2;
+                const rayDirX = 1;
+                const rayDirY = u * tanHalfFov * aspect;
+                const rayDirZ = v * tanHalfFov;
+                const rayLen = Math.sqrt(rayDirX * rayDirX + rayDirY * rayDirY + rayDirZ * rayDirZ);
+                const rayDir = { x: rayDirX / rayLen, y: rayDirY / rayLen, z: rayDirZ / rayLen };
+                const rayOrigin = { x: 0, y: 0, z: 0 };
+                let closestT = Infinity;
+                let hitColor = null;
+                allTriangles.forEach(tri => {
+                    const t = this.rayTriangleIntersect(rayOrigin, rayDir, tri.v0, tri.v1, tri.v2);
+                    if (t !== null && t < closestT && t >= this._nearPlane && t <= this._farPlane) {
+                        closestT = t;
+                        hitColor = tri.color;
+                    }
+                });
+                if (hitColor) {
+                    data[pixelIdx] = hitColor.r;
+                    data[pixelIdx + 1] = hitColor.g;
+                    data[pixelIdx + 2] = hitColor.b;
+                    data[pixelIdx + 3] = hitColor.a !== undefined ? hitColor.a : 255;
+                }
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    calculateTriangleColor(material, faceUVs, vertexIndices) {
+        if (!material) {
+            // No material, use default color
+            return this.hexToRgb("#888888");
+        }
+
+        // If we have UV coordinates, sample texture at triangle center
+        if (faceUVs && faceUVs.length >= 3 && vertexIndices.length >= 3) {
+            // Calculate centroid UV coordinates
+            const u = (faceUVs[vertexIndices[0]].x + faceUVs[vertexIndices[1]].x + faceUVs[vertexIndices[2]].x) / 3;
+            const v = (faceUVs[vertexIndices[0]].y + faceUVs[vertexIndices[1]].y + faceUVs[vertexIndices[2]].y) / 3;
+
+            // Use material's texture sampling
+            if (typeof material.sampleTexture === 'function') {
+                const colorStr = material.sampleTexture(u, v);
+                return this.parseColorString(colorStr);
+            }
+        }
+
+        // No texture or no UVs, return diffuse color
+        const diffuseColor = material.diffuseColor || "#FFFFFF";
+        return this.hexToRgb(diffuseColor);
+    }
+
+    parseColorString(colorStr) {
+        // Parse rgba(r, g, b, a) format
+        const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+        if (match) {
+            return {
+                r: parseInt(match[1]),
+                g: parseInt(match[2]),
+                b: parseInt(match[3]),
+                a: Math.floor((match[4] !== undefined ? parseFloat(match[4]) : 1.0) * 255)
+            };
+        }
+        return this.hexToRgb("#FFFFFF");
     }
 
     // Ray-traced hybrid rendering with rasterized base and ray-traced enhancements
@@ -3481,7 +3728,7 @@ class Camera3D extends Module {
                     this.renderRasterOptimized();
                 }
                 break;
-            case "hybrid": this.renderRaytraceHybrid(); break;
+            case "rasterRaytraceHybrid": this.renderRaytraceHybrid(); break;
             case "webglcanvas":
                 this.renderWebGLRaytrace();
                 break;
@@ -3700,13 +3947,30 @@ class Camera3D extends Module {
                 // Backface culling using consistent method (after clipping)
                 // This is the key fix - we need to cull based on the clipped vertices
                 if (this._enableBackfaceCulling && !this._disableCulling) {
-                    if (this.shouldCullFace(clippedVerts)) {
-                        return; // Skip back-facing triangles
+                    const material = mesh?.material;
+                    const isDoubleSided = material ? material._doubleSided : false;
+                    if (!isDoubleSided && this.shouldCullFace(clippedVerts)) {
+                        return; // Skip back-facing triangles (unless double-sided)
                     }
                 }
 
                 const worldNormal = this.calculateFaceNormal(worldVerts[0], worldVerts[1], worldVerts[2]);
                 const litColor = this.calculateLighting(worldNormal, faceColor);
+
+                // Get UV coordinates for texture mapping if material exists
+                let faceUVs = null;
+                if (mesh?.material && mesh.uvCoordinates && face.length >= 3) {
+                    // For triangulated faces, we need to interpolate UVs
+                    // For now, use the UV of the first vertex as a simple approximation
+                    const firstVertexIndex = face[0];
+                    if (firstVertexIndex < mesh.uvCoordinates.length) {
+                        faceUVs = [
+                            mesh.uvCoordinates[firstVertexIndex] || new Vector2(0, 0),
+                            mesh.uvCoordinates[firstVertexIndex] || new Vector2(1, 0),
+                            mesh.uvCoordinates[firstVertexIndex] || new Vector2(0, 1)
+                        ];
+                    }
+                }
 
                 // Triangulate the face
                 for (let i = 1; i < clippedVerts.length - 1; i++) {
@@ -3716,6 +3980,8 @@ class Camera3D extends Module {
                         v1: clippedVerts[i],
                         v2: clippedVerts[i + 1],
                         color: litColor,
+                        material: mesh?.material || null,
+                        faceUVs: faceUVs,
                         avgDepth: (clippedVerts[0].x + clippedVerts[i].x + clippedVerts[i + 1].x) / 3,
                         minDepth: Math.min(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
                         maxDepth: Math.max(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
@@ -3826,8 +4092,8 @@ class Camera3D extends Module {
                     conflictList.push(tri);
                 }
 
-                // Draw the triangle directly to ImageData
-                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h);
+                // Draw the triangle directly to ImageData with material support
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs);
 
                 // Update depth grid more conservatively
                 // Only update minDepth if we're significantly closer
@@ -3903,7 +4169,7 @@ class Camera3D extends Module {
 
             // If there are conflicts, redraw this triangle
             if (conflictCells.length > 0) {
-                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h);
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs);
 
                 // Update depth grid
                 conflictCells.forEach(({ cx, cy }) => {
@@ -3917,61 +4183,153 @@ class Camera3D extends Module {
     }
 
     /**
- * Rasterize triangle directly to ImageData buffer
- * Uses edge function approach for fast inside testing
- */
-    rasterizeFALDTriangle(p0, p1, p2, color, data, w, h) {
-        // Round to integer coordinates
-        const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
-        const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
-        const x2 = Math.round(p2.x), y2 = Math.round(p2.y);
+  * Rasterize triangle directly to ImageData buffer
+  * Uses edge function approach for fast inside testing
+  * Now supports full material properties including alpha, specular, emissive, etc.
+  */
+     rasterizeFALDTriangle(p0, p1, p2, color, data, w, h, material = null, faceUVs = null) {
+         // Round to integer coordinates
+         const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
+         const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
+         const x2 = Math.round(p2.x), y2 = Math.round(p2.y);
 
-        // Calculate bounding box
-        const minX = Math.max(0, Math.min(x0, x1, x2));
-        const maxX = Math.min(w - 1, Math.max(x0, x1, x2));
-        const minY = Math.max(0, Math.min(y0, y1, y2));
-        const maxY = Math.min(h - 1, Math.max(y0, y1, y2));
+         // Calculate bounding box
+         const minX = Math.max(0, Math.min(x0, x1, x2));
+         const maxX = Math.min(w - 1, Math.max(x0, x1, x2));
+         const minY = Math.max(0, Math.min(y0, y1, y2));
+         const maxY = Math.min(h - 1, Math.max(y0, y1, y2));
 
-        // Early rejection
-        if (minX > maxX || minY > maxY) return;
+         // Early rejection
+         if (minX > maxX || minY > maxY) return;
 
-        // Edge function setup
-        const e0_dx = x1 - x0, e0_dy = y1 - y0;
-        const e1_dx = x2 - x1, e1_dy = y2 - y1;
-        const e2_dx = x0 - x2, e2_dy = y0 - y2;
+         // Edge function setup
+         const e0_dx = x1 - x0, e0_dy = y1 - y0;
+         const e1_dx = x2 - x1, e1_dy = y2 - y1;
+         const e2_dx = x0 - x2, e2_dy = y0 - y2;
 
-        // Precompute color values
-        const r = color.r, g = color.g, b = color.b;
+         // Check if triangle is degenerate
+         const area = e0_dx * (y2 - y0) - e0_dy * (x2 - x0);
+         if (Math.abs(area) < 0.5) return;
 
-        // Scanline rasterization
-        for (let y = minY; y <= maxY; y++) {
-            // Calculate edge values at start of scanline
-            let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
-            let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
-            let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
+         const invArea = 1.0 / area;
 
-            // Edge increments for x-stepping
-            const w0_step = -e0_dy;
-            const w1_step = -e1_dy;
-            const w2_step = -e2_dy;
+         // Get textures if material has them
+         const diffuseTexture = material ? material.getDiffuseTexture() : null;
+         const normalTexture = material ? material._normalTexture : null;
+         const specularTexture = material ? material._specularTexture : null;
+         const emissiveTexture = material ? material._emissiveTexture : null;
 
-            for (let x = minX; x <= maxX; x++) {
-                // Inside test using edge equations
-                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-                    const pixelIdx = (y * w + x) * 4;
-                    data[pixelIdx] = r;
-                    data[pixelIdx + 1] = g;
-                    data[pixelIdx + 2] = b;
-                    data[pixelIdx + 3] = 255;
-                }
+         // Get material properties
+         const opacity = material ? material._opacity : 1.0;
+         const specularColor = material ? material._specularColor : "#FFFFFF";
+         const emissiveColor = material ? material._emissiveColor : "#000000";
+         const shininess = material ? material._shininess : 32;
+         const wireframe = material ? material._wireframe : false;
+         const doubleSided = material ? material._doubleSided : false;
 
-                // Increment edge values
-                w0 += w0_step;
-                w1 += w1_step;
-                w2 += w2_step;
-            }
-        }
-    }
+         // Parse material colors
+         const specularRgb = this.hexToRgb(specularColor);
+         const emissiveRgb = this.hexToRgb(emissiveColor);
+
+         // Precompute color values for solid color fallback
+         const baseR = color.r, baseG = color.g, baseB = color.b;
+
+         // Calculate lighting vectors (simplified)
+         const lightDir = this._lightDirection;
+         const lightLen = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
+         const normalizedLightDir = {
+             x: lightDir.x / lightLen,
+             y: lightDir.y / lightLen,
+             z: lightDir.z / lightLen
+         };
+
+         // Scanline rasterization
+         for (let y = minY; y <= maxY; y++) {
+             // Calculate edge values at start of scanline
+             let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
+             let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
+             let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
+
+             // Edge increments for x-stepping
+             const w0_step = -e0_dy;
+             const w1_step = -e1_dy;
+             const w2_step = -e2_dy;
+
+             for (let x = minX; x <= maxX; x++) {
+                 // Inside test using edge equations
+                 if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                     // Calculate barycentric coordinates for texture sampling and lighting
+                     const u = w0 * invArea;
+                     const v = w1 * invArea;
+                     const ww = 1 - u - v;
+
+                     let pixelR = baseR, pixelG = baseG, pixelB = baseB, pixelA = 255;
+
+                     // Sample diffuse texture if available
+                     if (diffuseTexture && faceUVs && faceUVs.length >= 3) {
+                         // Interpolate UV coordinates using barycentric coordinates
+                         const texU = u * faceUVs[0].x + v * faceUVs[1].x + ww * faceUVs[2].x;
+                         const texV = u * faceUVs[0].y + v * faceUVs[1].y + ww * faceUVs[2].y;
+
+                         // Sample texture color
+                         const textureColor = material.sampleTexture(texU, texV, diffuseTexture);
+                         if (textureColor) {
+                             // Parse rgba() color
+                             const rgbaMatch = textureColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+                             if (rgbaMatch) {
+                                 pixelR = parseInt(rgbaMatch[1]);
+                                 pixelG = parseInt(rgbaMatch[2]);
+                                 pixelB = parseInt(rgbaMatch[3]);
+                                 pixelA = parseInt(rgbaMatch[4] * 255 * opacity);
+                             }
+                         }
+                     } else {
+                         // Apply material opacity even without texture
+                         pixelA = Math.round(255 * opacity);
+                     }
+
+                     // Add emissive lighting if material has emissive color
+                     if (emissiveRgb.r > 0 || emissiveRgb.g > 0 || emissiveRgb.b > 0) {
+                         pixelR = Math.min(255, pixelR + emissiveRgb.r);
+                         pixelG = Math.min(255, pixelG + emissiveRgb.g);
+                         pixelB = Math.min(255, pixelB + emissiveRgb.b);
+                     }
+
+                     // Add specular lighting if material has specular properties
+                     if (specularRgb.r > 0 || specularRgb.g > 0 || specularRgb.b > 0) {
+                         // Simple specular calculation (can be enhanced with proper normal mapping)
+                         const specularIntensity = Math.pow(Math.max(0, -normalizedLightDir.z), shininess) * this._lightIntensity;
+                         pixelR = Math.min(255, pixelR + specularRgb.r * specularIntensity);
+                         pixelG = Math.min(255, pixelG + specularRgb.g * specularIntensity);
+                         pixelB = Math.min(255, pixelB + specularRgb.b * specularIntensity);
+                     }
+
+                     // Handle wireframe mode
+                     if (wireframe) {
+                         // Check if we're on the edge of the triangle
+                         const edgeDistance = Math.min(
+                             Math.min(w0, w1),
+                             Math.min(w2, Math.min(w0 + w1, w1 + w2))
+                         );
+                         if (edgeDistance < 2) { // Wireframe thickness
+                             pixelR = pixelG = pixelB = 255; // White wireframe
+                         }
+                     }
+
+                     const pixelIdx = (y * w + x) * 4;
+                     data[pixelIdx] = pixelR;
+                     data[pixelIdx + 1] = pixelG;
+                     data[pixelIdx + 2] = pixelB;
+                     data[pixelIdx + 3] = pixelA;
+                 }
+
+                 // Increment edge values
+                 w0 += w0_step;
+                 w1 += w1_step;
+                 w2 += w2_step;
+             }
+         }
+     }
 
     /**
      * Draw a triangle using native canvas fill (REMOVED - not used anymore)

@@ -104,10 +104,12 @@
     flex-grow: 1;
     position: relative;
     overflow: hidden;
+    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), flex 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .CodeMirror {
     height: 100% !important;
+    width: 100% !important;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
 }
@@ -465,11 +467,12 @@
 .se-modal-editor-container {
     flex: 1 1 0;
     min-width: 0;
-    transition: width 0.2s;
+    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .se-modal-editor-container.fullwidth {
     width: 100% !important;
-    flex: 1 1 100%;
+    flex: 1 1 100% !important;
+    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), flex 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
 }
 .se-ai-panel {
     width: 340px;
@@ -480,12 +483,19 @@
     display: none;
     flex-shrink: 0;
     flex-direction: column;
+    opacity: 0;
+    transform: translateX(100%) scale(0.9);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    transform-origin: right center;
 }
 .se-ai-panel.open {
     display: flex;
+    opacity: 1;
+    transform: translateX(0) scale(1);
 }
 .se-modal-editor-container:not(.fullwidth) {
     width: calc(100% - 340px);
+    flex: 1 1 auto;
 }
 
 .se-error-line {

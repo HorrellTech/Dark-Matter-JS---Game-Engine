@@ -5,7 +5,7 @@
  * It needs to be attached to a GameObject with a Camera3D module.
  */
 class MouseLook extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
     static description = "Controls camera rotation with mouse movement";
     static allowMultiple = false;
     static icon = "fa-mouse";
@@ -48,6 +48,10 @@ class MouseLook extends Module {
         // Pointer lock settings
         this._lockCursor = false;
         this._isPointerLocked = false;
+
+        // Screen wrap settings
+        this._screenWrap = true; // Enable mouse wrap around screen edges
+        this._wrapSensitivity = 1.0; // Sensitivity multiplier when wrapping
         
         // Expose properties to the inspector
         this.exposeProperty("sensitivity", "number", 0.2, {
@@ -99,11 +103,24 @@ class MouseLook extends Module {
         this.exposeProperty("lockCursor", "boolean", false, {
             onChange: (val) => this._lockCursor = val
         });
+
+        this.exposeProperty("screenWrap", "boolean", true, {
+            onChange: (val) => this._screenWrap = val
+        });
+
+        this.exposeProperty("wrapSensitivity", "number", 1.0, {
+            min: 0.1,
+            max: 5.0,
+            step: 0.1,
+            onChange: (val) => this._wrapSensitivity = val
+        });
         
         // Bind methods to maintain 'this' context
         this.handleMouseDown = this.handleMouseDown.bind(this);
         this.handleMouseMove = this.handleMouseMove.bind(this);
         this.handleMouseUp = this.handleMouseUp.bind(this);
+        this.handleMouseLeave = this.handleMouseLeave.bind(this);
+        this.handleMouseEnter = this.handleMouseEnter.bind(this);
         this.handlePointerLockChange = this.handlePointerLockChange.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
         this.handleCanvasFocus = this.handleCanvasFocus.bind(this);
@@ -145,6 +162,8 @@ class MouseLook extends Module {
             canvas.addEventListener('mousedown', this.handleMouseDown);
             document.addEventListener('mousemove', this.handleMouseMove);
             document.addEventListener('mouseup', this.handleMouseUp);
+            canvas.addEventListener('mouseleave', this.handleMouseLeave);
+            canvas.addEventListener('mouseenter', this.handleMouseEnter);
             document.addEventListener('pointerlockchange', this.handlePointerLockChange);
             document.addEventListener('keydown', this.handleKeyDown);
             canvas.addEventListener('focus', this.handleCanvasFocus);
@@ -160,6 +179,8 @@ class MouseLook extends Module {
             canvas.addEventListener('mousedown', this.handleMouseDown);
             document.addEventListener('mousemove', this.handleMouseMove);
             document.addEventListener('mouseup', this.handleMouseUp);
+            canvas.addEventListener('mouseleave', this.handleMouseLeave);
+            canvas.addEventListener('mouseenter', this.handleMouseEnter);
             document.addEventListener('pointerlockchange', this.handlePointerLockChange);
             document.addEventListener('keydown', this.handleKeyDown);
             canvas.addEventListener('focus', this.handleCanvasFocus);
@@ -185,6 +206,8 @@ class MouseLook extends Module {
             canvas.removeEventListener('mousedown', this.handleMouseDown);
             document.removeEventListener('mousemove', this.handleMouseMove);
             document.removeEventListener('mouseup', this.handleMouseUp);
+            canvas.removeEventListener('mouseleave', this.handleMouseLeave);
+            canvas.removeEventListener('mouseenter', this.handleMouseEnter);
             document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
             document.removeEventListener('keydown', this.handleKeyDown);
             canvas.removeEventListener('focus', this.handleCanvasFocus);
@@ -212,6 +235,81 @@ class MouseLook extends Module {
     handleCanvasBlur() {
         if (this._isPointerLocked) {
             document.exitPointerLock();
+        }
+    }
+
+    /**
+     * Handle mouse leave event
+     * @param {MouseEvent} event - The mouse event
+     */
+    handleMouseLeave(event) {
+        if (!this._screenWrap || this._isPointerLocked) return;
+
+        // Store that we're wrapping so we don't process this as normal mouse movement
+        this._isWrapping = true;
+        this._wrapStartTime = Date.now();
+    }
+
+    /**
+     * Handle mouse enter event
+     * @param {MouseEvent} event - The mouse event
+     */
+    handleMouseEnter(event) {
+        if (!this._screenWrap || this._isPointerLocked) return;
+
+        // If we were wrapping, simulate the mouse movement that got cut off
+        if (this._isWrapping && this._lastMouseX !== undefined && this._lastMouseY !== undefined) {
+            // Calculate how much mouse movement we might have missed
+            const timeSinceLeave = Date.now() - this._wrapStartTime;
+            if (timeSinceLeave < 100) { // Only if it was a quick leave/re-enter
+                // Apply wrap movement based on the edge we left from
+                this.simulateWrapMovement(event);
+            }
+        }
+
+        this._isWrapping = false;
+    }
+
+    /**
+     * Simulate mouse movement when wrapping around screen edges
+     * @param {MouseEvent} event - The mouse enter event
+     */
+    simulateWrapMovement(event) {
+        if (!this._isLooking) return;
+
+        // Determine which edge we likely came from based on enter position
+        const canvas = window.engine?.canvas || document.querySelector('canvas');
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+        let simulatedDeltaX = 0;
+        let simulatedDeltaY = 0;
+
+        // If mouse entered from left edge, simulate rightward movement
+        if (event.clientX <= rect.left + 10) {
+            simulatedDeltaX = 50 * this._wrapSensitivity;
+        }
+        // If mouse entered from right edge, simulate leftward movement
+        else if (event.clientX >= rect.right - 10) {
+            simulatedDeltaX = -50 * this._wrapSensitivity;
+        }
+        // If mouse entered from top edge, simulate downward movement
+        else if (event.clientY <= rect.top + 10) {
+            simulatedDeltaY = 50 * this._wrapSensitivity;
+        }
+        // If mouse entered from bottom edge, simulate upward movement
+        else if (event.clientY >= rect.bottom - 10) {
+            simulatedDeltaY = -50 * this._wrapSensitivity;
+        }
+
+        if (simulatedDeltaX !== 0 || simulatedDeltaY !== 0) {
+            // Apply the simulated rotation
+            const yawDelta = this._lockX ? 0 : simulatedDeltaX * this.sensitivity * (this.invertX ? -1 : 1);
+            const pitchDelta = this._lockY ? 0 : simulatedDeltaY * this.sensitivity * (this.invertY ? -1 : 1);
+
+            this._targetRotation.z = (this._targetRotation.z + yawDelta) % 360;
+            this._targetRotation.y = this._targetRotation.y - pitchDelta;
+            this._targetRotation.y = Math.max(this.minPitch, Math.min(this.maxPitch, this._targetRotation.y));
         }
     }
 
@@ -404,7 +502,9 @@ class MouseLook extends Module {
             _minPitch: this._minPitch,
             _maxPitch: this._maxPitch,
             _activateMode: this._activateMode,
-            _lockCursor: this._lockCursor
+            _lockCursor: this._lockCursor,
+            _screenWrap: this._screenWrap,
+            _wrapSensitivity: this._wrapSensitivity
         };
     }
 
@@ -423,6 +523,8 @@ class MouseLook extends Module {
         if (json._maxPitch !== undefined) this._maxPitch = json._maxPitch;
         if (json._activateMode !== undefined) this._activateMode = json._activateMode;
         if (json._lockCursor !== undefined) this._lockCursor = json._lockCursor;
+        if (json._screenWrap !== undefined) this._screenWrap = json._screenWrap;
+        if (json._wrapSensitivity !== undefined) this._wrapSensitivity = json._wrapSensitivity;
     }
 
     // Getters and setters for properties
@@ -455,6 +557,12 @@ class MouseLook extends Module {
 
     get lockCursor() { return this._lockCursor; }
     set lockCursor(value) { this._lockCursor = value; }
+
+    get screenWrap() { return this._screenWrap; }
+    set screenWrap(value) { this._screenWrap = value; }
+
+    get wrapSensitivity() { return this._wrapSensitivity; }
+    set wrapSensitivity(value) { this._wrapSensitivity = Math.max(0.1, Math.min(5.0, value)); }
 }
 
 // Register the MouseLook module

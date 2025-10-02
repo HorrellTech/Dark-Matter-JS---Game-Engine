@@ -7,7 +7,7 @@
   * It needs to be attached to a GameObject with a Camera3D module.
   */
 class TopDownCamera extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
     static description = "Top-down camera controller with Z-up coordinate system (Z=up/down, Y=left/right, X=forward/back)";
     static iconClass = "fas fa-camera";
 

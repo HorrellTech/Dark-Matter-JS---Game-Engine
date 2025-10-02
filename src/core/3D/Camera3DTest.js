@@ -427,6 +427,44 @@ class Camera3D extends Module {
         } : { r: 0, g: 0, b: 0 };
     }
 
+    calculateTriangleColor(material, faceUVs, vertexIndices) {
+        if (!material) {
+            // No material, use default color
+            return this.hexToRgb("#888888");
+        }
+
+        // If we have UV coordinates, sample texture at triangle center
+        if (faceUVs && faceUVs.length >= 3 && vertexIndices.length >= 3) {
+            // Calculate centroid UV coordinates
+            const u = (faceUVs[vertexIndices[0]].x + faceUVs[vertexIndices[1]].x + faceUVs[vertexIndices[2]].x) / 3;
+            const v = (faceUVs[vertexIndices[0]].y + faceUVs[vertexIndices[1]].y + faceUVs[vertexIndices[2]].y) / 3;
+
+            // Use material's texture sampling
+            if (typeof material.sampleTexture === 'function') {
+                const colorStr = material.sampleTexture(u, v);
+                return this.parseColorString(colorStr);
+            }
+        }
+
+        // No texture or no UVs, return diffuse color
+        const diffuseColor = material.diffuseColor || "#FFFFFF";
+        return this.hexToRgb(diffuseColor);
+    }
+
+    parseColorString(colorStr) {
+        // Parse rgba(r, g, b, a) format
+        const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+        if (match) {
+            return {
+                r: parseInt(match[1]),
+                g: parseInt(match[2]),
+                b: parseInt(match[3]),
+                a: Math.floor((match[4] !== undefined ? parseFloat(match[4]) : 1.0) * 255)
+            };
+        }
+        return this.hexToRgb("#FFFFFF");
+    }
+
     renderScanline() {
         const allObjects = this.getGameObjects();
         const ctx = this._renderTextureCtx;
@@ -509,19 +547,29 @@ class Camera3D extends Module {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D");
             if (!mesh) return;
+            const material = obj.getModule("Material");
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
-            const faceColor = mesh.faceColor || mesh._faceColor || "#888888";
-            const rgb = this.hexToRgb(faceColor);
-            mesh.faces.forEach(face => {
-                const cameraVerts = face.map(idx => 
+
+            // Get UV coordinates for texture mapping
+            const uvCoords = mesh.uvCoords || mesh.generateDefaultUVs();
+
+            mesh.faces.forEach((face, faceIndex) => {
+                const cameraVerts = face.map(idx =>
                     idx < transformedVertices.length ? this.worldToCameraSpace(transformedVertices[idx]) : null
                 ).filter(v => v);
                 if (cameraVerts.length < 3) return;
+
+                // Get UV coordinates for this face
+                const faceUVs = uvCoords && uvCoords[faceIndex] ? uvCoords[faceIndex] : null;
+
                 for (let i = 1; i < cameraVerts.length - 1; i++) {
+                    // Calculate average color for this triangle using material system
+                    const color = this.calculateTriangleColor(material, faceUVs, [0, i, i + 1]);
+
                     allTriangles.push({
                         v0: cameraVerts[0], v1: cameraVerts[i], v2: cameraVerts[i + 1],
-                        color: rgb
+                        color: color
                     });
                 }
             });

@@ -1,14 +1,14 @@
 self.onmessage = function(e) {
-    const { 
-        width, height, triangles, bgColor, 
-        nearPlane, farPlane, fieldOfView 
+    const {
+        width, height, triangles, bgColor,
+        nearPlane, farPlane, fieldOfView
     } = e.data;
-    
+
     const data = new Uint8ClampedArray(width * height * 4);
     const aspect = width / height;
     const fovRadians = fieldOfView * (Math.PI / 180);
     const tanHalfFov = Math.tan(fovRadians * 0.5);
-    
+
     // Fill with background color
     for (let i = 0; i < data.length; i += 4) {
         data[i] = bgColor.r;
@@ -16,7 +16,7 @@ self.onmessage = function(e) {
         data[i + 2] = bgColor.b;
         data[i + 3] = 255;
     }
-    
+
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const pixelIdx = (y * width + x) * 4;
@@ -28,10 +28,10 @@ self.onmessage = function(e) {
             const rayLen = Math.sqrt(rayDirX * rayDirX + rayDirY * rayDirY + rayDirZ * rayDirZ);
             const rayDir = { x: rayDirX / rayLen, y: rayDirY / rayLen, z: rayDirZ / rayLen };
             const rayOrigin = { x: 0, y: 0, z: 0 };
-            
+
             let closestT = Infinity;
             let hitColor = null;
-            
+
             // Only test triangles that are within frustum (proper culling)
             for (let i = 0; i < triangles.length; i++) {
                 const tri = triangles[i];
@@ -45,15 +45,16 @@ self.onmessage = function(e) {
                     }
                 }
             }
-            
+
             if (hitColor) {
                 data[pixelIdx] = hitColor.r;
                 data[pixelIdx + 1] = hitColor.g;
                 data[pixelIdx + 2] = hitColor.b;
+                data[pixelIdx + 3] = hitColor.a !== undefined ? hitColor.a : 255;
             }
         }
     }
-    
+
     self.postMessage({ data }, [data.buffer]);
 };
 

@@ -4,7 +4,7 @@
  * This module renders 3D meshes using the 2D canvas API.
  */
 class Mesh3D extends Module {
-    static namespace = "WIP";
+    static namespace = "3D";
 
     /**
      * Create a new Mesh3D
@@ -25,7 +25,10 @@ class Mesh3D extends Module {
         // Appearance
         this.wireframeColor = "#FFFFFF";
         this.faceColor = "#3F51B5";
-        this.renderMode = "wireframe"; // "wireframe", "solid", or "both"
+        this.renderMode = "solid"; // "wireframe", "solid", or "both"
+
+        // Material system
+        this.material = null; // Material instance for advanced texturing
 
         // Axis visualization
         this._showAxisLines = false;
@@ -52,6 +55,11 @@ class Mesh3D extends Module {
             onChange: (val) => this.renderMode = val
         });
 
+        this.exposeProperty("material", "module", null, {
+            moduleType: "Material",
+            onChange: (val) => this.material = val
+        });
+
         this.exposeProperty("showAxisLines", "boolean", false, {
             onChange: (val) => this._showAxisLines = val
         });
@@ -64,6 +72,145 @@ class Mesh3D extends Module {
 
         // Initialize with a default cube
         this.createCube(100);
+
+        // Generate UV coordinates for texture mapping
+        this.generateUVCoordinates();
+
+        // Ensure material module exists on the game object
+        this.ensureMaterialModule();
+    }
+
+    /**
+     * Ensure the game object has a Material module
+     */
+    ensureMaterialModule() {
+        if (!this.gameObject) return;
+
+        // Check if material module already exists
+        let materialModule = this.gameObject.getModule ? this.gameObject.getModule('Material') : null;
+        if (!materialModule) {
+            // Create and add a new material module
+            materialModule = new Material();
+            if (this.gameObject.addModule) {
+                this.gameObject.addModule(materialModule);
+            }
+        }
+
+        // Set the material reference
+        this.material = materialModule;
+    }
+
+    /**
+     * Generate UV coordinates for texture mapping
+     */
+    generateUVCoordinates() {
+        this.uvCoordinates = [];
+
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+
+            // Simple planar projection for UV mapping
+            // This is a basic implementation - can be improved for different mesh types
+            let u, v;
+
+            if (Math.abs(vertex.x) > Math.abs(vertex.y) && Math.abs(vertex.x) > Math.abs(vertex.z)) {
+                // X-dominant face
+                u = (vertex.y + 1) / 2;
+                v = (vertex.z + 1) / 2;
+            } else if (Math.abs(vertex.y) > Math.abs(vertex.x) && Math.abs(vertex.y) > Math.abs(vertex.z)) {
+                // Y-dominant face
+                u = (vertex.x + 1) / 2;
+                v = (vertex.z + 1) / 2;
+            } else {
+                // Z-dominant face
+                u = (vertex.x + 1) / 2;
+                v = (vertex.y + 1) / 2;
+            }
+
+            this.uvCoordinates.push(new Vector2(u, v));
+        }
+    }
+
+    /**
+     * Get material color for a face, considering texture if available
+     * @param {Array<number>} face - Array of vertex indices
+     * @param {Array<Vector3>} worldVertices - World-space vertex positions
+     * @param {Camera3D} camera - Camera for view direction calculation
+     * @param {Array<Vector3>} normals - Face normals (optional)
+     * @returns {string} - CSS color string
+     */
+    getMaterialColor(face, worldVertices, camera, normals = null) {
+        if (!this.material) {
+            return this.faceColor;
+        }
+
+        // For simple flat shading, use face center
+        const faceCenter = this.getFaceCenter(face, worldVertices);
+        const normal = normals ? normals[0] : this.calculateFaceNormal(face, worldVertices);
+
+        if (camera && camera.position) {
+            const viewDir = camera.position.clone().sub(faceCenter).normalize();
+
+            // Calculate UV coordinates for face center (simple average)
+            const uvs = face.map(vertexIndex => this.uvCoordinates[vertexIndex] || new Vector2(0, 0));
+            const avgU = uvs.reduce((sum, uv) => sum + uv.x, 0) / uvs.length;
+            const avgV = uvs.reduce((sum, uv) => sum + uv.y, 0) / uvs.length;
+
+            // Get lit color from material
+            const litColor = this.material.getSimpleLitColor(faceCenter, normal, viewDir, new Vector2(avgU, avgV));
+
+            return `rgba(${Math.round(litColor.r)}, ${Math.round(litColor.g)}, ${Math.round(litColor.b)}, ${litColor.a})`;
+        }
+
+        // Fallback to diffuse color if no camera
+        return this.material.diffuseColor;
+    }
+
+    /**
+     * Calculate face center from vertex indices
+     * @param {Array<number>} face - Array of vertex indices
+     * @param {Array<Vector3>} vertices - Array of vertex positions
+     * @returns {Vector3} - Face center position
+     */
+    getFaceCenter(face, vertices) {
+        const center = new Vector3(0, 0, 0);
+        for (const vertexIndex of face) {
+            if (vertexIndex < vertices.length) {
+                center.add(vertices[vertexIndex]);
+            }
+        }
+        center.divideScalar(face.length);
+        return center;
+    }
+
+    /**
+     * Calculate face normal from vertex positions
+     * @param {Array<number>} face - Array of vertex indices
+     * @param {Array<Vector3>} vertices - Array of vertex positions
+     * @returns {Vector3} - Face normal vector
+     */
+    calculateFaceNormal(face, vertices) {
+        if (face.length < 3) {
+            return new Vector3(0, 0, 1);
+        }
+
+        // Use first three vertices to calculate normal
+        const v1 = vertices[face[0]];
+        const v2 = vertices[face[1]];
+        const v3 = vertices[face[2]];
+
+        if (!v1 || !v2 || !v3) {
+            return new Vector3(0, 0, 1);
+        }
+
+        // Calculate two edges
+        const edge1 = v2.clone().sub(v1);
+        const edge2 = v3.clone().sub(v1);
+
+        // Calculate cross product for normal
+        const normal = edge1.clone().cross(edge2).normalize();
+
+        return normal;
     }
 
     /**
@@ -98,6 +245,9 @@ class Mesh3D extends Module {
             [3, 2, 6, 7], // top face
             [0, 1, 5, 4]  // bottom face
         ];
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
     }
 
     /**
@@ -129,6 +279,9 @@ class Mesh3D extends Module {
             [2, 3, 4],    // front face
             [3, 0, 4]     // left face
         ];
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
     }
 
     /**
@@ -184,6 +337,9 @@ class Mesh3D extends Module {
                 }
             }
         }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
     }
 
     /**
@@ -196,6 +352,9 @@ class Mesh3D extends Module {
         this.vertices = vertices;
         this.edges = edges || [];
         this.faces = faces || [];
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
     }
 
     /**
@@ -253,8 +412,6 @@ class Mesh3D extends Module {
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
                 if (face.length < 3) continue; // Need at least 3 points to draw a face
 
@@ -265,7 +422,11 @@ class Mesh3D extends Module {
                 );
                 if (!isVisible) continue;
 
+                // Get lit material color for this face
+                const faceColor = this.getMaterialColor(face, transformedVertices, camera);
+
                 // Draw the face
+                ctx.fillStyle = faceColor;
                 ctx.beginPath();
                 ctx.moveTo(projectedVertices[face[0]].x, projectedVertices[face[0]].y);
 
@@ -338,8 +499,6 @@ class Mesh3D extends Module {
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
-            ctx.fillStyle = this.faceColor;
-
             for (const face of sortedFaces) {
                 if (face.length < 3) continue; // Need at least 3 points to draw a face
 
@@ -354,7 +513,11 @@ class Mesh3D extends Module {
 
                 if (validVertices.length < 3) continue;
 
+                // Get lit material color for this face
+                const faceColor = this.getMaterialColor(face, transformedVertices, camera);
+
                 // Draw the face using valid vertices
+                ctx.fillStyle = faceColor;
                 ctx.beginPath();
                 ctx.moveTo(validVertices[0].x, validVertices[0].y);
 
@@ -774,45 +937,63 @@ class Mesh3D extends Module {
     }
 
     /**
-      * Serialize the mesh to JSON
-      * @returns {Object} JSON representation of the mesh
-      */
-    toJSON() {
-        return {
-            _type: "Mesh3D",
-            vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
-            edges: this.edges.map(edge => [...edge]),
-            faces: this.faces.map(face => [...face]),
-            position: { x: this.position.x, y: this.position.y, z: this.position.z },
-            rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
-            scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
-            wireframeColor: this.wireframeColor,
-            faceColor: this.faceColor,
-            renderMode: this.renderMode,
-            _showAxisLines: this._showAxisLines,
-            _axisLength: this._axisLength
-        };
-    }
+       * Serialize the mesh to JSON
+       * @returns {Object} JSON representation of the mesh
+       */
+     toJSON() {
+         return {
+             _type: "Mesh3D",
+             vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
+             edges: this.edges.map(edge => [...edge]),
+             faces: this.faces.map(face => [...face]),
+             uvCoordinates: this.uvCoordinates.map(uv => ({ x: uv.x, y: uv.y })),
+             position: { x: this.position.x, y: this.position.y, z: this.position.z },
+             rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+             scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+             wireframeColor: this.wireframeColor,
+             faceColor: this.faceColor,
+             renderMode: this.renderMode,
+             _showAxisLines: this._showAxisLines,
+             _axisLength: this._axisLength,
+             material: this.material ? this.material.toJSON() : null
+         };
+     }
 
     /**
-      * Deserialize the mesh from JSON
-      * @param {Object} json - JSON representation of the mesh
-      */
-    fromJSON(json) {
-        if (json.vertices) {
-            this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
-        }
-        if (json.edges) this.edges = json.edges;
-        if (json.faces) this.faces = json.faces;
-        if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
-        if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
-        if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
-        if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
-        if (json.faceColor !== undefined) this.faceColor = json.faceColor;
-        if (json.renderMode !== undefined) this.renderMode = json.renderMode;
-        if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
-        if (json._axisLength !== undefined) this._axisLength = json._axisLength;
-    }
+       * Deserialize the mesh from JSON
+       * @param {Object} json - JSON representation of the mesh
+       */
+     fromJSON(json) {
+         if (json.vertices) {
+             this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
+         }
+         if (json.edges) this.edges = json.edges;
+         if (json.faces) this.faces = json.faces;
+         if (json.uvCoordinates) {
+             this.uvCoordinates = json.uvCoordinates.map(uv => new Vector2(uv.x, uv.y));
+         } else {
+             // Regenerate UV coordinates if not present
+             this.generateUVCoordinates();
+         }
+         if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
+         if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
+         if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
+         if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
+         if (json.faceColor !== undefined) this.faceColor = json.faceColor;
+         if (json.renderMode !== undefined) this.renderMode = json.renderMode;
+         if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
+         if (json._axisLength !== undefined) this._axisLength = json._axisLength;
+
+         // Deserialize material if present
+         if (json.material) {
+             if (!this.material) {
+                 this.ensureMaterialModule();
+             }
+             if (this.material && this.material.fromJSON) {
+                 this.material.fromJSON(json.material);
+             }
+         }
+     }
 
     // Getters and setters for properties
     get showAxisLines() { return this._showAxisLines; }

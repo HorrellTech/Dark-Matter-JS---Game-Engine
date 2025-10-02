@@ -172,8 +172,10 @@ class ScriptEditor {
         this.aiPanel = this.modal.querySelector('#se-ai-panel');
         this.setupAIPanel();
 
-        // Set initial editor width state
+        // Set initial state: AI panel closed, editor takes full width
+        this.aiPanel.classList.remove('open');
         this.modal.querySelector('.se-modal-editor-container').classList.add('fullwidth');
+        this.modal.querySelector('#se-ai-toggle').classList.remove('active');
 
         // Setup tabs
         this.setupHintTabs();
@@ -510,23 +512,14 @@ class ScriptEditor {
         // Set path in UI
         this.modal.querySelector('.se-modal-path').textContent = path;
 
+        // Dispose of existing editor if it exists
         if (this.editor) {
             this.editor.toTextArea();
             this.editor = null;
         }
 
-        // Reset undo history when opening a new file
-        if (this.editor) {
-            this.editor.setValue(content);
-            this.editor.clearHistory();
-            this.editor.focus();
-            // Initialize the hint box
-            this.updateHintBox();
-        } else {
-            await this.initCodeMirror(content);
-            // Initialize the hint box once CodeMirror is ready
-            this.updateHintBox();
-        }
+        // Always initialize a new CodeMirror instance for the new file
+        await this.initCodeMirror(content);
 
         this.updateModifiedStatus(false);
         this.open();
@@ -2224,10 +2217,11 @@ class ScriptEditor {
         this.modal.style.display = 'flex';
         this.isOpen = true;
         if (this.editor) {
+            // Refresh after modal is visible and layout is applied
             setTimeout(() => {
                 this.editor.refresh();
                 this.editor.focus();
-            }, 0);
+            }, 10);
         }
     }
 
@@ -2260,17 +2254,30 @@ class ScriptEditor {
 
     // AI STUFF
     toggleAIPanel() {
+        const isOpening = !this.aiPanel.classList.contains('open');
         this.aiPanel.classList.toggle('open');
         const button = this.modal.querySelector('#se-ai-toggle');
         const editorContainer = this.modal.querySelector('.se-modal-editor-container');
-        if (this.aiPanel.classList.contains('open')) {
+
+        if (isOpening) {
             button.classList.add('active');
             editorContainer.classList.remove('fullwidth');
         } else {
             button.classList.remove('active');
             editorContainer.classList.add('fullwidth');
         }
-        setTimeout(() => this.editor?.refresh(), 200); // Ensure CodeMirror resizes after animation
+
+        // Refresh CodeMirror after layout changes with proper timing for spring animation
+        // Match the CSS transition duration (0.4s = 400ms) for smooth animation
+        setTimeout(() => {
+            if (this.editor) {
+                this.editor.refresh();
+                // Ensure focus is maintained if it was focused
+                if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.se-modal-editor-container')) {
+                    this.editor.focus();
+                }
+            }
+        }, 400); // Match CSS transition duration for perfect synchronization
     }
 
     showAISettings() {
