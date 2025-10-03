@@ -278,6 +278,10 @@ class Module {
         return null;
     }
 
+    findGameObject(name) {
+        return this.getGameObjectByName(name);
+    }
+
     /** 
      *  Create a new instance of a GameObject by name
      */
@@ -358,22 +362,6 @@ class Module {
             console.error(`Module ${this.name} error creating prefab '${prefabName}':`, error);
             return null;
         }
-    }
-
-    set gameObject(go) {
-        this._gameObject = go;
-
-        // When a module's gameObject reference changes, we need to update
-        // all internal properties that might reference the old gameObject
-        if (go && this._previousGameObject && this._previousGameObject !== go) {
-            this._updateInternalReferences(this._previousGameObject, go);
-        }
-
-        this._previousGameObject = go;
-    }
-
-    get gameObject() {
-        return this._gameObject;
     }
 
     /**
@@ -710,6 +698,26 @@ class Module {
         if (typeof this.onAttach === 'function') {
             this.onAttach(newGameObject);
         }
+    }
+
+    set gameObject(go) {
+        this._gameObject = go;
+
+        // When a module's gameObject reference changes, we need to update
+        // all internal properties that might reference the old gameObject
+        if (go && this._previousGameObject && this._previousGameObject !== go) {
+            this._updateInternalReferences(this._previousGameObject, go);
+        }
+
+        this._previousGameObject = go;
+    }
+
+    get gameObject() {
+        return this._gameObject;
+    }
+
+    get viewport() {
+        return window.engine ? window.engine.viewport : null;
     }
 
     /**

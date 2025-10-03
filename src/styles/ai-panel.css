@@ -1,12 +1,18 @@
 /* AI Panel Styles */
 .se-editor-container {
     display: flex;
+    height: 100%;
+    width: 100%;
     flex: 1;
     min-height: 0;
 }
 
 .se-modal-editor-container {
     flex: 1;
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);

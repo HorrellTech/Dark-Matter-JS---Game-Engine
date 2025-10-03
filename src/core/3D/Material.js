@@ -680,7 +680,7 @@ class Material extends Module {
         const v = viewDir.clone().normalize();
 
         for (const light of lights) {
-            const lightDir = light.position.clone().sub(point).normalize();
+            const lightDir = light.position.clone().subtract(point).normalize();
             const lightColor = this._parseColor(light.color || "#FFFFFF");
             const intensity = light.intensity || 1.0;
 
@@ -692,7 +692,7 @@ class Material extends Module {
 
             // Specular lighting (Phong reflection model)
             if (diffuseFactor > 0) {
-                const reflectDir = n.clone().multiplyScalar(2 * n.dot(lightDir)).sub(lightDir);
+                const reflectDir = n.clone().multiply(2 * n.dot(lightDir)).subtract(lightDir);
                 const specularFactor = Math.pow(Math.max(0, reflectDir.dot(v)), this._shininess);
                 const specularIntensity = intensity * specularFactor;
 

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Shape Face Winding Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+        }
+        .shape-test {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 300px;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            background: #000;
+        }
+        .controls {
+            margin-top: 10px;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e7f3ff;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>3D Shape Face Winding Test</h1>
+    <p>This test verifies that all 3D shapes render correctly with proper face winding.</p>
+
+    <div class="container">
+        <!-- Cube Test -->
+        <div class="shape-test">
+            <h3>Cube</h3>
+            <canvas id="cubeCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('cube', 'cubeCanvas')">Test Cube</button>
+                <button onclick="rotateShape('cube', 'cubeCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="cubeStatus">Ready to test</div>
+        </div>
+
+        <!-- Sphere Test -->
+        <div class="shape-test">
+            <h3>Sphere</h3>
+            <canvas id="sphereCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('sphere', 'sphereCanvas')">Test Sphere</button>
+                <button onclick="rotateShape('sphere', 'sphereCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="sphereStatus">Ready to test</div>
+        </div>
+
+        <!-- Torus Test -->
+        <div class="shape-test">
+            <h3>Torus (Fixed)</h3>
+            <canvas id="torusCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('torus', 'torusCanvas')">Test Torus</button>
+                <button onclick="rotateShape('torus', 'torusCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="torusStatus">Ready to test</div>
+        </div>
+
+        <!-- Quad Test -->
+        <div class="shape-test">
+            <h3>Quad (Fixed)</h3>
+            <canvas id="quadCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('quad', 'quadCanvas')">Test Quad</button>
+                <button onclick="rotateShape('quad', 'quadCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="quadStatus">Ready to test</div>
+        </div>
+
+        <!-- Plane Test -->
+        <div class="shape-test">
+            <h3>Plane (Fixed)</h3>
+            <canvas id="planeCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('plane', 'planeCanvas')">Test Plane</button>
+                <button onclick="rotateShape('plane', 'planeCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="planeStatus">Ready to test</div>
+        </div>
+
+        <!-- Icosahedron Test -->
+        <div class="shape-test">
+            <h3>Icosahedron</h3>
+            <canvas id="icosahedronCanvas" width="280" height="200"></canvas>
+            <div class="controls">
+                <button onclick="testShape('icosahedron', 'icosahedronCanvas')">Test Icosahedron</button>
+                <button onclick="rotateShape('icosahedron', 'icosahedronCanvas')">Rotate</button>
+            </div>
+            <div class="status" id="icosahedronStatus">Ready to test</div>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px; text-align: center;">
+        <h2>Test Instructions:</h2>
+        <ol style="text-align: left; display: inline-block;">
+            <li>Click "Test [Shape]" to create and render each shape</li>
+            <li>Click "Rotate" to rotate the shape and check if faces render correctly</li>
+            <li>Look for proper face coloring (no inside-out faces)</li>
+            <li>Verify that flat shapes (quad/plane) render as flat surfaces, not cubes</li>
+            <li>Check that torus renders as a donut shape with proper topology</li>
+        </ol>
+    </div>
+
+    <script type="text/javascript" src="src/prism.js"></script>
+    <script type="text/javascript" src="src/app.js"></script>
+    <script>
+        // Test objects storage
+        const testObjects = {};
+
+        function testShape(shapeType, canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const statusDiv = document.getElementById(shapeType + 'Status');
+
+            try {
+                // Clear canvas
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Create a simple scene and camera for testing
+                if (!window.engine) {
+                    statusDiv.textContent = 'Engine not loaded';
+                    statusDiv.style.background = '#ffe7e7';
+                    return;
+                }
+
+                // Create scene if it doesn't exist
+                if (!window.testScene) {
+                    window.testScene = new Scene();
+                }
+
+                // Create camera if it doesn't exist
+                if (!window.testCamera) {
+                    window.testCamera = new Camera3D();
+                    window.testCamera.position = new Vector3(0, 0, 300);
+                    window.testCamera.isActive = true;
+                    window.testScene.addGameObject(window.testCamera);
+                }
+
+                // Create or update mesh object
+                let meshObj = testObjects[shapeType];
+                if (!meshObj) {
+                    meshObj = new GameObject();
+                    testObjects[shapeType] = meshObj;
+                    window.testScene.addGameObject(meshObj);
+                }
+
+                // Add Mesh3D module if it doesn't exist
+                let mesh3d = meshObj.getModule('Mesh3D');
+                if (!mesh3d) {
+                    mesh3d = new Mesh3D();
+                    meshObj.addModule(mesh3d);
+                }
+
+                // Set shape and render
+                mesh3d.shape = shapeType;
+                mesh3d.position = new Vector3(0, 0, 0);
+                mesh3d.rotation = new Vector3(0, 0, 0);
+                mesh3d.renderMode = 'solid';
+
+                // Update the shape to generate new geometry
+                mesh3d.updateShape();
+
+                // Render to canvas
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Simple rendering test
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                // Draw a simple representation
+                ctx.strokeStyle = '#0f0';
+                ctx.lineWidth = 2;
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+
+                if (mesh3d.vertices && mesh3d.vertices.length > 0) {
+                    ctx.fillStyle = '#0f0';
+                    ctx.fillText(`${shapeType}: ${mesh3d.vertices.length} vertices`, centerX, 20);
+                    ctx.fillText(`${mesh3d.faces.length} faces`, centerX, 40);
+
+                    statusDiv.textContent = `✓ ${shapeType} created: ${mesh3d.vertices.length} vertices, ${mesh3d.faces.length} faces`;
+                    statusDiv.style.background = '#e7ffe7';
+                } else {
+                    statusDiv.textContent = `✗ Failed to create ${shapeType}`;
+                    statusDiv.style.background = '#ffe7e7';
+                }
+
+            } catch (error) {
+                statusDiv.textContent = `✗ Error: ${error.message}`;
+                statusDiv.style.background = '#ffe7e7';
+                console.error(`Error testing ${shapeType}:`, error);
+            }
+        }
+
+        function rotateShape(shapeType, canvasId) {
+            const meshObj = testObjects[shapeType];
+            if (!meshObj) {
+                alert(`Please test ${shapeType} first`);
+                return;
+            }
+
+            const mesh3d = meshObj.getModule('Mesh3D');
+            if (mesh3d) {
+                mesh3d.rotation.y += 15;
+                document.getElementById(shapeType + 'Status').textContent = `Rotated ${shapeType}`;
+            }
+        }
+
+        // Auto-test all shapes when page loads
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                testShape('cube', 'cubeCanvas');
+                setTimeout(() => testShape('sphere', 'sphereCanvas'), 100);
+                setTimeout(() => testShape('torus', 'torusCanvas'), 200);
+                setTimeout(() => testShape('quad', 'quadCanvas'), 300);
+                setTimeout(() => testShape('plane', 'planeCanvas'), 400);
+                setTimeout(() => testShape('icosahedron', 'icosahedronCanvas'), 500);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

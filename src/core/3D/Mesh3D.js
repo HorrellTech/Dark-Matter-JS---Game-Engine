@@ -34,6 +34,19 @@ class Mesh3D extends Module {
         this._showAxisLines = false;
         this._axisLength = 150;
 
+        // Shape selection
+        this._shape = "cube"; // "cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron", "quad", "plane", "custom"
+
+        // Expose shape property
+        this.exposeProperty("_shape", "enum", this._shape, {
+            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron", "quad", "plane", "custom"],
+            onChange: (val) => {
+                // console.log(`Mesh3D: Shape property changing from "${this._shape}" to "${val}"`);
+                this._shape = val;
+                this.updateShape();
+            }
+        });
+
         // Expose properties to the inspector
         this.exposeProperty("position", "vector3", this.position, {
             onChange: (val) => this.position = val
@@ -70,14 +83,438 @@ class Mesh3D extends Module {
             onChange: (val) => this._axisLength = val
         });
 
-        // Initialize with a default cube
-        this.createCube(100);
+        // Shape-specific properties
+        this.cubeSize = 100;
+        this.exposeProperty("cubeSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.cubeSize = val;
+                if (this._shape === "cube") this.createCube(val);
+            }
+        });
+
+        this.pyramidBaseSize = 100;
+        this.pyramidHeight = 150;
+        this.exposeProperty("pyramidBaseSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.pyramidBaseSize = val;
+                if (this._shape === "pyramid") this.createPyramid(val, this.pyramidHeight);
+            }
+        });
+        this.exposeProperty("pyramidHeight", "number", 150, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.pyramidHeight = val;
+                if (this._shape === "pyramid") this.createPyramid(this.pyramidBaseSize, val);
+            }
+        });
+
+        this.sphereRadius = 100;
+        this.sphereDetail = 12;
+        this.exposeProperty("sphereRadius", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.sphereRadius = val;
+                if (this._shape === "sphere") this.createSphere(val, this.sphereDetail);
+            }
+        });
+        this.exposeProperty("sphereDetail", "number", 12, {
+            min: 6,
+            max: 24,
+            step: 1,
+            onChange: (val) => {
+                this.sphereDetail = val;
+                if (this._shape === "sphere") this.createSphere(this.sphereRadius, val);
+            }
+        });
+
+        this.octahedronSize = 100;
+        this.exposeProperty("octahedronSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.octahedronSize = val;
+                if (this._shape === "octahedron") this.createOctahedron(val);
+            }
+        });
+
+        this.torusMajorRadius = 100;
+        this.torusMinorRadius = 40;
+        this.torusMajorSegments = 16;
+        this.torusMinorSegments = 8;
+        this.exposeProperty("torusMajorRadius", "number", 100, {
+            min: 20,
+            max: 300,
+            step: 10,
+            onChange: (val) => {
+                this.torusMajorRadius = val;
+                if (this._shape === "torus") this.createTorus(val, this.torusMinorRadius, this.torusMajorSegments, this.torusMinorSegments);
+            }
+        });
+        this.exposeProperty("torusMinorRadius", "number", 40, {
+            min: 10,
+            max: 100,
+            step: 5,
+            onChange: (val) => {
+                this.torusMinorRadius = val;
+                if (this._shape === "torus") this.createTorus(this.torusMajorRadius, val, this.torusMajorSegments, this.torusMinorSegments);
+            }
+        });
+        this.exposeProperty("torusMajorSegments", "number", 16, {
+            min: 8,
+            max: 32,
+            step: 1,
+            onChange: (val) => {
+                this.torusMajorSegments = val;
+                if (this._shape === "torus") this.createTorus(this.torusMajorRadius, this.torusMinorRadius, val, this.torusMinorSegments);
+            }
+        });
+        this.exposeProperty("torusMinorSegments", "number", 8, {
+            min: 4,
+            max: 16,
+            step: 1,
+            onChange: (val) => {
+                this.torusMinorSegments = val;
+                if (this._shape === "torus") this.createTorus(this.torusMajorRadius, this.torusMinorRadius, this.torusMajorSegments, val);
+            }
+        });
+
+        this.coneRadius = 100;
+        this.coneHeight = 150;
+        this.coneSegments = 16;
+        this.exposeProperty("coneRadius", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.coneRadius = val;
+                if (this._shape === "cone") this.createCone(val, this.coneHeight, this.coneSegments);
+            }
+        });
+        this.exposeProperty("coneHeight", "number", 150, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.coneHeight = val;
+                if (this._shape === "cone") this.createCone(this.coneRadius, val, this.coneSegments);
+            }
+        });
+        this.exposeProperty("coneSegments", "number", 16, {
+            min: 6,
+            max: 32,
+            step: 1,
+            onChange: (val) => {
+                this.coneSegments = val;
+                if (this._shape === "cone") this.createCone(this.coneRadius, this.coneHeight, val);
+            }
+        });
+
+        this.cylinderRadius = 100;
+        this.cylinderHeight = 150;
+        this.cylinderSegments = 16;
+        this.exposeProperty("cylinderRadius", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.cylinderRadius = val;
+                if (this._shape === "cylinder") this.createCylinder(val, this.cylinderHeight, this.cylinderSegments);
+            }
+        });
+        this.exposeProperty("cylinderHeight", "number", 150, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.cylinderHeight = val;
+                if (this._shape === "cylinder") this.createCylinder(this.cylinderRadius, val, this.cylinderSegments);
+            }
+        });
+        this.exposeProperty("cylinderSegments", "number", 16, {
+            min: 6,
+            max: 32,
+            step: 1,
+            onChange: (val) => {
+                this.cylinderSegments = val;
+                if (this._shape === "cylinder") this.createCylinder(this.cylinderRadius, this.cylinderHeight, val);
+            }
+        });
+
+        this.icosahedronSize = 100;
+        this.exposeProperty("icosahedronSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.icosahedronSize = val;
+                if (this._shape === "icosahedron") this.createIcosahedron(val);
+            }
+        });
+
+        this.quadWidth = 200;
+        this.quadHeight = 200;
+        this.quadSubdivisionsX = 4;
+        this.quadSubdivisionsY = 4;
+        this.exposeProperty("quadWidth", "number", 200, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.quadWidth = val;
+                if (this._shape === "quad") this.createQuad(val, this.quadHeight, this.quadSubdivisionsX, this.quadSubdivisionsY);
+            }
+        });
+        this.exposeProperty("quadHeight", "number", 200, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.quadHeight = val;
+                if (this._shape === "quad") this.createQuad(this.quadWidth, val, this.quadSubdivisionsX, this.quadSubdivisionsY);
+            }
+        });
+        this.exposeProperty("quadSubdivisionsX", "number", 4, {
+            min: 1,
+            max: 20,
+            step: 1,
+            onChange: (val) => {
+                this.quadSubdivisionsX = val;
+                if (this._shape === "quad") this.createQuad(this.quadWidth, this.quadHeight, val, this.quadSubdivisionsY);
+            }
+        });
+        this.exposeProperty("quadSubdivisionsY", "number", 4, {
+            min: 1,
+            max: 20,
+            step: 1,
+            onChange: (val) => {
+                this.quadSubdivisionsY = val;
+                if (this._shape === "quad") this.createQuad(this.quadWidth, this.quadHeight, this.quadSubdivisionsX, val);
+            }
+        });
+
+        this.planeSize = 200;
+        this.exposeProperty("planeSize", "number", 200, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.planeSize = val;
+                if (this._shape === "plane") this.createPlane(val);
+            }
+        });
 
         // Generate UV coordinates for texture mapping
         this.generateUVCoordinates();
 
         // Ensure material module exists on the game object
         this.ensureMaterialModule();
+    }
+
+    /**
+     * Optional method for enhanced inspector UI using the Style helper
+     * This will be called by the Inspector if it exists
+     * @param {Style} style - Styling helper
+     */
+    style(style) {
+        style.startGroup("Shape Selection", false, {
+            backgroundColor: 'rgba(100,150,255,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("shape", "enum", this._shape, {
+            label: "Mesh Shape",
+            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron", "quad", "plane", "custom"]
+        });
+        style.endGroup();
+
+        style.addDivider();
+
+        // Show properties based on selected shape
+        if (this._shape === "cube") {
+            style.startGroup("Cube Settings", false, {
+                backgroundColor: 'rgba(255,100,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("cubeSize", "number", this.cubeSize, { label: "Size" });
+            style.endGroup();
+        }
+
+        if (this._shape === "pyramid") {
+            style.startGroup("Pyramid Settings", false, {
+                backgroundColor: 'rgba(255,150,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("pyramidBaseSize", "number", this.pyramidBaseSize, { label: "Base Size" });
+            style.exposeProperty("pyramidHeight", "number", this.pyramidHeight, { label: "Height" });
+            style.endGroup();
+        }
+
+        if (this._shape === "sphere") {
+            style.startGroup("Sphere Settings", false, {
+                backgroundColor: 'rgba(100,255,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("sphereRadius", "number", this.sphereRadius, { label: "Radius" });
+            style.exposeProperty("sphereDetail", "number", this.sphereDetail, { label: "Detail Level" });
+            style.endGroup();
+        }
+
+        if (this._shape === "octahedron") {
+            style.startGroup("Octahedron Settings", false, {
+                backgroundColor: 'rgba(255,100,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("octahedronSize", "number", this.octahedronSize, { label: "Size" });
+            style.endGroup();
+        }
+
+        if (this._shape === "torus") {
+            style.startGroup("Torus Settings", false, {
+                backgroundColor: 'rgba(100,255,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("torusMajorRadius", "number", this.torusMajorRadius, { label: "Major Radius" });
+            style.exposeProperty("torusMinorRadius", "number", this.torusMinorRadius, { label: "Minor Radius" });
+            style.exposeProperty("torusMajorSegments", "number", this.torusMajorSegments, { label: "Major Segments" });
+            style.exposeProperty("torusMinorSegments", "number", this.torusMinorSegments, { label: "Minor Segments" });
+            style.endGroup();
+        }
+
+        if (this._shape === "cone") {
+            style.startGroup("Cone Settings", false, {
+                backgroundColor: 'rgba(255,200,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("coneRadius", "number", this.coneRadius, { label: "Base Radius" });
+            style.exposeProperty("coneHeight", "number", this.coneHeight, { label: "Height" });
+            style.exposeProperty("coneSegments", "number", this.coneSegments, { label: "Segments" });
+            style.endGroup();
+        }
+
+        if (this._shape === "cylinder") {
+            style.startGroup("Cylinder Settings", false, {
+                backgroundColor: 'rgba(150,150,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("cylinderRadius", "number", this.cylinderRadius, { label: "Radius" });
+            style.exposeProperty("cylinderHeight", "number", this.cylinderHeight, { label: "Height" });
+            style.exposeProperty("cylinderSegments", "number", this.cylinderSegments, { label: "Segments" });
+            style.endGroup();
+        }
+
+        if (this._shape === "icosahedron") {
+            style.startGroup("Icosahedron Settings", false, {
+                backgroundColor: 'rgba(255,150,200,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("icosahedronSize", "number", this.icosahedronSize, { label: "Size" });
+            style.endGroup();
+        }
+
+        if (this._shape === "quad") {
+            style.startGroup("Quad Settings", false, {
+                backgroundColor: 'rgba(200,100,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("quadWidth", "number", this.quadWidth, { label: "Width" });
+            style.exposeProperty("quadHeight", "number", this.quadHeight, { label: "Height" });
+            style.exposeProperty("quadSubdivisionsX", "number", this.quadSubdivisionsX, { label: "X Subdivisions" });
+            style.exposeProperty("quadSubdivisionsY", "number", this.quadSubdivisionsY, { label: "Y Subdivisions" });
+            style.endGroup();
+        }
+
+        if (this._shape === "plane") {
+            style.startGroup("Plane Settings", false, {
+                backgroundColor: 'rgba(150,200,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("planeSize", "number", this.planeSize, { label: "Size" });
+            style.endGroup();
+        }
+
+        if (this._shape === "custom") {
+            style.startGroup("Custom Model Settings", false, {
+                backgroundColor: 'rgba(255,255,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("sphereRadius", "number", this.sphereRadius, { label: "Base Radius" });
+            style.exposeProperty("sphereDetail", "number", this.sphereDetail, { label: "Detail Level" });
+            style.endGroup();
+        }
+
+        style.addDivider();
+
+        style.startGroup("Appearance", false, {
+            backgroundColor: 'rgba(200,200,200,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("wireframeColor", "color", this.wireframeColor, { label: "Wireframe Color" });
+        style.exposeProperty("faceColor", "color", this.faceColor, { label: "Face Color" });
+        style.exposeProperty("renderMode", "enum", this.renderMode, { label: "Render Mode" });
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Transform", false, {
+            backgroundColor: 'rgba(150,255,150,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("position", "vector3", this.position, { label: "Position" });
+        style.exposeProperty("rotation", "vector3", this.rotation, { label: "Rotation" });
+        style.exposeProperty("scale", "vector3", this.scale, { label: "Scale" });
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Material & Lighting", false, {
+            backgroundColor: 'rgba(255,150,255,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("material", "module", this.material, { label: "Material" });
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Debug", false, {
+            backgroundColor: 'rgba(255,255,150,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("_showAxisLines", "boolean", this._showAxisLines, { label: "Show Axis Lines" });
+        style.exposeProperty("_axisLength", "number", this._axisLength, { label: "Axis Length" });
+        style.endGroup();
+    }
+
+    start() {
+        // Ensure material module exists on the game object
+        this.ensureMaterialModule();
+
+        this.updateShape();
     }
 
     /**
@@ -149,7 +586,7 @@ class Mesh3D extends Module {
         const normal = normals ? normals[0] : this.calculateFaceNormal(face, worldVertices);
 
         if (camera && camera.position) {
-            const viewDir = camera.position.clone().sub(faceCenter).normalize();
+            const viewDir = camera.position.clone().subtract(faceCenter).normalize();
 
             // Calculate UV coordinates for face center (simple average)
             const uvs = face.map(vertexIndex => this.uvCoordinates[vertexIndex] || new Vector2(0, 0));
@@ -179,7 +616,7 @@ class Mesh3D extends Module {
                 center.add(vertices[vertexIndex]);
             }
         }
-        center.divideScalar(face.length);
+        center.multiply(1 / face.length);
         return center;
     }
 
@@ -204,8 +641,8 @@ class Mesh3D extends Module {
         }
 
         // Calculate two edges
-        const edge1 = v2.clone().sub(v1);
-        const edge2 = v3.clone().sub(v1);
+        const edge1 = v2.clone().subtract(v1);
+        const edge2 = v3.clone().subtract(v1);
 
         // Calculate cross product for normal
         const normal = edge1.clone().cross(edge2).normalize();
@@ -221,14 +658,14 @@ class Mesh3D extends Module {
         const s = size / 2;
 
         this.vertices = [
-            new Vector3(-s, -s, -s), // 0: back-bottom-left
-            new Vector3(-s, s, -s),  // 1: back-bottom-right
-            new Vector3(s, s, -s),   // 2: back-top-right
-            new Vector3(s, -s, -s),  // 3: back-top-left
-            new Vector3(-s, -s, s),  // 4: front-bottom-left
-            new Vector3(-s, s, s),   // 5: front-bottom-right
-            new Vector3(s, s, s),    // 6: front-top-right
-            new Vector3(s, -s, s)    // 7: front-top-left
+            new Vector3(-s, -s, -s), // 0: back-left-down
+            new Vector3(s, -s, -s),  // 1: back-right-down
+            new Vector3(s, s, -s),   // 2: back-right-up
+            new Vector3(-s, s, -s),  // 3: back-left-up
+            new Vector3(-s, -s, s),  // 4: front-left-down
+            new Vector3(s, -s, s),   // 5: front-right-down
+            new Vector3(s, s, s),    // 6: front-right-up
+            new Vector3(-s, s, s)    // 7: front-left-up
         ];
 
         this.edges = [
@@ -237,13 +674,20 @@ class Mesh3D extends Module {
             [0, 4], [1, 5], [2, 6], [3, 7]  // connecting edges
         ];
 
+        // Use triangulated faces with counter-clockwise winding (matching CubeMesh3D)
         this.faces = [
-            [0, 1, 2, 3], // back face
-            [4, 5, 6, 7], // front face
-            [0, 4, 7, 3], // left face
-            [1, 5, 6, 2], // right face
-            [3, 2, 6, 7], // top face
-            [0, 1, 5, 4]  // bottom face
+            // Bottom face (Y = -s) - looking from below
+            [0, 1, 5], [0, 5, 4],
+            // Top face (Y = s) - looking from above  
+            [7, 6, 2], [7, 2, 3],
+            // Front face (Z = s) - looking from front
+            [4, 5, 6], [4, 6, 7],
+            // Back face (Z = -s) - looking from back
+            [3, 2, 1], [3, 1, 0],
+            // Right face (X = s) - looking from right
+            [1, 2, 6], [1, 6, 5],
+            // Left face (X = -s) - looking from left
+            [0, 4, 7], [0, 7, 3]
         ];
 
         // Regenerate UV coordinates after changing mesh data
@@ -273,11 +717,11 @@ class Mesh3D extends Module {
         ];
 
         this.faces = [
-            [0, 1, 2, 3], // base
-            [0, 1, 4],    // back face
-            [1, 2, 4],    // right face
-            [2, 3, 4],    // front face
-            [3, 0, 4]     // left face
+            [0, 1, 2, 3], // base (facing down) - reversed for correct winding
+            [0, 4, 1],    // back face
+            [1, 4, 2],    // right face
+            [2, 4, 3],    // front face
+            [3, 4, 0]     // left face
         ];
 
         // Regenerate UV coordinates after changing mesh data
@@ -314,15 +758,17 @@ class Mesh3D extends Module {
             }
         }
 
-        // Create faces and edges
+        // Create faces and edges with correct counter-clockwise winding
         for (let lat = 0; lat < detail; lat++) {
             for (let lon = 0; lon < detail; lon++) {
                 const first = lat * (detail + 1) + lon;
                 const second = first + detail + 1;
 
-                // Create two triangular faces
-                this.faces.push([first, first + 1, second + 1]);
-                this.faces.push([first, second + 1, second]);
+                // Create two triangular faces with correct counter-clockwise winding (viewed from outside)
+                // First triangle: first -> first+1 -> second (counter-clockwise from outside)
+                this.faces.push([first, first + 1, second]);
+                // Second triangle: second -> first+1 -> second+1 (counter-clockwise from outside)
+                this.faces.push([second, first + 1, second + 1]);
 
                 // Add edges
                 this.edges.push([first, first + 1]);
@@ -340,6 +786,437 @@ class Mesh3D extends Module {
 
         // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
+    }
+
+    /**
+     * Create an octahedron mesh
+     * @param {number} size - Size of the octahedron
+     */
+    createOctahedron(size = 100) {
+        const s = size / 2;
+
+        this.vertices = [
+            new Vector3(0, s, 0),   // 0: top
+            new Vector3(s, 0, 0),   // 1: front
+            new Vector3(0, 0, s),   // 2: right
+            new Vector3(-s, 0, 0),  // 3: back
+            new Vector3(0, 0, -s),  // 4: left
+            new Vector3(0, -s, 0)   // 5: bottom
+        ];
+
+        this.edges = [
+            [0, 1], [0, 2], [0, 3], [0, 4],
+            [1, 2], [2, 3], [3, 4], [4, 1],
+            [5, 1], [5, 2], [5, 3], [5, 4]
+        ];
+
+        this.faces = [
+            [0, 2, 1], [0, 3, 2], [0, 4, 3], [0, 1, 4], // top faces
+            [5, 1, 2], [5, 2, 3], [5, 3, 4], [5, 4, 1]  // bottom faces
+        ];
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+      * Create a torus (donut) mesh
+      * @param {number} majorRadius - Distance from center to tube center
+      * @param {number} minorRadius - Radius of the tube
+      * @param {number} majorSegments - Segments around the major radius
+      * @param {number} minorSegments - Segments around the minor radius
+      */
+    createTorus(majorRadius = 100, minorRadius = 40, majorSegments = 16, minorSegments = 8) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        // Generate vertices
+        for (let i = 0; i < majorSegments; i++) {
+            const theta = (i / majorSegments) * Math.PI * 2;
+            const centerX = Math.cos(theta) * majorRadius;
+            const centerZ = Math.sin(theta) * majorRadius;
+
+            for (let j = 0; j < minorSegments; j++) {
+                const phi = (j / minorSegments) * Math.PI * 2;
+                const x = centerX + Math.cos(phi) * Math.cos(theta) * minorRadius;
+                const y = Math.sin(phi) * minorRadius;
+                const z = centerZ + Math.cos(phi) * Math.sin(theta) * minorRadius;
+
+                this.vertices.push(new Vector3(x, y, z));
+            }
+        }
+
+        // Generate faces and edges with correct winding order
+        for (let i = 0; i < majorSegments; i++) {
+            for (let j = 0; j < minorSegments; j++) {
+                const current = i * minorSegments + j;
+                const nextMajor = ((i + 1) % majorSegments) * minorSegments + j;
+                const nextMinor = i * minorSegments + ((j + 1) % minorSegments);
+                const nextBoth = ((i + 1) % majorSegments) * minorSegments + ((j + 1) % minorSegments);
+
+                // Create faces with correct counter-clockwise winding (from outside)
+                // First triangle: current -> nextMinor -> nextBoth
+                this.faces.push([current, nextMinor, nextBoth]);
+                // Second triangle: current -> nextBoth -> nextMajor
+                this.faces.push([current, nextBoth, nextMajor]);
+
+                // Create edges
+                this.edges.push([current, nextMinor]);
+                this.edges.push([current, nextMajor]);
+            }
+        }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a cone mesh
+     * @param {number} radius - Base radius
+     * @param {number} height - Height of the cone
+     * @param {number} segments - Number of segments around the base
+     */
+    createCone(radius = 100, height = 150, segments = 16) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const h = height / 2;
+
+        // Base center
+        this.vertices.push(new Vector3(0, -h, 0));
+
+        // Base vertices
+        for (let i = 0; i < segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            const x = Math.cos(theta) * radius;
+            const z = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, -h, z));
+        }
+
+        // Apex
+        this.vertices.push(new Vector3(0, h, 0));
+
+        const baseCenter = 0;
+        const apex = this.vertices.length - 1;
+
+        // Create base face (winding counter-clockwise from outside looking down)
+        const baseVertices = [];
+        for (let i = 0; i < segments; i++) {
+            baseVertices.push(i + 1);
+        }
+        this.faces.push(baseVertices);
+
+        // Create side faces (counter-clockwise from outside)
+        for (let i = 0; i < segments; i++) {
+            const next = (i + 1) % segments + 1;
+            // Fix face winding: current base -> apex -> next base (counter-clockwise from outside)
+            this.faces.push([i + 1, apex, next]);
+
+            // Create edges
+            this.edges.push([baseCenter, i + 1]);
+            this.edges.push([i + 1, next]);
+            this.edges.push([apex, i + 1]);
+        }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a cylinder mesh
+     * @param {number} radius - Radius of the cylinder
+     * @param {number} height - Height of the cylinder
+     * @param {number} segments - Number of segments around the circumference
+     */
+    createCylinder(radius = 100, height = 150, segments = 16) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const h = height / 2;
+
+        // Bottom vertices
+        for (let i = 0; i < segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            const x = Math.cos(theta) * radius;
+            const z = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, -h, z));
+        }
+
+        // Top vertices
+        for (let i = 0; i < segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            const x = Math.cos(theta) * radius;
+            const z = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, h, z));
+        }
+
+        // Create bottom face (winding from outside looking up at bottom)
+        const bottomFace = [];
+        for (let i = 0; i < segments; i++) {
+            bottomFace.push(i);
+        }
+        this.faces.push(bottomFace);
+
+        // Create top face (winding from outside looking down at top)
+        const topFace = [];
+        for (let i = segments - 1; i >= 0; i--) {
+            topFace.push(segments + i);
+        }
+        this.faces.push(topFace);
+
+        // Create side faces (counter-clockwise from outside)
+        for (let i = 0; i < segments; i++) {
+            const next = (i + 1) % segments;
+            const bottomCurrent = i;
+            const bottomNext = next;
+            const topCurrent = segments + i;
+            const topNext = segments + next;
+
+            // Fix face winding: bottom-left, top-left, top-right, bottom-right (counter-clockwise)
+            this.faces.push([bottomCurrent, topCurrent, topNext, bottomNext]);
+
+            // Create edges
+            this.edges.push([bottomCurrent, bottomNext]);
+            this.edges.push([topCurrent, topNext]);
+            this.edges.push([bottomCurrent, topCurrent]);
+        }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create an icosahedron mesh (20-faced polyhedron)
+     * @param {number} size - Size of the icosahedron
+     */
+    createIcosahedron(size = 100) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const phi = (1 + Math.sqrt(5)) / 2; // Golden ratio
+        const s = size / Math.sqrt(phi * phi + 1);
+
+        // Generate vertices using golden ratio
+        const vertexData = [
+            [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+            [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+            [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]
+        ];
+
+        for (const v of vertexData) {
+            this.vertices.push(new Vector3(v[0] * s, v[1] * s, v[2] * s));
+        }
+
+        // Define faces (20 triangular faces)
+        const faceData = [
+            [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+            [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+            [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+            [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+        ];
+
+        this.faces = faceData;
+
+        // Generate edges from faces
+        const edgeSet = new Set();
+        for (const face of this.faces) {
+            for (let i = 0; i < face.length; i++) {
+                const a = Math.min(face[i], face[(i + 1) % face.length]);
+                const b = Math.max(face[i], face[(i + 1) % face.length]);
+                edgeSet.add(`${a},${b}`);
+            }
+        }
+
+        for (const edge of edgeSet) {
+            const [a, b] = edge.split(',').map(Number);
+            this.edges.push([a, b]);
+        }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+      * Create a subdivided quad (plane with subdivisions)
+      * @param {number} width - Width of the quad
+      * @param {number} height - Height of the quad
+      * @param {number} subdivisionsX - Number of subdivisions along X axis
+      * @param {number} subdivisionsY - Number of subdivisions along Y axis
+      */
+    createQuad(width = 200, height = 200, subdivisionsX = 4, subdivisionsY = 4) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        // Generate vertices (ensure they lie flat on XY plane)
+        for (let y = 0; y <= subdivisionsY; y++) {
+            for (let x = 0; x <= subdivisionsX; x++) {
+                const px = (x / subdivisionsX) * width - halfWidth;
+                const py = (y / subdivisionsY) * height - halfHeight;
+                // Force Z to 0 for flat plane
+                this.vertices.push(new Vector3(px, py, 0));
+            }
+        }
+
+        // Generate faces and edges
+        for (let y = 0; y < subdivisionsY; y++) {
+            for (let x = 0; x < subdivisionsX; x++) {
+                const topLeft = y * (subdivisionsX + 1) + x;
+                const topRight = topLeft + 1;
+                const bottomLeft = (y + 1) * (subdivisionsX + 1) + x;
+                const bottomRight = bottomLeft + 1;
+
+                // Create quad face (counter-clockwise from front: top-left, top-right, bottom-right, bottom-left)
+                this.faces.push([topLeft, topRight, bottomRight, bottomLeft]);
+
+                // Create edges
+                this.edges.push([topLeft, topRight]);
+                this.edges.push([topLeft, bottomLeft]);
+                if (x === subdivisionsX - 1) {
+                    this.edges.push([topRight, bottomRight]);
+                }
+                if (y === subdivisionsY - 1) {
+                    this.edges.push([bottomLeft, bottomRight]);
+                }
+            }
+        }
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+      * Create a simple plane (single quad)
+      * @param {number} size - Size of the plane
+      */
+    createPlane(size = 200) {
+        const s = size / 2;
+
+        this.vertices = [
+            new Vector3(-s, -s, 0), // bottom-left
+            new Vector3(s, -s, 0),  // bottom-right
+            new Vector3(s, s, 0),   // top-right
+            new Vector3(-s, s, 0)   // top-left
+        ];
+
+        this.edges = [
+            [0, 1], [1, 2], [2, 3], [3, 0]
+        ];
+
+        // Fix face winding: counter-clockwise from front (top-left, top-right, bottom-right, bottom-left)
+        this.faces = [
+            [3, 2, 1, 0] // top-left, top-right, bottom-right, bottom-left
+        ];
+
+        // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a custom editable model (starts as a sphere with vertex handles)
+     * @param {number} radius - Initial radius
+     * @param {number} detail - Detail level
+     */
+    createCustomModel(radius = 100, detail = 6) {
+        // Start with a sphere as the base
+        this.createSphere(radius, detail);
+
+        // Mark this as a custom model
+        this.isCustomModel = true;
+
+        // Initialize vertex selection system
+        this.selectedVertexIndex = -1;
+        this.vertexHandleSize = 8;
+        this.isDraggingVertex = false;
+
+        // Store original vertices for reset functionality
+        this.originalVertices = this.vertices.map(v => v.clone());
+    }
+
+    /**
+      * Update the mesh shape based on current shape property
+      */
+    updateShape() {
+        // Clear existing mesh data before creating new shape
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+        this.uvCoordinates = [];
+
+        // Ensure _shape is set
+        if (!this._shape) {
+            // console.warn("Mesh3D: _shape is undefined, defaulting to cube");
+            this._shape = "cube";
+        }
+
+        // Debug logging to track shape changes
+        // console.log(`Mesh3D: Updating shape to: ${this._shape}`);
+        // console.log(`Mesh3D: Current mesh data before update - vertices: ${this.vertices.length}, faces: ${this.faces.length}`);
+
+        switch (this._shape) {
+            case "cube":
+                // console.log(`Mesh3D: Creating cube with size: ${this.cubeSize}`);
+                this.createCube(this.cubeSize);
+                break;
+            case "pyramid":
+                // console.log(`Mesh3D: Creating pyramid with base: ${this.pyramidBaseSize}, height: ${this.pyramidHeight}`);
+                this.createPyramid(this.pyramidBaseSize, this.pyramidHeight);
+                break;
+            case "sphere":
+                // console.log(`Mesh3D: Creating sphere with radius: ${this.sphereRadius}, detail: ${this.sphereDetail}`);
+                this.createSphere(this.sphereRadius, this.sphereDetail);
+                break;
+            case "octahedron":
+                // console.log(`Mesh3D: Creating octahedron with size: ${this.octahedronSize}`);
+                this.createOctahedron(this.octahedronSize);
+                break;
+            case "torus":
+                // console.log(`Mesh3D: Creating torus with major: ${this.torusMajorRadius}, minor: ${this.torusMinorRadius}`);
+                this.createTorus(this.torusMajorRadius, this.torusMinorRadius, this.torusMajorSegments, this.torusMinorSegments);
+                break;
+            case "cone":
+                // console.log(`Mesh3D: Creating cone with radius: ${this.coneRadius}, height: ${this.coneHeight}`);
+                this.createCone(this.coneRadius, this.coneHeight, this.coneSegments);
+                break;
+            case "cylinder":
+                // console.log(`Mesh3D: Creating cylinder with radius: ${this.cylinderRadius}, height: ${this.cylinderHeight}`);
+                this.createCylinder(this.cylinderRadius, this.cylinderHeight, this.cylinderSegments);
+                break;
+            case "icosahedron":
+                // console.log(`Mesh3D: Creating icosahedron with size: ${this.icosahedronSize}`);
+                this.createIcosahedron(this.icosahedronSize);
+                break;
+            case "quad":
+                // console.log(`Mesh3D: Creating quad with width: ${this.quadWidth}, height: ${this.quadHeight}`);
+                this.createQuad(this.quadWidth, this.quadHeight, this.quadSubdivisionsX, this.quadSubdivisionsY);
+                break;
+            case "plane":
+                // console.log(`Mesh3D: Creating plane with size: ${this.planeSize}`);
+                this.createPlane(this.planeSize);
+                break;
+            case "custom":
+                // console.log(`Mesh3D: Creating custom editable model`);
+                this.createCustomModel(this.sphereRadius, this.sphereDetail);
+                break;
+            default:
+                // console.warn(`Mesh3D: Unknown shape "${this._shape}", defaulting to cube`);
+                this.createCube(this.cubeSize);
+        }
+
+        // Ensure UV coordinates are generated for the new shape
+        if (this.vertices.length > 0) {
+            this.generateUVCoordinates();
+            // console.log(`Mesh3D: Generated ${this.vertices.length} vertices, ${this.faces.length} faces for ${this._shape}`);
+        } else {
+            // console.warn(`Mesh3D: No vertices generated for shape ${this._shape}`);
+        }
     }
 
     /**
@@ -365,8 +1242,8 @@ class Mesh3D extends Module {
         // Find an active camera
         const camera = this.findActiveCamera();
         if (!camera) {
-            // Draw a placeholder if no camera is available
-            this.drawPlaceholder(ctx);
+            // Draw a 2D visualization based on the selected shape
+            this.draw2DVisualization(ctx);
             return;
         }
 
@@ -377,6 +1254,468 @@ class Mesh3D extends Module {
             // Fallback to direct drawing
             this.drawDirect(ctx, camera);
         }
+
+        // Draw vertex handles for custom models
+        if (this.isCustomModel && this._shape === "custom") {
+            this.drawVertexHandles(ctx, camera);
+        }
+    }
+
+    /**
+     * Draw a 2D visualization of the mesh shape when no camera is available
+     * @param {CanvasRenderingContext2D} ctx - The canvas context
+     */
+    draw2DVisualization(ctx) {
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.fillStyle = this.faceColor;
+        ctx.lineWidth = 2;
+
+        switch (this._shape) {
+            case "cube":
+                this.draw2DCube(ctx);
+                break;
+            case "pyramid":
+                this.draw2DPyramid(ctx);
+                break;
+            case "sphere":
+                this.draw2DSphere(ctx);
+                break;
+            case "octahedron":
+                this.draw2DOctahedron(ctx);
+                break;
+            case "torus":
+                this.draw2DTorus(ctx);
+                break;
+            case "cone":
+                this.draw2DCone(ctx);
+                break;
+            case "cylinder":
+                this.draw2DCylinder(ctx);
+                break;
+            case "icosahedron":
+                this.draw2DIcosahedron(ctx);
+                break;
+            case "quad":
+            case "plane":
+                this.draw2DPlane(ctx);
+                break;
+            case "custom":
+                this.draw2DCustom(ctx);
+                break;
+            default:
+                this.drawPlaceholder(ctx);
+        }
+    }
+
+    /**
+     * Draw 2D cube visualization - Top-down isometric view
+     */
+    draw2DCube(ctx) {
+        const s = this.cubeSize / 2;
+        const isoOffset = s * 0.4; // Isometric offset for depth
+
+        // Draw top face (visible from top)
+        ctx.fillStyle = this.faceColor;
+        ctx.beginPath();
+        ctx.moveTo(0, -s - isoOffset); // Top point
+        ctx.lineTo(s, -isoOffset);      // Right point
+        ctx.lineTo(0, s - isoOffset);   // Bottom point
+        ctx.lineTo(-s, -isoOffset);     // Left point
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw front face (front side)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(-s, -isoOffset);  // Top left
+        ctx.lineTo(s, -isoOffset);   // Top right
+        ctx.lineTo(s, s);            // Bottom right
+        ctx.lineTo(-s, s);           // Bottom left
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw right face (right side)
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(s, -isoOffset);       // Top
+        ctx.lineTo(0, s - isoOffset);    // Bottom inner
+        ctx.lineTo(0, s + s - isoOffset); // Bottom outer
+        ctx.lineTo(s, s);                // Front bottom
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D pyramid visualization - Top-down view
+     */
+    draw2DPyramid(ctx) {
+        const base = this.pyramidBaseSize / 2;
+        const isoOffset = this.pyramidHeight * 0.3; // Depth based on height
+
+        // Draw apex point (top of pyramid)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.9;
+
+        // Draw front faces
+        ctx.beginPath();
+        ctx.moveTo(0, -isoOffset); // Apex
+        ctx.lineTo(-base, base);   // Bottom left
+        ctx.lineTo(base, base);    // Bottom right
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw back face
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(0, -isoOffset);  // Apex
+        ctx.lineTo(-base, base);    // Left
+        ctx.lineTo(-base, -base);   // Back left
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -isoOffset);  // Apex
+        ctx.lineTo(base, base);     // Right
+        ctx.lineTo(base, -base);    // Back right
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw base square
+        ctx.globalAlpha = 0.5;
+        ctx.strokeRect(-base, -base, this.pyramidBaseSize, this.pyramidBaseSize);
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D sphere visualization - Top-down view (equator circle)
+     */
+    draw2DSphere(ctx) {
+        // Draw the sphere as a circle from top-down (equator view)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(0, 0, this.sphereRadius / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw latitude lines (concentric circles)
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.3;
+        const segments = Math.min(this.sphereDetail, 8);
+        for (let i = 1; i < segments; i++) {
+            const radius = (i / segments) * (this.sphereRadius / 2);
+            ctx.beginPath();
+            ctx.arc(0, 0, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Draw longitude lines (cross)
+        ctx.beginPath();
+        ctx.moveTo(-this.sphereRadius / 2, 0);
+        ctx.lineTo(this.sphereRadius / 2, 0);
+        ctx.moveTo(0, -this.sphereRadius / 2);
+        ctx.lineTo(0, this.sphereRadius / 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D octahedron visualization - Top-down view (diamond shape at equator)
+     */
+    draw2DOctahedron(ctx) {
+        const s = this.octahedronSize;
+
+        // Draw equator diamond (middle cross-section)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s, 0);
+        ctx.lineTo(0, s);
+        ctx.lineTo(-s, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw inner lines to show 3D structure
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(-s, 0);
+        ctx.lineTo(s, 0);
+        ctx.moveTo(0, -s);
+        ctx.lineTo(0, s);
+        ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D torus visualization - Top-down view (donut shape)
+     */
+    draw2DTorus(ctx) {
+        const major = this.torusMajorRadius;
+        const minor = this.torusMinorRadius;
+
+        // Fill the ring area
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(0, 0, major + minor, 0, Math.PI * 2);
+        ctx.arc(0, 0, major - minor, 0, Math.PI * 2, true);
+        ctx.fill();
+
+        ctx.globalAlpha = 1.0;
+
+        // Outer circle
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, major + minor, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner circle
+        ctx.beginPath();
+        ctx.arc(0, 0, major - minor, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Draw cross lines to show tube detail
+        ctx.globalAlpha = 0.3;
+        const segments = Math.min(this.torusMinorSegments, 8);
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x1 = Math.cos(angle) * (major - minor);
+            const y1 = Math.sin(angle) * (major - minor);
+            const x2 = Math.cos(angle) * (major + minor);
+            const y2 = Math.sin(angle) * (major + minor);
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D cone visualization - Top-down view showing base circle and apex point
+     */
+    draw2DCone(ctx) {
+        const r = this.coneRadius;
+        const apexOffset = this.coneHeight * 0.2; // Visual offset for apex
+
+        // Draw base circle
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw lines from apex to base edge (showing cone structure)
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.5;
+        const segments = 8;
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+
+            ctx.beginPath();
+            ctx.moveTo(0, -apexOffset); // Apex point
+            ctx.lineTo(x, y);           // Base edge
+            ctx.stroke();
+        }
+
+        // Draw apex point
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = this.wireframeColor;
+        ctx.beginPath();
+        ctx.arc(0, -apexOffset, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    /**
+     * Draw 2D cylinder visualization - Top-down view showing circular cross-section
+     */
+    draw2DCylinder(ctx) {
+        const r = this.cylinderRadius;
+
+        // Draw cylinder as a circle from top (showing the circular cross-section)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw lines to indicate cylindrical segments
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.3;
+        const segments = Math.min(this.cylinderSegments, 8);
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+
+        // Draw concentric circles to show height
+        ctx.globalAlpha = 0.2;
+        for (let i = 1; i <= 2; i++) {
+            ctx.beginPath();
+            ctx.arc(0, 0, (i / 3) * r, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D icosahedron visualization - Top-down view (pentagonal cross-section)
+     */
+    draw2DIcosahedron(ctx) {
+        const s = this.icosahedronSize;
+        const segments = 5; // Pentagon for icosahedron
+
+        // Draw pentagonal cross-section
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.cos(angle) * s;
+            const y = Math.sin(angle) * s;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw inner star pattern
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.4;
+        for (let i = 0; i < segments; i++) {
+            const angle1 = (i / segments) * Math.PI * 2 - Math.PI / 2;
+            const angle2 = ((i + 2) % segments / segments) * Math.PI * 2 - Math.PI / 2;
+            const x1 = Math.cos(angle1) * s;
+            const y1 = Math.sin(angle1) * s;
+            const x2 = Math.cos(angle2) * s;
+            const y2 = Math.sin(angle2) * s;
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D plane/quad visualization - Top-down view showing full dimensions
+     */
+    draw2DPlane(ctx) {
+        const w = this._shape === "quad" ? this.quadWidth / 2 : this.planeSize / 2;
+        const h = this._shape === "quad" ? this.quadHeight / 2 : this.planeSize / 2;
+
+        // Draw filled rectangle
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(-w, -h, w * 2, h * 2);
+        ctx.globalAlpha = 1.0;
+        ctx.strokeRect(-w, -h, w * 2, h * 2);
+
+        // Draw subdivision lines for quad
+        if (this._shape === "quad") {
+            ctx.strokeStyle = this.wireframeColor;
+            ctx.globalAlpha = 0.3;
+
+            // Vertical lines
+            for (let i = 1; i < this.quadSubdivisionsX; i++) {
+                const x = -w + (i / this.quadSubdivisionsX) * w * 2;
+                ctx.beginPath();
+                ctx.moveTo(x, -h);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+
+            // Horizontal lines
+            for (let i = 1; i < this.quadSubdivisionsY; i++) {
+                const y = -h + (i / this.quadSubdivisionsY) * h * 2;
+                ctx.beginPath();
+                ctx.moveTo(-w, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+
+            ctx.globalAlpha = 1.0;
+        } else {
+            // Draw center cross for plane
+            ctx.strokeStyle = this.wireframeColor;
+            ctx.globalAlpha = 0.3;
+            ctx.beginPath();
+            ctx.moveTo(-w, 0);
+            ctx.lineTo(w, 0);
+            ctx.moveTo(0, -h);
+            ctx.lineTo(0, h);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    /**
+     * Draw 2D custom model visualization - Top-down view with indicator
+     */
+    draw2DCustom(ctx) {
+        // Calculate bounds of custom model
+        let maxDist = 50; // Default
+        if (this.vertices && this.vertices.length > 0) {
+            maxDist = 0;
+            for (const v of this.vertices) {
+                const dist = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+                maxDist = Math.max(maxDist, dist);
+            }
+        }
+
+        // Draw bounding circle
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.arc(0, 0, maxDist, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw vertex count indicator
+        ctx.fillStyle = '#ffff00';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const vertCount = this.vertices ? this.vertices.length : 0;
+        ctx.fillText(`CUSTOM (${vertCount}v)`, 0, 0);
     }
 
     /**
@@ -494,7 +1833,7 @@ class Mesh3D extends Module {
 
                 return { face, sortDepth };
             })
-            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
+            .sort((a, b) => a.sortDepth - b.sortDepth) // Sort front-to-back (higher depth values first = farther from camera)
             .map(item => item.face);
 
         // Draw faces in sorted order
@@ -756,19 +2095,27 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Find the active camera in the scene
-     * @returns {Camera3D|null} The active camera or null
-     */
+      * Find the active camera in the scene
+      * @returns {Camera3D|null} The active camera or null
+      */
     findActiveCamera() {
         const allObjects = this.getAllGameObjects();
 
+        // Debug logging to help diagnose camera issues
+        // console.log(`Mesh3D: Looking for active camera among ${allObjects.length} game objects`);
+
         for (const obj of allObjects) {
-            const camera = obj.getModule("Camera3D");
-            if (camera && camera.isActive) {
-                return camera;
+            const camera = obj.getModule ? obj.getModule("Camera3D") : null;
+            if (camera) {
+                // console.log(`Mesh3D: Found camera on object ${obj.name || 'unnamed'}, isActive: ${camera.isActive}`);
+                if (camera.isActive) {
+                    // console.log(`Mesh3D: Found active camera!`);
+                    return camera;
+                }
             }
         }
 
+        // console.log(`Mesh3D: No active camera found`);
         return null;
     }
 
@@ -937,63 +2284,282 @@ class Mesh3D extends Module {
     }
 
     /**
+     * Update method called each frame
+     */
+    update() {
+        // Handle custom model interactions if enabled
+        if (this.isCustomModel && this._shape === "custom") {
+            this.handleCustomModelInput();
+        }
+    }
+
+    /**
+     * Handle input for custom model editing
+     */
+    handleCustomModelInput() {
+        // Get input manager if available
+        const inputManager = this.gameObject?.scene?.engine?.inputManager;
+        if (!inputManager) return;
+
+        const mouseX = inputManager.mouseX;
+        const mouseY = inputManager.mouseY;
+
+        // Handle mouse down
+        if (inputManager.isMousePressed(0) && !this.isDraggingVertex) {
+            this.onMouseDown(mouseX, mouseY);
+        }
+
+        // Handle mouse move while dragging
+        if (this.isDraggingVertex && inputManager.isMouseDown(0)) {
+            const deltaX = inputManager.mouseDeltaX || 0;
+            const deltaY = inputManager.mouseDeltaY || 0;
+            this.onMouseMove(mouseX, mouseY, deltaX, deltaY);
+        }
+
+        // Handle mouse up
+        if (!inputManager.isMouseDown(0) && this.isDraggingVertex) {
+            this.onMouseUp();
+        }
+    }
+
+    /**
+     * Draw vertex handles for custom model editing
+     * @param {CanvasRenderingContext2D} ctx - The canvas context
+     * @param {Camera3D} camera - The active camera
+     */
+    drawVertexHandles(ctx, camera) {
+        if (!this.isCustomModel) return;
+
+        const transformedVertices = this.transformVertices();
+        const projectedVertices = transformedVertices.map(vertex => camera.projectPoint(vertex));
+
+        // Draw green squares at each vertex
+        ctx.fillStyle = '#00ff00';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+
+        for (let i = 0; i < projectedVertices.length; i++) {
+            const projected = projectedVertices[i];
+            if (!projected) continue;
+
+            const halfSize = this.vertexHandleSize / 2;
+
+            // Highlight selected vertex
+            if (i === this.selectedVertexIndex) {
+                ctx.fillStyle = '#ffff00';
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 3;
+            } else {
+                ctx.fillStyle = '#00ff00';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+            }
+
+            ctx.fillRect(projected.x - halfSize, projected.y - halfSize, this.vertexHandleSize, this.vertexHandleSize);
+            ctx.strokeRect(projected.x - halfSize, projected.y - halfSize, this.vertexHandleSize, this.vertexHandleSize);
+        }
+    }
+
+    /**
+     * Handle mouse down for vertex selection
+     * @param {number} mouseX - Mouse X position
+     * @param {number} mouseY - Mouse Y position
+     * @returns {boolean} - True if a vertex was selected
+     */
+    onMouseDown(mouseX, mouseY) {
+        if (!this.isCustomModel || this._shape !== "custom") return false;
+
+        const camera = this.findActiveCamera();
+        if (!camera) return false;
+
+        const transformedVertices = this.transformVertices();
+        const projectedVertices = transformedVertices.map(vertex => camera.projectPoint(vertex));
+
+        // Check if click is near any vertex
+        for (let i = 0; i < projectedVertices.length; i++) {
+            const projected = projectedVertices[i];
+            if (!projected) continue;
+
+            const dx = mouseX - projected.x;
+            const dy = mouseY - projected.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < this.vertexHandleSize) {
+                this.selectedVertexIndex = i;
+                this.isDraggingVertex = true;
+                return true;
+            }
+        }
+
+        this.selectedVertexIndex = -1;
+        return false;
+    }
+
+    /**
+     * Handle mouse move for vertex dragging
+     * @param {number} mouseX - Mouse X position
+     * @param {number} mouseY - Mouse Y position
+     * @param {number} deltaX - Mouse movement X
+     * @param {number} deltaY - Mouse movement Y
+     * @returns {boolean} - True if vertex was moved
+     */
+    onMouseMove(mouseX, mouseY, deltaX, deltaY) {
+        if (!this.isCustomModel || !this.isDraggingVertex || this.selectedVertexIndex === -1) return false;
+
+        const camera = this.findActiveCamera();
+        if (!camera) return false;
+
+        // Move vertex in world space based on camera orientation
+        const vertex = this.vertices[this.selectedVertexIndex];
+
+        // Simple screen-space to world-space conversion
+        // This is a basic implementation - could be improved with proper unprojection
+        const moveScale = 1.0;
+        vertex.x += deltaX * moveScale;
+        vertex.y += deltaY * moveScale;
+
+        return true;
+    }
+
+    /**
+     * Handle mouse up to stop dragging
+     */
+    onMouseUp() {
+        if (!this.isCustomModel) return false;
+
+        const wasDragging = this.isDraggingVertex;
+        this.isDraggingVertex = false;
+        return wasDragging;
+    }
+
+    /**
+     * Reset custom model to original sphere shape
+     */
+    resetCustomModel() {
+        if (!this.isCustomModel || !this.originalVertices) return;
+
+        this.vertices = this.originalVertices.map(v => v.clone());
+        this.selectedVertexIndex = -1;
+        this.isDraggingVertex = false;
+    }
+
+    /**
        * Serialize the mesh to JSON
        * @returns {Object} JSON representation of the mesh
        */
-     toJSON() {
-         return {
-             _type: "Mesh3D",
-             vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
-             edges: this.edges.map(edge => [...edge]),
-             faces: this.faces.map(face => [...face]),
-             uvCoordinates: this.uvCoordinates.map(uv => ({ x: uv.x, y: uv.y })),
-             position: { x: this.position.x, y: this.position.y, z: this.position.z },
-             rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
-             scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
-             wireframeColor: this.wireframeColor,
-             faceColor: this.faceColor,
-             renderMode: this.renderMode,
-             _showAxisLines: this._showAxisLines,
-             _axisLength: this._axisLength,
-             material: this.material ? this.material.toJSON() : null
-         };
-     }
+    toJSON() {
+        return {
+            _type: "Mesh3D",
+            vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
+            edges: this.edges.map(edge => [...edge]),
+            faces: this.faces.map(face => [...face]),
+            uvCoordinates: this.uvCoordinates.map(uv => ({ x: uv.x, y: uv.y })),
+            position: { x: this.position.x, y: this.position.y, z: this.position.z },
+            rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+            scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+            wireframeColor: this.wireframeColor,
+            faceColor: this.faceColor,
+            renderMode: this.renderMode,
+            _showAxisLines: this._showAxisLines,
+            _axisLength: this._axisLength,
+            _shape: this._shape,
+            cubeSize: this.cubeSize,
+            pyramidBaseSize: this.pyramidBaseSize,
+            pyramidHeight: this.pyramidHeight,
+            sphereRadius: this.sphereRadius,
+            sphereDetail: this.sphereDetail,
+            octahedronSize: this.octahedronSize,
+            torusMajorRadius: this.torusMajorRadius,
+            torusMinorRadius: this.torusMinorRadius,
+            torusMajorSegments: this.torusMajorSegments,
+            torusMinorSegments: this.torusMinorSegments,
+            coneRadius: this.coneRadius,
+            coneHeight: this.coneHeight,
+            coneSegments: this.coneSegments,
+            cylinderRadius: this.cylinderRadius,
+            cylinderHeight: this.cylinderHeight,
+            cylinderSegments: this.cylinderSegments,
+            icosahedronSize: this.icosahedronSize,
+            quadWidth: this.quadWidth,
+            quadHeight: this.quadHeight,
+            quadSubdivisionsX: this.quadSubdivisionsX,
+            quadSubdivisionsY: this.quadSubdivisionsY,
+            planeSize: this.planeSize,
+            isCustomModel: this.isCustomModel,
+            originalVertices: this.originalVertices ? this.originalVertices.map(v => ({ x: v.x, y: v.y, z: v.z })) : null,
+            material: this.material ? this.material.toJSON() : null
+        };
+    }
 
     /**
        * Deserialize the mesh from JSON
        * @param {Object} json - JSON representation of the mesh
        */
-     fromJSON(json) {
-         if (json.vertices) {
-             this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
-         }
-         if (json.edges) this.edges = json.edges;
-         if (json.faces) this.faces = json.faces;
-         if (json.uvCoordinates) {
-             this.uvCoordinates = json.uvCoordinates.map(uv => new Vector2(uv.x, uv.y));
-         } else {
-             // Regenerate UV coordinates if not present
-             this.generateUVCoordinates();
-         }
-         if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
-         if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
-         if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
-         if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
-         if (json.faceColor !== undefined) this.faceColor = json.faceColor;
-         if (json.renderMode !== undefined) this.renderMode = json.renderMode;
-         if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
-         if (json._axisLength !== undefined) this._axisLength = json._axisLength;
+    fromJSON(json) {
+        if (json.vertices) {
+            this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
+        }
+        if (json.edges) this.edges = json.edges;
+        if (json.faces) this.faces = json.faces;
+        if (json.uvCoordinates) {
+            this.uvCoordinates = json.uvCoordinates.map(uv => new Vector2(uv.x, uv.y));
+        } else {
+            // Regenerate UV coordinates if not present
+            this.generateUVCoordinates();
+        }
+        if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
+        if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
+        if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
+        if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
+        if (json.faceColor !== undefined) this.faceColor = json.faceColor;
+        if (json.renderMode !== undefined) this.renderMode = json.renderMode;
+        if (json._showAxisLines !== undefined) this._showAxisLines = json._showAxisLines;
+        if (json._axisLength !== undefined) this._axisLength = json._axisLength;
 
-         // Deserialize material if present
-         if (json.material) {
-             if (!this.material) {
-                 this.ensureMaterialModule();
-             }
-             if (this.material && this.material.fromJSON) {
-                 this.material.fromJSON(json.material);
-             }
-         }
-     }
+        // Restore shape and shape-specific properties
+        if (json._shape !== undefined) this._shape = json._shape;
+        if (json.cubeSize !== undefined) this.cubeSize = json.cubeSize;
+        if (json.pyramidBaseSize !== undefined) this.pyramidBaseSize = json.pyramidBaseSize;
+        if (json.pyramidHeight !== undefined) this.pyramidHeight = json.pyramidHeight;
+        if (json.sphereRadius !== undefined) this.sphereRadius = json.sphereRadius;
+        if (json.sphereDetail !== undefined) this.sphereDetail = json.sphereDetail;
+        if (json.octahedronSize !== undefined) this.octahedronSize = json.octahedronSize;
+        if (json.torusMajorRadius !== undefined) this.torusMajorRadius = json.torusMajorRadius;
+        if (json.torusMinorRadius !== undefined) this.torusMinorRadius = json.torusMinorRadius;
+        if (json.torusMajorSegments !== undefined) this.torusMajorSegments = json.torusMajorSegments;
+        if (json.torusMinorSegments !== undefined) this.torusMinorSegments = json.torusMinorSegments;
+        if (json.coneRadius !== undefined) this.coneRadius = json.coneRadius;
+        if (json.coneHeight !== undefined) this.coneHeight = json.coneHeight;
+        if (json.coneSegments !== undefined) this.coneSegments = json.coneSegments;
+        if (json.cylinderRadius !== undefined) this.cylinderRadius = json.cylinderRadius;
+        if (json.cylinderHeight !== undefined) this.cylinderHeight = json.cylinderHeight;
+        if (json.cylinderSegments !== undefined) this.cylinderSegments = json.cylinderSegments;
+        if (json.icosahedronSize !== undefined) this.icosahedronSize = json.icosahedronSize;
+        if (json.quadWidth !== undefined) this.quadWidth = json.quadWidth;
+        if (json.quadHeight !== undefined) this.quadHeight = json.quadHeight;
+        if (json.quadSubdivisionsX !== undefined) this.quadSubdivisionsX = json.quadSubdivisionsX;
+        if (json.quadSubdivisionsY !== undefined) this.quadSubdivisionsY = json.quadSubdivisionsY;
+        if (json.planeSize !== undefined) this.planeSize = json.planeSize;
+        if (json.isCustomModel !== undefined) this.isCustomModel = json.isCustomModel;
+        if (json.originalVertices) {
+            this.originalVertices = json.originalVertices.map(v => new Vector3(v.x, v.y, v.z));
+        }
+
+        // Update shape after loading properties
+        if (json._shape) {
+            this.updateShape();
+        }
+
+        // Deserialize material if present
+        if (json.material) {
+            if (!this.material) {
+                this.ensureMaterialModule();
+            }
+            if (this.material && this.material.fromJSON) {
+                this.material.fromJSON(json.material);
+            }
+        }
+    }
 
     // Getters and setters for properties
     get showAxisLines() { return this._showAxisLines; }
@@ -1001,6 +2567,12 @@ class Mesh3D extends Module {
 
     get axisLength() { return this._axisLength; }
     set axisLength(value) { this._axisLength = Math.max(50, Math.min(500, value)); }
+
+    get shape() { return this._shape; }
+    set shape(value) {
+        // console.log(`Mesh3D: Shape setter called with value: ${value}`);
+        this._shape = value;
+    }
 }
 
 // Register the Mesh3D module

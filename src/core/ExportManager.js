@@ -814,11 +814,11 @@ class ExportManager {
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
 
-            'Camera3D': 'src/core/3D/Camera3D.js',
+            /*'Camera3D': 'src/core/3D/Camera3D.js',
             'CubeMesh3D': 'src/core/3D/CubeMesh3D.js',
             'FlyCamera': 'src/core/3D/FlyCamera.js',
             'Mesh3D': 'src/core/3D/Mesh3D.js',
-            'MouseLook': 'src/core/3D/MouseLook.js',
+            'MouseLook': 'src/core/3D/MouseLook.js',*/
 
             // Drawing Modules
             /*'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',

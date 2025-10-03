@@ -21,9 +21,13 @@ class Camera3D extends Module {
         this._farPlane = 5000;
         this._isActive = false;
         this._backgroundColor = "#000000";
+
         this._skyColor = "#87CEEB";  // Sky blue
         this._floorColor = "#8B4513"; // Brown
+        this._skyColorHorizon = "#87CEEB"; // Sky at horizon (default same as sky)
+        this._floorColorHorizon = "#654321"; // Floor at horizon (darker brown)
         this._backgroundType = "skyfloor"; // "skyfloor", "transparent", "solid"
+
         this._renderTextureWidth = 320;
         this._renderTextureHeight = 240;
         this._renderTextureSmoothing = false;
@@ -32,7 +36,7 @@ class Camera3D extends Module {
         this.viewportWidth = 800;
         this.viewportHeight = 600;
         this.drawGizmoInRuntime = false;
-        this._renderingMethod = "fald";
+        this._renderingMethod = "raster";
         this._enableBackfaceCulling = false;
         this._disableCulling = true;
         this._cullingFieldOfView = 60; // Use same FOV as main camera for consistent culling
@@ -104,8 +108,14 @@ class Camera3D extends Module {
         this.exposeProperty("skyColor", "color", "#87CEEB", {
             onChange: (val) => this._skyColor = val
         });
+        this.exposeProperty("skyColorHorizon", "color", "#87CEEB", {
+            onChange: (val) => this._skyColorHorizon = val
+        });
         this.exposeProperty("floorColor", "color", "#8B4513", {
             onChange: (val) => this._floorColor = val
+        });
+        this.exposeProperty("floorColorHorizon", "color", "#654321", {
+            onChange: (val) => this._floorColorHorizon = val
         });
         this.exposeProperty("backgroundType", "dropdown", "skyfloor", {
             options: ["skyfloor", "transparent", "solid"],
@@ -721,44 +731,55 @@ class Camera3D extends Module {
         if (!this._renderTextureCtx) return;
         this._renderTextureCtx.imageSmoothingEnabled = this._renderTextureSmoothing;
 
-        // Handle different background types
         switch (this._backgroundType) {
             case "skyfloor":
-                // Calculate dynamic horizon based on camera pitch and FOV for accuracy
+                // Calculate dynamic horizon
                 const fovRadians = this._fieldOfView * (Math.PI / 180);
                 const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
                 const maxPitch = fovRadians / 2;
-                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch)); // Clamp to [-1, 1]
-                const horizonOffset = normalizedPitch * 0.5; // Scale to [-0.5, 0.5]
-                const horizonRatio = 0.5 + horizonOffset; // 0.5 when level, shifts based on pitch
-
-                // Clamp horizon between 0 and 1 to avoid extreme cases
+                const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+                const horizonOffset = normalizedPitch * 0.5;
+                const horizonRatio = 0.5 + horizonOffset;
                 const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
                 const horizonY = Math.floor(this._renderTextureHeight * clampedHorizon);
 
-                // Draw sky (from top to horizon)
-                this._renderTextureCtx.fillStyle = this._skyColor;
+                // Draw gradient sky (from top to horizon)
+                const skyGradient = this._renderTextureCtx.createLinearGradient(0, 0, 0, horizonY);
+                skyGradient.addColorStop(0, this._skyColor);
+                skyGradient.addColorStop(1, this._skyColorHorizon);
+                this._renderTextureCtx.fillStyle = skyGradient;
                 this._renderTextureCtx.fillRect(0, 0, this._renderTextureWidth, horizonY);
 
-                // Draw floor (from horizon to bottom)
-                this._renderTextureCtx.fillStyle = this._floorColor;
+                // Draw gradient floor (from horizon to bottom)
+                const floorGradient = this._renderTextureCtx.createLinearGradient(0, horizonY, 0, this._renderTextureHeight);
+                floorGradient.addColorStop(0, this._floorColorHorizon);
+                floorGradient.addColorStop(1, this._floorColor);
+                this._renderTextureCtx.fillStyle = floorGradient;
                 this._renderTextureCtx.fillRect(0, horizonY, this._renderTextureWidth, this._renderTextureHeight - horizonY);
                 break;
 
             case "transparent":
-                // Don't clear the background - leave it transparent
-                // This allows 2D drawing beneath the 3D canvas
+                // Don't clear - leave transparent
                 break;
 
             case "solid":
             default:
-                // Fill with solid background color
                 this._renderTextureCtx.fillStyle = this._backgroundColor;
                 this._renderTextureCtx.fillRect(0, 0, this._renderTextureWidth, this._renderTextureHeight);
                 break;
         }
 
         if (this._zBuffer) this._zBuffer.fill(Infinity);
+    }
+
+    interpolateColor(color1, color2, t) {
+        const c1 = this.hexToRgb(color1);
+        const c2 = this.hexToRgb(color2);
+        return {
+            r: Math.round(c1.r + (c2.r - c1.r) * t),
+            g: Math.round(c1.g + (c2.g - c1.g) * t),
+            b: Math.round(c1.b + (c2.b - c1.b) * t)
+        };
     }
 
     updateViewport() {
@@ -783,18 +804,18 @@ class Camera3D extends Module {
         const v2 = cameraSpaceVertices[2];
 
         // Calculate face normal in camera space using cross product
-        // Camera looks along +X axis
+        // Camera looks along +X axis, so we need consistent winding
         const edge1 = { x: v1.x - v0.x, y: v1.y - v0.y, z: v1.z - v0.z };
         const edge2 = { x: v2.x - v0.x, y: v2.y - v0.y, z: v2.z - v0.z };
 
-        // Cross product (edge1 x edge2) - use right-hand rule
+        // Cross product (edge1 x edge2) - use right-hand rule for consistent winding
         const normal = {
             x: edge1.y * edge2.z - edge1.z * edge2.y,
             y: edge1.z * edge2.x - edge1.x * edge2.z,
             z: edge1.x * edge2.y - edge1.y * edge2.x
         };
 
-        // Normalize
+        // Normalize the normal
         const normalLength = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
         if (normalLength < 1e-10) return true; // Degenerate triangle
 
@@ -804,26 +825,24 @@ class Camera3D extends Module {
             z: normal.z / normalLength
         };
 
-        // View direction in camera space is along +X axis (camera looking towards +X)
-        // For a face to be front-facing, its normal should point towards the camera (negative X)
-        // So we want normalizedNormal.x < 0 for front faces
-        // Cull if normalizedNormal.x >= 0 (backfaces pointing away)
+        // Camera is at origin in camera space, looking towards +X
+        // For a face to be visible (front-facing), the normal should point towards the camera
+        // Since camera looks along +X, we want the normal to have a negative X component
+        // If normal.x > 0, the face is pointing away from camera (backface)
+        // If normal.x < 0, the face is pointing towards camera (frontface)
 
-        // Use the centroid for more accurate culling
+        // Use centroid for more stable culling
         const centroidX = (v0.x + v1.x + v2.x) / 3;
-        const centroidY = (v0.y + v1.y + v2.y) / 3;
-        const centroidZ = (v0.z + v1.z + v2.z) / 3;
 
-        // Vector from centroid to camera (at origin)
-        const toCameraX = -centroidX;
-        const toCameraY = -centroidY;
-        const toCameraZ = -centroidZ;
+        // Simple and robust culling: if the average X coordinate is positive
+        // and the normal is also pointing in the positive X direction, cull it
+        // This works because in camera space:
+        // - Positive X = away from camera
+        // - Negative X = towards camera
 
-        // Dot product with normal - if positive, face is front-facing
-        const dot = normalizedNormal.x * toCameraX + normalizedNormal.y * toCameraY + normalizedNormal.z * toCameraZ;
+        const isBackface = normalizedNormal.x > 0.01; // Small epsilon for numerical stability
 
-        // Cull if dot < 0 (backface)
-        return dot < -0.01; // Small epsilon for numerical stability
+        return isBackface;
     }
 
     drawTexturedTriangle(ctx, vertices, uvs, texture) {
@@ -887,7 +906,7 @@ class Camera3D extends Module {
                 cameraVerts = this.clipPolygonAgainstFarPlane(cameraVerts, this._farPlane);
                 if (cameraVerts.length < 3) return;
 
-                // Backface culling AFTER clipping
+                // Backface culling AFTER clipping using clipped vertices
                 const material = mesh?.material;
                 const isDoubleSided = material ? material._doubleSided : false;
                 if (this._enableBackfaceCulling && !this._disableCulling && !isDoubleSided && this.shouldCullFace(cameraVerts)) return;
@@ -3629,20 +3648,26 @@ class Camera3D extends Module {
             const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
             const horizonY = Math.floor(h * clampedHorizon);
 
-            const skyColor = this.hexToRgb(this._skyColor);
-            const floorColor = this.hexToRgb(this._floorColor);
-            const skyPixel = (255 << 24) | (skyColor.b << 16) | (skyColor.g << 8) | skyColor.r;
-            const floorPixel = (255 << 24) | (floorColor.b << 16) | (floorColor.g << 8) | floorColor.r;
-
+            // Draw gradient sky and floor
             for (let y = 0; y < h; y++) {
-                const pixel = y < horizonY ? skyPixel : floorPixel;
+                let color;
+                if (y < horizonY) {
+                    // Sky gradient
+                    const t = y / horizonY;
+                    color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
+                } else {
+                    // Floor gradient
+                    const t = (y - horizonY) / (h - horizonY);
+                    color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
+                }
+                const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
                 const rowStart = y * w;
                 for (let x = 0; x < w; x++) {
                     buffer32[rowStart + x] = pixel;
                 }
             }
         } else if (this._backgroundType === "transparent") {
-            buffer32.fill(0); // Fully transparent
+            buffer32.fill(0);
         }
     }
 
@@ -3857,9 +3882,8 @@ class Camera3D extends Module {
      */
     clearFALDBackground(data, w, h) {
         if (this._backgroundType === "transparent") {
-            // Leave transparent
             for (let i = 0; i < data.length; i += 4) {
-                data[i + 3] = 0; // Fully transparent
+                data[i + 3] = 0;
             }
         } else if (this._backgroundType === "solid") {
             const bgColor = this.hexToRgb(this._backgroundColor);
@@ -3879,20 +3903,22 @@ class Camera3D extends Module {
             const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
             const horizonY = Math.floor(h * clampedHorizon);
 
-            const skyColor = this.hexToRgb(this._skyColor);
-            const floorColor = this.hexToRgb(this._floorColor);
-
+            // Draw gradient background
             for (let i = 0; i < data.length; i += 4) {
                 const y = Math.floor((i / 4) / w);
+                let color;
                 if (y < horizonY) {
-                    data[i] = skyColor.r;
-                    data[i + 1] = skyColor.g;
-                    data[i + 2] = skyColor.b;
+                    // Sky gradient
+                    const t = y / horizonY;
+                    color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
                 } else {
-                    data[i] = floorColor.r;
-                    data[i + 1] = floorColor.g;
-                    data[i + 2] = floorColor.b;
+                    // Floor gradient
+                    const t = (y - horizonY) / (h - horizonY);
+                    color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
                 }
+                data[i] = color.r;
+                data[i + 1] = color.g;
+                data[i + 2] = color.b;
                 data[i + 3] = 255;
             }
         }
@@ -4187,149 +4213,149 @@ class Camera3D extends Module {
   * Uses edge function approach for fast inside testing
   * Now supports full material properties including alpha, specular, emissive, etc.
   */
-     rasterizeFALDTriangle(p0, p1, p2, color, data, w, h, material = null, faceUVs = null) {
-         // Round to integer coordinates
-         const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
-         const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
-         const x2 = Math.round(p2.x), y2 = Math.round(p2.y);
+    rasterizeFALDTriangle(p0, p1, p2, color, data, w, h, material = null, faceUVs = null) {
+        // Round to integer coordinates
+        const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
+        const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
+        const x2 = Math.round(p2.x), y2 = Math.round(p2.y);
 
-         // Calculate bounding box
-         const minX = Math.max(0, Math.min(x0, x1, x2));
-         const maxX = Math.min(w - 1, Math.max(x0, x1, x2));
-         const minY = Math.max(0, Math.min(y0, y1, y2));
-         const maxY = Math.min(h - 1, Math.max(y0, y1, y2));
+        // Calculate bounding box
+        const minX = Math.max(0, Math.min(x0, x1, x2));
+        const maxX = Math.min(w - 1, Math.max(x0, x1, x2));
+        const minY = Math.max(0, Math.min(y0, y1, y2));
+        const maxY = Math.min(h - 1, Math.max(y0, y1, y2));
 
-         // Early rejection
-         if (minX > maxX || minY > maxY) return;
+        // Early rejection
+        if (minX > maxX || minY > maxY) return;
 
-         // Edge function setup
-         const e0_dx = x1 - x0, e0_dy = y1 - y0;
-         const e1_dx = x2 - x1, e1_dy = y2 - y1;
-         const e2_dx = x0 - x2, e2_dy = y0 - y2;
+        // Edge function setup
+        const e0_dx = x1 - x0, e0_dy = y1 - y0;
+        const e1_dx = x2 - x1, e1_dy = y2 - y1;
+        const e2_dx = x0 - x2, e2_dy = y0 - y2;
 
-         // Check if triangle is degenerate
-         const area = e0_dx * (y2 - y0) - e0_dy * (x2 - x0);
-         if (Math.abs(area) < 0.5) return;
+        // Check if triangle is degenerate
+        const area = e0_dx * (y2 - y0) - e0_dy * (x2 - x0);
+        if (Math.abs(area) < 0.5) return;
 
-         const invArea = 1.0 / area;
+        const invArea = 1.0 / area;
 
-         // Get textures if material has them
-         const diffuseTexture = material ? material.getDiffuseTexture() : null;
-         const normalTexture = material ? material._normalTexture : null;
-         const specularTexture = material ? material._specularTexture : null;
-         const emissiveTexture = material ? material._emissiveTexture : null;
+        // Get textures if material has them
+        const diffuseTexture = material ? material.getDiffuseTexture() : null;
+        const normalTexture = material ? material._normalTexture : null;
+        const specularTexture = material ? material._specularTexture : null;
+        const emissiveTexture = material ? material._emissiveTexture : null;
 
-         // Get material properties
-         const opacity = material ? material._opacity : 1.0;
-         const specularColor = material ? material._specularColor : "#FFFFFF";
-         const emissiveColor = material ? material._emissiveColor : "#000000";
-         const shininess = material ? material._shininess : 32;
-         const wireframe = material ? material._wireframe : false;
-         const doubleSided = material ? material._doubleSided : false;
+        // Get material properties
+        const opacity = material ? material._opacity : 1.0;
+        const specularColor = material ? material._specularColor : "#FFFFFF";
+        const emissiveColor = material ? material._emissiveColor : "#000000";
+        const shininess = material ? material._shininess : 32;
+        const wireframe = material ? material._wireframe : false;
+        const doubleSided = material ? material._doubleSided : false;
 
-         // Parse material colors
-         const specularRgb = this.hexToRgb(specularColor);
-         const emissiveRgb = this.hexToRgb(emissiveColor);
+        // Parse material colors
+        const specularRgb = this.hexToRgb(specularColor);
+        const emissiveRgb = this.hexToRgb(emissiveColor);
 
-         // Precompute color values for solid color fallback
-         const baseR = color.r, baseG = color.g, baseB = color.b;
+        // Precompute color values for solid color fallback
+        const baseR = color.r, baseG = color.g, baseB = color.b;
 
-         // Calculate lighting vectors (simplified)
-         const lightDir = this._lightDirection;
-         const lightLen = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
-         const normalizedLightDir = {
-             x: lightDir.x / lightLen,
-             y: lightDir.y / lightLen,
-             z: lightDir.z / lightLen
-         };
+        // Calculate lighting vectors (simplified)
+        const lightDir = this._lightDirection;
+        const lightLen = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
+        const normalizedLightDir = {
+            x: lightDir.x / lightLen,
+            y: lightDir.y / lightLen,
+            z: lightDir.z / lightLen
+        };
 
-         // Scanline rasterization
-         for (let y = minY; y <= maxY; y++) {
-             // Calculate edge values at start of scanline
-             let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
-             let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
-             let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
+        // Scanline rasterization
+        for (let y = minY; y <= maxY; y++) {
+            // Calculate edge values at start of scanline
+            let w0 = e0_dx * (y - y0) - e0_dy * (minX - x0);
+            let w1 = e1_dx * (y - y1) - e1_dy * (minX - x1);
+            let w2 = e2_dx * (y - y2) - e2_dy * (minX - x2);
 
-             // Edge increments for x-stepping
-             const w0_step = -e0_dy;
-             const w1_step = -e1_dy;
-             const w2_step = -e2_dy;
+            // Edge increments for x-stepping
+            const w0_step = -e0_dy;
+            const w1_step = -e1_dy;
+            const w2_step = -e2_dy;
 
-             for (let x = minX; x <= maxX; x++) {
-                 // Inside test using edge equations
-                 if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-                     // Calculate barycentric coordinates for texture sampling and lighting
-                     const u = w0 * invArea;
-                     const v = w1 * invArea;
-                     const ww = 1 - u - v;
+            for (let x = minX; x <= maxX; x++) {
+                // Inside test using edge equations
+                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                    // Calculate barycentric coordinates for texture sampling and lighting
+                    const u = w0 * invArea;
+                    const v = w1 * invArea;
+                    const ww = 1 - u - v;
 
-                     let pixelR = baseR, pixelG = baseG, pixelB = baseB, pixelA = 255;
+                    let pixelR = baseR, pixelG = baseG, pixelB = baseB, pixelA = 255;
 
-                     // Sample diffuse texture if available
-                     if (diffuseTexture && faceUVs && faceUVs.length >= 3) {
-                         // Interpolate UV coordinates using barycentric coordinates
-                         const texU = u * faceUVs[0].x + v * faceUVs[1].x + ww * faceUVs[2].x;
-                         const texV = u * faceUVs[0].y + v * faceUVs[1].y + ww * faceUVs[2].y;
+                    // Sample diffuse texture if available
+                    if (diffuseTexture && faceUVs && faceUVs.length >= 3) {
+                        // Interpolate UV coordinates using barycentric coordinates
+                        const texU = u * faceUVs[0].x + v * faceUVs[1].x + ww * faceUVs[2].x;
+                        const texV = u * faceUVs[0].y + v * faceUVs[1].y + ww * faceUVs[2].y;
 
-                         // Sample texture color
-                         const textureColor = material.sampleTexture(texU, texV, diffuseTexture);
-                         if (textureColor) {
-                             // Parse rgba() color
-                             const rgbaMatch = textureColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
-                             if (rgbaMatch) {
-                                 pixelR = parseInt(rgbaMatch[1]);
-                                 pixelG = parseInt(rgbaMatch[2]);
-                                 pixelB = parseInt(rgbaMatch[3]);
-                                 pixelA = parseInt(rgbaMatch[4] * 255 * opacity);
-                             }
-                         }
-                     } else {
-                         // Apply material opacity even without texture
-                         pixelA = Math.round(255 * opacity);
-                     }
+                        // Sample texture color
+                        const textureColor = material.sampleTexture(texU, texV, diffuseTexture);
+                        if (textureColor) {
+                            // Parse rgba() color
+                            const rgbaMatch = textureColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+                            if (rgbaMatch) {
+                                pixelR = parseInt(rgbaMatch[1]);
+                                pixelG = parseInt(rgbaMatch[2]);
+                                pixelB = parseInt(rgbaMatch[3]);
+                                pixelA = parseInt(rgbaMatch[4] * 255 * opacity);
+                            }
+                        }
+                    } else {
+                        // Apply material opacity even without texture
+                        pixelA = Math.round(255 * opacity);
+                    }
 
-                     // Add emissive lighting if material has emissive color
-                     if (emissiveRgb.r > 0 || emissiveRgb.g > 0 || emissiveRgb.b > 0) {
-                         pixelR = Math.min(255, pixelR + emissiveRgb.r);
-                         pixelG = Math.min(255, pixelG + emissiveRgb.g);
-                         pixelB = Math.min(255, pixelB + emissiveRgb.b);
-                     }
+                    // Add emissive lighting if material has emissive color
+                    if (emissiveRgb.r > 0 || emissiveRgb.g > 0 || emissiveRgb.b > 0) {
+                        pixelR = Math.min(255, pixelR + emissiveRgb.r);
+                        pixelG = Math.min(255, pixelG + emissiveRgb.g);
+                        pixelB = Math.min(255, pixelB + emissiveRgb.b);
+                    }
 
-                     // Add specular lighting if material has specular properties
-                     if (specularRgb.r > 0 || specularRgb.g > 0 || specularRgb.b > 0) {
-                         // Simple specular calculation (can be enhanced with proper normal mapping)
-                         const specularIntensity = Math.pow(Math.max(0, -normalizedLightDir.z), shininess) * this._lightIntensity;
-                         pixelR = Math.min(255, pixelR + specularRgb.r * specularIntensity);
-                         pixelG = Math.min(255, pixelG + specularRgb.g * specularIntensity);
-                         pixelB = Math.min(255, pixelB + specularRgb.b * specularIntensity);
-                     }
+                    // Add specular lighting if material has specular properties
+                    if (specularRgb.r > 0 || specularRgb.g > 0 || specularRgb.b > 0) {
+                        // Simple specular calculation (can be enhanced with proper normal mapping)
+                        const specularIntensity = Math.pow(Math.max(0, -normalizedLightDir.z), shininess) * this._lightIntensity;
+                        pixelR = Math.min(255, pixelR + specularRgb.r * specularIntensity);
+                        pixelG = Math.min(255, pixelG + specularRgb.g * specularIntensity);
+                        pixelB = Math.min(255, pixelB + specularRgb.b * specularIntensity);
+                    }
 
-                     // Handle wireframe mode
-                     if (wireframe) {
-                         // Check if we're on the edge of the triangle
-                         const edgeDistance = Math.min(
-                             Math.min(w0, w1),
-                             Math.min(w2, Math.min(w0 + w1, w1 + w2))
-                         );
-                         if (edgeDistance < 2) { // Wireframe thickness
-                             pixelR = pixelG = pixelB = 255; // White wireframe
-                         }
-                     }
+                    // Handle wireframe mode
+                    if (wireframe) {
+                        // Check if we're on the edge of the triangle
+                        const edgeDistance = Math.min(
+                            Math.min(w0, w1),
+                            Math.min(w2, Math.min(w0 + w1, w1 + w2))
+                        );
+                        if (edgeDistance < 2) { // Wireframe thickness
+                            pixelR = pixelG = pixelB = 255; // White wireframe
+                        }
+                    }
 
-                     const pixelIdx = (y * w + x) * 4;
-                     data[pixelIdx] = pixelR;
-                     data[pixelIdx + 1] = pixelG;
-                     data[pixelIdx + 2] = pixelB;
-                     data[pixelIdx + 3] = pixelA;
-                 }
+                    const pixelIdx = (y * w + x) * 4;
+                    data[pixelIdx] = pixelR;
+                    data[pixelIdx + 1] = pixelG;
+                    data[pixelIdx + 2] = pixelB;
+                    data[pixelIdx + 3] = pixelA;
+                }
 
-                 // Increment edge values
-                 w0 += w0_step;
-                 w1 += w1_step;
-                 w2 += w2_step;
-             }
-         }
-     }
+                // Increment edge values
+                w0 += w0_step;
+                w1 += w1_step;
+                w2 += w2_step;
+            }
+        }
+    }
 
     /**
      * Draw a triangle using native canvas fill (REMOVED - not used anymore)
@@ -4706,7 +4732,9 @@ class Camera3D extends Module {
             _aperture: this._aperture,
             _maxBlurRadius: this._maxBlurRadius,
             _skyColor: this._skyColor,
+            _skyColorHorizon: this._skyColorHorizon,
             _floorColor: this._floorColor,
+            _floorColorHorizon: this._floorColorHorizon,
             _backgroundType: this._backgroundType
         };
     }
@@ -4735,7 +4763,9 @@ class Camera3D extends Module {
         if (json._aperture !== undefined) this._aperture = json._aperture;
         if (json._maxBlurRadius !== undefined) this._maxBlurRadius = json._maxBlurRadius;
         if (json._skyColor !== undefined) { this._skyColor = json._skyColor; } else { this._skyColor = "#87CEEB"; }
+        if (json._skyColorHorizon !== undefined) { this._skyColorHorizon = json._skyColorHorizon; } else { this._skyColorHorizon = "#87CEEB"; }
         if (json._floorColor !== undefined) { this._floorColor = json._floorColor; } else { this._floorColor = "#8B4513"; }
+        if (json._floorColorHorizon !== undefined) { this._floorColorHorizon = json._floorColorHorizon; } else { this._floorColorHorizon = "#654321"; }
         if (json._backgroundType !== undefined) { this._backgroundType = json._backgroundType; } else { this._backgroundType = "skyfloor"; }
         this.updateRenderTexture();
     }

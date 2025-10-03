@@ -25,7 +25,8 @@ class AssetManagerWindow extends EditorWindow {
             'marching_squares.dmjs',
             'infinite_2d_parallax_starfield.dmjs',
             'top_down_cars_and_road_cone.dmjs',
-            'asteroids.dmjs'
+            'asteroids.dmjs',
+            '2d_context_3d.dmjs'
             // Add more known asset filenames here
         ];
 

@@ -2267,17 +2267,45 @@ class ScriptEditor {
             editorContainer.classList.add('fullwidth');
         }
 
-        // Refresh CodeMirror after layout changes with proper timing for spring animation
-        // Match the CSS transition duration (0.4s = 400ms) for smooth animation
-        setTimeout(() => {
-            if (this.editor) {
-                this.editor.refresh();
-                // Ensure focus is maintained if it was focused
-                if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.se-modal-editor-container')) {
-                    this.editor.focus();
+        // Force immediate layout recalculation and CodeMirror resize
+        if (this.editor) {
+            // Get the CodeMirror wrapper element
+            const cmWrapper = this.editor.getWrapperElement();
+
+            // Trigger reflow to ensure CSS changes are applied
+            void editorContainer.offsetHeight;
+
+            // Force CodeMirror to recalculate its size immediately
+            this.editor.setSize(null, null); // Auto-size
+            this.editor.refresh();
+
+            // Continue refreshing during the CSS transition (400ms)
+            let frameCount = 0;
+            const maxFrames = 24; // ~400ms at 60fps
+
+            const animationLoop = () => {
+                if (frameCount < maxFrames) {
+                    // Force size recalculation each frame
+                    this.editor.setSize(null, null);
+                    this.editor.refresh();
+                    frameCount++;
+                    requestAnimationFrame(animationLoop);
+                } else {
+                    // Final refresh after animation completes
+                    this.editor.setSize(null, null);
+                    this.editor.refresh();
+
+                    // Restore focus if it was in the editor
+                    if (document.activeElement &&
+                        (document.activeElement.closest('.se-modal-editor-container') ||
+                            document.activeElement.closest('.CodeMirror'))) {
+                        this.editor.focus();
+                    }
                 }
-            }
-        }, 400); // Match CSS transition duration for perfect synchronization
+            };
+
+            requestAnimationFrame(animationLoop);
+        }
     }
 
     showAISettings() {
@@ -2452,87 +2480,257 @@ Ask me to create, fix, or improve modules for your game!
     }
 
     async callAI(provider, apiKey, message) {
-        const systemPrompt = `You are an AI assistant specialized expert in the Dark Matter JS game engine module system.
+        const systemPrompt = `# Dark Matter JS Game Engine - Module Creation Guide
 
-**Module System Basics:**
-- Modules extend GameObject functionality
-- GameObjects have: position (Vector2), scale (Vector2), angle (degrees), size (Vector2)
-- All modules extend the Module base class
-- Use this.gameObject to access the GameObject
-- Access other modules: this.gameObject.getModule("ModuleName")
-- Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
-- Viewport x and y is viewport top left, and width and height is overall width/height
+You are an expert AI assistant for the **Dark Matter JS** browser-based 2D game engine with a component-based architecture similar to Unity.
 
-**Module Template:**
+## Core Concepts
+
+### this.gameObject Structure
+- **position**: Vector2 (x, y coordinates)
+- **scale**: Vector2 (scale factors)
+- **angle**: Number (rotation in degrees)
+- **size**: Vector2 (bounding box dimensions)
+- **Parent-child hierarchy**: Use \`addChild()\` for relationships
+- **Tags**: Use \`addTag("tag")\`, \`hasTag("tag")\`
+
+### Module System
+Modules are components that extend GameObject behavior. All modules:
+- Extend the \`Module\` base class
+- Access GameObject via \`this.gameObject\`
+- Can be enabled/disabled independently
+- Support serialization (save/load)
+- Can query other modules: \`this.gameObject.getModule("ModuleName")\`
+
+## Module Template
+
 \`\`\`javascript
 class MyModule extends Module {
-    static namespace = "Category";
-    static description = "Brief description";
-    static allowMultiple = false; // or true to allow multiple
+    static namespace = "Category";  // Optional: Groups modules in editor
+    static description = "Brief description";  // Shown in module list
+    static allowMultiple = false;  // true = multiple instances allowed
+    static icon = "⭐";  // Optional: Emoji/icon in module list
 
     constructor() {
         super("MyModule");
 
-        this.speed = 100; // Default speed
+        this.ignoreGameObjectTransform = false;  // true = drawing doesnt sync with GameObject transform
+
+        this.require("RigidBody");  // Require another module on the same GameObject, if the module exists, it will be added automatically
         
-        // Expose properties for inspector
+        // Properties with defaults
+        this.speed = 100;
+        this.direction = new Vector2(1, 0);
+        
+        // Expose to inspector (CRITICAL: use onChange to update) (all other options are optional) (Keep property types together for organization)
         this.exposeProperty("speed", "number", 100, {
-            description: "Movement speed",
-            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
-                this.speed = val; // Update speed when property changes
-            }
+            min: 0, max: 500, step: 10,
+            description: "Movement speed in pixels/sec",
+            onChange: (val) => { this.speed = val; }  // REQUIRED for updates
         });
     }
 
-    start() {
-        // Initialize when game starts
-    }
+    // Lifecycle methods (all optional)
+    preload() { /* Load assets before start */ }
+    start() { /* Initialize when game starts */ }
+    beginLoop() { /* Called before loop() each frame */ }
+    loop(deltaTime) { /* Main update (deltaTime in seconds) */ }
+    endLoop() { /* Called after loop() each frame */ }
+    draw(ctx) { /* Render custom graphics */ }
+    drawGizmos(ctx) { /* Debug visualization (editor only) */ }
+    onDestroy() { /* Cleanup on module removal */ }
 
-    loop(deltaTime) {
-        // Update logic every frame
-        // deltaTime is in seconds
-        this.gameObject.position.x += this.speed * deltaTime;
-    }
-
-    draw(ctx) {
-        // Render to canvas
-    }
-
-    drawGizmos(ctx) {
-        // Draw debug gizmos (optional)
-    }
-
-    toJSON() { // Serialize module state
-        return {
-            speed: this.speed
+    // Serialization (save/load properties)
+    toJSON() {
+        return { 
+            ...super.toJSON(),  // Include base properties
+            speed: this.speed, 
+            direction: this.direction 
         };
     }
-
-    fromJSON(data) { // Deserialize module state
-        this.speed = data.speed || 100; // Default to 100 if not provided
+    fromJSON(data) {
+        super.fromJSON(data);  // Load base properties
+        this.speed = data.speed || 100;
+        this.direction = data.direction || new Vector2(1, 0);
     }
 }
 
-window.MyModule = MyModule; // Register globally
+window.MyModule = MyModule;  // REQUIRED: Register globally
 \`\`\`
 
-**Common Property Types:**
-- "number", "string", "boolean", "color"
-- "enum" (needs options: ["A", "B", "C"])
-- "vector2" (for Vector2 objects, does NOT have static methods for add / subtract etc)
+## Property Types & Options
 
-**Available Input:**
-- window.input.keyDown("w") - check if key held
-- window.input.keyPressed("space") - check if key just pressed
-- window.input.mouseDown("left") - mouse button states
+### Basic Types
+- \`"number"\`: Numeric values (options: min, max, step)
+- \`"string"\`: Text input
+- \`"boolean"\`: Checkbox
+- \`"color"\`: Color picker (hex string)
+- \`"vector2"\`: Vector2 editor (no static methods - use instance methods)
 
-**Transform Access:**
-- this.gameObject.position (Vector2)
-- this.gameObject.angle (degrees)
-- this.gameObject.scale (Vector2)
-- this.gameObject.getWorldPosition()
+### Advanced Types
+- \`"enum"\`: Dropdown (requires \`options: ["A", "B", "C"]\`)
 
-Provide working, complete modules. Keep code concise but functional.`;
+## Common APIs
+
+### Input System
+\`\`\`javascript
+// Keyboard
+window.input.keyDown("w")  // Held down
+window.input.keyPressed(" ")  // Just pressed this frame
+window.input.keyReleased("escape")  // Just released
+
+// Mouse
+window.input.mouseDown("left")  // "left", "right", "middle"
+window.input.mousePressed("left")
+window.input.getMousePosition(true)  // true = world space, false = screen
+
+// Touch (mobile)
+window.input.isTapped()
+window.input.getTouchCount()
+\`\`\`
+
+### Transform & Movement
+\`\`\`javascript
+// Position
+this.gameObject.position.x += 10;
+const worldPos = this.gameObject.getWorldPosition();  // With parent hierarchy
+
+// Rotation
+this.gameObject.angle += 90;  // Degrees
+
+// Scale
+this.gameObject.scale.x = 2;
+\`\`\`
+
+### Collision Detection
+\`\`\`javascript
+// Basic collisions (requires useCollisions = true on both objects)
+const collisions = this.gameObject.checkForCollisions();
+collisions.forEach(other => {
+    if (other.gameObject.hasTag("enemy")) {
+        // Handle collision
+    }
+});
+\`\`\`
+
+### Scene & GameObject Management
+\`\`\`javascript
+// Find objects
+const player = this.findGameObject("Player");
+
+// Create a new instance of a game object by name
+const enemy = this.instanceCreate("Enemy", x, y, parent);
+
+// Create objects dynamically
+const obj = new GameObject("NewObject");
+window.engine.gameObjects.push(obj);
+\`\`\`
+
+### Drawing & Canvas
+\`\`\`javascript
+draw(ctx) {
+    // Main canvas (game layer)
+    ctx = this.getMainCanvas();
+    
+    // GUI canvas (UI layer - draws on top of everything)
+    ctx = this.getGuiCanvas();
+    
+    // Background canvas (draws behind everything)
+    ctx = this..getBackgroundCanvas();
+    
+    ctx.save();
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(-50, -50, 100, 100);  // Centered on GameObject if ignoreGameObjectTransform = false
+    ctx.restore();
+}
+\`\`\`
+
+### Viewport (Camera)
+\`\`\`javascript
+// Access camera viewport
+const vp = this.viewport; // { x, y, width, height, zoom }
+console.log(vp.x, vp.y);  // Center viewport in world space
+console.log(vp.width, vp.height);  // Viewport dimensions
+\`\`\`
+
+### Math Utilities (matterMath)
+\`\`\`javascript
+// Angles & directions
+window.matterMath.degtorad(90)  // Convert degrees to radians
+window.matterMath.pointDirection(x1, y1, x2, y2)  // Angle between points
+window.matterMath.lengthDirX(length, angle)  // X component of vector
+window.matterMath.lengthDirY(length, angle)  // Y component
+
+// Interpolation
+window.matterMath.lerp(start, end, t)  // Linear interpolation
+window.matterMath.sine(period, amplitude)  // Oscillating value
+
+// Random
+window.matterMath.random(max)  // Float: 1 to max
+window.matterMath.irandom(max)  // Integer: 1 to max
+window.matterMath.randomRange(min, max)
+window.matterMath.choose("a", "b", "c")  // Pick random argument
+
+// Other
+window.matterMath.clamp(value, min, max)
+window.matterMath.pointDistance(x1, y1, x2, y2)
+\`\`\`
+
+### Vector2 Methods
+\`\`\`javascript
+const v = new Vector2(1, 0);
+v.add(other)  // Instance method
+v.subtract(other)
+v.multiply(scalar)
+v.divide(scalar)
+v.normalize()  // Returns normalized vector
+v.magnitude()  // Length
+v.distance(other)  // Distance to another vector
+
+// Static methods
+Vector2.lerp(start, end, t)
+Vector2.distance(v1, v2)
+\`\`\`
+
+## Built-in Modules (Reference)
+
+### Physics
+- **RigidBody**: Matter.js physics (bodyType, density, friction, restitution)
+- **BasicPhysics**: Simple physics without Matter.js
+
+### Rendering
+- **SpriteRenderer**: Display images (imageAsset, width, height, scaleMode)
+
+### Controllers
+- **KeyboardController**: WASD/Arrow key movement
+- **CameraController**: Camera following and zoom
+
+### Logic
+- **Timer**: Execute actions after delay
+
+### UI
+- **Button**: Interactive buttons with click actions
+- **Text**: Display formatted text
+
+### Animation
+- **Tween**: Property animation with easing
+- **ParticleSystem**: Particle effects
+
+### Utility
+- **FollowTarget**: Follow another GameObject
+- **Spawner**: Spawn objects at intervals
+
+## Best Practices
+
+1. **Always use \`onChange\` in \`exposeProperty()\`** to update internal values
+2. **Register modules globally**: \`window.ModuleName = ModuleName;\`
+3. **Use deltaTime** for frame-rate independent movement
+4. **Call \`ctx.save()\` and \`ctx.restore()\`** when drawing
+5. **Check module existence** before accessing: \`if (module) { ... }\`
+6. **Use Vector2 instance methods** (no static add/subtract)
+7. **Implement toJSON/fromJSON** for properties that need persistence
+
+Generate complete, functional modules that follow this architecture.`;
 
         switch (provider) {
             case 'chatgpt':
