@@ -30,4 +30,4 @@
 - Add more physics functionality, like wind and wind direction, wind zone module that adds force to any rigidbodies 
     within its rectangle radius etc
 
-    get 3d camera rotating relative to game object angle
+- Make specular only draw when within the cameras FOV

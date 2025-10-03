@@ -47,6 +47,7 @@ class Camera3D extends Module {
         this._lightColor = "#ffffff";
         this._lightIntensity = 1.0;
         this._ambientIntensity = 0.3;
+        this._specularBleedingEnabled = true; // Add this new property
 
         // Depth of field properties
         this._depthOfFieldEnabled = false;
@@ -87,6 +88,9 @@ class Camera3D extends Module {
         });
         this.exposeProperty("ambientIntensity", "number", 0.3, {
             min: 0, max: 1, step: 0.05, onChange: (val) => this._ambientIntensity = val
+        });
+        this.exposeProperty("specularBleedingEnabled", "boolean", true, {
+            onChange: (val) => this._specularBleedingEnabled = val
         });
 
         /*this.exposeProperty("depthOfFieldEnabled", "boolean", false, {
@@ -2288,6 +2292,255 @@ class Camera3D extends Module {
     }
 
     /**
+ * Calculate specular highlight position in screen space
+ * @param {Object} tri - Triangle with world vertices and normal
+ * @param {Array} projectedVerts - Screen space vertices [p0, p1, p2]
+ * @returns {Object|null} - Specular data or null if no highlight
+ */
+    calculateSpecularHighlight(tri, projectedVerts) {
+        const material = tri.material;
+        if (!material) return null;
+
+        const specularColor = this.hexToRgb(material._specularColor || "#FFFFFF");
+        const shininess = material._shininess || 32;
+
+        // If specular color is black, skip
+        if (specularColor.r === 0 && specularColor.g === 0 && specularColor.b === 0) {
+            return null;
+        }
+
+        // Get camera world position
+        const goPos = (this.gameObject && this.gameObject.getWorldPosition) ?
+            this.gameObject.getWorldPosition() : { x: 0, y: 0 };
+        let goDepth = 0;
+        if (this.gameObject) {
+            if (typeof this.gameObject.getWorldDepth === 'function') {
+                goDepth = this.gameObject.getWorldDepth();
+            } else if (typeof this.gameObject.depth === 'number') {
+                goDepth = this.gameObject.depth;
+            }
+        }
+        const camWorldPos = {
+            x: (goPos.x || 0) + (this._position.x || 0),
+            y: (goPos.y || 0) + (this._position.y || 0),
+            z: goDepth + (this._position.z || 0)
+        };
+
+        // Calculate triangle center in world space
+        const worldVerts = tri.worldVerts || [tri.v0, tri.v1, tri.v2];
+        const centerX = (worldVerts[0].x + worldVerts[1].x + worldVerts[2].x) / 3;
+        const centerY = (worldVerts[0].y + worldVerts[1].y + worldVerts[2].y) / 3;
+        const centerZ = (worldVerts[0].z + worldVerts[1].z + worldVerts[2].z) / 3;
+
+        // View direction = camera position - triangle center
+        const viewDir = {
+            x: camWorldPos.x - centerX,
+            y: camWorldPos.y - centerY,
+            z: camWorldPos.z - centerZ
+        };
+        const viewLen = Math.sqrt(viewDir.x ** 2 + viewDir.y ** 2 + viewDir.z ** 2);
+        if (viewLen < 0.0001) return null;
+
+        viewDir.x /= viewLen;
+        viewDir.y /= viewLen;
+        viewDir.z /= viewLen;
+
+        // Normalize world normal
+        const worldNormal = tri.worldNormal;
+        const normalLen = Math.sqrt(worldNormal.x ** 2 + worldNormal.y ** 2 + worldNormal.z ** 2);
+        if (normalLen < 0.0001) return null;
+
+        const n = {
+            x: worldNormal.x / normalLen,
+            y: worldNormal.y / normalLen,
+            z: worldNormal.z / normalLen
+        };
+
+        // Normalize light direction
+        const lightDir = this._lightDirection;
+        const lightLen = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
+        const normalizedLightDir = {
+            x: lightDir.x / lightLen,
+            y: lightDir.y / lightLen,
+            z: lightDir.z / lightLen
+        };
+
+        // Calculate reflection direction: R = 2(N·L)N - L
+        const dotNL = n.x * (-normalizedLightDir.x) + n.y * (-normalizedLightDir.y) + n.z * (-normalizedLightDir.z);
+
+        // Early exit if surface is facing away from light
+        if (dotNL <= 0) return null;
+
+        const reflectDir = {
+            x: 2 * dotNL * n.x - (-normalizedLightDir.x),
+            y: 2 * dotNL * n.y - (-normalizedLightDir.y),
+            z: 2 * dotNL * n.z - (-normalizedLightDir.z)
+        };
+
+        // Calculate specular intensity using Phong model: (R·V)^shininess
+        const dotRV = Math.max(0, reflectDir.x * viewDir.x + reflectDir.y * viewDir.y + reflectDir.z * viewDir.z);
+        const specularIntensity = Math.pow(dotRV, shininess) * this._lightIntensity;
+
+        // Early exit if intensity too low
+        if (specularIntensity < 0.01) return null;
+
+        // Calculate specular highlight offset in world space
+        // The highlight should be offset from the triangle center towards the reflection direction
+        const offsetDistance = 0.5; // Small offset to position highlight
+        const highlightWorldPos = {
+            x: centerX + reflectDir.x * offsetDistance,
+            y: centerY + reflectDir.y * offsetDistance,
+            z: centerZ + reflectDir.z * offsetDistance
+        };
+
+        // Transform highlight position to camera space and project to screen
+        const highlightCameraPos = this.worldToCameraSpace(highlightWorldPos);
+        const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
+        const highlightScreenPos = this.projectCameraPoint(highlightCameraPos, useExtendedFOV);
+
+        if (!highlightScreenPos) return null;
+
+        // Calculate highlight radius based on triangle size, distance, and shininess
+        const screenCenter = {
+            x: (projectedVerts[0].x + projectedVerts[1].x + projectedVerts[2].x) / 3,
+            y: (projectedVerts[0].y + projectedVerts[1].y + projectedVerts[2].y) / 3
+        };
+
+        const triangleSize = Math.max(
+            Math.abs(projectedVerts[1].x - projectedVerts[0].x),
+            Math.abs(projectedVerts[2].x - projectedVerts[0].x),
+            Math.abs(projectedVerts[1].y - projectedVerts[0].y),
+            Math.abs(projectedVerts[2].y - projectedVerts[0].y)
+        );
+
+        // Radius decreases with higher shininess (tighter highlights)
+        const baseRadius = triangleSize * 0.3; // Reduced from 0.4
+        const shininessScale = Math.max(0.1, 1.0 - (shininess / 256));
+        const highlightRadius = baseRadius * shininessScale;
+
+        return {
+            centerX: highlightScreenPos.x,
+            centerY: highlightScreenPos.y,
+            radius: highlightRadius,
+            intensity: specularIntensity,
+            color: specularColor,
+            triangleBounds: {
+                minX: Math.min(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
+                maxX: Math.max(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
+                minY: Math.min(projectedVerts[0].y, projectedVerts[1].y, projectedVerts[2].y),
+                maxY: Math.max(projectedVerts[0].y, projectedVerts[1].y, projectedVerts[2].y),
+                // Store projected vertices for triangle inside test
+                v0: projectedVerts[0],
+                v1: projectedVerts[1],
+                v2: projectedVerts[2]
+            }
+        };
+    }
+
+    /**
+     * Render specular highlights as circular gradients
+     * @param {Array} specularHighlights - Array of specular highlight data
+     * @param {ImageData} imgData - Image data to draw on
+     * @param {number} w - Width
+     * @param {number} h - Height
+     */
+    renderSpecularHighlights(specularHighlights, imgData, w, h) {
+    const data = imgData.data;
+
+    specularHighlights.forEach(highlight => {
+        const { centerX, centerY, radius, intensity, color, triangleBounds } = highlight;
+
+        // Calculate bounding box - with or without triangle clipping based on setting
+        let minX, maxX, minY, maxY;
+        
+        if (this._specularBleedingEnabled) {
+            // Allow bleeding - only screen bounds
+            minX = Math.max(0, Math.floor(centerX - radius));
+            maxX = Math.min(w - 1, Math.ceil(centerX + radius));
+            minY = Math.max(0, Math.floor(centerY - radius));
+            maxY = Math.min(h - 1, Math.ceil(centerY + radius));
+        } else {
+            // Constrain to triangle bounds
+            minX = Math.max(0, Math.floor(Math.max(triangleBounds.minX, centerX - radius)));
+            maxX = Math.min(w - 1, Math.ceil(Math.min(triangleBounds.maxX, centerX + radius)));
+            minY = Math.max(0, Math.floor(Math.max(triangleBounds.minY, centerY - radius)));
+            maxY = Math.min(h - 1, Math.ceil(Math.min(triangleBounds.maxY, centerY + radius)));
+        }
+
+        if (minX > maxX || minY > maxY) return;
+
+        const radiusSq = radius * radius;
+
+        // Pre-calculate edge functions for triangle bounds checking (only if not bleeding)
+        let p0, p1, p2, e0_dx, e0_dy, e1_dx, e1_dy, e2_dx, e2_dy, area;
+        
+        if (!this._specularBleedingEnabled) {
+            p0 = { x: triangleBounds.v0.x, y: triangleBounds.v0.y };
+            p1 = { x: triangleBounds.v1.x, y: triangleBounds.v1.y };
+            p2 = { x: triangleBounds.v2.x, y: triangleBounds.v2.y };
+
+            e0_dx = p1.x - p0.x; e0_dy = p1.y - p0.y;
+            e1_dx = p2.x - p1.x; e1_dy = p2.y - p1.y;
+            e2_dx = p0.x - p2.x; e2_dy = p0.y - p2.y;
+
+            area = e0_dx * (p2.y - p0.y) - e0_dy * (p2.x - p0.x);
+            if (Math.abs(area) < 0.5) return;
+        }
+
+        // Render circular gradient
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                // Check if pixel is inside triangle (only if not bleeding)
+                if (!this._specularBleedingEnabled) {
+                    const w0 = e0_dx * (y - p0.y) - e0_dy * (x - p0.x);
+                    const w1 = e1_dx * (y - p1.y) - e1_dy * (x - p1.x);
+                    const w2 = e2_dx * (y - p2.y) - e2_dy * (x - p2.x);
+
+                    // Skip if outside triangle
+                    if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+                }
+
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const distSq = dx * dx + dy * dy;
+
+                // Only process pixels within the circle
+                if (distSq <= radiusSq) {
+                    const pixelIdx = (y * w + x) * 4;
+
+                    // Calculate falloff (smooth gradient from center to edge)
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1.0 - (distance / radius);
+
+                    // Apply smoothstep for smoother gradient
+                    const smoothFalloff = falloff * falloff * (3 - 2 * falloff);
+
+                    // Final alpha based on intensity and falloff
+                    const alpha = intensity * smoothFalloff;
+
+                    if (alpha > 0.01) {
+                        // Get existing pixel color
+                        const existingR = data[pixelIdx];
+                        const existingG = data[pixelIdx + 1];
+                        const existingB = data[pixelIdx + 2];
+
+                        // Additive blending with specular color
+                        const specR = Math.min(255, existingR + color.r * alpha);
+                        const specG = Math.min(255, existingG + color.g * alpha);
+                        const specB = Math.min(255, existingB + color.b * alpha);
+
+                        data[pixelIdx] = specR;
+                        data[pixelIdx + 1] = specG;
+                        data[pixelIdx + 2] = specB;
+                        // Keep alpha channel unchanged
+                    }
+                }
+            }
+        }
+    });
+}
+
+    /**
  * Optimized pure raster rendering using scanline algorithm
  * Fast forward rasterization without Z-buffer overhead
  */
@@ -2307,6 +2560,7 @@ class Camera3D extends Module {
 
         // Collect all triangles
         const allTriangles = [];
+        const specularHighlights = []; // Store specular highlight data
 
         allObjects.forEach(obj => {
             if (!obj.active) return;
@@ -2355,13 +2609,39 @@ class Camera3D extends Module {
 
                 // Triangulate and add to list
                 for (let i = 1; i < screenVerts.length - 1; i++) {
-                    allTriangles.push({
+                    // FIX: Properly store world vertices for each triangulated triangle
+                    const triWorldVerts = [
+                        worldVerts[0],
+                        worldVerts[Math.min(i, worldVerts.length - 1)],
+                        worldVerts[Math.min(i + 1, worldVerts.length - 1)]
+                    ];
+
+                    const tri = {
                         v0: screenVerts[0],
                         v1: screenVerts[i],
                         v2: screenVerts[i + 1],
+                        worldVerts: triWorldVerts, // Now properly defined
+                        worldNormal: worldNormal,
+                        material: material,
                         packedColor: packedColor,
                         avgDepth: (screenVerts[0].depth + screenVerts[i].depth + screenVerts[i + 1].depth) / 3
-                    });
+                    };
+
+                    allTriangles.push(tri);
+
+                    // Calculate specular highlight for this triangle
+                    // Only if material exists and has non-zero specular
+                    if (material && material._specularColor) {
+                        const projectedVerts = [
+                            screenVerts[0].screen,
+                            screenVerts[i].screen,
+                            screenVerts[i + 1].screen
+                        ];
+                        const specular = this.calculateSpecularHighlight(tri, projectedVerts);
+                        if (specular) {
+                            specularHighlights.push(specular);
+                        }
+                    }
                 }
             });
         });
@@ -2373,6 +2653,11 @@ class Camera3D extends Module {
         allTriangles.forEach(tri => {
             this.rasterizeTriangleFast(tri, buffer32, w, h);
         });
+
+        // Render specular highlights on top
+        if (specularHighlights.length > 0) {
+            this.renderSpecularHighlights(specularHighlights, imgData, w, h);
+        }
 
         ctx.putImageData(imgData, 0, 0);
     }
@@ -3971,12 +4256,11 @@ class Camera3D extends Module {
                 if (clippedVerts.length < 3) return;
 
                 // Backface culling using consistent method (after clipping)
-                // This is the key fix - we need to cull based on the clipped vertices
                 if (this._enableBackfaceCulling && !this._disableCulling) {
                     const material = mesh?.material;
                     const isDoubleSided = material ? material._doubleSided : false;
                     if (!isDoubleSided && this.shouldCullFace(clippedVerts)) {
-                        return; // Skip back-facing triangles (unless double-sided)
+                        return;
                     }
                 }
 
@@ -3986,8 +4270,6 @@ class Camera3D extends Module {
                 // Get UV coordinates for texture mapping if material exists
                 let faceUVs = null;
                 if (mesh?.material && mesh.uvCoordinates && face.length >= 3) {
-                    // For triangulated faces, we need to interpolate UVs
-                    // For now, use the UV of the first vertex as a simple approximation
                     const firstVertexIndex = face[0];
                     if (firstVertexIndex < mesh.uvCoordinates.length) {
                         faceUVs = [
@@ -4005,13 +4287,15 @@ class Camera3D extends Module {
                         v0: clippedVerts[0],
                         v1: clippedVerts[i],
                         v2: clippedVerts[i + 1],
+                        worldVerts: [worldVerts[0], worldVerts[i], worldVerts[i + 1]], // Store world vertices
                         color: litColor,
                         material: mesh?.material || null,
                         faceUVs: faceUVs,
+                        worldNormal: worldNormal, // Store world normal
                         avgDepth: (clippedVerts[0].x + clippedVerts[i].x + clippedVerts[i + 1].x) / 3,
                         minDepth: Math.min(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
                         maxDepth: Math.max(clippedVerts[0].x, clippedVerts[i].x, clippedVerts[i + 1].x),
-                        screenBounds: null // Will be calculated during projection
+                        screenBounds: null
                     };
 
                     triangles.push(tri);
@@ -4049,17 +4333,14 @@ class Camera3D extends Module {
         const imgData = this._imageData;
         const data = imgData.data;
 
-        // Process each chunk from back to front
         chunks.forEach(chunk => {
             chunk.forEach(tri => {
-                // Project vertices to screen space
                 const p0 = this.projectCameraPoint(tri.v0, useExtendedFOV);
                 const p1 = this.projectCameraPoint(tri.v1, useExtendedFOV);
                 const p2 = this.projectCameraPoint(tri.v2, useExtendedFOV);
 
                 if (!p0 || !p1 || !p2) return;
 
-                // Calculate screen bounds
                 const minX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
                 const maxX = Math.min(w - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
                 const minY = Math.max(0, Math.floor(Math.min(p0.y, p1.y, p2.y)));
@@ -4068,13 +4349,11 @@ class Camera3D extends Module {
                 tri.screenBounds = { minX, maxX, minY, maxY };
                 tri.projectedVerts = [p0, p1, p2];
 
-                // Calculate which depth cells this triangle touches
                 const cellMinX = Math.floor(minX / cellSize);
                 const cellMaxX = Math.floor(maxX / cellSize);
                 const cellMinY = Math.floor(minY / cellSize);
                 const cellMaxY = Math.floor(maxY / cellSize);
 
-                // Improved occlusion test: check multiple cells
                 let visibleCellCount = 0;
                 let totalCells = 0;
                 let hasConflict = false;
@@ -4086,20 +4365,12 @@ class Camera3D extends Module {
                         totalCells++;
                         const cell = depthGrid[cy][cx];
 
-                        // If cell is uninitialized, triangle is visible in this cell
                         if (cell.minDepth === Infinity) {
                             visibleCellCount++;
-                        }
-                        // Use maxDepth for occlusion test - triangle must be COMPLETELY behind
-                        // This prevents clipping when triangles have overlapping depth ranges
-                        else if (tri.maxDepth < cell.minDepth - 0.1) {
-                            // Triangle is fully behind in this cell - check next cell
-                        }
-                        else {
-                            // Triangle is at least partially visible in this cell
+                        } else if (tri.maxDepth < cell.minDepth - 0.1) {
+                            // Occluded
+                        } else {
                             visibleCellCount++;
-
-                            // Check for depth conflicts - use a larger epsilon to reduce false conflicts
                             if (tri.minDepth < cell.minDepth - 0.05) {
                                 hasConflict = true;
                             }
@@ -4107,38 +4378,25 @@ class Camera3D extends Module {
                     }
                 }
 
-                // Only skip if triangle is fully occluded in ALL cells it touches
-                // Be more conservative - require fewer visible cells
-                if (visibleCellCount === 0) {
-                    return; // Skip fully occluded triangles
-                }
+                if (visibleCellCount === 0) return;
+                if (hasConflict) conflictList.push(tri);
 
-                // If there's a conflict, add to conflict list for second pass
-                if (hasConflict) {
-                    conflictList.push(tri);
-                }
+                // Draw with world data for specular
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs, tri.worldNormal, tri.worldVerts);
 
-                // Draw the triangle directly to ImageData with material support
-                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs);
-
-                // Update depth grid more conservatively
-                // Only update minDepth if we're significantly closer
+                // Update depth grid
                 for (let cy = cellMinY; cy <= cellMaxY; cy++) {
                     for (let cx = cellMinX; cx <= cellMaxX; cx++) {
                         if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
 
                         const cell = depthGrid[cy][cx];
-
-                        // Use a larger epsilon to prevent z-fighting between coplanar triangles
                         const epsilon = 0.05;
 
-                        // Only update if this triangle is actually closer
                         if (tri.minDepth < cell.minDepth - epsilon) {
                             cell.minDepth = tri.minDepth;
                             cell.polygonId = tri.id;
                             cell.isDirty = true;
                         }
-                        // Always track the farthest point we've seen
                         if (tri.maxDepth > cell.maxDepth) {
                             cell.maxDepth = tri.maxDepth;
                         }
@@ -4152,7 +4410,6 @@ class Camera3D extends Module {
      * Pass 2: Front-to-back conflict resolution
      */
     renderFALDPass2(conflictList, ctx, depthGrid, cellSize, w, h) {
-        // Sort conflicts front-to-back
         conflictList.sort((a, b) => a.avgDepth - b.avgDepth);
 
         const useExtendedFOV = this._enableBackfaceCulling && !this._disableCulling;
@@ -4160,7 +4417,6 @@ class Camera3D extends Module {
         const data = imgData.data;
 
         conflictList.forEach(tri => {
-            // Re-project if needed
             if (!tri.projectedVerts) {
                 const p0 = this.projectCameraPoint(tri.v0, useExtendedFOV);
                 const p1 = this.projectCameraPoint(tri.v1, useExtendedFOV);
@@ -4170,7 +4426,6 @@ class Camera3D extends Module {
                 tri.projectedVerts = [p0, p1, p2];
             }
 
-            // Identify conflicting cells
             const [p0, p1, p2] = tri.projectedVerts;
             const { minX, maxX, minY, maxY } = tri.screenBounds;
 
@@ -4179,25 +4434,21 @@ class Camera3D extends Module {
             const cellMinY = Math.floor(minY / cellSize);
             const cellMaxY = Math.floor(maxY / cellSize);
 
-            // Check which cells have conflicts
             const conflictCells = [];
             for (let cy = cellMinY; cy <= cellMaxY; cy++) {
                 for (let cx = cellMinX; cx <= cellMaxX; cx++) {
                     if (cy < 0 || cy >= depthGrid.length || cx < 0 || cx >= depthGrid[0].length) continue;
 
                     const cell = depthGrid[cy][cx];
-                    // If this triangle is closer than what's in the cell, it's a conflict
-                    if (tri.minDepth < cell.minDepth - 0.01) { // Small epsilon for floating point
+                    if (tri.minDepth < cell.minDepth - 0.01) {
                         conflictCells.push({ cx, cy });
                     }
                 }
             }
 
-            // If there are conflicts, redraw this triangle
             if (conflictCells.length > 0) {
-                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs);
+                this.rasterizeFALDTriangle(p0, p1, p2, tri.color, data, w, h, tri.material, tri.faceUVs, tri.worldNormal, tri.worldVerts);
 
-                // Update depth grid
                 conflictCells.forEach(({ cx, cy }) => {
                     const cell = depthGrid[cy][cx];
                     cell.minDepth = Math.min(cell.minDepth, tri.minDepth);
@@ -4213,7 +4464,7 @@ class Camera3D extends Module {
   * Uses edge function approach for fast inside testing
   * Now supports full material properties including alpha, specular, emissive, etc.
   */
-    rasterizeFALDTriangle(p0, p1, p2, color, data, w, h, material = null, faceUVs = null) {
+    rasterizeFALDTriangle(p0, p1, p2, color, data, w, h, material = null, faceUVs = null, worldNormal = null, worldVerts = null) {
         // Round to integer coordinates
         const x0 = Math.round(p0.x), y0 = Math.round(p0.y);
         const x1 = Math.round(p1.x), y1 = Math.round(p1.y);
@@ -4260,7 +4511,7 @@ class Camera3D extends Module {
         // Precompute color values for solid color fallback
         const baseR = color.r, baseG = color.g, baseB = color.b;
 
-        // Calculate lighting vectors (simplified)
+        // Calculate lighting vectors for specular
         const lightDir = this._lightDirection;
         const lightLen = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
         const normalizedLightDir = {
@@ -4268,6 +4519,83 @@ class Camera3D extends Module {
             y: lightDir.y / lightLen,
             z: lightDir.z / lightLen
         };
+
+        // Calculate view direction (camera to triangle center in world space)
+        let viewDir = { x: 0, y: 0, z: -1 }; // Default view direction
+        if (worldVerts && worldVerts.length >= 3) {
+            // Get camera world position
+            const goPos = (this.gameObject && this.gameObject.getWorldPosition) ?
+                this.gameObject.getWorldPosition() : { x: 0, y: 0 };
+            let goDepth = 0;
+            if (this.gameObject) {
+                if (typeof this.gameObject.getWorldDepth === 'function') {
+                    goDepth = this.gameObject.getWorldDepth();
+                } else if (typeof this.gameObject.depth === 'number') {
+                    goDepth = this.gameObject.depth;
+                }
+            }
+            const camWorldPos = {
+                x: (goPos.x || 0) + (this._position.x || 0),
+                y: (goPos.y || 0) + (this._position.y || 0),
+                z: goDepth + (this._position.z || 0)
+            };
+
+            // Calculate triangle center in world space
+            const centerX = (worldVerts[0].x + worldVerts[1].x + worldVerts[2].x) / 3;
+            const centerY = (worldVerts[0].y + worldVerts[1].y + worldVerts[2].y) / 3;
+            const centerZ = (worldVerts[0].z + worldVerts[1].z + worldVerts[2].z) / 3;
+
+            // View direction = camera position - triangle center
+            viewDir = {
+                x: camWorldPos.x - centerX,
+                y: camWorldPos.y - centerY,
+                z: camWorldPos.z - centerZ
+            };
+
+            // Normalize view direction
+            const viewLen = Math.sqrt(viewDir.x ** 2 + viewDir.y ** 2 + viewDir.z ** 2);
+            if (viewLen > 0.0001) {
+                viewDir.x /= viewLen;
+                viewDir.y /= viewLen;
+                viewDir.z /= viewLen;
+            }
+        }
+
+        // Calculate reflection direction for specular (Phong model)
+        let reflectDir = { x: 0, y: 0, z: 0 };
+        let specularIntensity = 0;
+        let specularCenterX = 0, specularCenterY = 0;
+
+        if (worldNormal && (specularRgb.r > 0 || specularRgb.g > 0 || specularRgb.b > 0)) {
+            // Normalize world normal
+            const normalLen = Math.sqrt(worldNormal.x ** 2 + worldNormal.y ** 2 + worldNormal.z ** 2);
+            const n = {
+                x: worldNormal.x / normalLen,
+                y: worldNormal.y / normalLen,
+                z: worldNormal.z / normalLen
+            };
+
+            // Calculate reflection direction: R = 2(N·L)N - L
+            const dotNL = n.x * (-normalizedLightDir.x) + n.y * (-normalizedLightDir.y) + n.z * (-normalizedLightDir.z);
+            reflectDir = {
+                x: 2 * dotNL * n.x - (-normalizedLightDir.x),
+                y: 2 * dotNL * n.y - (-normalizedLightDir.y),
+                z: 2 * dotNL * n.z - (-normalizedLightDir.z)
+            };
+
+            // Calculate specular intensity using Phong model: (R·V)^shininess
+            const dotRV = Math.max(0, reflectDir.x * viewDir.x + reflectDir.y * viewDir.y + reflectDir.z * viewDir.z);
+            specularIntensity = Math.pow(dotRV, shininess) * this._lightIntensity;
+
+            // Calculate specular highlight center in screen space
+            // Project the reflection vector onto screen space to find where highlight should be strongest
+            if (specularIntensity > 0.01) {
+                // Find the point on the triangle closest to the reflection direction
+                // Use the triangle center as approximation
+                specularCenterX = (x0 + x1 + x2) / 3;
+                specularCenterY = (y0 + y1 + y2) / 3;
+            }
+        }
 
         // Scanline rasterization
         for (let y = minY; y <= maxY; y++) {
@@ -4321,13 +4649,28 @@ class Camera3D extends Module {
                         pixelB = Math.min(255, pixelB + emissiveRgb.b);
                     }
 
-                    // Add specular lighting if material has specular properties
-                    if (specularRgb.r > 0 || specularRgb.g > 0 || specularRgb.b > 0) {
-                        // Simple specular calculation (can be enhanced with proper normal mapping)
-                        const specularIntensity = Math.pow(Math.max(0, -normalizedLightDir.z), shininess) * this._lightIntensity;
-                        pixelR = Math.min(255, pixelR + specularRgb.r * specularIntensity);
-                        pixelG = Math.min(255, pixelG + specularRgb.g * specularIntensity);
-                        pixelB = Math.min(255, pixelB + specularRgb.b * specularIntensity);
+                    // Add gradient-based specular lighting
+                    if (specularIntensity > 0.01) {
+                        // Calculate distance from specular center (falloff)
+                        const dx = x - specularCenterX;
+                        const dy = y - specularCenterY;
+                        const distSq = dx * dx + dy * dy;
+
+                        // Specular radius based on triangle size and shininess
+                        const triangleSize = Math.max(maxX - minX, maxY - minY);
+                        const specularRadius = triangleSize * (0.5 - shininess / 256); // Tighter highlight for higher shininess
+                        const radiusSq = specularRadius * specularRadius;
+
+                        // Smooth falloff using distance-based attenuation
+                        const falloff = Math.max(0, 1 - distSq / radiusSq);
+                        const smoothFalloff = falloff * falloff * (3 - 2 * falloff); // Smoothstep
+
+                        // Apply specular with falloff
+                        const finalSpecularIntensity = specularIntensity * smoothFalloff;
+
+                        pixelR = Math.min(255, pixelR + specularRgb.r * finalSpecularIntensity);
+                        pixelG = Math.min(255, pixelG + specularRgb.g * finalSpecularIntensity);
+                        pixelB = Math.min(255, pixelB + specularRgb.b * finalSpecularIntensity);
                     }
 
                     // Handle wireframe mode
@@ -4727,6 +5070,7 @@ class Camera3D extends Module {
             _lightColor: this._lightColor,
             _lightIntensity: this._lightIntensity,
             _ambientIntensity: this._ambientIntensity,
+            _specularBleedingEnabled: this._specularBleedingEnabled,
             _depthOfFieldEnabled: this._depthOfFieldEnabled,
             _focalDistance: this._focalDistance,
             _aperture: this._aperture,
@@ -4758,6 +5102,7 @@ class Camera3D extends Module {
         if (json._lightColor !== undefined) this._lightColor = json._lightColor;
         if (json._lightIntensity !== undefined) this._lightIntensity = json._lightIntensity;
         if (json._ambientIntensity !== undefined) this._ambientIntensity = json._ambientIntensity;
+        if (json._specularBleedingEnabled !== undefined) this._specularBleedingEnabled = json._specularBleedingEnabled;
         if (json._depthOfFieldEnabled !== undefined) this._depthOfFieldEnabled = json._depthOfFieldEnabled;
         if (json._focalDistance !== undefined) this._focalDistance = json._focalDistance;
         if (json._aperture !== undefined) this._aperture = json._aperture;

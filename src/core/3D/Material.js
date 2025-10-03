@@ -17,7 +17,7 @@ class Material extends Module {
         this._diffuseColor = "#FFFFFF";
         this._specularColor = "#FFFFFF";
         this._emissiveColor = "#000000";
-        this._shininess = 32;
+        this._shininess = 6;
         this._opacity = 1.0;
 
         // Texture properties
