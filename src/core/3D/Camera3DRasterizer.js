@@ -1389,26 +1389,37 @@ class Camera3DRasterizer extends Module {
         // Draw floor gradient with optional water animation
         if (this._waterEnabled) {
             // Animate water time
-            this._waterTime += 0.016 * this._waterSpeed; // Approximately 60fps frame time
+            this._waterTime += 0.016 * this._waterSpeed;
             
             const floorHeight = h - horizonY;
             
+            // Pre-calculate wave phases for rows (performance optimization)
             for (let y = horizonY; y < h; y++) {
-                // Original gradient position (0 to 1)
                 const baseT = (y - horizonY) / floorHeight;
+                const perspectiveFactor = baseT * baseT;
                 
-                // Calculate wave offset using sine wave
-                // Use normalized position for seamless looping
-                const wavePhase = ((y - horizonY) / this._waterWaveHeight) + this._waterTime;
-                const waveOffset = Math.sin(wavePhase) * 0.05; // Reduced amplitude for subtlety
+                // Calculate primary wave for this row
+                const yOffset = y - horizonY;
+                const primaryWave = (yOffset / this._waterWaveHeight) + this._waterTime;
+                const secondaryWave = (yOffset / (this._waterWaveHeight * 2.3)) + this._waterTime * 0.7;
+                const tertiaryWave = (yOffset / (this._waterWaveHeight * 4.1)) + this._waterTime * 1.3;
                 
-                // Add wave offset to gradient position (no modulo, just clamp)
-                const animatedT = Math.max(0, Math.min(1, baseT + waveOffset));
+                // Sample wave at row start for base offset
+                const baseWaveOffset = (
+                    Math.sin(primaryWave) * 0.035 +
+                    Math.sin(secondaryWave) * 0.020 +
+                    Math.sin(tertiaryWave) * 0.015
+                ) * perspectiveFactor;
                 
+                // Calculate animated t for this row
+                const animatedT = Math.max(0, Math.min(1, baseT + baseWaveOffset));
+                
+                // Get color for this row
                 const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
                 const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
-                const rowStart = y * w;
                 
+                // Fill entire row with this color (fast row-based approach)
+                const rowStart = y * w;
                 for (let x = 0; x < w; x++) {
                     buffer32[rowStart + x] = pixel;
                 }
