@@ -54,6 +54,12 @@ class Camera3DRasterizer extends Module {
         this._floorColorHorizon = "#653721ff"; // Floor at horizon (darker brown)
         this._backgroundType = "skyfloor"; // "skyfloor", "transparent", "solid"
 
+        // Water animation properties
+        this._waterEnabled = false;
+        this._waterSpeed = 1.0; // Speed multiplier for wave animation
+        this._waterWaveHeight = 10; // Height of wave pattern in pixels
+        this._waterTime = 0; // Animation time tracker
+
         // Sun properties (Sun is always in light direction and colored as light color)
         this._showSun = true;
         this._sunSize = 30; // Radius in pixels
@@ -180,6 +186,11 @@ class Camera3DRasterizer extends Module {
             onChange: (val) => this._useDynamicLighting = val
         });
 
+
+        this.exposeProperty("backgroundType", "dropdown", "skyfloor", {
+            options: ["skyfloor", "transparent", "solid"],
+            onChange: (val) => this._backgroundType = val
+        });
         this.exposeProperty("backgroundColor", "color", "#000000", {
             onChange: (val) => this._backgroundColor = val
         });
@@ -195,9 +206,21 @@ class Camera3DRasterizer extends Module {
         this.exposeProperty("floorColorHorizon", "color", "#654321", {
             onChange: (val) => this._floorColorHorizon = val
         });
-        this.exposeProperty("backgroundType", "dropdown", "skyfloor", {
-            options: ["skyfloor", "transparent", "solid"],
-            onChange: (val) => this._backgroundType = val
+
+        this.exposeProperty("waterEnabled", "boolean", false, {
+            onChange: (val) => this._waterEnabled = val
+        });
+        this.exposeProperty("waterSpeed", "number", 1.0, {
+            min: 0.1,
+            max: 5.0,
+            step: 0.1,
+            onChange: (val) => this._waterSpeed = val
+        });
+        this.exposeProperty("waterWaveHeight", "number", 10, {
+            min: 1,
+            max: 50,
+            step: 1,
+            onChange: (val) => this._waterWaveHeight = val
         });
 
         this.exposeProperty("showSun", "boolean", true, {
@@ -1327,43 +1350,71 @@ class Camera3DRasterizer extends Module {
      * Fast background clearing using 32-bit writes
      */
     clearBackgroundFast(buffer32, w, h) {
-        if (this._backgroundType === "solid") {
-            const bgColor = this.hexToRgb(this._backgroundColor);
-            const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
-            buffer32.fill(bgPixel);
-        } else if (this._backgroundType === "skyfloor") {
-            const fovRadians = this._fieldOfView * (Math.PI / 180);
-            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
-            const maxPitch = fovRadians / 2;
-            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
-            const horizonOffset = normalizedPitch * 0.5;
-            const horizonRatio = 0.5 + horizonOffset;
-            const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
-            const horizonY = Math.floor(h * clampedHorizon);
+    if (this._backgroundType === "solid") {
+        const bgColor = this.hexToRgb(this._backgroundColor);
+        const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
+        buffer32.fill(bgPixel);
+    } else if (this._backgroundType === "skyfloor") {
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+        const maxPitch = fovRadians / 2;
+        const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+        const horizonOffset = normalizedPitch * 0.5;
+        const horizonRatio = 0.5 + horizonOffset;
+        const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
+        const horizonY = Math.floor(h * clampedHorizon);
 
-            // Draw sky gradient first
-            for (let y = 0; y < horizonY; y++) {
-                const t = y / horizonY;
-                const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
+        // Draw sky gradient first
+        for (let y = 0; y < horizonY; y++) {
+            const t = y / horizonY;
+            const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
+            const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
+            const rowStart = y * w;
+            for (let x = 0; x < w; x++) {
+                buffer32[rowStart + x] = pixel;
+            }
+        }
+
+        // Draw sun on top of sky gradient
+        const sunPos = this.calculateSunPosition();
+        if (sunPos) {
+            this.drawSun(buffer32, w, h, sunPos);
+
+            // Draw lens flare if enabled
+            if (this._lensFlareEnabled) {
+                this.drawLensFlare(buffer32, w, h, sunPos);
+            }
+        }
+
+        // Draw floor gradient with optional water animation
+        if (this._waterEnabled) {
+            // Animate water time
+            this._waterTime += 0.016 * this._waterSpeed; // Approximately 60fps frame time
+            
+            const floorHeight = h - horizonY;
+            
+            for (let y = horizonY; y < h; y++) {
+                // Original gradient position (0 to 1)
+                const baseT = (y - horizonY) / floorHeight;
+                
+                // Calculate wave offset using sine wave
+                // Use normalized position for seamless looping
+                const wavePhase = ((y - horizonY) / this._waterWaveHeight) + this._waterTime;
+                const waveOffset = Math.sin(wavePhase) * 0.05; // Reduced amplitude for subtlety
+                
+                // Add wave offset to gradient position (no modulo, just clamp)
+                const animatedT = Math.max(0, Math.min(1, baseT + waveOffset));
+                
+                const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
                 const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
                 const rowStart = y * w;
+                
                 for (let x = 0; x < w; x++) {
                     buffer32[rowStart + x] = pixel;
                 }
             }
-
-            // Draw sun on top of sky gradient
-            const sunPos = this.calculateSunPosition();
-            if (sunPos) {
-                this.drawSun(buffer32, w, h, sunPos);
-
-                // Draw lens flare if enabled
-                if (this._lensFlareEnabled) {
-                    this.drawLensFlare(buffer32, w, h, sunPos);
-                }
-            }
-
-            // Draw floor gradient after sun
+        } else {
+            // Standard floor gradient without animation
             for (let y = horizonY; y < h; y++) {
                 const t = (y - horizonY) / (h - horizonY);
                 const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
@@ -1373,10 +1424,11 @@ class Camera3DRasterizer extends Module {
                     buffer32[rowStart + x] = pixel;
                 }
             }
-        } else if (this._backgroundType === "transparent") {
-            buffer32.fill(0);
         }
+    } else if (this._backgroundType === "transparent") {
+        buffer32.fill(0);
     }
+}
 
     /**
      * Ultra-fast scanline triangle rasterization
@@ -2361,7 +2413,10 @@ class Camera3DRasterizer extends Module {
             _fogColor: this._fogColor,
             _fogStart: this._fogStart,
             _fogEnd: this._fogEnd,
-            _fogDensity: this._fogDensity
+            _fogDensity: this._fogDensity,
+            _waterEnabled: this._waterEnabled,
+            _waterSpeed: this._waterSpeed,
+            _waterWaveHeight: this._waterWaveHeight
         };
     }
 
@@ -2415,6 +2470,9 @@ class Camera3DRasterizer extends Module {
         if (json._fogStart !== undefined) { this._fogStart = json._fogStart; } else { this._fogStart = 100; }
         if (json._fogEnd !== undefined) { this._fogEnd = json._fogEnd; } else { this._fogEnd = 500; }
         if (json._fogDensity !== undefined) { this._fogDensity = json._fogDensity; } else { this._fogDensity = 1.0; }
+        if (json._waterEnabled !== undefined) { this._waterEnabled = json._waterEnabled; } else { this._waterEnabled = false; }
+        if (json._waterSpeed !== undefined) { this._waterSpeed = json._waterSpeed; } else { this._waterSpeed = 1.0; }
+        if (json._waterWaveHeight !== undefined) { this._waterWaveHeight = json._waterWaveHeight; } else { this._waterWaveHeight = 10; }
 
         this.updateRenderTexture();
     }
