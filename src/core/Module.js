@@ -241,6 +241,11 @@ class Module {
         return window.engine ? window.engine.guiCanvas : null;
     }
 
+    getModule(moduleName) {
+        if (!this.gameObject) return null;
+        return this.gameObject.getModule(moduleName);
+    }
+
     /**
      * Get the current viewport from the engine
      * @returns {Object|null} The current viewport or null if not available
@@ -628,17 +633,6 @@ class Module {
         } else {
             this.onDisable();
         }
-    }
-
-    /**
-     * Get a module from the parent GameObject by type/class
-     * @param {class} moduleType - The class/type of module to find
-     * @returns {Module} The found module or null
-     */
-    getModule(moduleType) {
-        if (!this.gameObject) return null;
-
-        return this.gameObject.modules.find(module => module instanceof moduleType);
     }
 
     /**

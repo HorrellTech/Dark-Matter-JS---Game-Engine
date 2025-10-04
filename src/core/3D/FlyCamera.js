@@ -28,7 +28,7 @@ class FlyCamera extends Module {
         super("FlyCamera");
         
         // Setup requirements
-        this.requires("Camera3D");
+        this.requires("Camera3DRasterizer"); // Requires a Camera3D module on the same GameObject
         
         // Movement settings
         this._moveSpeed = 200; // Units per second
@@ -120,7 +120,7 @@ class FlyCamera extends Module {
      */
     start() {
         // Get camera reference
-        this.camera = this.gameObject.getModule("Camera3D");
+        this.camera = this.getModule("Camera3DRasterizer");// || this.getModule("Camera3D");
         
         if (!this.camera) {
             console.error("FlyCamera requires a Camera3D module on the same GameObject");

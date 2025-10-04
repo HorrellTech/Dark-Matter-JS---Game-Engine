@@ -850,7 +850,7 @@ class CubeMesh3D extends Module {
         const allObjects = this.getGameObjects();
 
         for (const obj of allObjects) {
-            const camera = obj.getModule("Camera3D");
+            const camera = obj.getModule("Camera3DRasterizer") || obj.getModule("Camera3D");
             if (camera && camera.isActive) {
                 return camera;
             }

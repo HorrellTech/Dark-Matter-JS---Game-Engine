@@ -1292,7 +1292,7 @@ class Engine {
         const findActiveCameras = (objects) => {
             objects.forEach(obj => {
                 if (obj.active !== false) {
-                    const camera3D = obj.getModule && obj.getModule("Camera3D");
+                    const camera3D = obj.getModule("Camera3DRasterizer") || obj.getModule("Camera3D");
                     if (camera3D && camera3D.isActive && camera3D.getRenderedTexture) {
                         activeCameras.push(camera3D);
                     }

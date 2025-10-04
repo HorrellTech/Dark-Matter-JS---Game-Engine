@@ -17,7 +17,7 @@ class MouseLook extends Module {
         super("MouseLook");
         
         // Setup requirements
-        this.requires("Camera3D");
+        this.requires("Camera3DRasterizer");
         
         // Look settings
         this._sensitivity = 0.2; // Lower = less sensitive
@@ -132,7 +132,7 @@ class MouseLook extends Module {
      */
     start() {
         // Get camera reference
-        this.camera = this.gameObject.getModule("Camera3D");
+        this.camera = this.gameObject.getModule("Camera3DRasterizer") || this.gameObject.getModule("Camera3D");
         
         if (!this.camera) {
             console.error("MouseLook requires a Camera3D module on the same GameObject");

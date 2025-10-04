@@ -18,7 +18,7 @@ class TopDownCamera extends Module {
         super("TopDownCamera");
 
         // Setup requirements
-        this.requires("Camera3D");
+        this.requires("Camera3DRasterizer");
 
         // Camera settings
         this._cameraDistance = 500; // Distance from target (Z-axis)

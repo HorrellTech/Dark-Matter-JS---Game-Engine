@@ -1234,6 +1234,15 @@ class Mesh3D extends Module {
         this.generateUVCoordinates();
     }
 
+    drawGizmos(ctx) {
+        ctx.save();
+        ctx.translate(this.gameObject.position.x, this.gameObject.position.y);
+        ctx.rotate((this.gameObject.angle * Math.PI) / 180);
+        ctx.scale(this.gameObject.scale.x, this.gameObject.scale.y);
+        this.draw2DVisualization(ctx);
+        ctx.restore();
+    }
+
     /**
      * Draw the mesh to the canvas
      * @param {CanvasRenderingContext2D} ctx - The canvas context to draw on
@@ -1242,8 +1251,6 @@ class Mesh3D extends Module {
         // Find an active camera
         const camera = this.findActiveCamera();
         if (!camera) {
-            // Draw a 2D visualization based on the selected shape
-            this.draw2DVisualization(ctx);
             return;
         }
 
@@ -2105,7 +2112,7 @@ class Mesh3D extends Module {
         // console.log(`Mesh3D: Looking for active camera among ${allObjects.length} game objects`);
 
         for (const obj of allObjects) {
-            const camera = obj.getModule ? obj.getModule("Camera3D") : null;
+            const camera = obj.getModule("Camera3DRasterizer") || obj.getModule("Camera3D");
             if (camera) {
                 // console.log(`Mesh3D: Found camera on object ${obj.name || 'unnamed'}, isActive: ${camera.isActive}`);
                 if (camera.isActive) {
