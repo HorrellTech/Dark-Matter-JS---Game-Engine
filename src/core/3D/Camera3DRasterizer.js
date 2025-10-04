@@ -983,9 +983,9 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
- * Calculate sun position in screen space based on light direction
- * Returns null if sun is below horizon
- */
+     * Calculate sun position in screen space based on light direction
+     * Returns null if sun is below horizon
+     */
     calculateSunPosition() {
         if (!this._showSun || this._backgroundType !== "skyfloor") {
             return null;
@@ -1016,45 +1016,37 @@ class Camera3DRasterizer extends Module {
         const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
             this.gameObject.getWorldRotation() : 0;
         const yaw = (parentAngleDeg + (this._rotation.z || 0)) * (Math.PI / 180);
-        const pitch = (this._rotation.y || 0) * (Math.PI / 180);
-        const roll = (this._rotation.x || 0) * (Math.PI / 180);
+        const pitch = -(this._rotation.y || 0) * (Math.PI / 180);
 
-        // Apply camera rotations to sun direction
+        // Apply yaw rotation to sun direction
         let rotatedSunDir = { ...sunDir };
-
-        // Apply rotations in reverse order (opposite of camera transform)
-        // Roll
-        let temp = { ...rotatedSunDir };
-        rotatedSunDir.y = temp.y * Math.cos(roll) - temp.z * Math.sin(roll);
-        rotatedSunDir.z = temp.y * Math.sin(roll) + temp.z * Math.cos(roll);
-
-        // Pitch
-        temp = { ...rotatedSunDir };
-        rotatedSunDir.x = temp.x * Math.cos(pitch) + temp.z * Math.sin(pitch);
-        rotatedSunDir.z = -temp.x * Math.sin(pitch) + temp.z * Math.cos(pitch);
-
-        // Yaw (inverted to make sun move opposite to camera rotation)
-        temp = { ...rotatedSunDir };
+        const temp = { ...rotatedSunDir };
         rotatedSunDir.x = temp.x * Math.cos(-yaw) - temp.y * Math.sin(-yaw);
         rotatedSunDir.y = temp.x * Math.sin(-yaw) + temp.y * Math.cos(-yaw);
+        // Z remains unchanged by yaw
 
-        // Check again if sun is above horizon after rotation
+        // Check if sun is behind camera (based on X in camera space)
         if (rotatedSunDir.x <= 0) {
-            return null; // Sun is behind camera
+            return null;
         }
 
-        // Project to screen space using a fixed distance
-        // Since sun is infinitely far, we use a normalized direction
+        // Project to screen space
         const aspect = this.viewportWidth / this.viewportHeight;
         const fovRadians = this._fieldOfView * (Math.PI / 180);
         const f = 1.0 / Math.tan(fovRadians * 0.5);
 
-        // Project using the rotated direction
+        // Project sun direction as if it were at infinite distance
+        // This creates proper perspective projection
         const ndcX = (rotatedSunDir.y / rotatedSunDir.x) * (f / aspect);
         const ndcY = (rotatedSunDir.z / rotatedSunDir.x) * f;
 
+        // Apply pitch offset to NDC Y (affects vertical position based on camera pitch)
+        const pitchOffset = Math.tan(pitch) * f;
+        const adjustedNdcY = ndcY - pitchOffset;
+
+        // Convert NDC to screen space
         const screenX = (ndcX * 0.5 + 0.5) * this.viewportWidth;
-        const screenY = (0.5 - ndcY * 0.5) * this.viewportHeight;
+        const screenY = (0.5 - adjustedNdcY * 0.5) * this.viewportHeight;
 
         return new Vector2(screenX, screenY);
     }
