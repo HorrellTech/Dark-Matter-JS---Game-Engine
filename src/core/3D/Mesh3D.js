@@ -698,7 +698,7 @@ class Mesh3D extends Module {
     /**
      * Update method called each frame
      */
-    update() {
+    loop() {
         // Apply automatic rotation based on rotation speed
         if (this.rotationSpeed.x !== 0 || this.rotationSpeed.y !== 0 || this.rotationSpeed.z !== 0) {
             const deltaTime = this.gameObject?.scene?.engine?.deltaTime || 0;
