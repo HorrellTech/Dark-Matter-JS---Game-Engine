@@ -24,6 +24,12 @@ class Light3D extends Module {
         this._spotSoftness = 0.1; // Edge softness (0-1)
         this._spotDirection = new Vector3(0, 0, -1); // Direction in local space
 
+        // Visual representation properties
+        this._showLightSource = true; // Whether to draw the light as a visible glow
+        this._lightSourceSize = 10; // Size of the visible light source
+        this._lightSourceIntensity = 1.0; // Intensity of the glow (0-1)
+        this._lightSourceGlow = true; // Whether to draw a glow around the light
+
         // Performance settings
         this._castShadows = true; // Whether this light casts shadows
         this._shadowQuality = "medium"; // "low", "medium", "high"
@@ -80,6 +86,28 @@ class Light3D extends Module {
             onChange: (val) => this._spotDirection = val
         });
 
+        this.exposeProperty("showLightSource", "boolean", this._showLightSource, {
+            onChange: (val) => this._showLightSource = val
+        });
+
+        this.exposeProperty("lightSourceSize", "number", this._lightSourceSize, {
+            min: 1,
+            max: 50,
+            step: 1,
+            onChange: (val) => this._lightSourceSize = val
+        });
+
+        this.exposeProperty("lightSourceIntensity", "number", this._lightSourceIntensity, {
+            min: 0,
+            max: 2,
+            step: 0.1,
+            onChange: (val) => this._lightSourceIntensity = val
+        });
+
+        this.exposeProperty("lightSourceGlow", "boolean", this._lightSourceGlow, {
+            onChange: (val) => this._lightSourceGlow = val
+        });
+
         this.exposeProperty("castShadows", "boolean", this._castShadows, {
             onChange: (val) => this._castShadows = val
         });
@@ -97,7 +125,7 @@ class Light3D extends Module {
         if (this._camera) return true;
 
         const allObjects = this.getAllGameObjects();
-        
+
         for (const obj of allObjects) {
             const camera = obj.getModule("Camera3DRasterizer");
             if (camera && camera._isActive) {
@@ -116,8 +144,8 @@ class Light3D extends Module {
     getWorldPosition() {
         if (!this.gameObject) return new Vector3(0, 0, 0);
 
-        const pos = this.gameObject.getWorldPosition ? 
-            this.gameObject.getWorldPosition() : 
+        const pos = this.gameObject.getWorldPosition ?
+            this.gameObject.getWorldPosition() :
             { x: 0, y: 0 };
 
         let depth = 0;
@@ -138,12 +166,12 @@ class Light3D extends Module {
     getWorldDirection() {
         if (this._lightType !== "spot") return new Vector3(0, 0, -1);
 
-        const rotation = this.gameObject.getWorldRotation ? 
+        const rotation = this.gameObject.getWorldRotation ?
             this.gameObject.getWorldRotation() : 0;
 
         // Convert 2D rotation to 3D (assuming rotation around Z-axis)
         const radZ = rotation * (Math.PI / 180);
-        
+
         // Apply rotation to local direction
         const localDir = this._spotDirection;
         const cos = Math.cos(radZ);
@@ -249,13 +277,123 @@ class Light3D extends Module {
     }
 
     /**
+ * Draw visible light source in 3D space
+ */
+    drawLightSource(camera) {
+        if (!this._showLightSource || !camera || !camera._renderTextureCtx) return;
+
+        const lightWorldPos = this.getWorldPosition();
+
+        // Check if light is in camera view
+        const cameraPos = camera.worldToCameraSpace(lightWorldPos);
+        if (cameraPos.x <= camera._nearPlane || cameraPos.x >= camera._farPlane) return;
+
+        // Project to screen space
+        const screenPos = camera.projectCameraPoint(cameraPos);
+        if (!screenPos) return;
+
+        const ctx = camera._renderTextureCtx;
+        const buffer32 = new Uint32Array(camera._imageData.data.buffer);
+        const w = camera._renderTextureWidth;
+        const h = camera._renderTextureHeight;
+
+        const centerX = Math.round(screenPos.x);
+        const centerY = Math.round(screenPos.y);
+
+        // Calculate size based on distance
+        const distanceScale = Math.max(0.3, Math.min(2.0, 50 / cameraPos.x));
+        const size = this._lightSourceSize * distanceScale;
+
+        // Parse light color
+        const lightColor = this.hexToRgb(this._color);
+
+        // Draw glow if enabled
+        if (this._lightSourceGlow) {
+            const glowRadius = size * 3;
+            const minX = Math.max(0, centerX - glowRadius);
+            const maxX = Math.min(w - 1, centerX + glowRadius);
+            const minY = Math.max(0, centerY - glowRadius);
+            const maxY = Math.min(h - 1, centerY + glowRadius);
+
+            for (let y = minY; y <= maxY; y++) {
+                for (let x = minX; x <= maxX; x++) {
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const distSq = dx * dx + dy * dy;
+                    const glowRadiusSq = glowRadius * glowRadius;
+
+                    if (distSq <= glowRadiusSq) {
+                        const distance = Math.sqrt(distSq);
+                        const falloff = 1.0 - (distance / glowRadius);
+                        const alpha = falloff * falloff * 0.2 * this._lightSourceIntensity;
+
+                        if (alpha > 0.01) {
+                            const pixelIdx = y * w + x;
+                            const existing = buffer32[pixelIdx];
+
+                            const existingR = existing & 0xFF;
+                            const existingG = (existing >> 8) & 0xFF;
+                            const existingB = (existing >> 16) & 0xFF;
+
+                            const newR = Math.min(255, Math.round(existingR + lightColor.r * alpha));
+                            const newG = Math.min(255, Math.round(existingG + lightColor.g * alpha));
+                            const newB = Math.min(255, Math.round(existingB + lightColor.b * alpha));
+
+                            buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Draw bright core
+        const coreRadius = size;
+        const minCoreX = Math.max(0, centerX - coreRadius);
+        const maxCoreX = Math.min(w - 1, centerX + coreRadius);
+        const minCoreY = Math.max(0, centerY - coreRadius);
+        const maxCoreY = Math.min(h - 1, centerY + coreRadius);
+
+        for (let y = minCoreY; y <= maxCoreY; y++) {
+            for (let x = minCoreX; x <= maxCoreX; x++) {
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const distSq = dx * dx + dy * dy;
+                const coreRadiusSq = coreRadius * coreRadius;
+
+                if (distSq <= coreRadiusSq) {
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1.0 - (distance / coreRadius);
+                    const smoothFalloff = falloff * falloff * (3 - 2 * falloff);
+
+                    const pixelIdx = y * w + x;
+                    const existing = buffer32[pixelIdx];
+
+                    const existingR = existing & 0xFF;
+                    const existingG = (existing >> 8) & 0xFF;
+                    const existingB = (existing >> 16) & 0xFF;
+
+                    const intensity = 0.5 + smoothFalloff * 0.5 * this._lightSourceIntensity;
+                    const newR = Math.min(255, Math.round(existingR * (1 - intensity) + lightColor.r * intensity));
+                    const newG = Math.min(255, Math.round(existingG * (1 - intensity) + lightColor.g * intensity));
+                    const newB = Math.min(255, Math.round(existingB * (1 - intensity) + lightColor.b * intensity));
+
+                    buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                }
+            }
+        }
+
+        // Update image data
+        ctx.putImageData(camera._imageData, 0, 0);
+    }
+
+    /**
      * Check if this light should affect a triangle (shadow casting)
      */
     isTriangleLit(triangleCenter, triangleNormal, allTriangles) {
         if (!this._castShadows || this._lightBleeding) return true;
 
         const lightPos = this.getWorldPosition();
-        
+
         // Direction from triangle to light
         const toLight = {
             x: lightPos.x - triangleCenter.x,
@@ -264,7 +402,7 @@ class Light3D extends Module {
         };
 
         const distanceToLight = Math.sqrt(toLight.x ** 2 + toLight.y ** 2 + toLight.z ** 2);
-        
+
         if (distanceToLight < 0.001) return true;
 
         // Normalize direction
@@ -289,13 +427,13 @@ class Light3D extends Module {
 
         // Shadow quality determines how many triangles to check
         const maxChecks = this._shadowQuality === "high" ? allTriangles.length :
-                         this._shadowQuality === "medium" ? Math.min(50, allTriangles.length) :
-                         Math.min(20, allTriangles.length);
+            this._shadowQuality === "medium" ? Math.min(50, allTriangles.length) :
+                Math.min(20, allTriangles.length);
 
         // Check if any other triangle is blocking the light
         for (let i = 0; i < maxChecks; i++) {
             const otherTri = allTriangles[i];
-            
+
             // Skip self - compare triangle centers
             const otherCenter = {
                 x: (otherTri.worldVerts[0].x + otherTri.worldVerts[1].x + otherTri.worldVerts[2].x) / 3,
@@ -342,7 +480,7 @@ class Light3D extends Module {
         };
 
         const distanceToBlocker = Math.sqrt(toBlocker.x ** 2 + toBlocker.y ** 2 + toBlocker.z ** 2);
-        
+
         if (distanceToBlocker < 0.1) return false; // Too close to be a blocker
 
         // Blocker must be closer than light source
@@ -355,9 +493,9 @@ class Light3D extends Module {
             z: toBlocker.z / distanceToBlocker
         };
 
-        const alignment = normalizedToBlocker.x * lightDir.x + 
-                         normalizedToBlocker.y * lightDir.y + 
-                         normalizedToBlocker.z * lightDir.z;
+        const alignment = normalizedToBlocker.x * lightDir.x +
+            normalizedToBlocker.y * lightDir.y +
+            normalizedToBlocker.z * lightDir.z;
 
         // Must be well-aligned (within ~20 degrees) - blocker should be between point and light
         if (alignment < 0.94) return false;
@@ -377,9 +515,9 @@ class Light3D extends Module {
 
         // Check if blocker is facing toward the light (to block it)
         // The blocker should be facing in the opposite direction of the light
-        const dotBlockerLight = blockerNormalized.x * lightDir.x + 
-                               blockerNormalized.y * lightDir.y + 
-                               blockerNormalized.z * lightDir.z;
+        const dotBlockerLight = blockerNormalized.x * lightDir.x +
+            blockerNormalized.y * lightDir.y +
+            blockerNormalized.z * lightDir.z;
 
         // Blocker must be facing toward light to cast shadow
         if (dotBlockerLight <= 0.05) return false;
@@ -416,7 +554,7 @@ class Light3D extends Module {
         if (!this.gameObject) return;
 
         ctx.save();
-        
+
         const pos = this.gameObject.position;
         ctx.translate(pos.x, pos.y);
 
@@ -441,14 +579,14 @@ class Light3D extends Module {
             const angle = this.gameObject.angle || 0;
             const direction = this._spotDirection;
             const coneAngleRad = (this._spotAngle / 2) * (Math.PI / 180);
-            
+
             ctx.strokeStyle = this._color;
             ctx.fillStyle = this._color + "11";
             ctx.lineWidth = 1;
 
             // Calculate cone direction in 2D
             const dirAngle = Math.atan2(direction.y, direction.x) + (angle * Math.PI / 180);
-            
+
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.arc(0, 0, this._range, dirAngle - coneAngleRad, dirAngle + coneAngleRad);
@@ -490,7 +628,11 @@ class Light3D extends Module {
             _spotSoftness: this._spotSoftness,
             _spotDirection: { x: this._spotDirection.x, y: this._spotDirection.y, z: this._spotDirection.z },
             _castShadows: this._castShadows,
-            _shadowQuality: this._shadowQuality
+            _shadowQuality: this._shadowQuality,
+            _showLightSource: this._showLightSource,
+            _lightSourceSize: this._lightSourceSize,
+            _lightSourceIntensity: this._lightSourceIntensity,
+            _lightSourceGlow: this._lightSourceGlow
         };
     }
 
@@ -508,6 +650,10 @@ class Light3D extends Module {
         if (json._spotDirection) this._spotDirection = new Vector3(json._spotDirection.x, json._spotDirection.y, json._spotDirection.z);
         if (json._castShadows !== undefined) this._castShadows = json._castShadows;
         if (json._shadowQuality !== undefined) this._shadowQuality = json._shadowQuality;
+        if (json._showLightSource !== undefined) this._showLightSource = json._showLightSource;
+        if (json._lightSourceSize !== undefined) this._lightSourceSize = json._lightSourceSize;
+        if (json._lightSourceIntensity !== undefined) this._lightSourceIntensity = json._lightSourceIntensity;
+        if (json._lightSourceGlow !== undefined) this._lightSourceGlow = json._lightSourceGlow;
     }
 
     // Getters and setters
@@ -531,6 +677,18 @@ class Light3D extends Module {
 
     get spotSoftness() { return this._spotSoftness; }
     set spotSoftness(value) { this._spotSoftness = Math.max(0, Math.min(1, value)); }
+
+    get showLightSource() { return this._showLightSource; }
+    set showLightSource(value) { this._showLightSource = value; }
+
+    get lightSourceSize() { return this._lightSourceSize; }
+    set lightSourceSize(value) { this._lightSourceSize = Math.max(1, value); }
+
+    get lightSourceIntensity() { return this._lightSourceIntensity; }
+    set lightSourceIntensity(value) { this._lightSourceIntensity = Math.max(0, value); }
+
+    get lightSourceGlow() { return this._lightSourceGlow; }
+    set lightSourceGlow(value) { this._lightSourceGlow = value; }
 
     get castShadows() { return this._castShadows; }
     set castShadows(value) { this._castShadows = value; }

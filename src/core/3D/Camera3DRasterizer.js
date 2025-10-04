@@ -591,6 +591,60 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+     * Check if a point in camera space is occluded by any triangle
+     * @param {Vector3} point - Point in camera space to test
+     * @param {Array} allTriangles - All triangles to test against
+     * @returns {boolean} - True if point is occluded
+     */
+    isPointOccluded(point, allTriangles) {
+        const testDepth = point.x;
+        
+        // Project point to screen space
+        const screenPos = this.projectCameraPoint(point);
+        if (!screenPos) return true; // Behind camera or outside view
+        
+        const px = Math.round(screenPos.x);
+        const py = Math.round(screenPos.y);
+        
+        // Check if point is within screen bounds
+        if (px < 0 || px >= this._renderTextureWidth || py < 0 || py >= this._renderTextureHeight) {
+            return true;
+        }
+        
+        // Check against all triangles
+        for (const tri of allTriangles) {
+            // Skip back-facing triangles
+            if (tri.isCulled) continue;
+            
+            // Get triangle vertices in screen space
+            const v0 = { x: tri.v0.screen.x, y: tri.v0.screen.y };
+            const v1 = { x: tri.v1.screen.x, y: tri.v1.screen.y };
+            const v2 = { x: tri.v2.screen.x, y: tri.v2.screen.y };
+            
+            // Check if point is inside triangle using barycentric coordinates
+            const denom = (v1.y - v2.y) * (v0.x - v2.x) + (v2.x - v1.x) * (v0.y - v2.y);
+            if (Math.abs(denom) < 0.0001) continue; // Degenerate triangle
+            
+            const w0 = ((v1.y - v2.y) * (px - v2.x) + (v2.x - v1.x) * (py - v2.y)) / denom;
+            const w1 = ((v2.y - v0.y) * (px - v2.x) + (v0.x - v2.x) * (py - v2.y)) / denom;
+            const w2 = 1 - w0 - w1;
+            
+            // Point is inside triangle if all barycentric coords are >= 0
+            if (w0 >= -0.001 && w1 >= -0.001 && w2 >= -0.001) {
+                // Interpolate depth at this point
+                const triDepth = w0 * tri.v0.cameraPos.x + w1 * tri.v1.cameraPos.x + w2 * tri.v2.cameraPos.x;
+                
+                // If triangle is closer, point is occluded
+                if (triDepth < testDepth - 0.1) { // Small epsilon for floating point errors
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
      * Optimized pure raster rendering using scanline algorithm
      * Fast forward rasterization without Z-buffer overhead
      */
@@ -604,7 +658,6 @@ class Camera3DRasterizer extends Module {
         const w = this._renderTextureWidth;
         const h = this._renderTextureHeight;
 
-        // Reset debug stats
         this._debugStats.totalFaces = 0;
         this._debugStats.renderedTriangles = 0;
         this._debugStats.culledFaces = 0;
@@ -614,12 +667,12 @@ class Camera3DRasterizer extends Module {
         const buffer32 = new Uint32Array(imgData.data.buffer);
         this.clearBackgroundFast(buffer32, w, h);
 
-        // Collect ALL triangles for shadow calculation (including culled ones)
         const allTrianglesForShadows = [];
         const allTriangles = [];
         const specularHighlights = [];
         const meshSpecularData = new Map();
 
+        // ...existing code for collecting triangles...
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
@@ -656,7 +709,6 @@ class Camera3DRasterizer extends Module {
 
                 if (screenVerts.length < 3) return;
 
-                // Triangulate and add to lists
                 for (let i = 1; i < screenVerts.length - 1; i++) {
                     const triWorldVerts = [
                         worldVerts[0],
@@ -679,10 +731,8 @@ class Camera3DRasterizer extends Module {
                         isCulled: isCulled
                     };
 
-                    // Add ALL triangles to shadow list (even culled ones)
                     allTrianglesForShadows.push(tri);
 
-                    // Only add visible triangles to render list
                     if (!isCulled) {
                         this._debugStats.renderedTriangles++;
                         allTriangles.push(tri);
@@ -693,16 +743,17 @@ class Camera3DRasterizer extends Module {
             });
         });
 
-        // Sort back-to-front (only visible triangles)
+        // Cache triangles for occlusion testing
+        this._allTrianglesCache = allTriangles;
+
         allTriangles.sort((a, b) => b.avgDepth - a.avgDepth);
 
-        // Calculate lighting for each triangle WITH dynamic lights (use allTrianglesForShadows for shadow checks)
         allTriangles.forEach(tri => {
             const litColor = this.calculateLightingWithDynamicLights(
                 tri.worldVerts,
                 tri.worldNormal,
                 tri.faceColor,
-                allTrianglesForShadows // Pass all triangles for shadow checks
+                allTrianglesForShadows
             );
 
             const packedColor = (255 << 24) | (litColor.b << 16) | (litColor.g << 8) | litColor.r;
@@ -710,7 +761,6 @@ class Camera3DRasterizer extends Module {
 
             this.rasterizeTriangleFast(tri, buffer32, w, h);
 
-            // Calculate specular if needed
             if (this._specularEnabled && tri.material && tri.material._specularColor) {
                 const projectedVerts = [tri.v0.screen, tri.v1.screen, tri.v2.screen];
 
@@ -760,11 +810,29 @@ class Camera3DRasterizer extends Module {
 
         ctx.putImageData(imgData, 0, 0);
 
+        // Draw visible light sources with occlusion testing
+        const nearbyLights = this.getNearbyLights();
+        nearbyLights.forEach(light => {
+            if (light._showLightSource) {
+                // Get light position in camera space
+                const lightWorldPos = light.getWorldPosition();
+                const lightCameraPos = this.worldToCameraSpace(lightWorldPos);
+                
+                // Only draw if not occluded
+                if (!this.isPointOccluded(lightCameraPos, allTriangles)) {
+                    light.drawLightSource(this);
+                }
+            }
+        });
+
         if (this._showDebugInfo) {
             this._debugStats.renderTime = performance.now() - startTime;
             this._debugStats.activeLights = this.getNearbyLights().length;
             this.drawDebugInfo(ctx);
         }
+        
+        // Clear cache
+        this._allTrianglesCache = null;
     }
 
     /**
@@ -1380,17 +1448,20 @@ class Camera3DRasterizer extends Module {
             Math.abs(projectedVerts[2].y - projectedVerts[0].y)
         );
 
-        // Radius decreases with higher shininess (tighter highlights)
+        // Radius decreases with higher shininess (tighter highlights) and distance
         const baseRadius = triangleSize * 0.3;
         const shininessScale = Math.max(0.1, 1.0 - (shininess / 256));
-        const highlightRadius = baseRadius * shininessScale;
+        const distanceScale = Math.max(0.5, Math.min(1.0, 100 / highlightCameraPos.x));
+        const highlightRadius = baseRadius * shininessScale * distanceScale;
 
         return {
             centerX: highlightScreenPos.x,
             centerY: highlightScreenPos.y,
-            radius: highlightRadius,
+            radius: Math.max(3, highlightRadius), // Minimum radius to prevent division issues
             intensity: specularIntensity,
             color: specularColor,
+            depth: highlightCameraPos.x, // Store depth for occlusion testing
+            cameraPos: highlightCameraPos, // Store camera space position for occlusion testing
             triangleBounds: {
                 minX: Math.min(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
                 maxX: Math.max(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
@@ -1543,6 +1614,8 @@ class Camera3DRasterizer extends Module {
                     radius: highlightRadius,
                     intensity: specularIntensity,
                     color: specularColor,
+                    depth: highlightCameraPos.x, // Store depth for occlusion testing
+                    cameraPos: highlightCameraPos, // Store camera space position for occlusion testing
                     triangleBounds: {
                         minX: Math.min(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
                         maxX: Math.max(projectedVerts[0].x, projectedVerts[1].x, projectedVerts[2].x),
@@ -1561,7 +1634,7 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
-     * Render specular highlights as circular gradients
+     * Render specular highlights as circular gradients with occlusion testing
      * @param {Array} specularHighlights - Array of specular highlight data
      * @param {ImageData} imgData - Image data to draw on
      * @param {number} w - Width
@@ -1571,8 +1644,20 @@ class Camera3DRasterizer extends Module {
         const data = imgData.data;
         const buffer32 = new Uint32Array(imgData.data.buffer);
 
+        // Pre-calculate background colors for faster comparison
+        const bgColors = [
+            this.hexToRgb(this._skyColor),
+            this.hexToRgb(this._floorColor),
+            this.hexToRgb(this._backgroundColor)
+        ];
+
         specularHighlights.forEach(highlight => {
-            const { centerX, centerY, radius, intensity, color, triangleBounds } = highlight;
+            const { centerX, centerY, radius, intensity, color, triangleBounds, depth, cameraPos } = highlight;
+            
+            // Skip if highlight center is occluded
+            if (cameraPos && this.isPointOccluded(cameraPos, this._allTrianglesCache)) {
+                return;
+            }
 
             // Calculate bounding box - with or without triangle clipping based on setting
             let minX, maxX, minY, maxY;
@@ -1594,9 +1679,10 @@ class Camera3DRasterizer extends Module {
             if (minX > maxX || minY > maxY) return;
 
             const radiusSq = radius * radius;
+            const invRadiusSq = 1.0 / radiusSq;
 
             // Pre-calculate edge functions for triangle bounds checking (only if not bleeding)
-            let p0, p1, p2, e0_dx, e0_dy, e1_dx, e1_dy, e2_dx, e2_dy, area;
+            let p0, p1, p2, e0_dx, e0_dy, e1_dx, e1_dy, e2_dx, e2_dy;
 
             if (!this._specularBleedingEnabled) {
                 p0 = { x: triangleBounds.v0.x, y: triangleBounds.v0.y };
@@ -1606,80 +1692,64 @@ class Camera3DRasterizer extends Module {
                 e0_dx = p1.x - p0.x; e0_dy = p1.y - p0.y;
                 e1_dx = p2.x - p1.x; e1_dy = p2.y - p1.y;
                 e2_dx = p0.x - p2.x; e2_dy = p0.y - p2.y;
-
-                area = e0_dx * (p2.y - p0.y) - e0_dy * (p2.x - p0.x);
-                if (Math.abs(area) < 0.5) return;
             }
 
             // Limit intensity when bleeding is enabled
             const maxIntensity = this._specularBleedingEnabled ? 0.6 : 1.0;
             const limitedIntensity = Math.min(intensity, maxIntensity);
 
-            // Render circular gradient
-            for (let y = minY; y <= maxY; y++) {
-                for (let x = minX; x <= maxX; x++) {
+            // Optimization: Sample every N pixels when radius is large
+            const pixelStep = radius > 50 ? 2 : 1;
+            const tolerance = 5;
+
+            // Render circular gradient with occlusion testing
+            for (let y = minY; y <= maxY; y += pixelStep) {
+                const dy = y - centerY;
+                const dySq = dy * dy;
+
+                for (let x = minX; x <= maxX; x += pixelStep) {
                     // Check if pixel is inside triangle (only if not bleeding)
                     if (!this._specularBleedingEnabled) {
                         const w0 = e0_dx * (y - p0.y) - e0_dy * (x - p0.x);
                         const w1 = e1_dx * (y - p1.y) - e1_dy * (x - p1.x);
                         const w2 = e2_dx * (y - p2.y) - e2_dy * (x - p2.x);
 
-                        // Skip if outside triangle
                         if (w0 < 0 || w1 < 0 || w2 < 0) continue;
                     }
 
                     const dx = x - centerX;
-                    const dy = y - centerY;
-                    const distSq = dx * dx + dy * dy;
+                    const distSq = dx * dx + dySq;
 
-                    // Only process pixels within the circle
                     if (distSq <= radiusSq) {
                         const pixelIdx = y * w + x;
 
-                        // Check if this pixel was actually rendered (not background)
-                        // by checking if it has non-background color
                         const existing = buffer32[pixelIdx];
                         const existingR = existing & 0xFF;
                         const existingG = (existing >> 8) & 0xFF;
                         const existingB = (existing >> 16) & 0xFF;
 
-                        // Skip if pixel appears to be background (check against common background colors)
-                        // This prevents specular from appearing through faces
-                        const skyColor = this.hexToRgb(this._skyColor);
-                        const floorColor = this.hexToRgb(this._floorColor);
-                        const bgColor = this.hexToRgb(this._backgroundColor);
+                        let isBackground = false;
+                        for (const bgColor of bgColors) {
+                            if (Math.abs(existingR - bgColor.r) <= tolerance &&
+                                Math.abs(existingG - bgColor.g) <= tolerance &&
+                                Math.abs(existingB - bgColor.b) <= tolerance) {
+                                isBackground = true;
+                                break;
+                            }
+                        }
 
-                        // Check if pixel matches any background color (with small tolerance)
-                        const tolerance = 5;
-                        const isSkyColor = Math.abs(existingR - skyColor.r) <= tolerance &&
-                            Math.abs(existingG - skyColor.g) <= tolerance &&
-                            Math.abs(existingB - skyColor.b) <= tolerance;
-                        const isFloorColor = Math.abs(existingR - floorColor.r) <= tolerance &&
-                            Math.abs(existingG - floorColor.g) <= tolerance &&
-                            Math.abs(existingB - floorColor.b) <= tolerance;
-                        const isBgColor = Math.abs(existingR - bgColor.r) <= tolerance &&
-                            Math.abs(existingG - bgColor.g) <= tolerance &&
-                            Math.abs(existingB - bgColor.b) <= tolerance;
-
-                        // Skip background pixels unless bleeding is enabled
-                        if (!this._specularBleedingEnabled && (isSkyColor || isFloorColor || isBgColor)) {
+                        if (!this._specularBleedingEnabled && isBackground) {
                             continue;
                         }
 
-                        // Calculate falloff (smooth gradient from center to edge)
-                        const distance = Math.sqrt(distSq);
-                        const falloff = 1.0 - (distance / radius);
-
-                        // Apply smoothstep for smoother gradient
+                        const normalizedDistSq = distSq * invRadiusSq;
+                        const falloff = 1.0 - Math.sqrt(normalizedDistSq);
                         const smoothFalloff = falloff * falloff * (3 - 2 * falloff);
-
-                        // Final alpha based on limited intensity and falloff
                         const alpha = limitedIntensity * smoothFalloff;
 
                         if (alpha > 0.01) {
                             const dataIdx = pixelIdx * 4;
 
-                            // Additive blending with specular color
                             const specR = Math.min(255, existingR + color.r * alpha);
                             const specG = Math.min(255, existingG + color.g * alpha);
                             const specB = Math.min(255, existingB + color.b * alpha);
@@ -1687,7 +1757,19 @@ class Camera3DRasterizer extends Module {
                             data[dataIdx] = specR;
                             data[dataIdx + 1] = specG;
                             data[dataIdx + 2] = specB;
-                            // Keep alpha channel unchanged
+
+                            if (pixelStep > 1) {
+                                for (let py = 0; py < pixelStep && y + py <= maxY; py++) {
+                                    for (let px = 0; px < pixelStep && x + px <= maxX; px++) {
+                                        if (px === 0 && py === 0) continue;
+                                        const fillIdx = (y + py) * w + (x + px);
+                                        const fillDataIdx = fillIdx * 4;
+                                        data[fillDataIdx] = specR;
+                                        data[fillDataIdx + 1] = specG;
+                                        data[fillDataIdx + 2] = specB;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -2010,7 +2092,7 @@ class Camera3DRasterizer extends Module {
         if (json._lensFlareSpacing !== undefined) { this._lensFlareSpacing = json._lensFlareSpacing; } else { this._lensFlareSpacing = 0.15; }
         if (json._lensFlareSize !== undefined) { this._lensFlareSize = json._lensFlareSize; } else { this._lensFlareSize = 20; }
         if (json._lensFlareColorShift !== undefined) { this._lensFlareColorShift = json._lensFlareColorShift; } else { this._lensFlareColorShift = true; }
-        
+
 
         this.updateRenderTexture();
     }

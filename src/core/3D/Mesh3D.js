@@ -22,6 +22,9 @@ class Mesh3D extends Module {
         this.rotation = new Vector3(0, 0, 0);
         this.scale = new Vector3(1, 1, 1);
 
+        // Rotation speed (degrees per second on each axis)
+        this.rotationSpeed = new Vector3(0, 0, 0);
+
         // Appearance
         this.wireframeColor = "#FFFFFF";
         this.faceColor = "#3F51B5";
@@ -58,6 +61,12 @@ class Mesh3D extends Module {
         this.exposeProperty("scale", "vector3", this.scale, {
             onChange: (val) => this.scale = val
         });
+
+        // Expose rotation speed
+        this.exposeProperty("rotationSpeed", "vector3", this.rotationSpeed, {
+            onChange: (val) => this.rotationSpeed = val
+        });
+
         this.exposeProperty("wireframeColor", "color", "#FFFFFF", {
             onChange: (val) => this.wireframeColor = val
         });
@@ -451,6 +460,19 @@ class Mesh3D extends Module {
 
         style.addDivider();
 
+        style.startGroup("Transform", false, {
+            backgroundColor: 'rgba(150,255,150,0.08)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+        style.exposeProperty("position", "vector3", this.position, { label: "Position" });
+        style.exposeProperty("rotation", "vector3", this.rotation, { label: "Rotation" });
+        style.exposeProperty("scale", "vector3", this.scale, { label: "Scale" });
+        style.exposeProperty("rotationSpeed", "vector3", this.rotationSpeed, { label: "Rotation Speed (deg/s)" });
+        style.endGroup();
+
+        style.addDivider();
+
         // Show properties based on selected shape
         if (this._shape === "cube") {
             style.startGroup("Cube Settings", false, {
@@ -671,6 +693,26 @@ class Mesh3D extends Module {
         this.ensureMaterialModule();
 
         this.updateShape();
+    }
+
+    /**
+     * Update method called each frame
+     */
+    update() {
+        // Apply automatic rotation based on rotation speed
+        if (this.rotationSpeed.x !== 0 || this.rotationSpeed.y !== 0 || this.rotationSpeed.z !== 0) {
+            const deltaTime = this.gameObject?.scene?.engine?.deltaTime || 0;
+            this.rotate(
+                this.rotationSpeed.x * deltaTime,
+                this.rotationSpeed.y * deltaTime,
+                this.rotationSpeed.z * deltaTime
+            );
+        }
+
+        // Handle custom model interactions if enabled
+        if (this.isCustomModel && this._shape === "custom") {
+            this.handleCustomModelInput();
+        }
     }
 
     /**
