@@ -73,6 +73,11 @@ class Camera3DRasterizer extends Module {
         this._specularPerMesh = false;
         this._specularFullFace = false;
 
+        // Specular bloom properties
+        this._specularBloomEnabled = false;
+        this._specularBloomIntensity = 0.5;
+        this._specularBloomRadius = 1.5; // Multiplier for base radius
+        this._specularBloomThreshold = 0.3; // Minimum specular intensity to trigger bloom
 
         // Debug properties
         this._showDebugInfo = false;
@@ -238,14 +243,36 @@ class Camera3DRasterizer extends Module {
         this.exposeProperty("specularEnabled", "boolean", true, {
             onChange: (val) => this._specularEnabled = val
         });
-        this.exposeProperty("specularBleedingEnabled", "boolean", true, {
+        /*this.exposeProperty("specularBleedingEnabled", "boolean", true, {
             onChange: (val) => this._specularBleedingEnabled = val
-        });
-        this.exposeProperty("specularPerMesh", "boolean", false, {
+        });*/
+        /*this.exposeProperty("specularPerMesh", "boolean", false, {
             onChange: (val) => this._specularPerMesh = val
-        });
+        });*/
         this.exposeProperty("specularFullFace", "boolean", false, {
             onChange: (val) => this._specularFullFace = val
+        });
+
+        this.exposeProperty("specularBloomEnabled", "boolean", false, {
+            onChange: (val) => this._specularBloomEnabled = val
+        });
+        this.exposeProperty("specularBloomIntensity", "number", 0.5, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._specularBloomIntensity = val
+        });
+        this.exposeProperty("specularBloomRadius", "number", 1.5, {
+            min: 1.0,
+            max: 3.0,
+            step: 0.1,
+            onChange: (val) => this._specularBloomRadius = val
+        });
+        this.exposeProperty("specularBloomThreshold", "number", 0.3, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._specularBloomThreshold = val
         });
 
         this.exposeProperty("showDebugInfo", "boolean", false, {
@@ -1679,7 +1706,100 @@ class Camera3DRasterizer extends Module {
                 // Gradient mode: Render circular gradient (existing code)
                 this.renderGradientSpecular(highlight, buffer32, data, w, h, bgColors);
             }
+
+            // Add bloom effect if enabled and intensity is above threshold
+            if (this._specularBloomEnabled && intensity >= this._specularBloomThreshold) {
+                this.renderSpecularBloom(highlight, buffer32, data, w, h);
+            }
         });
+    }
+
+    /**
+     * Render specular bloom effect (bleeding beyond geometry)
+     * @param {Object} highlight - Specular highlight data
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {Uint8ClampedArray} data - Image data array
+     * @param {number} w - Width
+     * @param {number} h - Height
+     */
+    renderSpecularBloom(highlight, buffer32, data, w, h) {
+        const { centerX, centerY, radius, intensity, color } = highlight;
+
+        // Calculate bloom radius (larger than base specular)
+        const bloomRadius = radius * this._specularBloomRadius;
+        const bloomIntensity = intensity * this._specularBloomIntensity;
+
+        // Calculate bounding box (NOT constrained to triangle - full bleed)
+        const minX = Math.max(0, Math.floor(centerX - bloomRadius));
+        const maxX = Math.min(w - 1, Math.ceil(centerX + bloomRadius));
+        const minY = Math.max(0, Math.floor(centerY - bloomRadius));
+        const maxY = Math.min(h - 1, Math.ceil(centerY + bloomRadius));
+
+        if (minX > maxX || minY > maxY) return;
+
+        const radiusSq = bloomRadius * bloomRadius;
+        const invRadiusSq = 1.0 / radiusSq;
+
+        // Optimization: Sample every N pixels when radius is large
+        const pixelStep = bloomRadius > 80 ? 2 : 1;
+
+        // Render bloom with softer falloff - NO TRIANGLE BOUNDS CHECKING
+        for (let y = minY; y <= maxY; y += pixelStep) {
+            const dy = y - centerY;
+            const dySq = dy * dy;
+
+            for (let x = minX; x <= maxX; x += pixelStep) {
+                const dx = x - centerX;
+                const distSq = dx * dx + dySq;
+
+                if (distSq <= radiusSq) {
+                    const pixelIdx = y * w + x;
+                    const existing = buffer32[pixelIdx];
+                    const existingR = existing & 0xFF;
+                    const existingG = (existing >> 8) & 0xFF;
+                    const existingB = (existing >> 16) & 0xFF;
+
+                    // Calculate bloom falloff (softer than regular specular)
+                    const normalizedDistSq = distSq * invRadiusSq;
+                    const falloff = 1.0 - Math.sqrt(normalizedDistSq);
+                    
+                    // Extra smooth falloff for bloom (cubic for softer edges)
+                    const smoothFalloff = falloff * falloff * falloff;
+                    const alpha = bloomIntensity * smoothFalloff;
+
+                    if (alpha > 0.005) { // Lower threshold for bloom
+                        const dataIdx = pixelIdx * 4;
+
+                        // Additive blending for bloom effect
+                        const bloomR = Math.min(255, Math.round(existingR + color.r * alpha));
+                        const bloomG = Math.min(255, Math.round(existingG + color.g * alpha));
+                        const bloomB = Math.min(255, Math.round(existingB + color.b * alpha));
+
+                        data[dataIdx] = bloomR;
+                        data[dataIdx + 1] = bloomG;
+                        data[dataIdx + 2] = bloomB;
+
+                        // Fill adjacent pixels if using step optimization
+                        if (pixelStep > 1) {
+                            for (let py = 0; py < pixelStep && y + py <= maxY; py++) {
+                                for (let px = 0; px < pixelStep && x + px <= maxX; px++) {
+                                    if (px === 0 && py === 0) continue;
+                                    const fillIdx = (y + py) * w + (x + px);
+                                    const fillDataIdx = fillIdx * 4;
+                                    
+                                    // Make sure we're within bounds
+                                    if (fillIdx >= 0 && fillIdx < w * h) {
+                                        data[fillDataIdx] = bloomR;
+                                        data[fillDataIdx + 1] = bloomG;
+                                        data[fillDataIdx + 2] = bloomB;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -1707,7 +1827,7 @@ class Camera3DRasterizer extends Module {
         const e2_dx = p0.x - p2.x; const e2_dy = p0.y - p2.y;
 
         // Limit intensity
-        const maxIntensity = this._specularBleedingEnabled ? 0.6 : 1.0;
+        const maxIntensity = 1.0; // No longer limited by bleeding
         const limitedIntensity = Math.min(intensity, maxIntensity);
 
         // Apply uniform specular to all pixels in triangle
@@ -1795,8 +1915,8 @@ class Camera3DRasterizer extends Module {
             e2_dx = p0.x - p2.x; e2_dy = p0.y - p2.y;
         }
 
-        // Limit intensity when bleeding is enabled
-        const maxIntensity = this._specularBleedingEnabled ? 0.6 : 1.0;
+        // No intensity limiting - full specular power
+        const maxIntensity = 1.0;
         const limitedIntensity = Math.min(intensity, maxIntensity);
 
         // Optimization: Sample every N pixels when radius is large
@@ -2140,6 +2260,10 @@ class Camera3DRasterizer extends Module {
             _specularBleedingEnabled: this._specularBleedingEnabled,
             _specularPerMesh: this._specularPerMesh,
             _specularFullFace: this._specularFullFace,
+            _specularBloomEnabled: this._specularBloomEnabled,
+            _specularBloomIntensity: this._specularBloomIntensity,
+            _specularBloomRadius: this._specularBloomRadius,
+            _specularBloomThreshold: this._specularBloomThreshold,
             _showDebugInfo: this._showDebugInfo,
             _maxLights: this._maxLights,
             _lightFindDistance: this._lightFindDistance,
@@ -2183,6 +2307,10 @@ class Camera3DRasterizer extends Module {
         if (json._specularBleedingEnabled !== undefined) { this._specularBleedingEnabled = json._specularBleedingEnabled; } else { this._specularBleedingEnabled = false; }
         if (json._specularPerMesh !== undefined) { this._specularPerMesh = json._specularPerMesh; } else { this._specularPerMesh = false; }
         if (json._specularFullFace !== undefined) { this._specularFullFace = json._specularFullFace; } else { this._specularFullFace = false; }
+        if (json._specularBloomEnabled !== undefined) { this._specularBloomEnabled = json._specularBloomEnabled; } else { this._specularBloomEnabled = false; }
+        if (json._specularBloomIntensity !== undefined) { this._specularBloomIntensity = json._specularBloomIntensity; } else { this._specularBloomIntensity = 0.5; }
+        if (json._specularBloomRadius !== undefined) { this._specularBloomRadius = json._specularBloomRadius; } else { this._specularBloomRadius = 1.5; }
+        if (json._specularBloomThreshold !== undefined) { this._specularBloomThreshold = json._specularBloomThreshold; } else { this._specularBloomThreshold = 0.3; }
         if (json._showDebugInfo !== undefined) this._showDebugInfo = json._showDebugInfo;
         if (json._maxLights !== undefined) this._maxLights = json._maxLights;
         if (json._lightFindDistance !== undefined) this._lightFindDistance = json._lightFindDistance;
