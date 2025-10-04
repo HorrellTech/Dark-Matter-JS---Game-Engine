@@ -430,6 +430,7 @@ class FlyCamera extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "FlyCamera",
             _moveSpeed: this._moveSpeed,
             _sprintMultiplier: this._sprintMultiplier,
@@ -449,6 +450,7 @@ class FlyCamera extends Module {
      * @param {Object} json - JSON representation of the fly camera
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._moveSpeed !== undefined) this._moveSpeed = json._moveSpeed;
         if (json._sprintMultiplier !== undefined) this._sprintMultiplier = json._sprintMultiplier;
         if (json._verticalSpeed !== undefined) this._verticalSpeed = json._verticalSpeed;

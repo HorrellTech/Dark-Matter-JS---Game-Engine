@@ -5058,6 +5058,7 @@ class Camera3D extends Module {
 
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "Camera3D", _position: { x: this._position.x, y: this._position.y, z: this._position.z },
             _rotation: { x: this._rotation.x, y: this._rotation.y, z: this._rotation.z },
             _fieldOfView: this._fieldOfView, _nearPlane: this._nearPlane, _farPlane: this._farPlane,
@@ -5084,6 +5085,7 @@ class Camera3D extends Module {
     }
 
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._position) this._position = new Vector3(json._position.x, json._position.y, json._position.z);
         if (json._rotation) this._rotation = new Vector3(json._rotation.x, json._rotation.y, json._rotation.z);
         if (json._fieldOfView !== undefined) this._fieldOfView = json._fieldOfView;

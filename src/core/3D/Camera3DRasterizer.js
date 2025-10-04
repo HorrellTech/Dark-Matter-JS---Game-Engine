@@ -79,6 +79,13 @@ class Camera3DRasterizer extends Module {
         this._specularBloomRadius = 1.5; // Multiplier for base radius
         this._specularBloomThreshold = 0.3; // Minimum specular intensity to trigger bloom
 
+        // Fog properties
+        this._fogEnabled = false;
+        this._fogColor = "#a0a0a0"; // Gray fog
+        this._fogStart = 100; // Distance where fog starts
+        this._fogEnd = 500; // Distance where fog is fully opaque
+        this._fogDensity = 1.0; // Fog density multiplier (0-1)
+
         // Debug properties
         this._showDebugInfo = false;
         this._debugStats = {
@@ -273,6 +280,31 @@ class Camera3DRasterizer extends Module {
             max: 1,
             step: 0.05,
             onChange: (val) => this._specularBloomThreshold = val
+        });
+
+        this.exposeProperty("fogEnabled", "boolean", false, {
+            onChange: (val) => this._fogEnabled = val
+        });
+        this.exposeProperty("fogColor", "color", "#a0a0a0", {
+            onChange: (val) => this._fogColor = val
+        });
+        this.exposeProperty("fogStart", "number", 100, {
+            min: 0,
+            max: 1000,
+            step: 10,
+            onChange: (val) => this._fogStart = val
+        });
+        this.exposeProperty("fogEnd", "number", 500, {
+            min: 10,
+            max: 5000,
+            step: 10,
+            onChange: (val) => this._fogEnd = val
+        });
+        this.exposeProperty("fogDensity", "number", 1.0, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._fogDensity = val
         });
 
         this.exposeProperty("showDebugInfo", "boolean", false, {
@@ -685,6 +717,42 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+ * Calculate fog factor based on distance
+ * Returns 0 (no fog) to 1 (full fog)
+ */
+    calculateFogFactor(distance) {
+        if (!this._fogEnabled) return 0;
+
+        if (distance <= this._fogStart) return 0;
+        if (distance >= this._fogEnd) return this._fogDensity;
+
+        // Linear interpolation between fogStart and fogEnd
+        const range = this._fogEnd - this._fogStart;
+        const fogFactor = ((distance - this._fogStart) / range) * this._fogDensity;
+
+        return Math.max(0, Math.min(this._fogDensity, fogFactor));
+    }
+
+    /**
+     * Apply fog to a color based on distance
+     */
+    applyFog(color, distance) {
+        if (!this._fogEnabled) return color;
+
+        const fogFactor = this.calculateFogFactor(distance);
+        if (fogFactor === 0) return color;
+
+        const fogRgb = this.hexToRgb(this._fogColor);
+
+        // Blend color with fog color based on fog factor
+        return {
+            r: Math.round(color.r * (1 - fogFactor) + fogRgb.r * fogFactor),
+            g: Math.round(color.g * (1 - fogFactor) + fogRgb.g * fogFactor),
+            b: Math.round(color.b * (1 - fogFactor) + fogRgb.b * fogFactor)
+        };
+    }
+
+    /**
      * Optimized pure raster rendering using scanline algorithm
      * Fast forward rasterization without Z-buffer overhead
      */
@@ -796,12 +864,17 @@ class Camera3DRasterizer extends Module {
                 allTrianglesForShadows
             );
 
-            const packedColor = (255 << 24) | (litColor.b << 16) | (litColor.g << 8) | litColor.r;
+            // Apply fog to lit color based on triangle depth
+            const foggedColor = this.applyFog(litColor, tri.avgDepth);
+
+            const packedColor = (255 << 24) | (foggedColor.b << 16) | (foggedColor.g << 8) | foggedColor.r;
             tri.packedColor = packedColor;
+            tri.fogFactor = this.calculateFogFactor(tri.avgDepth); // Store fog factor for specular filtering
 
             this.rasterizeTriangleFast(tri, buffer32, w, h);
 
-            if (this._specularEnabled && tri.material && tri.material._specularColor) {
+            // Only calculate specular if fog hasn't obscured the triangle
+            if (this._specularEnabled && tri.material && tri.material._specularColor && tri.fogFactor < 0.9) {
                 const projectedVerts = [tri.v0.screen, tri.v1.screen, tri.v2.screen];
 
                 if (this._specularPerMesh) {
@@ -832,6 +905,8 @@ class Camera3DRasterizer extends Module {
                 } else {
                     const specular = this.calculateSpecularHighlight(tri, projectedVerts);
                     if (specular) {
+                        // Store fog factor with specular for filtering
+                        specular.fogFactor = tri.fogFactor;
                         specularHighlights.push(specular);
                     }
                 }
@@ -854,11 +929,9 @@ class Camera3DRasterizer extends Module {
         const nearbyLights = this.getNearbyLights();
         nearbyLights.forEach(light => {
             if (light._showLightSource) {
-                // Get light position in camera space
                 const lightWorldPos = light.getWorldPosition();
                 const lightCameraPos = this.worldToCameraSpace(lightWorldPos);
 
-                // Only draw if not occluded
                 if (!this.isPointOccluded(lightCameraPos, allTriangles)) {
                     light.drawLightSource(this);
                 }
@@ -1079,12 +1152,12 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
- * Draw lens flare effect
- * @param {Uint32Array} buffer32 - 32-bit pixel buffer
- * @param {number} w - Width
- * @param {number} h - Height
- * @param {Vector2} sunPos - Sun position in screen space
- */
+     * Draw lens flare effect
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {Vector2} sunPos - Sun position in screen space
+     */
     drawLensFlare(buffer32, w, h, sunPos) {
         if (!this._lensFlareEnabled || !sunPos) return;
 
@@ -1276,18 +1349,10 @@ class Camera3DRasterizer extends Module {
             const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
             const horizonY = Math.floor(h * clampedHorizon);
 
-            // Draw gradient sky and floor
-            for (let y = 0; y < h; y++) {
-                let color;
-                if (y < horizonY) {
-                    // Sky gradient
-                    const t = y / horizonY;
-                    color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
-                } else {
-                    // Floor gradient
-                    const t = (y - horizonY) / (h - horizonY);
-                    color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
-                }
+            // Draw sky gradient first
+            for (let y = 0; y < horizonY; y++) {
+                const t = y / horizonY;
+                const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
                 const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
                 const rowStart = y * w;
                 for (let x = 0; x < w; x++) {
@@ -1295,7 +1360,7 @@ class Camera3DRasterizer extends Module {
                 }
             }
 
-            // Draw sun after background gradient
+            // Draw sun on top of sky gradient
             const sunPos = this.calculateSunPosition();
             if (sunPos) {
                 this.drawSun(buffer32, w, h, sunPos);
@@ -1303,6 +1368,17 @@ class Camera3DRasterizer extends Module {
                 // Draw lens flare if enabled
                 if (this._lensFlareEnabled) {
                     this.drawLensFlare(buffer32, w, h, sunPos);
+                }
+            }
+
+            // Draw floor gradient after sun
+            for (let y = horizonY; y < h; y++) {
+                const t = (y - horizonY) / (h - horizonY);
+                const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
+                const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
+                const rowStart = y * w;
+                for (let x = 0; x < w; x++) {
+                    buffer32[rowStart + x] = pixel;
                 }
             }
         } else if (this._backgroundType === "transparent") {
@@ -1684,7 +1760,6 @@ class Camera3DRasterizer extends Module {
         const data = imgData.data;
         const buffer32 = new Uint32Array(imgData.data.buffer);
 
-        // Pre-calculate background colors for faster comparison
         const bgColors = [
             this.hexToRgb(this._skyColor),
             this.hexToRgb(this._floorColor),
@@ -1692,24 +1767,39 @@ class Camera3DRasterizer extends Module {
         ];
 
         specularHighlights.forEach(highlight => {
-            const { centerX, centerY, radius, intensity, color, triangleBounds, depth, cameraPos } = highlight;
+            const { centerX, centerY, radius, intensity, color, triangleBounds, depth, cameraPos, fogFactor } = highlight;
+
+            // Skip specular if too much fog (>90% fog coverage)
+            if (fogFactor !== undefined && fogFactor > 0.9) {
+                return;
+            }
 
             // Skip if highlight center is occluded
             if (cameraPos && this.isPointOccluded(cameraPos, this._allTrianglesCache)) {
                 return;
             }
 
+            // Reduce specular intensity based on fog
+            const fogAdjustedIntensity = fogFactor !== undefined ?
+                intensity * (1 - fogFactor) : intensity;
+
+            if (fogAdjustedIntensity < 0.01) return;
+
+            // Create fog-adjusted highlight
+            const fogAdjustedHighlight = {
+                ...highlight,
+                intensity: fogAdjustedIntensity
+            };
+
             if (this._specularFullFace) {
-                // Full-face mode: Apply uniform specular to entire triangle
-                this.renderFullFaceSpecular(highlight, buffer32, data, w, h, bgColors);
+                this.renderFullFaceSpecular(fogAdjustedHighlight, buffer32, data, w, h, bgColors);
             } else {
-                // Gradient mode: Render circular gradient (existing code)
-                this.renderGradientSpecular(highlight, buffer32, data, w, h, bgColors);
+                this.renderGradientSpecular(fogAdjustedHighlight, buffer32, data, w, h, bgColors);
             }
 
-            // Add bloom effect if enabled and intensity is above threshold
-            if (this._specularBloomEnabled && intensity >= this._specularBloomThreshold) {
-                this.renderSpecularBloom(highlight, buffer32, data, w, h);
+            // Add bloom effect if enabled and intensity is above threshold (also affected by fog)
+            if (this._specularBloomEnabled && fogAdjustedIntensity >= this._specularBloomThreshold) {
+                this.renderSpecularBloom(fogAdjustedHighlight, buffer32, data, w, h);
             }
         });
     }
@@ -1762,7 +1852,7 @@ class Camera3DRasterizer extends Module {
                     // Calculate bloom falloff (softer than regular specular)
                     const normalizedDistSq = distSq * invRadiusSq;
                     const falloff = 1.0 - Math.sqrt(normalizedDistSq);
-                    
+
                     // Extra smooth falloff for bloom (cubic for softer edges)
                     const smoothFalloff = falloff * falloff * falloff;
                     const alpha = bloomIntensity * smoothFalloff;
@@ -1786,7 +1876,7 @@ class Camera3DRasterizer extends Module {
                                     if (px === 0 && py === 0) continue;
                                     const fillIdx = (y + py) * w + (x + px);
                                     const fillDataIdx = fillIdx * 4;
-                                    
+
                                     // Make sure we're within bounds
                                     if (fillIdx >= 0 && fillIdx < w * h) {
                                         data[fillDataIdx] = bloomR;
@@ -1803,8 +1893,8 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
- * Render full-face specular highlighting
- */
+     * Render full-face specular highlighting
+     */
     renderFullFaceSpecular(highlight, buffer32, data, w, h, bgColors) {
         const { intensity, color, triangleBounds } = highlight;
         const tolerance = 5;
@@ -2237,6 +2327,7 @@ class Camera3DRasterizer extends Module {
 
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "Camera3DRasterizer", _position: { x: this._position.x, y: this._position.y, z: this._position.z },
             _rotation: { x: this._rotation.x, y: this._rotation.y, z: this._rotation.z },
             _fieldOfView: this._fieldOfView, _nearPlane: this._nearPlane, _farPlane: this._farPlane,
@@ -2273,11 +2364,17 @@ class Camera3DRasterizer extends Module {
             _lensFlareCount: this._lensFlareCount,
             _lensFlareSpacing: this._lensFlareSpacing,
             _lensFlareSize: this._lensFlareSize,
-            _lensFlareColorShift: this._lensFlareColorShift
+            _lensFlareColorShift: this._lensFlareColorShift,
+            _fogEnabled: this._fogEnabled,
+            _fogColor: this._fogColor,
+            _fogStart: this._fogStart,
+            _fogEnd: this._fogEnd,
+            _fogDensity: this._fogDensity
         };
     }
 
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._position) this._position = new Vector3(json._position.x, json._position.y, json._position.z);
         if (json._rotation) this._rotation = new Vector3(json._rotation.x, json._rotation.y, json._rotation.z);
         if (json._fieldOfView !== undefined) this._fieldOfView = json._fieldOfView;
@@ -2321,7 +2418,11 @@ class Camera3DRasterizer extends Module {
         if (json._lensFlareSpacing !== undefined) { this._lensFlareSpacing = json._lensFlareSpacing; } else { this._lensFlareSpacing = 0.15; }
         if (json._lensFlareSize !== undefined) { this._lensFlareSize = json._lensFlareSize; } else { this._lensFlareSize = 20; }
         if (json._lensFlareColorShift !== undefined) { this._lensFlareColorShift = json._lensFlareColorShift; } else { this._lensFlareColorShift = true; }
-
+        if (json._fogEnabled !== undefined) { this._fogEnabled = json._fogEnabled; } else { this._fogEnabled = false; }
+        if (json._fogColor !== undefined) { this._fogColor = json._fogColor; } else { this._fogColor = "#a0a0a0"; }
+        if (json._fogStart !== undefined) { this._fogStart = json._fogStart; } else { this._fogStart = 100; }
+        if (json._fogEnd !== undefined) { this._fogEnd = json._fogEnd; } else { this._fogEnd = 500; }
+        if (json._fogDensity !== undefined) { this._fogDensity = json._fogDensity; } else { this._fogDensity = 1.0; }
 
         this.updateRenderTexture();
     }

@@ -1027,6 +1027,7 @@ class CubeMesh3D extends Module {
       */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "CubeMesh3D",
             _size: this._size,
             _position: { x: this._position.x, y: this._position.y, z: this._position.z },
@@ -1046,6 +1047,7 @@ class CubeMesh3D extends Module {
       * @param {Object} json - JSON representation of the cube mesh
       */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._size !== undefined) {
             this._size = json._size;
             this.updateCube();

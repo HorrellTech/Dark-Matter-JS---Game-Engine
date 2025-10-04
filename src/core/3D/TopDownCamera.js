@@ -290,6 +290,7 @@ class TopDownCamera extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "TopDownCamera",
             _cameraDistance: this._cameraDistance,
             _moveSpeed: this._moveSpeed,
@@ -307,6 +308,7 @@ class TopDownCamera extends Module {
      * @param {Object} json - JSON representation of the top-down camera
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._cameraDistance !== undefined) this._cameraDistance = json._cameraDistance;
         if (json._moveSpeed !== undefined) this._moveSpeed = json._moveSpeed;
         if (json._sprintMultiplier !== undefined) this._sprintMultiplier = json._sprintMultiplier;

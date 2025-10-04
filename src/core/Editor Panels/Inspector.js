@@ -515,6 +515,13 @@ class Inspector {
             this.showNoObjectMessage();
         } else {
             this.showObjectInspector();
+            
+            // Update all module values after UI is built
+            if (gameObject.modules) {
+                gameObject.modules.forEach(module => {
+                    setTimeout(() => this.updateModuleValues(module), 0);
+                });
+            }
         }
 
         // If the object changed, refresh the canvas to show selection state
@@ -3909,6 +3916,79 @@ class Inspector {
                 this.updateObjectField(input.dataset.propName, input.dataset.field, input, module);
                 updateGameObject();
             });
+        });
+    }
+
+    updateModuleValues(module) {
+        if (!this.inspectedObject || !module) return;
+
+        const moduleContainer = this.modulesList.querySelector(`.module-container[data-module-id="${module.id}"]`);
+        if (!moduleContainer) return;
+
+        // Update all property inputs
+        moduleContainer.querySelectorAll('.property-input').forEach(input => {
+            const propName = input.dataset.propName;
+            if (!propName) return;
+
+            let value = typeof module.getProperty === 'function'
+                ? module.getProperty(propName)
+                : module[propName];
+
+            if (input.type === 'checkbox') {
+                input.checked = !!value;
+            } else if (input.type === 'color') {
+                input.value = value || '#ffffff';
+            } else if (input.type === 'number') {
+                input.value = value || 0;
+            } else {
+                input.value = value || '';
+            }
+        });
+
+        // Update vector component inputs and previews
+        moduleContainer.querySelectorAll('.component-input').forEach(input => {
+            const propName = input.dataset.propName;
+            const component = input.dataset.component;
+
+            let current = typeof module.getProperty === 'function'
+                ? module.getProperty(propName)
+                : module[propName];
+
+            if (!current) return;
+
+            if (Array.isArray(current)) {
+                const [i, key] = component.split(':');
+                input.value = current[+i]?.[key] ?? 0;
+            } else {
+                input.value = current[component] ?? 0;
+            }
+        });
+
+        // Update vector previews
+        moduleContainer.querySelectorAll('.vector-preview').forEach(preview => {
+            const collapseBtn = preview.closest('.vector-header')?.querySelector('.vector-collapse');
+            if (!collapseBtn) return;
+
+            const targetId = collapseBtn.dataset.target;
+            const vectorComponents = document.getElementById(targetId);
+            if (!vectorComponents) return;
+
+            const firstInput = vectorComponents.querySelector('.component-input');
+            if (!firstInput) return;
+
+            const propName = firstInput.dataset.propName;
+            let current = typeof module.getProperty === 'function'
+                ? module.getProperty(propName)
+                : module[propName];
+
+            if (!current) return;
+
+            // Format based on vector type
+            if ('z' in current) {
+                preview.textContent = `(${current.x.toFixed(1)}, ${current.y.toFixed(1)}, ${current.z.toFixed(1)})`;
+            } else {
+                preview.textContent = `(${current.x.toFixed(1)}, ${current.y.toFixed(1)})`;
+            }
         });
     }
 

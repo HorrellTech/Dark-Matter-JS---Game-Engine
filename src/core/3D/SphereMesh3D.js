@@ -760,6 +760,7 @@ class SphereMesh3D extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "SphereMesh3D",
             _radius: this._radius,
             _position: { x: this._position.x, y: this._position.y, z: this._position.z },
@@ -781,6 +782,7 @@ class SphereMesh3D extends Module {
      * @param {Object} json - JSON representation of the sphere mesh
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._radius !== undefined) {
             this._radius = json._radius;
             this.updateSphere();

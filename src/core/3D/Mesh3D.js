@@ -53,18 +53,51 @@ class Mesh3D extends Module {
 
         // Expose properties to the inspector
         this.exposeProperty("position", "vector3", this.position, {
-            onChange: (val) => this.position = val
+            onChange: (val) => {
+                if (val && typeof val === 'object') {
+                    if (val.x !== undefined) this.position.x = val.x;
+                    if (val.y !== undefined) this.position.y = val.y;
+                    if (val.z !== undefined) this.position.z = val.z;
+                } else {
+                    this.position = val;
+                }
+            }
         });
         this.exposeProperty("rotation", "vector3", this.rotation, {
-            onChange: (val) => this.rotation = val
+            onChange: (val) => {
+                if (val && typeof val === 'object') {
+                    if (val.x !== undefined) this.rotation.x = val.x;
+                    if (val.y !== undefined) this.rotation.y = val.y;
+                    if (val.z !== undefined) this.rotation.z = val.z;
+                } else {
+                    this.rotation = val;
+                }
+            }
         });
         this.exposeProperty("scale", "vector3", this.scale, {
-            onChange: (val) => this.scale = val
+            onChange: (val) => {
+                if (val && typeof val === 'object') {
+                    if (val.x !== undefined) this.scale.x = val.x;
+                    if (val.y !== undefined) this.scale.y = val.y;
+                    if (val.z !== undefined) this.scale.z = val.z;
+                } else {
+                    this.scale = val;
+                }
+            }
         });
 
         // Expose rotation speed
         this.exposeProperty("rotationSpeed", "vector3", this.rotationSpeed, {
-            onChange: (val) => this.rotationSpeed = val
+            onChange: (val) => {
+                if (val && typeof val === 'object') {
+                    // Handle both Vector3 objects and plain objects with x, y, z properties
+                    if (val.x !== undefined) this.rotationSpeed.x = val.x;
+                    if (val.y !== undefined) this.rotationSpeed.y = val.y;
+                    if (val.z !== undefined) this.rotationSpeed.z = val.z;
+                } else {
+                    this.rotationSpeed = val;
+                }
+            }
         });
 
         this.exposeProperty("wireframeColor", "color", "#FFFFFF", {
@@ -656,18 +689,6 @@ class Mesh3D extends Module {
 
         style.addDivider();
 
-        style.startGroup("Transform", false, {
-            backgroundColor: 'rgba(150,255,150,0.08)',
-            borderRadius: '6px',
-            padding: '8px'
-        });
-        style.exposeProperty("position", "vector3", this.position, { label: "Position" });
-        style.exposeProperty("rotation", "vector3", this.rotation, { label: "Rotation" });
-        style.exposeProperty("scale", "vector3", this.scale, { label: "Scale" });
-        style.endGroup();
-
-        style.addDivider();
-
         style.startGroup("Material & Lighting", false, {
             backgroundColor: 'rgba(255,150,255,0.08)',
             borderRadius: '6px',
@@ -698,21 +719,26 @@ class Mesh3D extends Module {
     /**
      * Update method called each frame
      */
-    loop() {
+    loop(deltaTime) {
         // Apply automatic rotation based on rotation speed
-        if (this.rotationSpeed.x !== 0 || this.rotationSpeed.y !== 0 || this.rotationSpeed.z !== 0) {
-            const deltaTime = this.gameObject?.scene?.engine?.deltaTime || 0;
-            this.rotate(
-                this.rotationSpeed.x * deltaTime,
-                this.rotationSpeed.y * deltaTime,
-                this.rotationSpeed.z * deltaTime
-            );
-        }
+        //if (this.rotationSpeed && (this.rotationSpeed.x !== 0 || this.rotationSpeed.y !== 0 || this.rotationSpeed.z !== 0)) {
+            // Multiply by deltaTime to get rotation per second
+            this.rotation.x += this.rotationSpeed.x * deltaTime;
+            this.rotation.y += this.rotationSpeed.y * deltaTime;
+            this.rotation.z += this.rotationSpeed.z * deltaTime;
+
+            // Normalize angles to 0-360 range
+            this.rotation.x = ((this.rotation.x % 360) + 360) % 360;
+            this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
+            this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
+        //}
 
         // Handle custom model interactions if enabled
         if (this.isCustomModel && this._shape === "custom") {
             this.handleCustomModelInput();
         }
+
+        this.updateShape();
     }
 
     /**
@@ -1709,53 +1735,38 @@ class Mesh3D extends Module {
 
         // Ensure _shape is set
         if (!this._shape) {
-            // console.warn("Mesh3D: _shape is undefined, defaulting to cube");
             this._shape = "cube";
         }
 
-        // Debug logging to track shape changes
-        // console.log(`Mesh3D: Updating shape to: ${this._shape}`);
-        // console.log(`Mesh3D: Current mesh data before update - vertices: ${this.vertices.length}, faces: ${this.faces.length}`);
-
         switch (this._shape) {
             case "cube":
-                // console.log(`Mesh3D: Creating cube with size: ${this.cubeSize}`);
                 this.createCube(this.cubeSize);
                 break;
             case "pyramid":
-                // console.log(`Mesh3D: Creating pyramid with base: ${this.pyramidBaseSize}, height: ${this.pyramidHeight}`);
                 this.createPyramid(this.pyramidBaseSize, this.pyramidHeight);
                 break;
             case "sphere":
-                // console.log(`Mesh3D: Creating sphere with radius: ${this.sphereRadius}, detail: ${this.sphereDetail}`);
                 this.createSphere(this.sphereRadius, this.sphereDetail);
                 break;
             case "octahedron":
-                // console.log(`Mesh3D: Creating octahedron with size: ${this.octahedronSize}`);
                 this.createOctahedron(this.octahedronSize);
                 break;
             case "torus":
-                // console.log(`Mesh3D: Creating torus with major: ${this.torusMajorRadius}, minor: ${this.torusMinorRadius}`);
                 this.createTorus(this.torusMajorRadius, this.torusMinorRadius, this.torusMajorSegments, this.torusMinorSegments);
                 break;
             case "cone":
-                // console.log(`Mesh3D: Creating cone with radius: ${this.coneRadius}, height: ${this.coneHeight}`);
                 this.createCone(this.coneRadius, this.coneHeight, this.coneSegments);
                 break;
             case "cylinder":
-                // console.log(`Mesh3D: Creating cylinder with radius: ${this.cylinderRadius}, height: ${this.cylinderHeight}`);
                 this.createCylinder(this.cylinderRadius, this.cylinderHeight, this.cylinderSegments);
                 break;
             case "icosahedron":
-                // console.log(`Mesh3D: Creating icosahedron with size: ${this.icosahedronSize}`);
                 this.createIcosahedron(this.icosahedronSize);
                 break;
             case "quad":
-                // console.log(`Mesh3D: Creating quad with width: ${this.quadWidth}, height: ${this.quadHeight}`);
                 this.createQuad(this.quadWidth, this.quadHeight, this.quadSubdivisionsX, this.quadSubdivisionsY);
                 break;
             case "plane":
-                // console.log(`Mesh3D: Creating plane with size: ${this.planeSize}`);
                 this.createPlane(this.planeSize);
                 break;
             case "quadCube":
@@ -1771,20 +1782,15 @@ class Mesh3D extends Module {
                 this.createTetrahedron(this.tetrahedronSize);
                 break;
             case "custom":
-                // console.log(`Mesh3D: Creating custom editable model`);
                 this.createCustomModel(this.sphereRadius, this.sphereDetail);
                 break;
             default:
-                // console.warn(`Mesh3D: Unknown shape "${this._shape}", defaulting to cube`);
                 this.createCube(this.cubeSize);
         }
 
         // Ensure UV coordinates are generated for the new shape
         if (this.vertices.length > 0) {
             this.generateUVCoordinates();
-            // console.log(`Mesh3D: Generated ${this.vertices.length} vertices, ${this.faces.length} faces for ${this._shape}`);
-        } else {
-            // console.warn(`Mesh3D: No vertices generated for shape ${this._shape}`);
         }
     }
 
@@ -2864,9 +2870,73 @@ class Mesh3D extends Module {
     }
 
     /**
-      * Transform vertices based on mesh and game object transforms
-      * @returns {Array<Vector3>} Transformed vertices
-      */
+     * Rotate a Vector3 around the X axis
+     * @param {Vector3} vector - The vector to rotate
+     * @param {number} radians - Rotation angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateVectorX(vector, radians) {
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return new Vector3(
+            vector.x,
+            vector.y * cos - vector.z * sin,
+            vector.y * sin + vector.z * cos
+        );
+    }
+
+    /**
+     * Rotate a Vector3 around the Y axis
+     * @param {Vector3} vector - The vector to rotate
+     * @param {number} radians - Rotation angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateVectorY(vector, radians) {
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return new Vector3(
+            vector.x * cos + vector.z * sin,
+            vector.y,
+            -vector.x * sin + vector.z * cos
+        );
+    }
+
+    /**
+     * Rotate a Vector3 around the Z axis
+     * @param {Vector3} vector - The vector to rotate
+     * @param {number} radians - Rotation angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateVectorZ(vector, radians) {
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return new Vector3(
+            vector.x * cos - vector.y * sin,
+            vector.x * sin + vector.y * cos,
+            vector.z
+        );
+    }
+
+    /**
+     * Rotate a Vector3 around the Z axis
+     * @param {Vector3} vector - The vector to rotate
+     * @param {number} radians - Rotation angle in radians
+     * @returns {Vector3} Rotated vector
+     */
+    rotateVectorZ(vector, radians) {
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        return new Vector3(
+            vector.x * cos - vector.y * sin,
+            vector.x * sin + vector.y * cos,
+            vector.z
+        );
+    }
+
+    /**
+ * Transform vertices based on mesh and game object transforms
+ * @returns {Array<Vector3>} Transformed vertices
+ */
     transformVertices() {
         // Get game object transforms if available
         let objPos = { x: 0, y: 0 };
@@ -2904,28 +2974,28 @@ class Mesh3D extends Module {
             v.y *= this.scale.y;
             v.z *= this.scale.z;
 
-            // Step 2: Apply game object rotation first (convert degrees to radians)
-            // In 2D-to-3D system, game object rotation is applied around Z-axis
-            if (objRot !== 0) {
-                const rotRad = objRot * (Math.PI / 180);
-                v = this.rotateZ(v, rotRad);
-            }
+            // Step 2: Apply mesh rotation (convert degrees to radians)
+            // Rotation order: X (roll) -> Y (pitch) -> Z (yaw) for Z-up coordinate system
+            if (this.rotation.x !== 0) v = this.rotateVectorX(v, this.rotation.x * (Math.PI / 180)); // Roll around X
+            if (this.rotation.y !== 0) v = this.rotateVectorY(v, this.rotation.y * (Math.PI / 180)); // Pitch around Y
+            if (this.rotation.z !== 0) v = this.rotateVectorZ(v, this.rotation.z * (Math.PI / 180)); // Yaw around Z
 
-            // Step 3: Apply mesh rotation (convert degrees to radians)
-            // X-axis: roll, Y-axis: yaw, Z-axis: pitch
-            if (this.rotation.x !== 0) v = this.rotateX(v, this.rotation.x * (Math.PI / 180)); // Roll
-            if (this.rotation.y !== 0) v = this.rotateY(v, this.rotation.y * (Math.PI / 180)); // Yaw
-            if (this.rotation.z !== 0) v = this.rotateZ(v, this.rotation.z * (Math.PI / 180)); // Pitch
-
-            // Step 4: Apply mesh position (translate)
+            // Step 3: Apply mesh position (translate)
             v.x += this.position.x;
             v.y += this.position.y;
             v.z += this.position.z;
 
-            // Step 5: Apply game object scale
+            // Step 4: Apply game object scale
             v.x *= objScale3D.x;
             v.y *= objScale3D.y;
             v.z *= objScale3D.z;
+
+            // Step 5: Apply game object rotation around Z-axis (convert degrees to radians)
+            // This is the 2D rotation from the game object's angle property
+            if (objRot !== 0) {
+                const rotRad = objRot * (Math.PI / 180);
+                v = this.rotateVectorZ(v, rotRad);
+            }
 
             // Step 6: Apply game object position (translate) including depth
             v.x += objPos3D.x;
@@ -2937,51 +3007,221 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Rotate a vector around the X axis
-     * @param {Vector3} v - Vector to rotate
-     * @param {number} angle - Angle in radians
-     * @returns {Vector3} Rotated vector
+     * Rotate the mesh by the given angles (in degrees)
+     * @param {number} x - Roll rotation (degrees) - rotation around X axis (forward/back)
+     * @param {number} y - Yaw rotation (degrees) - rotation around Y axis (left/right)
+     * @param {number} z - Pitch rotation (degrees) - rotation around Z axis (up/down)
      */
-    rotateX(v, angle) {
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        return new Vector3(
-            v.x,
-            v.y * cos - v.z * sin,
-            v.y * sin + v.z * cos
-        );
+    rotate(x = 0, y = 0, z = 0) {
+        this.rotation.x += x;
+        this.rotation.y += y;
+        this.rotation.z += z;
+
+        // Normalize angles to 0-360 range
+        this.rotation.x = ((this.rotation.x % 360) + 360) % 360;
+        this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
+        this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
     }
 
     /**
-     * Rotate a vector around the Y axis
-     * @param {Vector3} v - Vector to rotate
-     * @param {number} angle - Angle in radians
-     * @returns {Vector3} Rotated vector
+     * Set the mesh rotation to specific angles (in degrees)
+     * @param {number} x - Roll rotation (degrees) - rotation around X axis (forward/back)
+     * @param {number} y - Yaw rotation (degrees) - rotation around Y axis (left/right)
+     * @param {number} z - Pitch rotation (degrees) - rotation around Z axis (up/down)
      */
-    rotateY(v, angle) {
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        return new Vector3(
-            v.x * cos + v.z * sin,
-            v.y,
-            -v.x * sin + v.z * cos
-        );
+    setRotation(x = 0, y = 0, z = 0) {
+        this.rotation.x = x;
+        this.rotation.y = y;
+        this.rotation.z = z;
+
+        // Normalize angles to 0-360 range
+        this.rotation.x = ((this.rotation.x % 360) + 360) % 360;
+        this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
+        this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
     }
 
     /**
-     * Rotate a vector around the Z axis
-     * @param {Vector3} v - Vector to rotate
-     * @param {number} angle - Angle in radians
-     * @returns {Vector3} Rotated vector
+     * Rotate around the X axis (roll - forward/back axis)
+     * @param {number} degrees - Rotation angle in degrees
      */
-    rotateZ(v, angle) {
-        const cos = Math.cos(angle);
-        const sin = Math.sin(angle);
-        return new Vector3(
-            v.x * cos - v.y * sin,
-            v.x * sin + v.y * cos,
-            v.z
+    rotateX(degrees) {
+        this.rotate(degrees, 0, 0);
+    }
+
+    /**
+     * Rotate around the Y axis (yaw - left/right axis)
+     * @param {number} degrees - Rotation angle in degrees
+     */
+    rotateY(degrees) {
+        this.rotate(0, degrees, 0);
+    }
+
+    /**
+     * Rotate around the Z axis (pitch - up/down axis)
+     * @param {number} degrees - Rotation angle in degrees
+     */
+    rotateZ(degrees) {
+        this.rotate(0, 0, degrees);
+    }
+
+    /**
+     * Set rotation speed for automatic rotation (degrees per second)
+     * @param {number} x - Roll speed (degrees/sec) - rotation around X axis
+     * @param {number} y - Yaw speed (degrees/sec) - rotation around Y axis
+     * @param {number} z - Pitch speed (degrees/sec) - rotation around Z axis
+     */
+    setRotationSpeed(x = 0, y = 0, z = 0) {
+        this.rotationSpeed.x = x;
+        this.rotationSpeed.y = y;
+        this.rotationSpeed.z = z;
+    }
+
+    /**
+     * Get the current rotation as a Vector3
+     * @returns {Vector3} Current rotation in degrees
+     */
+    getRotation() {
+        return this.rotation.clone();
+    }
+
+    /**
+     * Get the current rotation speed as a Vector3
+     * @returns {Vector3} Current rotation speed in degrees per second
+     */
+    getRotationSpeed() {
+        return this.rotationSpeed.clone();
+    }
+
+    /**
+     * Reset rotation to zero
+     */
+    resetRotation() {
+        this.rotation.x = 0;
+        this.rotation.y = 0;
+        this.rotation.z = 0;
+    }
+
+    /**
+     * Stop automatic rotation
+     */
+    stopRotation() {
+        this.rotationSpeed.x = 0;
+        this.rotationSpeed.y = 0;
+        this.rotationSpeed.z = 0;
+    }
+
+    /**
+     * Look at a target position (rotates the mesh to face the target)
+     * @param {Vector3} target - Target position in world space
+     */
+    lookAt(target) {
+        // Get mesh world position
+        const meshPos = new Vector3(
+            this.position.x,
+            this.position.y,
+            this.position.z
         );
+
+        // Calculate direction vector
+        const direction = target.clone().subtract(meshPos);
+
+        // Calculate yaw (rotation around Z-axis) - rotation in XY plane
+        const yaw = Math.atan2(direction.y, direction.x) * (180 / Math.PI);
+
+        // Calculate pitch (rotation around Y-axis) - tilt up/down
+        const horizontalDistance = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+        const pitch = Math.atan2(direction.z, horizontalDistance) * (180 / Math.PI);
+
+        // Set rotation: x=roll (0), y=pitch, z=yaw
+        this.setRotation(0, pitch, yaw);
+    }
+
+    /**
+     * Rotate towards a target position over time
+     * @param {Vector3} target - Target position in world space
+     * @param {number} speed - Rotation speed in degrees per second
+     * @returns {boolean} True if rotation is complete
+     */
+    rotateTowards(target, speed = 90) {
+        // Calculate target rotation
+        const meshPos = new Vector3(this.position.x, this.position.y, this.position.z);
+        const direction = target.clone().subtract(meshPos);
+
+        const targetYaw = Math.atan2(direction.y, direction.x) * (180 / Math.PI);
+        const horizontalDistance = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+        const targetPitch = Math.atan2(direction.z, horizontalDistance) * (180 / Math.PI);
+
+        // Calculate rotation deltas
+        const deltaTime = this.gameObject?.scene?.engine?.deltaTime || 0;
+        const maxRotation = speed * deltaTime;
+
+        // Rotate yaw (around Z)
+        let yawDiff = targetYaw - this.rotation.z;
+        // Normalize to -180 to 180
+        while (yawDiff > 180) yawDiff -= 360;
+        while (yawDiff < -180) yawDiff += 360;
+
+        const yawStep = Math.min(Math.abs(yawDiff), maxRotation) * Math.sign(yawDiff);
+        this.rotation.z += yawStep;
+
+        // Rotate pitch (around Y)
+        let pitchDiff = targetPitch - this.rotation.y;
+        while (pitchDiff > 180) pitchDiff -= 360;
+        while (pitchDiff < -180) pitchDiff += 360;
+
+        const pitchStep = Math.min(Math.abs(pitchDiff), maxRotation) * Math.sign(pitchDiff);
+        this.rotation.y += pitchStep;
+
+        // Normalize angles
+        this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
+        this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
+
+        // Check if rotation is complete (within 1 degree threshold)
+        return Math.abs(yawDiff) < 1 && Math.abs(pitchDiff) < 1;
+    }
+
+    /**
+ * Get the forward direction vector (local X-axis)
+ * @returns {Vector3} Normalized forward vector
+ */
+    getForward() {
+        const yawRad = this.rotation.z * (Math.PI / 180);
+        const pitchRad = this.rotation.y * (Math.PI / 180);
+
+        return new Vector3(
+            Math.cos(pitchRad) * Math.cos(yawRad),
+            Math.cos(pitchRad) * Math.sin(yawRad),
+            Math.sin(pitchRad)
+        ).normalize();
+    }
+
+    /**
+     * Get the right direction vector (local Y-axis)
+     * @returns {Vector3} Normalized right vector
+     */
+    getRight() {
+        const yawRad = this.rotation.z * (Math.PI / 180);
+
+        return new Vector3(
+            -Math.sin(yawRad),
+            Math.cos(yawRad),
+            0
+        ).normalize();
+    }
+
+    /**
+     * Get the up direction vector (local Z-axis)
+     * @returns {Vector3} Normalized up vector
+     */
+    getUp() {
+        const rollRad = this.rotation.x * (Math.PI / 180);
+        const yawRad = this.rotation.z * (Math.PI / 180);
+
+        return new Vector3(
+            -Math.sin(rollRad) * Math.sin(yawRad),
+            Math.sin(rollRad) * Math.cos(yawRad),
+            Math.cos(rollRad)
+        ).normalize();
     }
 
     /**
@@ -2997,10 +3237,7 @@ class Mesh3D extends Module {
      * Update method called each frame
      */
     update() {
-        // Handle custom model interactions if enabled
-        if (this.isCustomModel && this._shape === "custom") {
-            this.handleCustomModelInput();
-        }
+        
     }
 
     /**
@@ -3159,14 +3396,15 @@ class Mesh3D extends Module {
        */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "Mesh3D",
             vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
             edges: this.edges.map(edge => [...edge]),
             faces: this.faces.map(face => [...face]),
             uvCoordinates: this.uvCoordinates.map(uv => ({ x: uv.x, y: uv.y })),
-            position: { x: this.position.x, y: this.position.y, z: this.position.z },
-            rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
-            scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+            position: this.position, //{ x: this.position.x, y: this.position.y, z: this.position.z },
+            rotation: this.rotation, //{ x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+            scale: this.scale, //{ x: this.scale.x, y: this.scale.y, z: this.scale.z },
             wireframeColor: this.wireframeColor,
             faceColor: this.faceColor,
             renderMode: this.renderMode,
@@ -3215,6 +3453,7 @@ class Mesh3D extends Module {
        * @param {Object} json - JSON representation of the mesh
        */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json.vertices) {
             this.vertices = json.vertices.map(v => new Vector3(v.x, v.y, v.z));
         }
@@ -3226,9 +3465,9 @@ class Mesh3D extends Module {
             // Regenerate UV coordinates if not present
             this.generateUVCoordinates();
         }
-        if (json.position) this.position = new Vector3(json.position.x, json.position.y, json.position.z);
-        if (json.rotation) this.rotation = new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
-        if (json.scale) this.scale = new Vector3(json.scale.x, json.scale.y, json.scale.z);
+        if (json.position) this.position = json.position; //new Vector3(json.position.x, json.position.y, json.position.z);
+        if (json.rotation) this.rotation = json.rotation; //new Vector3(json.rotation.x, json.rotation.y, json.rotation.z);
+        if (json.scale) this.scale = json.scale; //new Vector3(json.scale.x, json.scale.y, json.scale.z);
         if (json.wireframeColor !== undefined) this.wireframeColor = json.wireframeColor;
         if (json.faceColor !== undefined) this.faceColor = json.faceColor;
         if (json.renderMode !== undefined) this.renderMode = json.renderMode;

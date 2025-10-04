@@ -492,6 +492,7 @@ class MouseLook extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "MouseLook",
             _sensitivity: this._sensitivity,
             _invertX: this._invertX,
@@ -513,6 +514,7 @@ class MouseLook extends Module {
      * @param {Object} json - JSON representation of the mouse look
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._sensitivity !== undefined) this._sensitivity = json._sensitivity;
         if (json._invertX !== undefined) this._invertX = json._invertX;
         if (json._invertY !== undefined) this._invertY = json._invertY;

@@ -919,6 +919,7 @@ class Material extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "Material",
             _diffuseColor: this._diffuseColor,
             _specularColor: this._specularColor,
@@ -951,6 +952,7 @@ class Material extends Module {
      * Deserialize material from JSON
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._diffuseColor !== undefined) this._diffuseColor = json._diffuseColor;
         if (json._specularColor !== undefined) this._specularColor = json._specularColor;
         if (json._emissiveColor !== undefined) this._emissiveColor = json._emissiveColor;

@@ -618,6 +618,7 @@ class Light3D extends Module {
      */
     toJSON() {
         return {
+            ...super.toJSON(),
             _type: "Light3D",
             _lightType: this._lightType,
             _color: this._color,
@@ -640,6 +641,7 @@ class Light3D extends Module {
      * Deserialize from JSON
      */
     fromJSON(json) {
+        super.fromJSON(json);
         if (json._lightType !== undefined) this._lightType = json._lightType;
         if (json._color !== undefined) this._color = json._color;
         if (json._intensity !== undefined) this._intensity = json._intensity;
