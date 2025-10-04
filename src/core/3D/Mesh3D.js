@@ -39,7 +39,8 @@ class Mesh3D extends Module {
 
         // Expose shape property
         this.exposeProperty("_shape", "enum", this._shape, {
-            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron", "quad", "plane", "custom"],
+            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron",
+                "quadCube", "capsule", "prism", "tetrahedron", "quad", "plane", "custom"],
             onChange: (val) => {
                 // console.log(`Mesh3D: Shape property changing from "${this._shape}" to "${val}"`);
                 this._shape = val;
@@ -145,6 +146,115 @@ class Mesh3D extends Module {
             onChange: (val) => {
                 this.octahedronSize = val;
                 if (this._shape === "octahedron") this.createOctahedron(val);
+            }
+        });
+
+        this.planeSize = 200;
+        this.exposeProperty("planeSize", "number", 200, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.planeSize = val;
+                if (this._shape === "plane") this.createPlane(val);
+            }
+        });
+
+        // Quad Cube properties
+        this.quadCubeSize = 100;
+        this.quadCubeSubdivisions = 2;
+        this.exposeProperty("quadCubeSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.quadCubeSize = val;
+                if (this._shape === "quadCube") this.createQuadCube(val, this.quadCubeSubdivisions);
+            }
+        });
+        this.exposeProperty("quadCubeSubdivisions", "number", 2, {
+            min: 1,
+            max: 10,
+            step: 1,
+            onChange: (val) => {
+                this.quadCubeSubdivisions = val;
+                if (this._shape === "quadCube") this.createQuadCube(this.quadCubeSize, val);
+            }
+        });
+
+        // Capsule properties
+        this.capsuleRadius = 50;
+        this.capsuleHeight = 150;
+        this.capsuleSegments = 16;
+        this.exposeProperty("capsuleRadius", "number", 50, {
+            min: 10,
+            max: 200,
+            step: 5,
+            onChange: (val) => {
+                this.capsuleRadius = val;
+                if (this._shape === "capsule") this.createCapsule(val, this.capsuleHeight, this.capsuleSegments);
+            }
+        });
+        this.exposeProperty("capsuleHeight", "number", 150, {
+            min: 20,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.capsuleHeight = val;
+                if (this._shape === "capsule") this.createCapsule(this.capsuleRadius, val, this.capsuleSegments);
+            }
+        });
+        this.exposeProperty("capsuleSegments", "number", 16, {
+            min: 6,
+            max: 32,
+            step: 1,
+            onChange: (val) => {
+                this.capsuleSegments = val;
+                if (this._shape === "capsule") this.createCapsule(this.capsuleRadius, this.capsuleHeight, val);
+            }
+        });
+
+        // Prism properties
+        this.prismSides = 6;
+        this.prismRadius = 100;
+        this.prismHeight = 150;
+        this.exposeProperty("prismSides", "number", 6, {
+            min: 3,
+            max: 12,
+            step: 1,
+            onChange: (val) => {
+                this.prismSides = val;
+                if (this._shape === "prism") this.createPrism(val, this.prismRadius, this.prismHeight);
+            }
+        });
+        this.exposeProperty("prismRadius", "number", 100, {
+            min: 10,
+            max: 300,
+            step: 10,
+            onChange: (val) => {
+                this.prismRadius = val;
+                if (this._shape === "prism") this.createPrism(this.prismSides, val, this.prismHeight);
+            }
+        });
+        this.exposeProperty("prismHeight", "number", 150, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.prismHeight = val;
+                if (this._shape === "prism") this.createPrism(this.prismSides, this.prismRadius, val);
+            }
+        });
+
+        // Tetrahedron properties
+        this.tetrahedronSize = 100;
+        this.exposeProperty("tetrahedronSize", "number", 100, {
+            min: 10,
+            max: 500,
+            step: 10,
+            onChange: (val) => {
+                this.tetrahedronSize = val;
+                if (this._shape === "tetrahedron") this.createTetrahedron(val);
             }
         });
 
@@ -334,7 +444,8 @@ class Mesh3D extends Module {
         });
         style.exposeProperty("shape", "enum", this._shape, {
             label: "Mesh Shape",
-            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron", "quad", "plane", "custom"]
+            options: ["cube", "pyramid", "sphere", "octahedron", "torus", "cone", "cylinder", "icosahedron",
+                "quadCube", "capsule", "prism", "tetrahedron", "quad", "plane", "custom"]
         });
         style.endGroup();
 
@@ -427,6 +538,51 @@ class Mesh3D extends Module {
                 padding: '8px'
             });
             style.exposeProperty("icosahedronSize", "number", this.icosahedronSize, { label: "Size" });
+            style.endGroup();
+        }
+
+        if (this._shape === "quadCube") {
+            style.startGroup("Quad Cube Settings", false, {
+                backgroundColor: 'rgba(200,150,100,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("quadCubeSize", "number", this.quadCubeSize, { label: "Size" });
+            style.exposeProperty("quadCubeSubdivisions", "number", this.quadCubeSubdivisions, { label: "Subdivisions" });
+            style.endGroup();
+        }
+
+        if (this._shape === "capsule") {
+            style.startGroup("Capsule Settings", false, {
+                backgroundColor: 'rgba(150,255,200,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("capsuleRadius", "number", this.capsuleRadius, { label: "Radius" });
+            style.exposeProperty("capsuleHeight", "number", this.capsuleHeight, { label: "Height" });
+            style.exposeProperty("capsuleSegments", "number", this.capsuleSegments, { label: "Segments" });
+            style.endGroup();
+        }
+
+        if (this._shape === "prism") {
+            style.startGroup("Prism Settings", false, {
+                backgroundColor: 'rgba(200,150,255,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("prismSides", "number", this.prismSides, { label: "Sides" });
+            style.exposeProperty("prismRadius", "number", this.prismRadius, { label: "Radius" });
+            style.exposeProperty("prismHeight", "number", this.prismHeight, { label: "Height" });
+            style.endGroup();
+        }
+
+        if (this._shape === "tetrahedron") {
+            style.startGroup("Tetrahedron Settings", false, {
+                backgroundColor: 'rgba(255,200,150,0.08)',
+                borderRadius: '6px',
+                padding: '8px'
+            });
+            style.exposeProperty("tetrahedronSize", "number", this.tetrahedronSize, { label: "Size" });
             style.endGroup();
         }
 
@@ -657,15 +813,16 @@ class Mesh3D extends Module {
     createCube(size = 100) {
         const s = size / 2;
 
+        // X=forward, Y=right, Z=up coordinate system
         this.vertices = [
-            new Vector3(-s, -s, -s), // 0: back-left-down
-            new Vector3(s, -s, -s),  // 1: back-right-down
-            new Vector3(s, s, -s),   // 2: back-right-up
-            new Vector3(-s, s, -s),  // 3: back-left-up
-            new Vector3(-s, -s, s),  // 4: front-left-down
-            new Vector3(s, -s, s),   // 5: front-right-down
-            new Vector3(s, s, s),    // 6: front-right-up
-            new Vector3(-s, s, s)    // 7: front-left-up
+            new Vector3(-s, -s, -s), // 0: back-left-bottom
+            new Vector3(-s, s, -s),  // 1: back-right-bottom
+            new Vector3(-s, s, s),   // 2: back-right-top
+            new Vector3(-s, -s, s),  // 3: back-left-top
+            new Vector3(s, -s, -s),  // 4: front-left-bottom
+            new Vector3(s, s, -s),   // 5: front-right-bottom
+            new Vector3(s, s, s),    // 6: front-right-top
+            new Vector3(s, -s, s)    // 7: front-left-top
         ];
 
         this.edges = [
@@ -674,23 +831,22 @@ class Mesh3D extends Module {
             [0, 4], [1, 5], [2, 6], [3, 7]  // connecting edges
         ];
 
-        // Use triangulated faces with counter-clockwise winding (matching CubeMesh3D)
+        // Triangulated faces with correct winding (counter-clockwise from outside)
         this.faces = [
-            // Bottom face (Y = -s) - looking from below
-            [0, 1, 5], [0, 5, 4],
-            // Top face (Y = s) - looking from above  
-            [7, 6, 2], [7, 2, 3],
-            // Front face (Z = s) - looking from front
+            // Back face (X = -s) - looking from behind
+            [0, 3, 2], [0, 2, 1],
+            // Front face (X = s) - looking from front
             [4, 5, 6], [4, 6, 7],
-            // Back face (Z = -s) - looking from back
-            [3, 2, 1], [3, 1, 0],
-            // Right face (X = s) - looking from right
-            [1, 2, 6], [1, 6, 5],
-            // Left face (X = -s) - looking from left
-            [0, 4, 7], [0, 7, 3]
+            // Bottom face (Z = -s) - looking from below
+            [0, 1, 5], [0, 5, 4],
+            // Top face (Z = s) - looking from above
+            [3, 7, 6], [3, 6, 2],
+            // Left face (Y = -s) - looking from left
+            [0, 4, 7], [0, 7, 3],
+            // Right face (Y = s) - looking from right
+            [1, 2, 6], [1, 6, 5]
         ];
 
-        // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
     }
 
@@ -703,12 +859,13 @@ class Mesh3D extends Module {
         const s = baseSize / 2;
         const h = height / 2;
 
+        // X=forward, Y=right, Z=up
         this.vertices = [
-            new Vector3(-s, -h, -s), // 0: base back-left
-            new Vector3(s, -h, -s),  // 1: base back-right
-            new Vector3(s, -h, s),   // 2: base front-right
-            new Vector3(-s, -h, s),  // 3: base front-left
-            new Vector3(0, h, 0)     // 4: apex
+            new Vector3(-s, -s, -h), // 0: base back-left
+            new Vector3(-s, s, -h),  // 1: base back-right
+            new Vector3(s, s, -h),   // 2: base front-right
+            new Vector3(s, -s, -h),  // 3: base front-left
+            new Vector3(0, 0, h)     // 4: apex
         ];
 
         this.edges = [
@@ -717,14 +874,13 @@ class Mesh3D extends Module {
         ];
 
         this.faces = [
-            [0, 1, 2, 3], // base (facing down) - reversed for correct winding
-            [0, 4, 1],    // back face
-            [1, 4, 2],    // right face
-            [2, 4, 3],    // front face
-            [3, 4, 0]     // left face
+            [0, 1, 2, 3], // base (CCW from below)
+            [0, 4, 1],    // left face
+            [1, 4, 2],    // back face
+            [2, 4, 3],    // right face
+            [3, 4, 0]     // front face
         ];
 
-        // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
     }
 
@@ -884,43 +1040,49 @@ class Mesh3D extends Module {
 
         const h = height / 2;
 
-        // Base center
-        this.vertices.push(new Vector3(0, -h, 0));
+        // Apex at top (X=forward, Y=right, Z=up)
+        const apex = 0;
+        this.vertices.push(new Vector3(0, 0, h));
 
-        // Base vertices
+        // Base center at bottom
+        const baseCenter = 1;
+        this.vertices.push(new Vector3(0, 0, -h));
+
+        // Base vertices (circle in XY plane at Z = -h)
         for (let i = 0; i < segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
             const x = Math.cos(theta) * radius;
-            const z = Math.sin(theta) * radius;
-            this.vertices.push(new Vector3(x, -h, z));
+            const y = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, y, -h));
         }
 
-        // Apex
-        this.vertices.push(new Vector3(0, h, 0));
-
-        const baseCenter = 0;
-        const apex = this.vertices.length - 1;
-
-        // Create base face (winding counter-clockwise from outside looking down)
-        const baseVertices = [];
+        // Create side faces (triangles from apex to base edge)
+        // CCW from outside: apex -> current -> next
         for (let i = 0; i < segments; i++) {
-            baseVertices.push(i + 1);
-        }
-        this.faces.push(baseVertices);
+            const current = 2 + i; // Base vertex index
+            const next = 2 + ((i + 1) % segments); // Next base vertex
 
-        // Create side faces (counter-clockwise from outside)
+            // Side triangle: apex -> current -> next (CCW from outside)
+            this.faces.push([apex, current, next]);
+
+            // Edges
+            this.edges.push([apex, current]);
+            this.edges.push([current, next]);
+        }
+
+        // Create base face (polygon at bottom, winding CCW from below)
+        const baseFace = [];
+        for (let i = segments - 1; i >= 0; i--) {
+            baseFace.push(2 + i);
+        }
+        // When viewed from below (negative Z), this is now CCW
+        this.faces.push(baseFace);
+
+        // Add radial edges from base center to base vertices
         for (let i = 0; i < segments; i++) {
-            const next = (i + 1) % segments + 1;
-            // Fix face winding: current base -> apex -> next base (counter-clockwise from outside)
-            this.faces.push([i + 1, apex, next]);
-
-            // Create edges
-            this.edges.push([baseCenter, i + 1]);
-            this.edges.push([i + 1, next]);
-            this.edges.push([apex, i + 1]);
+            this.edges.push([baseCenter, 2 + i]);
         }
 
-        // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
     }
 
@@ -937,37 +1099,38 @@ class Mesh3D extends Module {
 
         const h = height / 2;
 
-        // Bottom vertices
+        // Bottom vertices (circle in XY plane at Z = -h)
         for (let i = 0; i < segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
             const x = Math.cos(theta) * radius;
-            const z = Math.sin(theta) * radius;
-            this.vertices.push(new Vector3(x, -h, z));
+            const y = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, y, -h));
         }
 
-        // Top vertices
+        // Top vertices (circle in XY plane at Z = h)
         for (let i = 0; i < segments; i++) {
             const theta = (i / segments) * Math.PI * 2;
             const x = Math.cos(theta) * radius;
-            const z = Math.sin(theta) * radius;
-            this.vertices.push(new Vector3(x, h, z));
+            const y = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, y, h));
         }
 
-        // Create bottom face (winding from outside looking up at bottom)
+        // Create bottom face (winding CCW from below)
         const bottomFace = [];
         for (let i = 0; i < segments; i++) {
             bottomFace.push(i);
         }
+        bottomFace.reverse();
         this.faces.push(bottomFace);
 
-        // Create top face (winding from outside looking down at top)
+        // Create top face (winding CCW from above)
         const topFace = [];
-        for (let i = segments - 1; i >= 0; i--) {
+        for (let i = 0; i < segments; i++) {
             topFace.push(segments + i);
         }
         this.faces.push(topFace);
 
-        // Create side faces (counter-clockwise from outside)
+        // Create side faces (quads, CCW from outside)
         for (let i = 0; i < segments; i++) {
             const next = (i + 1) % segments;
             const bottomCurrent = i;
@@ -975,8 +1138,8 @@ class Mesh3D extends Module {
             const topCurrent = segments + i;
             const topNext = segments + next;
 
-            // Fix face winding: bottom-left, top-left, top-right, bottom-right (counter-clockwise)
-            this.faces.push([bottomCurrent, topCurrent, topNext, bottomNext]);
+            // Quad: bottom-current -> bottom-next -> top-next -> top-current (CCW)
+            this.faces.push([bottomCurrent, bottomNext, topNext, topCurrent]);
 
             // Create edges
             this.edges.push([bottomCurrent, bottomNext]);
@@ -984,7 +1147,6 @@ class Mesh3D extends Module {
             this.edges.push([bottomCurrent, topCurrent]);
         }
 
-        // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
     }
 
@@ -1037,6 +1199,359 @@ class Mesh3D extends Module {
         }
 
         // Regenerate UV coordinates after changing mesh data
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a subdivided cube (quad cube)
+     * @param {number} size - Size of the cube
+     * @param {number} subdivisions - Number of subdivisions per face
+     */
+    createQuadCube(size = 100, subdivisions = 2) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const s = size / 2;
+
+        // Helper function to add a subdivided face with proper winding
+        const addSubdividedFace = (corners, reverseWinding = false) => {
+            const vertexOffset = this.vertices.length;
+
+            // corners is [c0, c1, c2, c3] - corner order determines face orientation
+            const [c0, c1, c2, c3] = corners;
+
+            // Generate vertices for this face
+            for (let i = 0; i <= subdivisions; i++) {
+                for (let j = 0; j <= subdivisions; j++) {
+                    const u = i / subdivisions;
+                    const v = j / subdivisions;
+
+                    // Bilinear interpolation
+                    const vertex = new Vector3(
+                        c0.x * (1 - u) * (1 - v) + c1.x * u * (1 - v) + c2.x * u * v + c3.x * (1 - u) * v,
+                        c0.y * (1 - u) * (1 - v) + c1.y * u * (1 - v) + c2.y * u * v + c3.y * (1 - u) * v,
+                        c0.z * (1 - u) * (1 - v) + c1.z * u * (1 - v) + c2.z * u * v + c3.z * (1 - u) * v
+                    );
+                    this.vertices.push(vertex);
+                }
+            }
+
+            // Generate faces with proper winding (CCW from outside)
+            for (let i = 0; i < subdivisions; i++) {
+                for (let j = 0; j < subdivisions; j++) {
+                    const tl = vertexOffset + i * (subdivisions + 1) + j;
+                    const tr = tl + 1;
+                    const bl = tl + (subdivisions + 1);
+                    const br = bl + 1;
+
+                    if (reverseWinding) {
+                        // Reverse winding: tl -> tr -> br -> bl
+                        this.faces.push([tl, tr, br]);
+                        this.faces.push([tl, br, bl]);
+                    } else {
+                        // Normal CCW winding from outside: tl -> bl -> br -> tr
+                        this.faces.push([tl, bl, br]);
+                        this.faces.push([tl, br, tr]);
+                    }
+                }
+            }
+        };
+
+        // Front face (+X) - CCW from outside
+        addSubdividedFace([
+            new Vector3(s, -s, -s), // bottom-left
+            new Vector3(s, s, -s),  // bottom-right
+            new Vector3(s, s, s),   // top-right
+            new Vector3(s, -s, s)   // top-left
+        ], false);
+
+        // Back face (-X) - CCW from outside
+        addSubdividedFace([
+            new Vector3(-s, s, -s),  // bottom-right (from back view)
+            new Vector3(-s, -s, -s), // bottom-left
+            new Vector3(-s, -s, s),  // top-left
+            new Vector3(-s, s, s)    // top-right
+        ], false);
+
+        // Right face (+Y) - CCW from outside
+        addSubdividedFace([
+            new Vector3(s, s, -s),   // bottom-front
+            new Vector3(-s, s, -s),  // bottom-back
+            new Vector3(-s, s, s),   // top-back
+            new Vector3(s, s, s)     // top-front
+        ], false);
+
+        // Left face (-Y) - CCW from outside
+        addSubdividedFace([
+            new Vector3(-s, -s, -s), // bottom-back (from left view)
+            new Vector3(s, -s, -s),  // bottom-front
+            new Vector3(s, -s, s),   // top-front
+            new Vector3(-s, -s, s)   // top-back
+        ], false);
+
+        // Top face (+Z) - CCW from outside
+        addSubdividedFace([
+            new Vector3(-s, -s, s), // back-left
+            new Vector3(s, -s, s),  // front-left
+            new Vector3(s, s, s),   // front-right
+            new Vector3(-s, s, s)   // back-right
+        ], false);
+
+        // Bottom face (-Z) - CCW from outside
+        addSubdividedFace([
+            new Vector3(s, -s, -s),  // front-left (from below)
+            new Vector3(-s, -s, -s), // back-left
+            new Vector3(-s, s, -s),  // back-right
+            new Vector3(s, s, -s)    // front-right
+        ], false);
+
+        // Generate edges from faces
+        const edgeSet = new Set();
+        for (const face of this.faces) {
+            for (let i = 0; i < face.length; i++) {
+                const a = Math.min(face[i], face[(i + 1) % face.length]);
+                const b = Math.max(face[i], face[(i + 1) % face.length]);
+                edgeSet.add(`${a},${b}`);
+            }
+        }
+
+        for (const edge of edgeSet) {
+            const [a, b] = edge.split(',').map(Number);
+            this.edges.push([a, b]);
+        }
+
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a capsule mesh (cylinder with hemisphere caps)
+     * @param {number} radius - Radius of the capsule
+     * @param {number} height - Height of the cylindrical section
+     * @param {number} segments - Number of segments
+     */
+    createCapsule(radius = 50, height = 150, segments = 16) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const h = height / 2;
+        const rings = Math.floor(segments / 2);
+
+        // Top hemisphere (Z > h)
+        for (let lat = 0; lat <= rings; lat++) {
+            const theta = (lat / rings) * (Math.PI / 2);
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+
+            for (let lon = 0; lon <= segments; lon++) {
+                const phi = (lon / segments) * Math.PI * 2;
+                const sinPhi = Math.sin(phi);
+                const cosPhi = Math.cos(phi);
+
+                const x = radius * sinTheta * cosPhi;
+                const y = radius * sinTheta * sinPhi;
+                const z = h + radius * cosTheta;
+
+                this.vertices.push(new Vector3(x, y, z));
+            }
+        }
+
+        // Cylindrical middle section - top ring (at Z = h)
+        for (let lon = 0; lon <= segments; lon++) {
+            const phi = (lon / segments) * Math.PI * 2;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+
+            const x = radius * cosPhi;
+            const y = radius * sinPhi;
+            const z = h;
+
+            this.vertices.push(new Vector3(x, y, z));
+        }
+
+        // Cylindrical middle section - bottom ring (at Z = -h)
+        for (let lon = 0; lon <= segments; lon++) {
+            const phi = (lon / segments) * Math.PI * 2;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+
+            const x = radius * cosPhi;
+            const y = radius * sinPhi;
+            const z = -h;
+
+            this.vertices.push(new Vector3(x, y, z));
+        }
+
+        // Bottom hemisphere (Z < -h)
+        for (let lat = 0; lat <= rings; lat++) {
+            const theta = (lat / rings) * (Math.PI / 2);
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+
+            for (let lon = 0; lon <= segments; lon++) {
+                const phi = (lon / segments) * Math.PI * 2;
+                const sinPhi = Math.sin(phi);
+                const cosPhi = Math.cos(phi);
+
+                const x = radius * sinTheta * cosPhi;
+                const y = radius * sinTheta * sinPhi;
+                const z = -h - radius * cosTheta;
+
+                this.vertices.push(new Vector3(x, y, z));
+            }
+        }
+
+        // Generate faces
+        const topHemisphereOffset = 0;
+        const topRingOffset = (rings + 1) * (segments + 1);
+        const bottomRingOffset = topRingOffset + (segments + 1);
+        const bottomHemisphereOffset = bottomRingOffset + (segments + 1);
+
+        // Top hemisphere faces (CCW from outside)
+        for (let lat = 0; lat < rings; lat++) {
+            for (let lon = 0; lon < segments; lon++) {
+                const first = topHemisphereOffset + lat * (segments + 1) + lon;
+                const second = first + segments + 1;
+
+                this.faces.push([first, second, first + 1]);
+                this.faces.push([first + 1, second, second + 1]);
+            }
+        }
+
+        // Cylindrical middle section (CCW from outside) - FIXED WINDING
+        for (let lon = 0; lon < segments; lon++) {
+            const topCurrent = topRingOffset + lon;
+            const topNext = topRingOffset + lon + 1;
+            const bottomCurrent = bottomRingOffset + lon;
+            const bottomNext = bottomRingOffset + lon + 1;
+
+            // Two triangles forming a quad (CCW from outside)
+            this.faces.push([topCurrent, bottomCurrent, bottomNext]);
+            this.faces.push([topCurrent, bottomNext, topNext]);
+        }
+
+        // Bottom hemisphere faces (CCW from outside)
+        for (let lat = 0; lat < rings; lat++) {
+            for (let lon = 0; lon < segments; lon++) {
+                const first = bottomHemisphereOffset + lat * (segments + 1) + lon;
+                const second = first + segments + 1;
+
+                this.faces.push([first, first + 1, second]);
+                this.faces.push([second, first + 1, second + 1]);
+            }
+        }
+
+        // Generate edges
+        const edgeSet = new Set();
+        for (const face of this.faces) {
+            for (let i = 0; i < face.length; i++) {
+                const a = Math.min(face[i], face[(i + 1) % face.length]);
+                const b = Math.max(face[i], face[(i + 1) % face.length]);
+                edgeSet.add(`${a},${b}`);
+            }
+        }
+
+        for (const edge of edgeSet) {
+            const [a, b] = edge.split(',').map(Number);
+            this.edges.push([a, b]);
+        }
+
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a prism mesh (regular polygon extruded)
+     * @param {number} sides - Number of sides
+     * @param {number} radius - Radius of the base
+     * @param {number} height - Height of the prism
+     */
+    createPrism(sides = 6, radius = 100, height = 150) {
+        this.vertices = [];
+        this.edges = [];
+        this.faces = [];
+
+        const h = height / 2;
+
+        // Top vertices (circle in XY plane at Z = h)
+        for (let i = 0; i < sides; i++) {
+            const theta = (i / sides) * Math.PI * 2;
+            const x = Math.cos(theta) * radius;
+            const y = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, y, h));
+        }
+
+        // Bottom vertices (circle in XY plane at Z = -h)
+        for (let i = 0; i < sides; i++) {
+            const theta = (i / sides) * Math.PI * 2;
+            const x = Math.cos(theta) * radius;
+            const y = Math.sin(theta) * radius;
+            this.vertices.push(new Vector3(x, y, -h));
+        }
+
+        // Top face (CCW from above)
+        const topFace = [];
+        for (let i = 0; i < sides; i++) {
+            topFace.push(i);
+        }
+        this.faces.push(topFace);
+
+        // Bottom face (CCW from below)
+        const bottomFace = [];
+        for (let i = 0; i < sides; i++) {
+            bottomFace.push(sides + i);
+        }
+        bottomFace.reverse();
+        this.faces.push(bottomFace);
+
+        // Side faces (quads, CCW from outside)
+        for (let i = 0; i < sides; i++) {
+            const next = (i + 1) % sides;
+            const topCurrent = i;
+            const topNext = next;
+            const bottomCurrent = sides + i;
+            const bottomNext = sides + next;
+
+            // Quad face (CCW from outside): topCurrent -> bottomCurrent -> bottomNext -> topNext
+            this.faces.push([topCurrent, bottomCurrent, bottomNext, topNext]);
+
+            // Edges
+            this.edges.push([topCurrent, topNext]);
+            this.edges.push([bottomCurrent, bottomNext]);
+            this.edges.push([topCurrent, bottomCurrent]);
+        }
+
+        this.generateUVCoordinates();
+    }
+
+    /**
+     * Create a tetrahedron mesh (4-sided pyramid)
+     * @param {number} size - Size of the tetrahedron
+     */
+    createTetrahedron(size = 100) {
+        const s = size / Math.sqrt(2);
+
+        // Create vertices in X=forward, Y=right, Z=up system
+        this.vertices = [
+            new Vector3(s, s, s),    // 0: front-right-top
+            new Vector3(s, -s, -s),  // 1: front-left-bottom
+            new Vector3(-s, s, -s),  // 2: back-right-bottom
+            new Vector3(-s, -s, s)   // 3: back-left-top
+        ];
+
+        this.edges = [
+            [0, 1], [0, 2], [0, 3],
+            [1, 2], [1, 3], [2, 3]
+        ];
+
+        // All faces with CCW winding from outside
+        this.faces = [
+            [0, 1, 2], // Front-right face
+            [0, 3, 1], // Front-top face
+            [0, 2, 3], // Right-top face
+            [3, 2, 1]  // Bottom-back face
+        ];
+
         this.generateUVCoordinates();
     }
 
@@ -1099,23 +1614,23 @@ class Mesh3D extends Module {
     createPlane(size = 200) {
         const s = size / 2;
 
+        // Plane in XY plane (perpendicular to Z axis)
         this.vertices = [
-            new Vector3(-s, -s, 0), // bottom-left
-            new Vector3(s, -s, 0),  // bottom-right
-            new Vector3(s, s, 0),   // top-right
-            new Vector3(-s, s, 0)   // top-left
+            new Vector3(-s, -s, 0), // back-left
+            new Vector3(-s, s, 0),  // back-right
+            new Vector3(s, s, 0),   // front-right
+            new Vector3(s, -s, 0)   // front-left
         ];
 
         this.edges = [
             [0, 1], [1, 2], [2, 3], [3, 0]
         ];
 
-        // Fix face winding: counter-clockwise from front (top-left, top-right, bottom-right, bottom-left)
+        // Quad face (CCW from front/above)
         this.faces = [
-            [3, 2, 1, 0] // top-left, top-right, bottom-right, bottom-left
+            [3, 2, 1, 0]
         ];
 
-        // Regenerate UV coordinates after changing mesh data
         this.generateUVCoordinates();
     }
 
@@ -1200,6 +1715,18 @@ class Mesh3D extends Module {
             case "plane":
                 // console.log(`Mesh3D: Creating plane with size: ${this.planeSize}`);
                 this.createPlane(this.planeSize);
+                break;
+            case "quadCube":
+                this.createQuadCube(this.quadCubeSize, this.quadCubeSubdivisions);
+                break;
+            case "capsule":
+                this.createCapsule(this.capsuleRadius, this.capsuleHeight, this.capsuleSegments);
+                break;
+            case "prism":
+                this.createPrism(this.prismSides, this.prismRadius, this.prismHeight);
+                break;
+            case "tetrahedron":
+                this.createTetrahedron(this.tetrahedronSize);
                 break;
             case "custom":
                 // console.log(`Mesh3D: Creating custom editable model`);
@@ -1311,6 +1838,22 @@ class Mesh3D extends Module {
                 break;
             default:
                 this.drawPlaceholder(ctx);
+        }
+
+        if (this._shape === "quadCube") {
+            this.draw2DCube(ctx); // Reuse cube visualization
+        }
+
+        if (this._shape === "capsule") {
+            this.draw2DCapsule(ctx);
+        }
+
+        if (this._shape === "prism") {
+            this.draw2DPrism(ctx);
+        }
+
+        if (this._shape === "tetrahedron") {
+            this.draw2DTetrahedron(ctx);
         }
     }
 
@@ -1641,6 +2184,103 @@ class Mesh3D extends Module {
     }
 
     /**
+     * Draw 2D capsule visualization
+     */
+    draw2DCapsule(ctx) {
+        const r = this.capsuleRadius;
+        const h = this.capsuleHeight / 2;
+
+        // Draw capsule body (rectangle)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(-r, -h, r * 2, h * 2);
+        ctx.globalAlpha = 1.0;
+        ctx.strokeRect(-r, -h, r * 2, h * 2);
+
+        // Draw top hemisphere
+        ctx.beginPath();
+        ctx.arc(0, -h, r, 0, Math.PI, true);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw bottom hemisphere
+        ctx.beginPath();
+        ctx.arc(0, h, r, 0, Math.PI);
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    /**
+     * Draw 2D prism visualization
+     */
+    draw2DPrism(ctx) {
+        const r = this.prismRadius;
+        const sides = this.prismSides;
+
+        // Draw polygon
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw center lines
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.3;
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D tetrahedron visualization
+     */
+    draw2DTetrahedron(ctx) {
+        const s = this.tetrahedronSize;
+
+        // Draw triangle from top view
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.866, s * 0.5);
+        ctx.lineTo(-s * 0.866, s * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw internal lines
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -s);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(s * 0.866, s * 0.5);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-s * 0.866, s * 0.5);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
      * Draw 2D plane/quad visualization - Top-down view showing full dimensions
      */
     draw2DPlane(ctx) {
@@ -1731,35 +2371,40 @@ class Mesh3D extends Module {
      * @param {Camera3D} camera - The camera to use for projection
      */
     drawDirect(ctx, camera) {
-        // Transform vertices based on mesh position/rotation/scale and game object transform
         const transformedVertices = this.transformVertices();
-
-        // Project the 3D vertices to 2D screen space
         const projectedVertices = transformedVertices.map(vertex =>
             camera.projectPoint(vertex)
         );
 
-        // Sort faces by depth for basic depth sorting (painter's algorithm)
+        // Calculate camera-to-face distance for proper depth sorting
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate centroid depth for more stable sorting
-                const centroidX = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].x, 0) / face.length;
-                const centroidY = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].y, 0) / face.length;
-                const centroidZ = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].z, 0) / face.length;
+                // Calculate average depth from camera
+                let avgDepth = 0;
+                let validVerts = 0;
 
-                // Use centroid X as primary depth (camera looks along +X)
-                // Add small offset based on face center to handle coplanar faces
-                const sortDepth = centroidX + (centroidY + centroidZ) * 0.001;
+                for (const vertexIndex of face) {
+                    if (vertexIndex < transformedVertices.length) {
+                        const vert = transformedVertices[vertexIndex];
+                        // Distance along camera's forward direction (X-axis)
+                        avgDepth += vert.x;
+                        validVerts++;
+                    }
+                }
 
-                return { face, sortDepth };
+                if (validVerts > 0) {
+                    avgDepth /= validVerts;
+                }
+
+                return { face, avgDepth };
             })
-            .sort((a, b) => b.sortDepth - a.sortDepth) // Sort back-to-front (lower depth values first = closer to camera)
+            .sort((a, b) => a.avgDepth - b.avgDepth) // Sort front-to-back (smaller X = closer)
             .map(item => item.face);
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
             for (const face of sortedFaces) {
-                if (face.length < 3) continue; // Need at least 3 points to draw a face
+                if (face.length < 3) continue;
 
                 // Check if all vertices are visible
                 const isVisible = face.every(vertexIndex =>
@@ -1768,10 +2413,18 @@ class Mesh3D extends Module {
                 );
                 if (!isVisible) continue;
 
-                // Get lit material color for this face
+                // Backface culling check
+                const normal = this.calculateFaceNormal(face, transformedVertices);
+                const faceCenter = this.getFaceCenter(face, transformedVertices);
+                const viewDir = camera.position ?
+                    camera.position.clone().subtract(faceCenter).normalize() :
+                    new Vector3(-1, 0, 0); // Default view direction if no camera position
+
+                // If face normal points away from camera, skip it (backface)
+                if (normal.dot(viewDir) < 0) continue;
+
                 const faceColor = this.getMaterialColor(face, transformedVertices, camera);
 
-                // Draw the face
                 ctx.fillStyle = faceColor;
                 ctx.beginPath();
                 ctx.moveTo(projectedVertices[face[0]].x, projectedVertices[face[0]].y);
@@ -1791,7 +2444,6 @@ class Mesh3D extends Module {
             ctx.lineWidth = 1;
 
             for (const [from, to] of this.edges) {
-                // Check if both vertices are valid and visible
                 if (from >= projectedVertices.length ||
                     to >= projectedVertices.length ||
                     projectedVertices[from] === null ||
@@ -1806,7 +2458,6 @@ class Mesh3D extends Module {
             }
         }
 
-        // Draw axis lines if enabled
         if (this.showAxisLines) {
             this.drawAxisLines(ctx, projectedVertices);
         }
@@ -1818,37 +2469,41 @@ class Mesh3D extends Module {
      * @param {Camera3D} camera - The camera to use for projection
      */
     drawToRenderTexture(ctx, camera) {
-        // Transform vertices based on mesh position/rotation/scale and game object transform
         const transformedVertices = this.transformVertices();
-
-        // Project the 3D vertices to 2D screen space
         const projectedVertices = transformedVertices.map(vertex =>
             camera.projectPoint(vertex)
         );
 
-        // Sort faces by depth for basic depth sorting (painter's algorithm)
+        // Calculate camera-to-face distance for proper depth sorting
         const sortedFaces = [...this.faces]
             .map((face, index) => {
-                // Calculate centroid depth for more stable sorting
-                const centroidX = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].x, 0) / face.length;
-                const centroidY = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].y, 0) / face.length;
-                const centroidZ = face.reduce((sum, vertexIndex) => sum + transformedVertices[vertexIndex].z, 0) / face.length;
+                // Calculate average depth from camera
+                let avgDepth = 0;
+                let validVerts = 0;
 
-                // Use centroid X as primary depth (camera looks along +X)
-                // Add small offset based on face center to handle coplanar faces
-                const sortDepth = centroidX + (centroidY + centroidZ) * 0.001;
+                for (const vertexIndex of face) {
+                    if (vertexIndex < transformedVertices.length) {
+                        const vert = transformedVertices[vertexIndex];
+                        // Distance along camera's forward direction (X-axis)
+                        avgDepth += vert.x;
+                        validVerts++;
+                    }
+                }
 
-                return { face, sortDepth };
+                if (validVerts > 0) {
+                    avgDepth /= validVerts;
+                }
+
+                return { face, avgDepth };
             })
-            .sort((a, b) => a.sortDepth - b.sortDepth) // Sort front-to-back (higher depth values first = farther from camera)
+            .sort((a, b) => a.avgDepth - b.avgDepth) // Sort front-to-back (smaller X = closer)
             .map(item => item.face);
 
         // Draw faces in sorted order
         if (this.renderMode === "solid" || this.renderMode === "both") {
             for (const face of sortedFaces) {
-                if (face.length < 3) continue; // Need at least 3 points to draw a face
+                if (face.length < 3) continue;
 
-                // Check if vertices are valid and get projected vertices
                 const validVertices = [];
                 for (const vertexIndex of face) {
                     if (vertexIndex < projectedVertices.length &&
@@ -1859,10 +2514,18 @@ class Mesh3D extends Module {
 
                 if (validVertices.length < 3) continue;
 
-                // Get lit material color for this face
+                // Backface culling check
+                const normal = this.calculateFaceNormal(face, transformedVertices);
+                const faceCenter = this.getFaceCenter(face, transformedVertices);
+                const viewDir = camera.position ?
+                    camera.position.clone().subtract(faceCenter).normalize() :
+                    new Vector3(-1, 0, 0);
+
+                // If face normal points away from camera, skip it (backface)
+                if (normal.dot(viewDir) < 0) continue;
+
                 const faceColor = this.getMaterialColor(face, transformedVertices, camera);
 
-                // Draw the face using valid vertices
                 ctx.fillStyle = faceColor;
                 ctx.beginPath();
                 ctx.moveTo(validVertices[0].x, validVertices[0].y);
@@ -1882,7 +2545,6 @@ class Mesh3D extends Module {
             ctx.lineWidth = 2;
 
             for (const [from, to] of this.edges) {
-                // Check if both vertices are valid and visible
                 if (from >= projectedVertices.length ||
                     to >= projectedVertices.length ||
                     projectedVertices[from] === null ||
@@ -1900,7 +2562,6 @@ class Mesh3D extends Module {
             }
         }
 
-        // Draw axis lines if enabled
         if (this.showAxisLines) {
             this.drawAxisLines(ctx, projectedVertices);
         }
@@ -2487,6 +3148,15 @@ class Mesh3D extends Module {
             cylinderHeight: this.cylinderHeight,
             cylinderSegments: this.cylinderSegments,
             icosahedronSize: this.icosahedronSize,
+            quadCubeSize: this.quadCubeSize,
+            quadCubeSubdivisions: this.quadCubeSubdivisions,
+            capsuleRadius: this.capsuleRadius,
+            capsuleHeight: this.capsuleHeight,
+            capsuleSegments: this.capsuleSegments,
+            prismSides: this.prismSides,
+            prismRadius: this.prismRadius,
+            prismHeight: this.prismHeight,
+            tetrahedronSize: this.tetrahedronSize,
             quadWidth: this.quadWidth,
             quadHeight: this.quadHeight,
             quadSubdivisionsX: this.quadSubdivisionsX,
@@ -2542,6 +3212,15 @@ class Mesh3D extends Module {
         if (json.cylinderHeight !== undefined) this.cylinderHeight = json.cylinderHeight;
         if (json.cylinderSegments !== undefined) this.cylinderSegments = json.cylinderSegments;
         if (json.icosahedronSize !== undefined) this.icosahedronSize = json.icosahedronSize;
+        if (json.quadCubeSize !== undefined) this.quadCubeSize = json.quadCubeSize;
+        if (json.quadCubeSubdivisions !== undefined) this.quadCubeSubdivisions = json.quadCubeSubdivisions;
+        if (json.capsuleRadius !== undefined) this.capsuleRadius = json.capsuleRadius;
+        if (json.capsuleHeight !== undefined) this.capsuleHeight = json.capsuleHeight;
+        if (json.capsuleSegments !== undefined) this.capsuleSegments = json.capsuleSegments;
+        if (json.prismSides !== undefined) this.prismSides = json.prismSides;
+        if (json.prismRadius !== undefined) this.prismRadius = json.prismRadius;
+        if (json.prismHeight !== undefined) this.prismHeight = json.prismHeight;
+        if (json.tetrahedronSize !== undefined) this.tetrahedronSize = json.tetrahedronSize;
         if (json.quadWidth !== undefined) this.quadWidth = json.quadWidth;
         if (json.quadHeight !== undefined) this.quadHeight = json.quadHeight;
         if (json.quadSubdivisionsX !== undefined) this.quadSubdivisionsX = json.quadSubdivisionsX;

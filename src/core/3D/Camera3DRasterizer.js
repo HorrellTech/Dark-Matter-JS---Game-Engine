@@ -59,6 +59,14 @@ class Camera3DRasterizer extends Module {
         this._sunSize = 30; // Radius in pixels
         this._sunGlowSize = 60; // Glow radius in pixels
 
+        // Lens flare properties
+        this._lensFlareEnabled = true;
+        this._lensFlareIntensity = 0.8; // 0-1 intensity multiplier
+        this._lensFlareCount = 5; // Number of flare elements
+        this._lensFlareSpacing = 0.15; // Distance between flares (0-1, screen space)
+        this._lensFlareSize = 20; // Base size of flare elements
+        this._lensFlareColorShift = true; // Apply chromatic aberration to flares
+
         // Specular properties
         this._specularEnabled = true;
         this._specularBleedingEnabled = false;
@@ -192,6 +200,37 @@ class Camera3DRasterizer extends Module {
             max: 200,
             step: 10,
             onChange: (val) => this._sunGlowSize = val
+        });
+
+        this.exposeProperty("lensFlareEnabled", "boolean", true, {
+            onChange: (val) => this._lensFlareEnabled = val
+        });
+        this.exposeProperty("lensFlareIntensity", "number", 0.8, {
+            min: 0,
+            max: 1,
+            step: 0.1,
+            onChange: (val) => this._lensFlareIntensity = val
+        });
+        this.exposeProperty("lensFlareCount", "number", 5, {
+            min: 1,
+            max: 10,
+            step: 1,
+            onChange: (val) => this._lensFlareCount = val
+        });
+        this.exposeProperty("lensFlareSpacing", "number", 0.15, {
+            min: 0.05,
+            max: 0.5,
+            step: 0.05,
+            onChange: (val) => this._lensFlareSpacing = val
+        });
+        this.exposeProperty("lensFlareSize", "number", 20, {
+            min: 5,
+            max: 50,
+            step: 5,
+            onChange: (val) => this._lensFlareSize = val
+        });
+        this.exposeProperty("lensFlareColorShift", "boolean", true, {
+            onChange: (val) => this._lensFlareColorShift = val
         });
 
         this.exposeProperty("specularEnabled", "boolean", true, {
@@ -932,6 +971,186 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+ * Draw lens flare effect
+ * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+ * @param {number} w - Width
+ * @param {number} h - Height
+ * @param {Vector2} sunPos - Sun position in screen space
+ */
+    drawLensFlare(buffer32, w, h, sunPos) {
+        if (!this._lensFlareEnabled || !sunPos) return;
+
+        // Calculate center of screen
+        const centerX = w * 0.5;
+        const centerY = h * 0.5;
+
+        // Vector from sun to center (lens flare direction)
+        const dirX = centerX - sunPos.x;
+        const dirY = centerY - sunPos.y;
+
+        // Calculate sun distance from center (for intensity falloff)
+        const sunDistFromCenter = Math.sqrt(dirX * dirX + dirY * dirY);
+        const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+        const distanceFalloff = 1.0 - Math.min(1.0, sunDistFromCenter / maxDist);
+
+        // Early exit if sun is too far from center
+        if (distanceFalloff < 0.1) return;
+
+        // Parse sun color
+        const sunColor = this.hexToRgb(this._lightColor);
+
+        // Create flare elements along the line from sun to center
+        for (let i = 0; i < this._lensFlareCount; i++) {
+            // Position along the sun-to-center line
+            const t = (i + 1) * this._lensFlareSpacing;
+            const flareX = sunPos.x + dirX * t;
+            const flareY = sunPos.y + dirY * t;
+
+            // Skip if flare is outside screen bounds
+            if (flareX < 0 || flareX >= w || flareY < 0 || flareY >= h) continue;
+
+            // Calculate flare properties
+            const flareProgress = i / (this._lensFlareCount - 1); // 0 to 1
+            const flareSize = this._lensFlareSize * (0.5 + flareProgress * 0.5); // Smaller flares closer to sun
+            const flareIntensity = this._lensFlareIntensity * distanceFalloff * (1.0 - flareProgress * 0.3);
+
+            // Apply chromatic aberration if enabled
+            let flareColor = { ...sunColor };
+            if (this._lensFlareColorShift) {
+                // Shift colors based on flare index
+                const hueShift = (i % 3) / 3; // 0, 0.33, 0.66 for RGB shift
+                if (hueShift < 0.33) {
+                    flareColor.r = Math.min(255, sunColor.r * 1.2);
+                    flareColor.g = Math.min(255, sunColor.g * 0.8);
+                    flareColor.b = Math.min(255, sunColor.b * 0.6);
+                } else if (hueShift < 0.66) {
+                    flareColor.r = Math.min(255, sunColor.r * 0.6);
+                    flareColor.g = Math.min(255, sunColor.g * 1.2);
+                    flareColor.b = Math.min(255, sunColor.b * 0.8);
+                } else {
+                    flareColor.r = Math.min(255, sunColor.r * 0.8);
+                    flareColor.g = Math.min(255, sunColor.g * 0.6);
+                    flareColor.b = Math.min(255, sunColor.b * 1.2);
+                }
+            }
+
+            // Draw hexagonal flare element (more efficient than circle)
+            this.drawFlareElement(buffer32, w, h, flareX, flareY, flareSize, flareIntensity, flareColor);
+        }
+
+        // Add a bright streak from sun position (lens reflection)
+        if (distanceFalloff > 0.3) {
+            this.drawLensStreak(buffer32, w, h, sunPos, centerX, centerY, sunColor, distanceFalloff);
+        }
+    }
+
+    /**
+     * Draw a single lens flare element (hexagonal shape for efficiency)
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} centerX - Flare center X
+     * @param {number} centerY - Flare center Y
+     * @param {number} size - Flare size
+     * @param {number} intensity - Flare intensity (0-1)
+     * @param {Object} color - RGB color object
+     */
+    drawFlareElement(buffer32, w, h, centerX, centerY, size, intensity, color) {
+        const halfSize = size * 0.5;
+        const minX = Math.max(0, Math.floor(centerX - halfSize));
+        const maxX = Math.min(w - 1, Math.ceil(centerX + halfSize));
+        const minY = Math.max(0, Math.floor(centerY - halfSize));
+        const maxY = Math.min(h - 1, Math.ceil(centerY + halfSize));
+
+        const sizeSq = halfSize * halfSize;
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq <= sizeSq) {
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1.0 - (distance / halfSize);
+
+                    // Smooth falloff with slight hexagonal shape
+                    const angle = Math.atan2(dy, dx);
+                    const hexFactor = 0.95 + 0.05 * Math.cos(angle * 6); // 6-sided approximation
+                    const smoothFalloff = falloff * falloff * hexFactor;
+                    const alpha = intensity * smoothFalloff * 0.6; // Reduced opacity for subtlety
+
+                    if (alpha > 0.01) {
+                        const pixelIdx = y * w + x;
+                        const existing = buffer32[pixelIdx];
+
+                        // Extract existing RGB
+                        const existingR = existing & 0xFF;
+                        const existingG = (existing >> 8) & 0xFF;
+                        const existingB = (existing >> 16) & 0xFF;
+
+                        // Additive blend with flare color
+                        const newR = Math.min(255, Math.round(existingR + color.r * alpha));
+                        const newG = Math.min(255, Math.round(existingG + color.g * alpha));
+                        const newB = Math.min(255, Math.round(existingB + color.b * alpha));
+
+                        buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Draw a lens streak effect (anamorphic flare)
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {Vector2} sunPos - Sun position
+     * @param {number} centerX - Screen center X
+     * @param {number} centerY - Screen center Y
+     * @param {Object} color - RGB color object
+     * @param {number} falloff - Distance falloff
+     */
+    drawLensStreak(buffer32, w, h, sunPos, centerX, centerY, color, falloff) {
+        // Draw horizontal streak through sun position
+        const streakLength = w * 0.3 * falloff;
+        const streakThickness = 2;
+        const streakIntensity = this._lensFlareIntensity * falloff * 0.3;
+
+        const startX = Math.max(0, Math.floor(sunPos.x - streakLength));
+        const endX = Math.min(w - 1, Math.ceil(sunPos.x + streakLength));
+        const minY = Math.max(0, Math.floor(sunPos.y - streakThickness));
+        const maxY = Math.min(h - 1, Math.ceil(sunPos.y + streakThickness));
+
+        for (let y = minY; y <= maxY; y++) {
+            const dy = Math.abs(y - sunPos.y);
+            const yFalloff = 1.0 - (dy / streakThickness);
+
+            for (let x = startX; x <= endX; x++) {
+                const dx = Math.abs(x - sunPos.x);
+                const xFalloff = 1.0 - (dx / streakLength);
+                const alpha = streakIntensity * xFalloff * yFalloff;
+
+                if (alpha > 0.01) {
+                    const pixelIdx = y * w + x;
+                    const existing = buffer32[pixelIdx];
+
+                    const existingR = existing & 0xFF;
+                    const existingG = (existing >> 8) & 0xFF;
+                    const existingB = (existing >> 16) & 0xFF;
+
+                    const newR = Math.min(255, Math.round(existingR + color.r * alpha));
+                    const newG = Math.min(255, Math.round(existingG + color.g * alpha));
+                    const newB = Math.min(255, Math.round(existingB + color.b * alpha));
+
+                    buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                }
+            }
+        }
+    }
+
+    /**
      * Fast background clearing using 32-bit writes
      */
     clearBackgroundFast(buffer32, w, h) {
@@ -972,6 +1191,11 @@ class Camera3DRasterizer extends Module {
             const sunPos = this.calculateSunPosition();
             if (sunPos) {
                 this.drawSun(buffer32, w, h, sunPos);
+
+                // Draw lens flare if enabled
+                if (this._lensFlareEnabled) {
+                    this.drawLensFlare(buffer32, w, h, sunPos);
+                }
             }
         } else if (this._backgroundType === "transparent") {
             buffer32.fill(0);
@@ -1737,7 +1961,13 @@ class Camera3DRasterizer extends Module {
             _showDebugInfo: this._showDebugInfo,
             _maxLights: this._maxLights,
             _lightFindDistance: this._lightFindDistance,
-            _useDynamicLighting: this._useDynamicLighting
+            _useDynamicLighting: this._useDynamicLighting,
+            _lensFlareEnabled: this._lensFlareEnabled,
+            _lensFlareIntensity: this._lensFlareIntensity,
+            _lensFlareCount: this._lensFlareCount,
+            _lensFlareSpacing: this._lensFlareSpacing,
+            _lensFlareSize: this._lensFlareSize,
+            _lensFlareColorShift: this._lensFlareColorShift
         };
     }
 
@@ -1774,6 +2004,13 @@ class Camera3DRasterizer extends Module {
         if (json._maxLights !== undefined) this._maxLights = json._maxLights;
         if (json._lightFindDistance !== undefined) this._lightFindDistance = json._lightFindDistance;
         if (json._useDynamicLighting !== undefined) this._useDynamicLighting = json._useDynamicLighting;
+        if (json._lensFlareEnabled !== undefined) { this._lensFlareEnabled = json._lensFlareEnabled; } else { this._lensFlareEnabled = true; }
+        if (json._lensFlareIntensity !== undefined) { this._lensFlareIntensity = json._lensFlareIntensity; } else { this._lensFlareIntensity = 0.8; }
+        if (json._lensFlareCount !== undefined) { this._lensFlareCount = json._lensFlareCount; } else { this._lensFlareCount = 5; }
+        if (json._lensFlareSpacing !== undefined) { this._lensFlareSpacing = json._lensFlareSpacing; } else { this._lensFlareSpacing = 0.15; }
+        if (json._lensFlareSize !== undefined) { this._lensFlareSize = json._lensFlareSize; } else { this._lensFlareSize = 20; }
+        if (json._lensFlareColorShift !== undefined) { this._lensFlareColorShift = json._lensFlareColorShift; } else { this._lensFlareColorShift = true; }
+        
 
         this.updateRenderTexture();
     }
