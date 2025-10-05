@@ -52,7 +52,20 @@ class Camera3DRasterizer extends Module {
         this._floorColor = "#8B4513"; // Brown
         this._skyColorHorizon = "#af686cff"; // Sky at horizon (default same as sky)
         this._floorColorHorizon = "#653721ff"; // Floor at horizon (darker brown)
-        this._backgroundType = "skyfloor"; // "skyfloor", "transparent", "solid"
+        this._backgroundType = "skybox"; // "skybox", "transparent", "solid"
+
+        // Cloud properties
+        this._cloudsEnabled = false;
+        this._cloudSpeed = 0.5; // Speed multiplier for cloud movement
+        this._cloudDensity = 0.4; // 0-1, how much cloud coverage
+        this._cloudScale = 150; // Size of cloud patterns (larger = bigger clouds)
+        this._cloudSoftness = 0.6; // 0-1, edge softness
+        this._cloudHeight = 0.3; // 0-1, where clouds appear (0=horizon, 1=zenith)
+        this._cloudThickness = 0.4; // 0-1, vertical extent of cloud layer
+        this._cloudBrightness = 1.0; // Cloud color brightness multiplier
+        this._cloudTime = 0; // Animation time tracker
+        this._cloudNoiseCache = null; // Cache for performance
+        this._cloudResolution = 0.5; // 1.0 = full res, 0.5 = half res, etc.
 
         // Water animation properties
         this._waterEnabled = false;
@@ -84,6 +97,9 @@ class Camera3DRasterizer extends Module {
         this._specularBloomIntensity = 0.5;
         this._specularBloomRadius = 1.5; // Multiplier for base radius
         this._specularBloomThreshold = 0.3; // Minimum specular intensity to trigger bloom
+
+        // Emissive properties
+        this._emissiveIntensity = 1.0; // Emissive color brightness multiplier
 
         // Fog properties
         this._fogEnabled = false;
@@ -187,8 +203,8 @@ class Camera3DRasterizer extends Module {
         });
 
 
-        this.exposeProperty("backgroundType", "dropdown", "skyfloor", {
-            options: ["skyfloor", "transparent", "solid"],
+        this.exposeProperty("backgroundType", "dropdown", "skybox", {
+            options: ["skybox", "transparent", "solid"],
             onChange: (val) => this._backgroundType = val
         });
         this.exposeProperty("backgroundColor", "color", "#000000", {
@@ -205,6 +221,58 @@ class Camera3DRasterizer extends Module {
         });
         this.exposeProperty("floorColorHorizon", "color", "#654321", {
             onChange: (val) => this._floorColorHorizon = val
+        });
+
+        this.exposeProperty("cloudsEnabled", "boolean", false, {
+            onChange: (val) => this._cloudsEnabled = val
+        });
+        this.exposeProperty("cloudSpeed", "number", 0.5, {
+            min: 0.1,
+            max: 3.0,
+            step: 0.1,
+            onChange: (val) => this._cloudSpeed = val
+        });
+        this.exposeProperty("cloudDensity", "number", 0.4, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._cloudDensity = val
+        });
+        this.exposeProperty("cloudScale", "number", 150, {
+            min: 50,
+            max: 500,
+            step: 10,
+            onChange: (val) => this._cloudScale = val
+        });
+        this.exposeProperty("cloudSoftness", "number", 0.6, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._cloudSoftness = val
+        });
+        this.exposeProperty("cloudHeight", "number", 0.3, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._cloudHeight = val
+        });
+        this.exposeProperty("cloudThickness", "number", 0.4, {
+            min: 0.1,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._cloudThickness = val
+        });
+        this.exposeProperty("cloudBrightness", "number", 1.0, {
+            min: 0.5,
+            max: 2.0,
+            step: 0.1,
+            onChange: (val) => this._cloudBrightness = val
+        });
+        this.exposeProperty("cloudResolution", "number", 1.0, {
+            min: 0.25,
+            max: 1.0,
+            step: 0.05,
+            onChange: (val) => this._cloudResolution = val
         });
 
         this.exposeProperty("waterEnabled", "boolean", false, {
@@ -303,6 +371,13 @@ class Camera3DRasterizer extends Module {
             max: 1,
             step: 0.05,
             onChange: (val) => this._specularBloomThreshold = val
+        });
+
+        this.exposeProperty("emissiveIntensity", "number", 1.0, {
+            min: 0,
+            max: 3.0,
+            step: 0.1,
+            onChange: (val) => this._emissiveIntensity = val
         });
 
         this.exposeProperty("fogEnabled", "boolean", false, {
@@ -678,6 +753,36 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+     * Calculate final color with emissive support
+     * @param {Object} tri - Triangle data with material
+     * @param {Object} litColor - Already calculated lighting color
+     * @returns {Object} - Final RGB color with emission
+     */
+    calculateEmissiveColor(tri, litColor) {
+        const material = tri.material;
+
+        // If no material or no emissive color, return lit color as-is
+        if (!material || !material._emissiveColor) {
+            return litColor;
+        }
+
+        const emissiveRgb = this.hexToRgb(material._emissiveColor);
+        const emissiveIntensity = (material._emissiveIntensity || 0) * (this._emissiveIntensity || 1.0);
+
+        // Skip if emission is negligible
+        if (emissiveIntensity < 0.01) {
+            return litColor;
+        }
+
+        // Add emissive color additively (clamped to prevent overflow)
+        return {
+            r: Math.min(255, litColor.r + Math.round(emissiveRgb.r * emissiveIntensity)),
+            g: Math.min(255, litColor.g + Math.round(emissiveRgb.g * emissiveIntensity)),
+            b: Math.min(255, litColor.b + Math.round(emissiveRgb.b * emissiveIntensity))
+        };
+    }
+
+    /**
      * Check if a point in camera space is occluded by any triangle
      * @param {Vector3} point - Point in camera space to test
      * @param {Array} allTriangles - All triangles to test against
@@ -803,7 +908,6 @@ class Camera3DRasterizer extends Module {
         const specularHighlights = [];
         const meshSpecularData = new Map();
 
-        // ...existing code for collecting triangles...
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
@@ -815,10 +919,14 @@ class Camera3DRasterizer extends Module {
             const material = mesh.material;
             const faceColor = material ? material.diffuseColor : (mesh.faceColor || mesh._faceColor || "#888888");
 
-            mesh.faces.forEach(face => {
+            mesh.faces.forEach((face, faceIndex) => {
                 this._debugStats.totalFaces++;
 
-                const worldVerts = face.map(idx => transformedVertices[idx]).filter(v => v);
+                // Get vertex indices
+                const vertIndices = Array.isArray(face) ? face : face.indices;
+                if (!vertIndices || vertIndices.length < 3) return;
+
+                const worldVerts = vertIndices.map(idx => transformedVertices[idx]).filter(v => v);
                 if (worldVerts.length < 3) return;
 
                 const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
@@ -840,12 +948,25 @@ class Camera3DRasterizer extends Module {
 
                 if (screenVerts.length < 3) return;
 
+                // Get UV coordinates for this face
+                const getUV = (vertIdx) => {
+                    if (mesh.uvCoords && mesh.uvCoords[vertIdx]) {
+                        return mesh.uvCoords[vertIdx];
+                    }
+                    return new Vector2(0, 0);
+                };
+
                 for (let i = 1; i < screenVerts.length - 1; i++) {
                     const triWorldVerts = [
                         worldVerts[0],
                         worldVerts[Math.min(i, worldVerts.length - 1)],
                         worldVerts[Math.min(i + 1, worldVerts.length - 1)]
                     ];
+
+                    // Get UVs for this triangle
+                    const uv0 = getUV(vertIndices[0]);
+                    const uv1 = getUV(vertIndices[Math.min(i, vertIndices.length - 1)]);
+                    const uv2 = getUV(vertIndices[Math.min(i + 1, vertIndices.length - 1)]);
 
                     const centroidX = (screenVerts[0].cameraPos.x + screenVerts[i].cameraPos.x + screenVerts[i + 1].cameraPos.x) / 3;
                     const viewDepth = centroidX;
@@ -854,6 +975,9 @@ class Camera3DRasterizer extends Module {
                         v0: screenVerts[0],
                         v1: screenVerts[i],
                         v2: screenVerts[i + 1],
+                        uv0: uv0,
+                        uv1: uv1,
+                        uv2: uv2,
                         worldVerts: triWorldVerts,
                         worldNormal: worldNormal,
                         material: material,
@@ -887,8 +1011,11 @@ class Camera3DRasterizer extends Module {
                 allTrianglesForShadows
             );
 
+            // Apply emissive color
+            const emissiveColor = this.calculateEmissiveColor(tri, litColor);
+
             // Apply fog to lit color based on triangle depth
-            const foggedColor = this.applyFog(litColor, tri.avgDepth);
+            const foggedColor = this.applyFog(emissiveColor, tri.avgDepth);
 
             const packedColor = (255 << 24) | (foggedColor.b << 16) | (foggedColor.g << 8) | foggedColor.r;
             tri.packedColor = packedColor;
@@ -1010,7 +1137,7 @@ class Camera3DRasterizer extends Module {
      * Returns null if sun is below horizon
      */
     calculateSunPosition() {
-        if (!this._showSun || this._backgroundType !== "skyfloor") {
+        if (!this._showSun || this._backgroundType !== "skybox") {
             return null;
         }
 
@@ -1347,99 +1474,293 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+ * Simple 2D Perlin-like noise function for clouds
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @returns {number} - Noise value 0-1
+ */
+    generateCloudNoise(x, y) {
+        // Simple hash-based noise (fast but procedural)
+        const hash = (n) => {
+            n = (n << 13) ^ n;
+            return (1.0 - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0);
+        };
+
+        const X = Math.floor(x);
+        const Y = Math.floor(y);
+        const xf = x - X;
+        const yf = y - Y;
+
+        // Smooth interpolation
+        const u = xf * xf * (3.0 - 2.0 * xf);
+        const v = yf * yf * (3.0 - 2.0 * yf);
+
+        // Hash corners
+        const a = hash(X + hash(Y));
+        const b = hash(X + 1 + hash(Y));
+        const c = hash(X + hash(Y + 1));
+        const d = hash(X + 1 + hash(Y + 1));
+
+        // Bilinear interpolation
+        const k0 = a;
+        const k1 = b - a;
+        const k2 = c - a;
+        const k3 = a - b - c + d;
+
+        return (k0 + k1 * u + k2 * v + k3 * u * v) * 0.5 + 0.5;
+    }
+
+    /**
+     * Fractional Brownian Motion for more detailed clouds
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} octaves - Number of noise layers
+     * @returns {number} - Combined noise value 0-1
+     */
+    generateCloudFBM(x, y, octaves = 4) {
+        let value = 0;
+        let amplitude = 1.0;
+        let frequency = 1.0;
+        let maxValue = 0;
+
+        for (let i = 0; i < octaves; i++) {
+            value += this.generateCloudNoise(x * frequency, y * frequency) * amplitude;
+            maxValue += amplitude;
+            amplitude *= 0.5;
+            frequency *= 2.0;
+        }
+
+        return value / maxValue;
+    }
+
+    /**
+     * Render clouds in the sky portion of the skybox
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} horizonY - Horizon line Y position
+     */
+    renderClouds(buffer32, w, h, horizonY) {
+        if (!this._cloudsEnabled) return;
+
+        // Update cloud animation
+        this._cloudTime += 0.016 * this._cloudSpeed;
+
+        // Calculate cloud layer bounds relative to UNCLAMPED horizon
+        // This allows clouds to render even when horizon is outside viewport
+        const cloudStartY = Math.floor(horizonY * this._cloudHeight);
+        const cloudEndY = Math.max(0, cloudStartY - Math.floor(Math.abs(horizonY) * this._cloudThickness));
+
+        // If cloud layer is completely outside viewport, skip
+        if (cloudStartY < 0 || cloudEndY >= h) return;
+
+        // Clamp rendering to viewport bounds
+        const renderStartY = Math.max(0, cloudEndY);
+        const renderEndY = Math.min(h, cloudStartY);
+
+        if (renderStartY >= renderEndY) return;
+
+        // Calculate step size based on resolution setting
+        const pixelStep = Math.max(1, Math.round(1 / this._cloudResolution));
+
+        // Get camera yaw (rotation around Z axis) to rotate clouds with camera
+        const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
+            this.gameObject.getWorldRotation() : 0;
+        const yaw = -(parentAngleDeg + (this._rotation.z || 0)) * (Math.PI / 180);
+
+        // Get camera pitch (rotation around Y axis) for vertical offset
+        const pitch = (this._rotation.y || 0) * (Math.PI / 180);
+
+        // Calculate FOV factors for proper perspective
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const fovFactor = Math.tan(fovRadians / 2);
+
+        // Render clouds scanline by scanline with adaptive resolution
+        for (let y = renderStartY; y < renderEndY; y += pixelStep) {
+            // Calculate vertical position (0=horizon, 1=top of cloud layer)
+            // Use FULL cloud layer extent for proper interpolation
+            const verticalPos = (cloudStartY - y) / (cloudStartY - cloudEndY);
+
+            // Apply perspective depth (clouds closer to horizon are "further away")
+            const depthFactor = 1.0 - verticalPos; // 0 at top, 1 at horizon
+            const perspectiveScale = 1.0 + depthFactor * 2.0; // Clouds stretch near horizon
+
+            // Calculate atmospheric fade (clouds fade at edges of layer)
+            const layerFade = Math.sin(verticalPos * Math.PI); // Peaks at middle of layer
+
+            for (let x = 0; x < w; x += pixelStep) {
+                // Calculate normalized screen position (-1 to 1)
+                const screenX = (x / w - 0.5) * 2.0;
+                const screenY = (y / h - 0.5) * 2.0;
+
+                // Convert screen space to view direction (accounting for FOV)
+                const viewDirX = screenX * fovFactor * (w / h); // Horizontal direction
+                const viewDirY = screenY * fovFactor; // Vertical direction
+
+                // Apply camera yaw rotation to horizontal direction
+                const rotatedX = Math.cos(yaw) * viewDirX - Math.sin(yaw) * 1.0; // 1.0 is "forward"
+                const rotatedY = Math.sin(yaw) * viewDirX + Math.cos(yaw) * 1.0;
+
+                // Apply pitch offset to vertical sampling
+                const pitchAdjustedY = viewDirY - Math.tan(pitch);
+
+                // Calculate noise sampling coordinates with perspective and time offset
+                // Use rotated horizontal direction for proper camera rotation
+                const noiseX = (rotatedX * perspectiveScale + this._cloudTime * 0.1) / (this._cloudScale * 0.01);
+                const noiseY = (rotatedY * perspectiveScale + this._cloudTime * 0.05) / (this._cloudScale * 0.01);
+
+                // Sample multi-octave noise for detailed clouds
+                const cloudNoise = this.generateCloudFBM(noiseX, noiseY, 3);
+
+                // Apply density threshold to create cloud shapes
+                let cloudAlpha = (cloudNoise - (1.0 - this._cloudDensity)) / this._cloudDensity;
+                cloudAlpha = Math.max(0, Math.min(1, cloudAlpha));
+
+                // Apply softness (feathered edges)
+                if (this._cloudSoftness > 0) {
+                    cloudAlpha = Math.pow(cloudAlpha, 1.0 + this._cloudSoftness * 2);
+                }
+
+                // Apply atmospheric fade
+                cloudAlpha *= layerFade;
+
+                if (cloudAlpha > 0.01) {
+                    // Cloud color (bright white with slight blue tint, affected by light color)
+                    const lightRgb = this.hexToRgb(this._lightColor);
+                    const cloudR = Math.round(255 * this._cloudBrightness * (lightRgb.r / 255));
+                    const cloudG = Math.round(255 * this._cloudBrightness * (lightRgb.g / 255));
+                    const cloudB = Math.round(255 * this._cloudBrightness * (lightRgb.b / 255));
+
+                    // Fill block of pixels for lower resolutions
+                    for (let py = 0; py < pixelStep && y + py < renderEndY; py++) {
+                        const rowStart = (y + py) * w;
+                        for (let px = 0; px < pixelStep && x + px < w; px++) {
+                            const pixelIdx = rowStart + (x + px);
+                            const existing = buffer32[pixelIdx];
+
+                            const existingR = existing & 0xFF;
+                            const existingG = (existing >> 8) & 0xFF;
+                            const existingB = (existing >> 16) & 0xFF;
+
+                            // Alpha blend clouds over sky
+                            const newR = Math.round(existingR * (1 - cloudAlpha) + cloudR * cloudAlpha);
+                            const newG = Math.round(existingG * (1 - cloudAlpha) + cloudG * cloudAlpha);
+                            const newB = Math.round(existingB * (1 - cloudAlpha) + cloudB * cloudAlpha);
+
+                            buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Fast background clearing using 32-bit writes
      */
     clearBackgroundFast(buffer32, w, h) {
-    if (this._backgroundType === "solid") {
-        const bgColor = this.hexToRgb(this._backgroundColor);
-        const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
-        buffer32.fill(bgPixel);
-    } else if (this._backgroundType === "skyfloor") {
-        const fovRadians = this._fieldOfView * (Math.PI / 180);
-        const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
-        const maxPitch = fovRadians / 2;
-        const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
-        const horizonOffset = normalizedPitch * 0.5;
-        const horizonRatio = 0.5 + horizonOffset;
-        const clampedHorizon = Math.max(0, Math.min(1, horizonRatio));
-        const horizonY = Math.floor(h * clampedHorizon);
+        if (this._backgroundType === "solid") {
+            const bgColor = this.hexToRgb(this._backgroundColor);
+            const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
+            buffer32.fill(bgPixel);
+        } else if (this._backgroundType === "skybox") {
+            const fovRadians = this._fieldOfView * (Math.PI / 180);
+            const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
+            const maxPitch = fovRadians / 2;
+            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
+            const horizonOffset = normalizedPitch * 0.5;
+            const horizonRatio = 0.5 + horizonOffset;
+            // Remove clamping to allow horizon to move outside viewport bounds
+            const horizonY = Math.floor(h * horizonRatio);
 
-        // Draw sky gradient first
-        for (let y = 0; y < horizonY; y++) {
-            const t = y / horizonY;
-            const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
-            const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
-            const rowStart = y * w;
-            for (let x = 0; x < w; x++) {
-                buffer32[rowStart + x] = pixel;
-            }
-        }
+            // Draw sky gradient (may extend beyond top of viewport)
+            const skyStartY = Math.max(0, 0); // Always start from top
+            const skyEndY = Math.min(h, horizonY); // End at horizon or bottom of viewport
 
-        // Draw sun on top of sky gradient
-        const sunPos = this.calculateSunPosition();
-        if (sunPos) {
-            this.drawSun(buffer32, w, h, sunPos);
-
-            // Draw lens flare if enabled
-            if (this._lensFlareEnabled) {
-                this.drawLensFlare(buffer32, w, h, sunPos);
-            }
-        }
-
-        // Draw floor gradient with optional water animation
-        if (this._waterEnabled) {
-            // Animate water time
-            this._waterTime += 0.016 * this._waterSpeed;
-            
-            const floorHeight = h - horizonY;
-            
-            // Pre-calculate wave phases for rows (performance optimization)
-            for (let y = horizonY; y < h; y++) {
-                const baseT = (y - horizonY) / floorHeight;
-                const perspectiveFactor = baseT * baseT;
-                
-                // Calculate primary wave for this row
-                const yOffset = y - horizonY;
-                const primaryWave = (yOffset / this._waterWaveHeight) + this._waterTime;
-                const secondaryWave = (yOffset / (this._waterWaveHeight * 2.3)) + this._waterTime * 0.7;
-                const tertiaryWave = (yOffset / (this._waterWaveHeight * 4.1)) + this._waterTime * 1.3;
-                
-                // Sample wave at row start for base offset
-                const baseWaveOffset = (
-                    Math.sin(primaryWave) * 0.035 +
-                    Math.sin(secondaryWave) * 0.020 +
-                    Math.sin(tertiaryWave) * 0.015
-                ) * perspectiveFactor;
-                
-                // Calculate animated t for this row
-                const animatedT = Math.max(0, Math.min(1, baseT + baseWaveOffset));
-                
-                // Get color for this row
-                const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
-                const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
-                
-                // Fill entire row with this color (fast row-based approach)
-                const rowStart = y * w;
-                for (let x = 0; x < w; x++) {
-                    buffer32[rowStart + x] = pixel;
-                }
-            }
-        } else {
-            // Standard floor gradient without animation
-            for (let y = horizonY; y < h; y++) {
-                const t = (y - horizonY) / (h - horizonY);
-                const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
+            for (let y = skyStartY; y < skyEndY; y++) {
+                // Calculate t based on full sky extent, not just visible portion
+                const t = horizonY > 0 ? y / horizonY : 0;
+                const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
                 const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
                 const rowStart = y * w;
                 for (let x = 0; x < w; x++) {
                     buffer32[rowStart + x] = pixel;
                 }
             }
+
+            // Draw sun on top of sky gradient and clouds
+            const sunPos = this.calculateSunPosition();
+            if (sunPos) {
+                this.drawSun(buffer32, w, h, sunPos);
+
+                // Draw lens flare if enabled
+                if (this._lensFlareEnabled) {
+                    this.drawLensFlare(buffer32, w, h, sunPos);
+                }
+            }
+
+            if (this._cloudsEnabled) {
+                this.renderClouds(buffer32, w, h, horizonY);
+            }
+
+            // Draw floor gradient with optional water animation (may start above viewport)
+            const floorStartY = Math.max(0, horizonY);
+            const floorEndY = h;
+
+            if (this._waterEnabled) {
+                // Animate water time
+                this._waterTime += 0.016 * this._waterSpeed;
+
+                const floorHeight = floorEndY - floorStartY;
+
+                // Pre-calculate wave phases for rows (performance optimization)
+                for (let y = floorStartY; y < floorEndY; y++) {
+                    // Calculate t relative to full floor extent
+                    const baseT = horizonY < h ? (y - horizonY) / (h - horizonY) : 0;
+                    const perspectiveFactor = baseT * baseT;
+
+                    // Calculate primary wave for this row
+                    const yOffset = y - horizonY;
+                    const primaryWave = (yOffset / this._waterWaveHeight) + this._waterTime;
+                    const secondaryWave = (yOffset / (this._waterWaveHeight * 2.3)) + this._waterTime * 0.7;
+                    const tertiaryWave = (yOffset / (this._waterWaveHeight * 4.1)) + this._waterTime * 1.3;
+
+                    // Sample wave at row start for base offset
+                    const baseWaveOffset = (
+                        Math.sin(primaryWave) * 0.035 +
+                        Math.sin(secondaryWave) * 0.020 +
+                        Math.sin(tertiaryWave) * 0.015
+                    ) * perspectiveFactor;
+
+                    // Calculate animated t for this row
+                    const animatedT = Math.max(0, Math.min(1, baseT + baseWaveOffset));
+
+                    // Get color for this row
+                    const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
+                    const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
+
+                    // Fill entire row with this color (fast row-based approach)
+                    const rowStart = y * w;
+                    for (let x = 0; x < w; x++) {
+                        buffer32[rowStart + x] = pixel;
+                    }
+                }
+            } else {
+                // Standard floor gradient without animation
+                for (let y = floorStartY; y < floorEndY; y++) {
+                    const t = horizonY < h ? (y - horizonY) / (h - horizonY) : 0;
+                    const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
+                    const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
+                    const rowStart = y * w;
+                    for (let x = 0; x < w; x++) {
+                        buffer32[rowStart + x] = pixel;
+                    }
+                }
+            }
+        } else if (this._backgroundType === "transparent") {
+            buffer32.fill(0);
         }
-    } else if (this._backgroundType === "transparent") {
-        buffer32.fill(0);
     }
-}
 
     /**
      * Ultra-fast scanline triangle rasterization
@@ -1458,7 +1779,7 @@ class Camera3DRasterizer extends Module {
 
         if (minX > maxX || minY > maxY) return;
 
-        // Edge setup (once per triangle)
+        // Edge setup
         const v0x = p0.x, v0y = p0.y;
         const v1x = p1.x, v1y = p1.y;
         const v2x = p2.x, v2y = p2.y;
@@ -1467,36 +1788,105 @@ class Camera3DRasterizer extends Module {
         const e1_dx = v2x - v1x, e1_dy = v2y - v1y;
         const e2_dx = v0x - v2x, e2_dy = v0y - v2y;
 
-        // Check if triangle is degenerate
         const area = e0_dx * (v2y - v0y) - e0_dy * (v2x - v0x);
         if (Math.abs(area) < 0.5) return;
 
-        const packedColor = tri.packedColor;
+        // Check if material has a texture
+        const material = tri.material;
+        const hasTexture = material && (material.getDiffuseTexture() || material._useProceduralTexture);
 
-        // Scanline loop with edge coherence
-        for (let y = minY; y <= maxY; y++) {
-            // Calculate edge values at start of scanline
-            let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
-            let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
-            let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+        if (hasTexture) {
+            // Get texture
+            const texture = material.getDiffuseTexture();
+            if (!texture) return; // Texture not loaded yet
 
-            // Edge increments for x-stepping
-            const w0_step = -e0_dy;
-            const w1_step = -e1_dy;
-            const w2_step = -e2_dy;
+            // Get UVs
+            const uv0 = tri.uv0 || new Vector2(0, 0);
+            const uv1 = tri.uv1 || new Vector2(0, 0);
+            const uv2 = tri.uv2 || new Vector2(0, 0);
 
-            const rowOffset = y * w;
+            // Pre-calculate barycentric denominators
+            const invArea = 1.0 / area;
 
-            for (let x = minX; x <= maxX; x++) {
-                // Inside test using edge equations
-                if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-                    buffer32[rowOffset + x] = packedColor;
+            // Scanline loop with texture sampling
+            for (let y = minY; y <= maxY; y++) {
+                let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
+                let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
+                let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+
+                const w0_step = -e0_dy;
+                const w1_step = -e1_dy;
+                const w2_step = -e2_dy;
+
+                const rowOffset = y * w;
+
+                for (let x = minX; x <= maxX; x++) {
+                    if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                        // Calculate barycentric coordinates
+                        const lambda0 = ((v1y - v2y) * (x - v2x) + (v2x - v1x) * (y - v2y)) * invArea;
+                        const lambda1 = ((v2y - v0y) * (x - v2x) + (v0x - v2x) * (y - v2y)) * invArea;
+                        const lambda2 = 1.0 - lambda0 - lambda1;
+
+                        // Interpolate UV coordinates
+                        const u = uv0.x * lambda0 + uv1.x * lambda1 + uv2.x * lambda2;
+                        const v = uv0.y * lambda0 + uv1.y * lambda1 + uv2.y * lambda2;
+
+                        // Sample texture
+                        const textureColor = material.sampleTexture(u, v, texture);
+
+                        // Parse texture color (returns rgba string)
+                        const match = textureColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                        if (match) {
+                            const baseR = parseInt(match[1]);
+                            const baseG = parseInt(match[2]);
+                            const baseB = parseInt(match[3]);
+
+                            // Apply lighting (use pre-calculated lit color from tri.packedColor)
+                            // Extract RGB from packed color
+                            const litR = tri.packedColor & 0xFF;
+                            const litG = (tri.packedColor >> 8) & 0xFF;
+                            const litB = (tri.packedColor >> 16) & 0xFF;
+
+                            // Blend texture with lighting
+                            const finalR = Math.round((baseR / 255) * litR);
+                            const finalG = Math.round((baseG / 255) * litG);
+                            const finalB = Math.round((baseB / 255) * litB);
+
+                            // Pack into 32-bit color
+                            const packedColor = (255 << 24) | (finalB << 16) | (finalG << 8) | finalR;
+                            buffer32[rowOffset + x] = packedColor;
+                        }
+                    }
+
+                    w0 += w0_step;
+                    w1 += w1_step;
+                    w2 += w2_step;
                 }
+            }
+        } else {
+            // Original solid color rendering (existing code)
+            const packedColor = tri.packedColor;
 
-                // Increment edge values
-                w0 += w0_step;
-                w1 += w1_step;
-                w2 += w2_step;
+            for (let y = minY; y <= maxY; y++) {
+                let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
+                let w1 = e1_dx * (y - v1y) - e1_dy * (minX - v1x);
+                let w2 = e2_dx * (y - v2y) - e2_dy * (minX - v2x);
+
+                const w0_step = -e0_dy;
+                const w1_step = -e1_dy;
+                const w2_step = -e2_dy;
+
+                const rowOffset = y * w;
+
+                for (let x = minX; x <= maxX; x++) {
+                    if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
+                        buffer32[rowOffset + x] = packedColor;
+                    }
+
+                    w0 += w0_step;
+                    w1 += w1_step;
+                    w2 += w2_step;
+                }
             }
         }
     }
@@ -2280,9 +2670,36 @@ class Camera3DRasterizer extends Module {
         this.renderRasterOptimized();
     }
 
-    getRenderedTexture() {
+    uploadToWebGLTexture(gl, texture) {
+        if (!this._renderTexture || !this._isActive) return false;
+        
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        
+        // Upload the 2D canvas as a WebGL texture
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            this._renderTexture
+        );
+        
+        // Set texture parameters
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, 
+            this._renderTextureSmoothing ? gl.LINEAR : gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, 
+            this._renderTextureSmoothing ? gl.LINEAR : gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        
+        return true;
+    }
+
+    getRenderedTexture(useWebGL = false, gl = null, webGLTexture = null) {
         if (!this._isActive) {
-            // Try to activate if no other camera is active
             const allObjects = this.getGameObjects();
             const activeCameras = allObjects.filter(obj => {
                 const camera = obj.getModule("Camera3DRasterizer") || obj.getModule("Camera3D");
@@ -2297,6 +2714,13 @@ class Camera3DRasterizer extends Module {
         if (!this._isActive) return null;
 
         this.render3D();
+        
+        // If WebGL mode, upload to WebGL texture
+        if (useWebGL && gl && webGLTexture) {
+            this.uploadToWebGLTexture(gl, webGLTexture);
+            return webGLTexture;
+        }
+        
         return this._renderTexture;
     }
 
@@ -2427,7 +2851,17 @@ class Camera3DRasterizer extends Module {
             _fogDensity: this._fogDensity,
             _waterEnabled: this._waterEnabled,
             _waterSpeed: this._waterSpeed,
-            _waterWaveHeight: this._waterWaveHeight
+            _waterWaveHeight: this._waterWaveHeight,
+            _cloudsEnabled: this._cloudsEnabled,
+            _cloudSpeed: this._cloudSpeed,
+            _cloudDensity: this._cloudDensity,
+            _cloudScale: this._cloudScale,
+            _cloudSoftness: this._cloudSoftness,
+            _cloudHeight: this._cloudHeight,
+            _cloudThickness: this._cloudThickness,
+            _cloudBrightness: this._cloudBrightness,
+            _cloudResolution: this._cloudResolution,
+            _emissiveIntensity: this._emissiveIntensity || 1.0
         };
     }
 
@@ -2454,7 +2888,7 @@ class Camera3DRasterizer extends Module {
         if (json._skyColorHorizon !== undefined) { this._skyColorHorizon = json._skyColorHorizon; } else { this._skyColorHorizon = "#87CEEB"; }
         if (json._floorColor !== undefined) { this._floorColor = json._floorColor; } else { this._floorColor = "#8B4513"; }
         if (json._floorColorHorizon !== undefined) { this._floorColorHorizon = json._floorColorHorizon; } else { this._floorColorHorizon = "#654321"; }
-        if (json._backgroundType !== undefined) { this._backgroundType = json._backgroundType; } else { this._backgroundType = "skyfloor"; }
+        if (json._backgroundType !== undefined) { this._backgroundType = json._backgroundType; } else { this._backgroundType = "skybox"; }
         if (json._showSun !== undefined) { this._showSun = json._showSun; } else { this._showSun = true; }
         if (json._sunSize !== undefined) { this._sunSize = json._sunSize; } else { this._sunSize = 30; }
         if (json._sunGlowSize !== undefined) { this._sunGlowSize = json._sunGlowSize; } else { this._sunGlowSize = 60; }
@@ -2484,6 +2918,20 @@ class Camera3DRasterizer extends Module {
         if (json._waterEnabled !== undefined) { this._waterEnabled = json._waterEnabled; } else { this._waterEnabled = false; }
         if (json._waterSpeed !== undefined) { this._waterSpeed = json._waterSpeed; } else { this._waterSpeed = 1.0; }
         if (json._waterWaveHeight !== undefined) { this._waterWaveHeight = json._waterWaveHeight; } else { this._waterWaveHeight = 10; }
+        if (json._cloudsEnabled !== undefined) { this._cloudsEnabled = json._cloudsEnabled; } else { this._cloudsEnabled = false; }
+        if (json._cloudSpeed !== undefined) { this._cloudSpeed = json._cloudSpeed; } else { this._cloudSpeed = 0.5; }
+        if (json._cloudDensity !== undefined) { this._cloudDensity = json._cloudDensity; } else { this._cloudDensity = 0.4; }
+        if (json._cloudScale !== undefined) { this._cloudScale = json._cloudScale; } else { this._cloudScale = 150; }
+        if (json._cloudSoftness !== undefined) { this._cloudSoftness = json._cloudSoftness; } else { this._cloudSoftness = 0.6; }
+        if (json._cloudHeight !== undefined) { this._cloudHeight = json._cloudHeight; } else { this._cloudHeight = 0.3; }
+        if (json._cloudThickness !== undefined) { this._cloudThickness = json._cloudThickness; } else { this._cloudThickness = 0.4; }
+        if (json._cloudBrightness !== undefined) { this._cloudBrightness = json._cloudBrightness; } else { this._cloudBrightness = 1.0; }
+        if (json._cloudResolution !== undefined) { this._cloudResolution = json._cloudResolution; } else { this._cloudResolution = 0.5; }
+        if (json._emissiveIntensity !== undefined) {
+            this._emissiveIntensity = json._emissiveIntensity;
+        } else {
+            this._emissiveIntensity = 1.0;
+        }
 
         this.updateRenderTexture();
     }

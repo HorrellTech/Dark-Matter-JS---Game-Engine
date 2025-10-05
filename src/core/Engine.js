@@ -1263,7 +1263,7 @@ class Engine {
         if (window.physicsManager && window.physicsManager.debugDraw) {
             window.physicsManager.drawDebug(this.ctx);
         }
-        
+
         // Draw 3D cameras first (they render to textures)
         this.draw3DCameras();
 
@@ -1310,33 +1310,178 @@ class Engine {
         // Draw each active camera's render texture
         activeCameras.forEach(camera => {
             try {
-                const renderTexture = camera.getRenderedTexture();
-                if (renderTexture) {
-                    // Calculate the position and size to draw the 3D render texture
-                    // Center it on the screen and scale it to fit the viewport
-                    const viewportWidth = camera.viewportWidth || 800;
-                    const viewportHeight = camera.viewportHeight || 600;
+                if (!camera._isActive) return;
 
-                    // Calculate scaling to fit the viewport while maintaining aspect ratio
-                    const scaleX = this.canvas.width / viewportWidth;
-                    const scaleY = this.canvas.height / viewportHeight;
-                    const scale = Math.min(scaleX, scaleY);
+                // Calculate the position and size to draw the 3D render texture
+                const viewportWidth = camera.viewportWidth || 800;
+                const viewportHeight = camera.viewportHeight || 600;
 
-                    const drawWidth = viewportWidth * scale;
-                    const drawHeight = viewportHeight * scale;
-                    const drawX = (this.canvas.width - drawWidth) / 2;
-                    const drawY = (this.canvas.height - drawHeight) / 2;
+                // Calculate scaling to fit the viewport while maintaining aspect ratio
+                const scaleX = this.canvas.width / viewportWidth;
+                const scaleY = this.canvas.height / viewportHeight;
+                const scale = Math.min(scaleX, scaleY);
 
-                    // Draw the render texture
-                    this.ctx.drawImage(
-                        renderTexture,
-                        drawX, drawY, drawWidth, drawHeight
-                    );
+                const drawWidth = viewportWidth * scale;
+                const drawHeight = viewportHeight * scale;
+                const drawX = (this.canvas.width - drawWidth) / 2;
+                const drawY = (this.canvas.height - drawHeight) / 2;
+
+                if (this.useWebGL && this.ctx.gl) {
+                    // WebGL rendering path
+
+                    // Create shader for 3D camera rendering if not exists
+                    if (!this.ctx.shaders['camera3D']) {
+                        this.create3DCameraShader();
+                    }
+
+                    // Get the 2D canvas from the camera
+                    const renderTexture = camera.getRenderedTexture(false);
+
+                    if (renderTexture) {
+                        // Create or get WebGL texture from the 2D canvas
+                        if (!camera._webglTexture) {
+                            camera._webglTexture = this.ctx.gl.createTexture();
+                        }
+
+                        const gl = this.ctx.gl;
+
+                        // Activate texture unit 0
+                        gl.activeTexture(gl.TEXTURE0);
+
+                        // Upload the 2D canvas to WebGL texture
+                        gl.bindTexture(gl.TEXTURE_2D, camera._webglTexture);
+                        gl.texImage2D(
+                            gl.TEXTURE_2D,
+                            0,
+                            gl.RGBA,
+                            gl.RGBA,
+                            gl.UNSIGNED_BYTE,
+                            renderTexture
+                        );
+
+                        // Set texture parameters
+                        const filter = camera._renderTextureSmoothing ? gl.LINEAR : gl.NEAREST;
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+                        // Create quad vertices for the camera output
+                        const vertices = new Float32Array([
+                            drawX, drawY,                    // Bottom-left
+                            drawX + drawWidth, drawY,        // Bottom-right
+                            drawX, drawY + drawHeight,       // Top-left
+                            drawX + drawWidth, drawY + drawHeight  // Top-right
+                        ]);
+
+                        const texCoords = new Float32Array([
+                            0, 1,  // Bottom-left
+                            1, 1,  // Bottom-right
+                            0, 0,  // Top-left
+                            1, 0   // Top-right
+                        ]);
+
+                        const indices = new Uint16Array([
+                            0, 1, 2,  // First triangle
+                            1, 3, 2   // Second triangle
+                        ]);
+
+                        // Get shader program
+                        const shaderProgram = this.ctx.shaders.camera3D;
+                        if (!shaderProgram) {
+                            console.error('Camera3D shader not found');
+                            return;
+                        }
+
+                        // Use the shader
+                        gl.useProgram(shaderProgram);
+
+                        // Set resolution uniform
+                        const resolutionLocation = gl.getUniformLocation(shaderProgram, 'u_resolution');
+                        if (resolutionLocation) {
+                            gl.uniform2f(resolutionLocation, this.canvas.width, this.canvas.height);
+                        }
+
+                        // Set texture uniform
+                        const textureLocation = gl.getUniformLocation(shaderProgram, 'u_texture');
+                        if (textureLocation) {
+                            gl.uniform1i(textureLocation, 0); // Bind to texture unit 0
+                        }
+
+                        // Call drawWithShader with proper attributes configuration
+                        this.ctx.drawWithShader(
+                            'camera3D',
+                            vertices,
+                            indices,
+                            {}, // Uniforms already set above
+                            {
+                                a_position: {
+                                    data: vertices,
+                                    size: 2
+                                },
+                                a_texCoord: {
+                                    data: texCoords,
+                                    size: 2
+                                }
+                            }
+                        );
+
+                        // Unbind texture
+                        gl.bindTexture(gl.TEXTURE_2D, null);
+                    }
+                } else {
+                    // 2D Canvas rendering path
+                    const renderTexture = camera.getRenderedTexture(false);
+
+                    if (renderTexture) {
+                        if (camera._renderTextureSmoothing) {
+                            this.ctx.imageSmoothingEnabled = true;
+                        } else {
+                            this.ctx.imageSmoothingEnabled = false;
+                        }
+
+                        // Draw using standard 2D canvas
+                        this.ctx.drawImage(
+                            renderTexture,
+                            drawX, drawY, drawWidth, drawHeight
+                        );
+                    }
                 }
             } catch (error) {
                 console.error('Error drawing 3D camera:', error);
             }
         });
+    }
+
+    create3DCameraShader() {
+        const vertexShader = `
+        precision mediump float;
+        attribute vec2 a_position;
+        attribute vec2 a_texCoord;
+        uniform vec2 u_resolution;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            // Convert from pixel coordinates to clip space (-1 to 1)
+            vec2 clipSpace = (a_position / u_resolution) * 2.0 - 1.0;
+            clipSpace.y = -clipSpace.y;
+            
+            gl_Position = vec4(clipSpace, 0.0, 1.0);
+            v_texCoord = a_texCoord;
+        }
+    `;
+
+        const fragmentShader = `
+        precision mediump float;
+        uniform sampler2D u_texture;
+        varying vec2 v_texCoord;
+        
+        void main() {
+            gl_FragColor = texture2D(u_texture, v_texCoord);
+        }
+    `;
+
+        this.ctx.addShader('camera3D', vertexShader, fragmentShader);
     }
 
     applyViewportTransform() {
@@ -1555,8 +1700,8 @@ class Engine {
         try {
             // Create GameObject
             const gameObject = GameObject.fromJSON(prefabData);
-            gameObject.id = 
-            gameObject.position = new Vector2(x, y);
+            gameObject.id =
+                gameObject.position = new Vector2(x, y);
             return gameObject;
 
         } catch (error) {

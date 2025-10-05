@@ -65,9 +65,9 @@ class Material extends Module {
             onChange: (val) => this._specularColor = val
         });
 
-        this.exposeProperty("emissiveColor", "color", this._emissiveColor, {
+        /*this.exposeProperty("emissiveColor", "color", this._emissiveColor, {
             onChange: (val) => this._emissiveColor = val
-        });
+        });*/
 
         this.exposeProperty("shininess", "number", this._shininess, {
             min: 1,
@@ -75,7 +75,7 @@ class Material extends Module {
             onChange: (val) => this._shininess = val
         });
 
-        this.exposeProperty("opacity", "number", this._opacity, {
+        /*this.exposeProperty("opacity", "number", this._opacity, {
             min: 0,
             max: 1,
             step: 0.01,
@@ -83,9 +83,9 @@ class Material extends Module {
                 this._opacity = val;
                 this._transparent = val < 1.0;
             }
-        });
+        });*/
 
-        this.exposeProperty("diffuseTexture", "asset", this._diffuseTexture, {
+        /*this.exposeProperty("diffuseTexture", "asset", this._diffuseTexture, {
             assetType: "image",
             fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'],
             onChange: (val) => {
@@ -98,9 +98,9 @@ class Material extends Module {
                     this.preloadTexture(val);
                 }
             }
-        });
+        });*/
 
-        this.exposeProperty("useProceduralTexture", "boolean", this._useProceduralTexture, {
+        /*this.exposeProperty("useProceduralTexture", "boolean", this._useProceduralTexture, {
             onChange: (val) => {
                 this._useProceduralTexture = val;
                 if (val) {
@@ -206,9 +206,9 @@ class Material extends Module {
             min: 0,
             max: 360,
             onChange: (val) => this._uvRotation = val
-        });
+        });*/
 
-        this.exposeProperty("transparent", "boolean", this._transparent, {
+        /*this.exposeProperty("transparent", "boolean", this._transparent, {
             onChange: (val) => this._transparent = val
         });
 
@@ -218,7 +218,7 @@ class Material extends Module {
 
         this.exposeProperty("wireframe", "boolean", this._wireframe, {
             onChange: (val) => this._wireframe = val
-        });
+        });*/
     }
 
     /**
@@ -800,7 +800,6 @@ class Material extends Module {
     sampleTexture(u, v, texture = null) {
         const tex = texture || this.getDiffuseTexture();
         if (!tex) {
-            // Return diffuse color if no texture
             const color = this._parseColor(this._diffuseColor);
             return `rgba(${color.r}, ${color.g}, ${color.b}, ${this._opacity})`;
         }
@@ -836,15 +835,23 @@ class Material extends Module {
         const y = Math.floor(transformedV * tex.height);
 
         if (x >= 0 && x < tex.width && y >= 0 && y < tex.height) {
-            const canvas = tex;
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(x, y, 1, 1);
-            const data = imageData.data;
+            // Cache context for better performance
+            if (!this._sampleCtx || this._sampleCtx.canvas !== tex) {
+                this._sampleCtx = tex.getContext('2d', { willReadFrequently: true });
+            }
 
-            return `rgba(${data[0]}, ${data[1]}, ${data[2]}, ${data[3] * this._opacity / 255})`;
+            try {
+                const imageData = this._sampleCtx.getImageData(x, y, 1, 1);
+                const data = imageData.data;
+                return `rgba(${data[0]}, ${data[1]}, ${data[2]}, ${data[3] * this._opacity / 255})`;
+            } catch (e) {
+                // Fallback if getImageData fails
+                const color = this._parseColor(this._diffuseColor);
+                return `rgba(${color.r}, ${color.g}, ${color.b}, ${this._opacity})`;
+            }
         }
 
-        // Fallback to diffuse color
+        // Fallback
         const color = this._parseColor(this._diffuseColor);
         return `rgba(${color.r}, ${color.g}, ${color.b}, ${this._opacity})`;
     }
@@ -930,7 +937,7 @@ class Material extends Module {
             _normalTexture: this._normalTexture,
             _specularTexture: this._specularTexture,
             _emissiveTexture: this._emissiveTexture,
-            _useProceduralTexture: this._useProceduralTexture,
+            _useProceduralTexture: false,//this._useProceduralTexture,
             _proceduralType: this._proceduralType,
             _proceduralSeed: this._proceduralSeed,
             _proceduralScale: this._proceduralScale,
@@ -965,7 +972,7 @@ class Material extends Module {
         if (json._normalTexture !== undefined) this._normalTexture = json._normalTexture;
         if (json._specularTexture !== undefined) this._specularTexture = json._specularTexture;
         if (json._emissiveTexture !== undefined) this._emissiveTexture = json._emissiveTexture;
-        if (json._useProceduralTexture !== undefined) this._useProceduralTexture = json._useProceduralTexture;
+        if (json._useProceduralTexture !== undefined) this._useProceduralTexture = false;//json._useProceduralTexture;
         if (json._proceduralType !== undefined) this._proceduralType = json._proceduralType;
         if (json._proceduralSeed !== undefined) this._proceduralSeed = json._proceduralSeed;
         if (json._proceduralScale !== undefined) this._proceduralScale = json._proceduralScale;

@@ -6,7 +6,7 @@ class ExportManager {
             minifyCode: false,
             standalone: true,
             includeEngine: true,
-            useWebGL: true,
+            useWebGL: false,
             customTitle: '',
             customDescription: '',
             viewport: {
