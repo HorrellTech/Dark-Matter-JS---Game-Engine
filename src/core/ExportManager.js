@@ -1261,6 +1261,11 @@ class ExportManager {
         let js = '';
 
         try {
+            // Load Terser if minification is enabled
+            if (settings.minifyCode) {
+                await this.loadTerser();
+            }
+
             // Add engine files
             js += '// Dark Matter JS Engine\n';
             for (const filePath of data.engineFiles) {
@@ -3143,6 +3148,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     Include Assets
                 </label>
             </div>
+            <div class="export-group">
+                <label>
+                    <input type="checkbox" id="export-minify-code" ${this.exportSettings.minifyCode ? 'checked' : ''}>
+                    Minify Code (Reduces file size)
+                </label>
+            </div>
         </div>
         <div class="export-modal-footer">
             <button id="export-cancel">Cancel</button>
@@ -3175,7 +3186,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 useWebGL: modal.querySelector('#export-webgl').value === 'true', // New WebGL setting
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
-                minifyCode: false
+                minifyCode: modal.querySelector('#export-minify-code').checked
             };
 
             // Handle logo image if provided
@@ -3295,33 +3306,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async minifyJavaScriptAdvanced(code) {
-        return code;
-
         // Check if Terser is available
         if (typeof Terser !== 'undefined') {
             try {
                 const result = await Terser.minify(code, {
                     compress: {
-                        dead_code: false, // Disable aggressive dead code removal
-                        drop_console: false, // Keep console for debugging
-                        drop_debugger: false, // Keep debugger for debugging
-                        conditionals: false, // Disable conditional optimizations that might break logic
-                        evaluate: false, // Disable constant expression evaluation
-                        booleans: false, // Disable boolean optimizations
-                        loops: false, // Disable loop optimizations
-                        unused: false, // Disable unused variable removal
-                        hoist_funs: false, // Disable function hoisting
-                        keep_fargs: true, // Keep function arguments
-                        hoist_vars: false, // Disable variable hoisting
-                        if_return: false, // Disable if-return optimizations
-                        join_vars: false, // Disable variable joining
-                        cascade: false, // Disable cascading optimizations
-                        side_effects: false // Disable side effect optimizations
+                        dead_code: true,
+                        drop_console: false,
+                        drop_debugger: false,
+                        conditionals: true,
+                        evaluate: true,
+                        booleans: true,
+                        loops: true,
+                        unused: true,
+                        hoist_funs: false,
+                        keep_fargs: true,
+                        hoist_vars: false,
+                        if_return: true,
+                        join_vars: true,
+                        side_effects: true,
+                        warnings: false
                     },
-                    mangle: false, // Disable name mangling entirely to avoid breaking references
+                    mangle: {
+                        // Only mangle internal variables, keep top-level names
+                        toplevel: false,
+                        keep_classnames: true,
+                        keep_fnames: false,
+                        reserved: ['Matter', 'Engine', 'Scene', 'GameObject', 'Module', 'Vector2', 'Vector3']
+                    },
                     output: {
-                        comments: true, // Keep comments for debugging
-                        beautify: false
+                        comments: false,
+                        beautify: false,
+                        semicolons: true
                     }
                 });
 
@@ -3329,13 +3345,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw result.error;
                 }
 
+                console.log(`Minified code: ${code.length} -> ${result.code.length} bytes (${Math.round((1 - result.code.length / code.length) * 100)}% reduction)`);
                 return result.code;
             } catch (error) {
                 console.warn('Terser minification failed, using original code:', error);
-                return code; // Return ORIGINAL code, not simple minified
+                return code;
             }
         } else {
-            // NO minification if Terser is not available - much safer
             console.log('Terser not available, skipping minification');
             return code;
         }
@@ -3347,28 +3363,29 @@ document.addEventListener('DOMContentLoaded', function() {
      * @returns {string} - Minified CSS code
      */
     minifyCSS(css) {
-        return css;
         if (!css) return css;
 
         try {
             return css
-                // Remove comments
+                // Remove all comments
                 .replace(/\/\*[\s\S]*?\*\//g, '')
-                // Replace multiple spaces/tabs with single space
-                .replace(/[ \t]+/g, ' ')
-                // Remove extra newlines
-                .replace(/\n+/g, '\n')
-                // Remove spaces around SAFE CSS characters only
-                .replace(/\s*([{}:;,])\s*/g, '$1')
-                // Remove trailing semicolons before closing braces
+                // Remove whitespace around selectors and properties
+                .replace(/\s*([{}:;,>+~])\s*/g, '$1')
+                // Remove whitespace before !important
+                .replace(/\s*!important/g, '!important')
+                // Remove last semicolon in a block
                 .replace(/;}/g, '}')
-                // Remove leading/trailing whitespace from lines
-                .replace(/^\s+/gm, '')
-                .replace(/\s+$/gm, '')
+                // Remove empty rules
+                .replace(/[^\}]+\{\}/g, '')
+                // Compress multiple spaces/newlines to single space
+                .replace(/\s+/g, ' ')
+                // Remove spaces around combinators
+                .replace(/\s*([>+~])\s*/g, '$1')
+                // Remove leading/trailing whitespace
                 .trim();
         } catch (error) {
             console.warn('Error minifying CSS:', error);
-            return css; // Return original code if minification fails
+            return css;
         }
     }
 
@@ -3378,31 +3395,77 @@ document.addEventListener('DOMContentLoaded', function() {
      * @returns {string} - Minified HTML content
      */
     minifyHTML(html) {
-        return (html);
         if (!html) return html;
 
         try {
-            return html
-                // Remove HTML comments (but keep conditional comments for IE)
-                .replace(/<!--(?!\[if)(?!<!)[^>]*-->/g, '')
-                // Remove extra whitespace between tags (but preserve content)
+            // Store script and style blocks to preserve them
+            const preservedBlocks = [];
+            let blockIndex = 0;
+
+            // Preserve script blocks
+            html = html.replace(/(<script[^>]*>)([\s\S]*?)(<\/script>)/gi, (match) => {
+                const placeholder = `___PRESERVED_BLOCK_${blockIndex}___`;
+                preservedBlocks[blockIndex] = match;
+                blockIndex++;
+                return placeholder;
+            });
+
+            // Preserve style blocks
+            html = html.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (match) => {
+                const placeholder = `___PRESERVED_BLOCK_${blockIndex}___`;
+                preservedBlocks[blockIndex] = match;
+                blockIndex++;
+                return placeholder;
+            });
+
+            // Preserve pre and textarea content
+            html = html.replace(/(<pre[^>]*>)([\s\S]*?)(<\/pre>)/gi, (match) => {
+                const placeholder = `___PRESERVED_BLOCK_${blockIndex}___`;
+                preservedBlocks[blockIndex] = match;
+                blockIndex++;
+                return placeholder;
+            });
+
+            html = html.replace(/(<textarea[^>]*>)([\s\S]*?)(<\/textarea>)/gi, (match) => {
+                const placeholder = `___PRESERVED_BLOCK_${blockIndex}___`;
+                preservedBlocks[blockIndex] = match;
+                blockIndex++;
+                return placeholder;
+            });
+
+            // Now minify the HTML
+            html = html
+                // Remove HTML comments (but keep conditional comments)
+                .replace(/<!--(?!\[if|\s*<!)[\s\S]*?-->/g, '')
+                // Remove whitespace between tags
                 .replace(/>\s+</g, '><')
-                // Remove leading whitespace from lines
+                // Remove whitespace at start of lines
                 .replace(/^\s+/gm, '')
-                // Remove trailing whitespace from lines  
+                // Remove whitespace at end of lines
                 .replace(/\s+$/gm, '')
-                // Compress multiple spaces to single space (but not in script/style tags)
-                .replace(/(<script[^>]*>)([\s\S]*?)(<\/script>)/gi, (match, open, content, close) => {
-                    return open + content + close; // Don't touch script content
-                })
-                .replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (match, open, content, close) => {
-                    return open + content + close; // Don't touch style content
-                })
-                .replace(/\s+/g, ' ')
+                // Collapse multiple spaces to single space
+                .replace(/\s{2,}/g, ' ')
+                // Remove quotes around attributes when safe
+                .replace(/=["']([a-zA-Z0-9-_]+)["']/g, '=$1')
+                // Remove optional closing tags before certain elements
+                .replace(/<\/li>\s*<li/gi, '<li')
+                .replace(/<\/dt>\s*<dt/gi, '<dt')
+                .replace(/<\/dd>\s*<dd/gi, '<dd')
+                .replace(/<\/option>\s*<option/gi, '<option')
+                .replace(/<\/tr>\s*<tr/gi, '<tr')
+                .replace(/<\/td>\s*<td/gi, '<td')
+                .replace(/<\/th>\s*<th/gi, '<th')
                 .trim();
+
+            // Restore preserved blocks
+            for (let i = 0; i < preservedBlocks.length; i++) {
+                html = html.replace(`___PRESERVED_BLOCK_${i}___`, preservedBlocks[i]);
+            }
+
+            return html;
         } catch (error) {
             console.warn('Error minifying HTML:', error);
-            return html; // Return original HTML if minification fails
+            return html;
         }
     }
 }
