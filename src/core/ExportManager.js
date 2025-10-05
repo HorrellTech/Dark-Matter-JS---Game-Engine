@@ -4,6 +4,7 @@ class ExportManager {
             format: 'html5',
             includeAssets: true,
             minifyCode: false,
+            obfuscateCode: false,
             standalone: true,
             includeEngine: true,
             useWebGL: false,
@@ -1261,27 +1262,17 @@ class ExportManager {
         let js = '';
 
         try {
-            // Load Terser if minification is enabled
-            if (settings.minifyCode) {
+            // Load Terser if minification or obfuscation is enabled
+            if (settings.minifyCode || settings.obfuscateCode) {
                 await this.loadTerser();
             }
 
+            // Collect all JavaScript code first WITHOUT minification
             // Add engine files
             js += '// Dark Matter JS Engine\n';
             for (const filePath of data.engineFiles) {
                 js += `// ${filePath}\n`;
                 let fileContent = await this.loadFileContent(filePath);
-
-                // Only minify if explicitly enabled AND content is valid
-                if (settings.minifyCode && fileContent && !fileContent.includes('Could not load')) {
-                    try {
-                        fileContent = await this.minifyJavaScriptAdvanced(fileContent);
-                    } catch (minifyError) {
-                        console.warn(`Failed to minify ${filePath}, using original:`, minifyError);
-                        // Keep original content if minification fails
-                    }
-                }
-
                 js += fileContent + '\n\n';
             }
 
@@ -1290,67 +1281,31 @@ class ExportManager {
             for (const module of data.modules) {
                 js += `// ${module.filePath}\n`;
                 let moduleContent = await this.loadFileContent(module.filePath);
-
-                // Only minify if explicitly enabled AND content is valid
-                if (settings.minifyCode && moduleContent && !moduleContent.includes('Could not load')) {
-                    try {
-                        moduleContent = await this.minifyJavaScriptAdvanced(moduleContent);
-                    } catch (minifyError) {
-                        console.warn(`Failed to minify ${module.filePath}, using original:`, minifyError);
-                        // Keep original content if minification fails
-                    }
-                }
-
                 js += moduleContent + '\n\n';
-
-                // Verify the module class is defined after loading
-                if (!moduleContent.includes(`class ${module.className}`)) {
-                    console.warn(`Module class ${module.className} may not be properly defined in ${module.filePath}`);
-                }
             }
 
             // Add custom scripts
             for (const script of data.customScripts) {
                 js += `// ${script.name}\n`;
-                let scriptContent = script.content;
-
-                // Only minify if explicitly enabled AND content is valid
-                if (settings.minifyCode && scriptContent) {
-                    try {
-                        scriptContent = await this.minifyJavaScriptAdvanced(scriptContent);
-                    } catch (minifyError) {
-                        console.warn(`Failed to minify ${script.name}, using original:`, minifyError);
-                        // Keep original content if minification fails
-                    }
-                }
-
-                js += scriptContent + '\n\n';
+                js += script.content + '\n\n';
             }
 
-            // Add game initialization - DON'T minify this critical code
+            // Add game initialization code
             let initCode = this.generateGameInitialization(data, settings);
-            //js += initCode;
+            js += initCode + '\n\n';
 
-            // Add a global handler for Start Game button
-            js += `
-${initCode}
-
-// Only start game after Start Game button is pressed
+            // Add DOMContentLoaded handler
+            const domHandler = `
 document.addEventListener('DOMContentLoaded', function() {
     const startBtn = document.getElementById('start-game-btn');
     if (startBtn) {
         startBtn.addEventListener('click', function() {
-            // Hide button and loading screen
             startBtn.style.display = 'none';
             const loadingScreen = document.getElementById('loading-screen');
             if (loadingScreen) loadingScreen.style.display = 'none';
-
-            // Resume AudioContext if needed
             if (window.melodicode && window.melodicode.audioEngine && window.melodicode.audioEngine.context) {
                 window.melodicode.audioEngine.context.resume();
             }
-
-            // Trigger game initialization if not already started
             if (typeof initializeGame === 'function') {
                 initializeGame();
             }
@@ -1358,6 +1313,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 `;
+            js += domHandler;
+
+            // NOW minify/obfuscate the ENTIRE combined code as one unit
+            if (settings.minifyCode) {
+                try {
+                    console.log('Minifying entire codebase as one unit...');
+                    const originalSize = js.length;
+                    js = await this.minifyJavaScriptAdvanced(js, settings.obfuscateCode);
+                    const reduction = Math.round((1 - js.length / originalSize) * 100);
+                    console.log(`${settings.obfuscateCode ? 'Obfuscated and minified' : 'Minified'} entire codebase: ${originalSize} -> ${js.length} bytes (${reduction}% reduction)`);
+                } catch (minifyError) {
+                    console.warn('Failed to minify entire codebase, using original:', minifyError);
+                }
+            }
 
             return js;
 
@@ -3078,91 +3047,110 @@ document.addEventListener('DOMContentLoaded', function() {
         ).join('');
 
         modal.innerHTML = `
-    <div class="export-modal-content">
-        <div class="export-modal-header">
-            <h2>Export Game</h2>
-            <button class="export-close-button">&times;</button>
+<div class="export-modal-content">
+    <div class="export-modal-header">
+        <h2>Export Game</h2>
+        <button class="export-close-button">&times;</button>
+    </div>
+    <div class="export-modal-body">
+        <div class="export-group">
+            <label>Game Title:</label>
+            <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
         </div>
-        <div class="export-modal-body">
-            <div class="export-group">
-                <label>Game Title:</label>
-                <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
-            </div>
-            <div class="export-group">
-                <label>Description:</label>
-                <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
-            </div>
-            <div class="export-group">
-                <label>Loading Background Color:</label>
-                <input type="color" id="export-loading-bg" value="${this.exportSettings.loadingBg || '#111'}">
-            </div>
-            <div class="export-group">
-                <label>Loading Screen Logo:</label>
-                <input type="file" id="export-logo" accept="image/*">
-                <small>(Optional. If not set, uses defatult Dark Matter logo.)</small>
-            </div>
-            <div class="export-group">
-                <label>Loading Text:</label>
-                <input type="text" id="export-loading-text" value="${this.exportSettings.loadingText || 'Loading Game...'}" placeholder="Loading Game...">
-            </div>
-            <div class="export-group">
-                <label>Progress Bar Color:</label>
-                <input type="color" id="export-progress-color" value="${this.exportSettings.progressColor || '#09f'}">
-            </div>
-            <div class="export-group">
-                <label>Spinner/Start button Color:</label>
-                <input type="color" id="export-spinner-color" value="${this.exportSettings.spinnerColor || '#09f'}">
-            </div>
-            <div class="export-group">
-                <label>Starting Scene:</label>
-                <select id="export-starting-scene">
-                    ${sceneOptions || '<option value="0">No scenes available</option>'}
-                </select>
-            </div>
-            <div class="export-group">
-                <label>Maximum FPS:</label>
-                <select id="export-max-fps">
-                    <option value="30" ${this.exportSettings.maxFPS === 30 ? 'selected' : ''}>30 FPS</option>
-                    <option value="60" ${this.exportSettings.maxFPS === 60 ? 'selected' : ''}>60 FPS</option>
-                    <option value="120" ${this.exportSettings.maxFPS === 120 ? 'selected' : ''}>120 FPS</option>
-                    <option value="0" ${this.exportSettings.maxFPS === 0 ? 'selected' : ''}>Unlimited</option>
-                </select>
-            </div>
-            <div class="export-group">
-                <label>Rendering:</label>
-                <select id="export-webgl">
-                    <option value="true" ${this.exportSettings.useWebGL ? 'selected' : ''}>WebGL (Hardware Accelerated)</option>
-                    <option value="false" ${!this.exportSettings.useWebGL ? 'selected' : ''}>Canvas 2D (Software)</option>
-                </select>
-            </div>
-            <div class="export-group">
-                <label>Export Format:</label>
-                <select id="export-format">
-                    <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
-                    <!--option value="zip" ${!this.exportSettings.standalone ? 'selected' : ''}>ZIP Package</option-->
-                </select>
-            </div>
-            <div class="export-group">
-                <label>
-                    <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
-                    Include Assets
-                </label>
-            </div>
-            <div class="export-group">
-                <label>
-                    <input type="checkbox" id="export-minify-code" ${this.exportSettings.minifyCode ? 'checked' : ''}>
-                    Minify Code (Reduces file size)
-                </label>
-            </div>
+        <div class="export-group">
+            <label>Description:</label>
+            <textarea id="export-description" placeholder="A game created with Dark Matter JS">${this.exportSettings.customDescription}</textarea>
         </div>
-        <div class="export-modal-footer">
-            <button id="export-cancel">Cancel</button>
-            <button id="export-start" class="primary">Export Game</button>
+        <div class="export-group">
+            <label>Loading Background Color:</label>
+            <input type="color" id="export-loading-bg" value="${this.exportSettings.loadingBg || '#111'}">
+        </div>
+        <div class="export-group">
+            <label>Loading Screen Logo:</label>
+            <input type="file" id="export-logo" accept="image/*">
+            <small>(Optional. If not set, uses default Dark Matter logo.)</small>
+        </div>
+        <div class="export-group">
+            <label>Loading Text:</label>
+            <input type="text" id="export-loading-text" value="${this.exportSettings.loadingText || 'Loading Game...'}" placeholder="Loading Game...">
+        </div>
+        <div class="export-group">
+            <label>Progress Bar Color:</label>
+            <input type="color" id="export-progress-color" value="${this.exportSettings.progressColor || '#09f'}">
+        </div>
+        <div class="export-group">
+            <label>Spinner/Start button Color:</label>
+            <input type="color" id="export-spinner-color" value="${this.exportSettings.spinnerColor || '#09f'}">
+        </div>
+        <div class="export-group">
+            <label>Starting Scene:</label>
+            <select id="export-starting-scene">
+                ${sceneOptions || '<option value="0">No scenes available</option>'}
+            </select>
+        </div>
+        <div class="export-group">
+            <label>Maximum FPS:</label>
+            <select id="export-max-fps">
+                <option value="30" ${this.exportSettings.maxFPS === 30 ? 'selected' : ''}>30 FPS</option>
+                <option value="60" ${this.exportSettings.maxFPS === 60 ? 'selected' : ''}>60 FPS</option>
+                <option value="120" ${this.exportSettings.maxFPS === 120 ? 'selected' : ''}>120 FPS</option>
+                <option value="0" ${this.exportSettings.maxFPS === 0 ? 'selected' : ''}>Unlimited</option>
+            </select>
+        </div>
+        <div class="export-group">
+            <label>Rendering:</label>
+            <select id="export-webgl">
+                <option value="true" ${this.exportSettings.useWebGL ? 'selected' : ''}>WebGL (Hardware Accelerated)</option>
+                <option value="false" ${!this.exportSettings.useWebGL ? 'selected' : ''}>Canvas 2D (Software)</option>
+            </select>
+        </div>
+        <div class="export-group">
+            <label>Export Format:</label>
+            <select id="export-format">
+                <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
+            </select>
+        </div>
+        <div class="export-group">
+            <label>
+                <input type="checkbox" id="export-include-assets" ${this.exportSettings.includeAssets ? 'checked' : ''}>
+                Include Assets
+            </label>
+        </div>
+        <div class="export-group">
+            <label>
+                <input type="checkbox" id="export-minify-code" ${this.exportSettings.minifyCode ? 'checked' : ''}>
+                Minify Code (Reduces file size significantly)
+            </label>
+        </div>
+        <div class="export-group">
+            <label>
+                <input type="checkbox" id="export-obfuscate-code" ${this.exportSettings.obfuscateCode ? 'checked' : ''}>
+                Obfuscate Code (Makes code harder to read/edit)
+            </label>
+            <small style="color: #888;">Note: Obfuscation automatically enables minification and may increase export time.</small>
         </div>
     </div>
+    <div class="export-modal-footer">
+        <button id="export-cancel">Cancel</button>
+        <button id="export-start" class="primary">Export Game</button>
+    </div>
+</div>
 `;
 
         document.body.appendChild(modal);
+
+        // Auto-enable minify when obfuscate is checked
+        const obfuscateCheckbox = modal.querySelector('#export-obfuscate-code');
+        const minifyCheckbox = modal.querySelector('#export-minify-code');
+
+        obfuscateCheckbox.addEventListener('change', () => {
+            if (obfuscateCheckbox.checked) {
+                minifyCheckbox.checked = true;
+                minifyCheckbox.disabled = true;
+            } else {
+                minifyCheckbox.disabled = false;
+            }
+        });
 
         // Event handlers
         modal.querySelector('.export-close-button').addEventListener('click', () => {
@@ -3183,11 +3171,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 spinnerColor: modal.querySelector('#export-spinner-color').value,
                 startingSceneIndex: parseInt(modal.querySelector('#export-starting-scene').value) || 0,
                 maxFPS: parseInt(modal.querySelector('#export-max-fps').value) || 60,
-                useWebGL: modal.querySelector('#export-webgl').value === 'true', // New WebGL setting
+                useWebGL: modal.querySelector('#export-webgl').value === 'true',
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
-                minifyCode: modal.querySelector('#export-minify-code').checked
+                minifyCode: modal.querySelector('#export-minify-code').checked,
+                obfuscateCode: modal.querySelector('#export-obfuscate-code').checked
             };
+
+            // Obfuscation requires minification
+            if (settings.obfuscateCode) {
+                settings.minifyCode = true;
+            }
 
             // Handle logo image if provided
             let logoImage = null;
@@ -3199,7 +3193,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // If no logo selected, convert loading.png to base64
             if (!logoImage) {
                 logoImage = await this.filePathToDataURL('loading.png');
-                // If loading.png is missing, fallback to a blank image
                 if (!logoImage) logoImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB...";
             }
             settings.logoImage = logoImage;
@@ -3211,11 +3204,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 const loadingDiv = document.createElement('div');
                 loadingDiv.className = 'export-loading';
                 loadingDiv.innerHTML = `
-            <div class="export-loading-content">
-                <div class="export-loading-spinner"></div>
-                <div>Exporting game... Please wait.</div>
-            </div>
-        `;
+        <div class="export-loading-content">
+            <div class="export-loading-spinner"></div>
+            <div>Exporting game${settings.obfuscateCode ? ' with obfuscation, which takes longer' : ''}
+            ... Please wait${settings.obfuscateCode ? ' patiently' : ''}.</div>
+        </div>
+    `;
                 document.body.appendChild(loadingDiv);
 
                 // Get current project data
@@ -3236,7 +3230,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Show success message
                 const successDiv = document.createElement('div');
                 successDiv.className = 'export-notification success';
-                successDiv.textContent = `Game exported successfully with ${settings.useWebGL ? 'WebGL' : 'Canvas 2D'} rendering!`;
+                const features = [];
+                if (settings.useWebGL) features.push('WebGL');
+                else features.push('Canvas 2D');
+                if (settings.obfuscateCode) features.push('obfuscated');
+                else if (settings.minifyCode) features.push('minified');
+                successDiv.textContent = `Game exported successfully (${features.join(', ')})!`;
                 document.body.appendChild(successDiv);
 
                 setTimeout(() => {
@@ -3305,47 +3304,89 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    async minifyJavaScriptAdvanced(code) {
+    async minifyJavaScriptAdvanced(code, obfuscate = false) {
         // Check if Terser is available
         if (typeof Terser !== 'undefined') {
             try {
-                const result = await Terser.minify(code, {
+                const options = {
                     compress: {
                         dead_code: true,
                         drop_console: false,
-                        drop_debugger: false,
+                        drop_debugger: obfuscate,
                         conditionals: true,
                         evaluate: true,
                         booleans: true,
                         loops: true,
                         unused: true,
                         hoist_funs: false,
-                        keep_fargs: true,
+                        keep_fargs: !obfuscate,
                         hoist_vars: false,
                         if_return: true,
                         join_vars: true,
                         side_effects: true,
-                        warnings: false
+                        warnings: false,
+                        passes: obfuscate ? 3 : 1
                     },
-                    mangle: {
-                        // Only mangle internal variables, keep top-level names
+                    mangle: obfuscate ? {
+                        // Aggressive mangling for obfuscation
+                        toplevel: true,
+                        keep_classnames: false,
+                        keep_fnames: false,
+                        reserved: [
+                            // Core engine classes
+                            'Matter', 'Engine', 'Scene', 'GameObject', 'Module',
+                            'Vector2', 'Vector3', 'InputManager', 'AssetManager',
+                            'ModuleRegistry', 'PhysicsManager',
+                            // Important functions
+                            'initializeGame', 'createGameObjectFromData',
+                            // DOM elements and events
+                            'document', 'window', 'console',
+                            // MelodiCode
+                            'melodicode', 'audioEngine', 'context'
+                        ]
+                    } : {
+                        // Conservative mangling for minification only
                         toplevel: false,
                         keep_classnames: true,
-                        keep_fnames: false,
-                        reserved: ['Matter', 'Engine', 'Scene', 'GameObject', 'Module', 'Vector2', 'Vector3']
+                        keep_fnames: true,
+                        reserved: [
+                            'Matter', 'Engine', 'Scene', 'GameObject', 'Module',
+                            'Vector2', 'Vector3', 'InputManager', 'AssetManager',
+                            'ModuleRegistry', 'PhysicsManager',
+                            'initializeGame', 'createGameObjectFromData',
+                            'document', 'window', 'console',
+                            'melodicode', 'audioEngine', 'context'
+                        ]
                     },
                     output: {
                         comments: false,
                         beautify: false,
-                        semicolons: true
+                        semicolons: true,
+                        ascii_only: obfuscate
                     }
-                });
+                };
+
+                // Add extra obfuscation techniques
+                if (obfuscate) {
+                    options.compress.sequences = true;
+                    options.compress.properties = true;
+                    options.compress.unsafe = true;
+                    options.compress.unsafe_comps = true;
+                    options.compress.unsafe_math = true;
+                    options.compress.unsafe_proto = true;
+                    options.compress.unsafe_regexp = true;
+                    // Don't mangle properties - this can break things
+                    // options.mangle.properties = { regex: /^_/ };
+                }
+
+                const result = await Terser.minify(code, options);
 
                 if (result.error) {
                     throw result.error;
                 }
 
-                console.log(`Minified code: ${code.length} -> ${result.code.length} bytes (${Math.round((1 - result.code.length / code.length) * 100)}% reduction)`);
+                const reduction = Math.round((1 - result.code.length / code.length) * 100);
+                console.log(`${obfuscate ? 'Obfuscated and minified' : 'Minified'} code: ${code.length} -> ${result.code.length} bytes (${reduction}% reduction)`);
                 return result.code;
             } catch (error) {
                 console.warn('Terser minification failed, using original code:', error);
