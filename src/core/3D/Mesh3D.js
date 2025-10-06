@@ -3488,6 +3488,275 @@ class Mesh3D extends Module {
     }
 
     /**
+     * Save mesh data to .m3d file format
+     * @param {string} filename - Name of the file to save
+     * @returns {Promise<boolean>} Success indicator
+     */
+    async saveToM3DFile(filename) {
+        try {
+            const meshData = {
+                metadata: {
+                    format: "M3D",
+                    version: "1.0",
+                    name: filename.replace('.m3d', ''),
+                    timestamp: new Date().toISOString(),
+                    vertexCount: this.vertices.length,
+                    faceCount: this.faces.length,
+                    edgeCount: this.edges.length
+                },
+                vertices: this.vertices.map(v => ({
+                    x: Number(v.x.toFixed(6)),
+                    y: Number(v.y.toFixed(6)),
+                    z: Number(v.z.toFixed(6))
+                })),
+                edges: this.edges.map(edge => [...edge]),
+                faces: this.faces.map(face => [...face]),
+                materials: this.material ? [this.material.toJSON()] : [],
+                properties: {
+                    position: { x: this.position.x, y: this.position.y, z: this.position.z },
+                    rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+                    scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+                    wireframeColor: this.wireframeColor,
+                    faceColor: this.faceColor,
+                    renderMode: this.renderMode
+                }
+            };
+
+            const jsonString = JSON.stringify(meshData, null, 2);
+
+            // Use file browser if available (editor environment)
+            if (window.editor && window.editor.fileBrowser) {
+                const success = await window.editor.fileBrowser.writeFile(`${filename}.m3d`, jsonString);
+                return success;
+            }
+
+            // Fallback to download
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filename}.m3d`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            return true;
+        } catch (error) {
+            console.error('Error saving M3D file:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Load mesh data from .m3d file format
+     * @param {string} filename - Name of the file to load
+     * @returns {Promise<boolean>} Success indicator
+     */
+    async loadFromM3DFile(filename) {
+        try {
+            let fileContent = null;
+
+            // Use file browser if available (editor environment)
+            if (window.editor && window.editor.fileBrowser) {
+                fileContent = await window.editor.fileBrowser.readFile(`${filename}.m3d`);
+            }
+
+            if (!fileContent) {
+                console.error('Could not load M3D file:', filename);
+                return false;
+            }
+
+            const meshData = JSON.parse(fileContent);
+
+            // Validate M3D format
+            if (!meshData.metadata || meshData.metadata.format !== "M3D") {
+                console.error('Invalid M3D file format');
+                return false;
+            }
+
+            // Load vertices
+            if (meshData.vertices) {
+                this.vertices = meshData.vertices.map(v => new Vector3(v.x, v.y, v.z));
+            }
+
+            // Load edges
+            if (meshData.edges) {
+                this.edges = meshData.edges;
+            }
+
+            // Load faces
+            if (meshData.faces) {
+                this.faces = meshData.faces;
+            }
+
+            // Load materials
+            if (meshData.materials && meshData.materials.length > 0 && this.material) {
+                this.material.fromJSON(meshData.materials[0]);
+            }
+
+            // Load properties
+            if (meshData.properties) {
+                if (meshData.properties.position) {
+                    this.position = new Vector3(
+                        meshData.properties.position.x,
+                        meshData.properties.position.y,
+                        meshData.properties.position.z
+                    );
+                }
+                if (meshData.properties.rotation) {
+                    this.rotation = new Vector3(
+                        meshData.properties.rotation.x,
+                        meshData.properties.rotation.y,
+                        meshData.properties.rotation.z
+                    );
+                }
+                if (meshData.properties.scale) {
+                    this.scale = new Vector3(
+                        meshData.properties.scale.x,
+                        meshData.properties.scale.y,
+                        meshData.properties.scale.z
+                    );
+                }
+                if (meshData.properties.wireframeColor) {
+                    this.wireframeColor = meshData.properties.wireframeColor;
+                }
+                if (meshData.properties.faceColor) {
+                    this.faceColor = meshData.properties.faceColor;
+                }
+                if (meshData.properties.renderMode) {
+                    this.renderMode = meshData.properties.renderMode;
+                }
+            }
+
+            // Regenerate UV coordinates
+            this.generateUVCoordinates();
+
+            // Mark as custom model if it has custom geometry
+            this.isCustomModel = meshData.vertices && meshData.vertices.length > 0;
+            this._shape = this.isCustomModel ? "custom" : this._shape;
+
+            console.log(`Loaded M3D file: ${meshData.metadata.name}`);
+            return true;
+        } catch (error) {
+            console.error('Error loading M3D file:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Get available M3D files in the project
+     * @returns {Promise<Array<string>>} Array of M3D filenames
+     */
+    async getAvailableM3DFiles() {
+        try {
+            if (window.editor && window.editor.fileBrowser) {
+                const files = await window.editor.fileBrowser.getAllFiles();
+                return files
+                    .filter(file => file.name.endsWith('.m3d'))
+                    .map(file => file.name);
+            }
+            return [];
+        } catch (error) {
+            console.error('Error getting M3D files:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Load and use a custom mesh from a file
+     * @param {string} filename - Name of the .m3d file to load
+     * @returns {Promise<boolean>} Success indicator
+     */
+    async useCustomMesh(filename) {
+        try {
+            const success = await this.loadFromM3DFile(filename);
+            if (success) {
+                this._shape = "custom";
+                this.isCustomModel = true;
+                this.updateShape();
+                console.log(`Mesh3D now using custom mesh: ${filename}`);
+            }
+            return success;
+        } catch (error) {
+            console.error('Error using custom mesh:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Set custom mesh data directly
+     * @param {Object} meshData - Mesh data object with vertices, edges, faces
+     * @param {string} name - Optional name for the custom mesh
+     */
+    setCustomMesh(meshData, name = "Custom Mesh") {
+        try {
+            if (meshData.vertices) {
+                this.vertices = meshData.vertices.map(v =>
+                    v instanceof Vector3 ? v : new Vector3(v.x, v.y, v.z)
+                );
+            }
+
+            if (meshData.edges) {
+                this.edges = meshData.edges;
+            }
+
+            if (meshData.faces) {
+                this.faces = meshData.faces;
+            }
+
+            // Set properties if provided
+            if (meshData.position) {
+                this.position = meshData.position instanceof Vector3 ?
+                    meshData.position : new Vector3(meshData.position.x, meshData.position.y, meshData.position.z);
+            }
+
+            if (meshData.rotation) {
+                this.rotation = meshData.rotation instanceof Vector3 ?
+                    meshData.rotation : new Vector3(meshData.rotation.x, meshData.rotation.y, meshData.rotation.z);
+            }
+
+            if (meshData.scale) {
+                this.scale = meshData.scale instanceof Vector3 ?
+                    meshData.scale : new Vector3(meshData.scale.x, meshData.scale.y, meshData.scale.z);
+            }
+
+            // Mark as custom model
+            this._shape = "custom";
+            this.isCustomModel = true;
+
+            // Regenerate UV coordinates and other derived data
+            this.generateUVCoordinates();
+
+            console.log(`Mesh3D now using custom mesh: ${name}`);
+            return true;
+        } catch (error) {
+            console.error('Error setting custom mesh:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Export current mesh as custom mesh data
+     * @returns {Object} Custom mesh data object
+     */
+    exportCustomMesh() {
+        return {
+            name: this._shape === "custom" ? "Custom Mesh" : `${this._shape} Mesh`,
+            vertices: this.vertices.map(v => ({ x: v.x, y: v.y, z: v.z })),
+            edges: this.edges.map(edge => [...edge]),
+            faces: this.faces.map(face => [...face]),
+            position: { x: this.position.x, y: this.position.y, z: this.position.z },
+            rotation: { x: this.rotation.x, y: this.rotation.y, z: this.rotation.z },
+            scale: { x: this.scale.x, y: this.scale.y, z: this.scale.z },
+            wireframeColor: this.wireframeColor,
+            faceColor: this.faceColor,
+            renderMode: this.renderMode,
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    /**
        * Deserialize the mesh from JSON
        * @param {Object} json - JSON representation of the mesh
        */
