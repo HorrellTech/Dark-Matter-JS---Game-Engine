@@ -159,7 +159,7 @@ class Mesh3D extends Module {
             }
         });
 
-        this.sphereRadius = 100;
+        this.sphereRadius = 50;
         this.sphereDetail = 12;
         this.exposeProperty("sphereRadius", "number", 100, {
             min: 10,
@@ -180,8 +180,8 @@ class Mesh3D extends Module {
             }
         });
 
-        this.octahedronSize = 100;
-        this.exposeProperty("octahedronSize", "number", 100, {
+        this.octahedronSize = 50;
+        this.exposeProperty("octahedronSize", "number", 50, {
             min: 10,
             max: 500,
             step: 10,
@@ -191,8 +191,8 @@ class Mesh3D extends Module {
             }
         });
 
-        this.planeSize = 200;
-        this.exposeProperty("planeSize", "number", 200, {
+        this.planeSize = 100;
+        this.exposeProperty("planeSize", "number", 100, {
             min: 10,
             max: 500,
             step: 10,
@@ -225,10 +225,10 @@ class Mesh3D extends Module {
         });
 
         // Capsule properties
-        this.capsuleRadius = 50;
-        this.capsuleHeight = 150;
-        this.capsuleSegments = 16;
-        this.exposeProperty("capsuleRadius", "number", 50, {
+        this.capsuleRadius = 15;
+        this.capsuleHeight = 30;
+        this.capsuleSegments = 8;
+        this.exposeProperty("capsuleRadius", "number", 15, {
             min: 10,
             max: 200,
             step: 5,
@@ -258,8 +258,8 @@ class Mesh3D extends Module {
 
         // Prism properties
         this.prismSides = 6;
-        this.prismRadius = 100;
-        this.prismHeight = 150;
+        this.prismRadius = 50;
+        this.prismHeight = 100;
         this.exposeProperty("prismSides", "number", 6, {
             min: 3,
             max: 12,
@@ -289,7 +289,7 @@ class Mesh3D extends Module {
         });
 
         // Tetrahedron properties
-        this.tetrahedronSize = 100;
+        this.tetrahedronSize = 50;
         this.exposeProperty("tetrahedronSize", "number", 100, {
             min: 10,
             max: 500,
@@ -300,8 +300,8 @@ class Mesh3D extends Module {
             }
         });
 
-        this.torusMajorRadius = 100;
-        this.torusMinorRadius = 40;
+        this.torusMajorRadius = 50;
+        this.torusMinorRadius = 15;
         this.torusMajorSegments = 16;
         this.torusMinorSegments = 8;
         this.exposeProperty("torusMajorRadius", "number", 100, {
@@ -341,10 +341,10 @@ class Mesh3D extends Module {
             }
         });
 
-        this.coneRadius = 100;
-        this.coneHeight = 150;
-        this.coneSegments = 16;
-        this.exposeProperty("coneRadius", "number", 100, {
+        this.coneRadius = 50;
+        this.coneHeight = 100;
+        this.coneSegments = 8;
+        this.exposeProperty("coneRadius", "number", 50, {
             min: 10,
             max: 500,
             step: 10,
@@ -353,7 +353,7 @@ class Mesh3D extends Module {
                 if (this._shape === "cone") this.createCone(val, this.coneHeight, this.coneSegments);
             }
         });
-        this.exposeProperty("coneHeight", "number", 150, {
+        this.exposeProperty("coneHeight", "number", 100, {
             min: 10,
             max: 500,
             step: 10,
@@ -362,7 +362,7 @@ class Mesh3D extends Module {
                 if (this._shape === "cone") this.createCone(this.coneRadius, val, this.coneSegments);
             }
         });
-        this.exposeProperty("coneSegments", "number", 16, {
+        this.exposeProperty("coneSegments", "number", 8, {
             min: 6,
             max: 32,
             step: 1,
@@ -372,10 +372,10 @@ class Mesh3D extends Module {
             }
         });
 
-        this.cylinderRadius = 100;
-        this.cylinderHeight = 150;
-        this.cylinderSegments = 16;
-        this.exposeProperty("cylinderRadius", "number", 100, {
+        this.cylinderRadius = 50;
+        this.cylinderHeight = 100;
+        this.cylinderSegments = 8;
+        this.exposeProperty("cylinderRadius", "number", 50, {
             min: 10,
             max: 500,
             step: 10,
@@ -384,7 +384,7 @@ class Mesh3D extends Module {
                 if (this._shape === "cylinder") this.createCylinder(val, this.cylinderHeight, this.cylinderSegments);
             }
         });
-        this.exposeProperty("cylinderHeight", "number", 150, {
+        this.exposeProperty("cylinderHeight", "number", 100, {
             min: 10,
             max: 500,
             step: 10,
@@ -393,7 +393,7 @@ class Mesh3D extends Module {
                 if (this._shape === "cylinder") this.createCylinder(this.cylinderRadius, val, this.cylinderSegments);
             }
         });
-        this.exposeProperty("cylinderSegments", "number", 16, {
+        this.exposeProperty("cylinderSegments", "number", 8, {
             min: 6,
             max: 32,
             step: 1,
@@ -722,15 +722,15 @@ class Mesh3D extends Module {
     loop(deltaTime) {
         // Apply automatic rotation based on rotation speed
         //if (this.rotationSpeed && (this.rotationSpeed.x !== 0 || this.rotationSpeed.y !== 0 || this.rotationSpeed.z !== 0)) {
-            // Multiply by deltaTime to get rotation per second
-            this.rotation.x += this.rotationSpeed.x * deltaTime;
-            this.rotation.y += this.rotationSpeed.y * deltaTime;
-            this.rotation.z += this.rotationSpeed.z * deltaTime;
+        // Multiply by deltaTime to get rotation per second
+        this.rotation.x += this.rotationSpeed.x * deltaTime;
+        this.rotation.y += this.rotationSpeed.y * deltaTime;
+        this.rotation.z += this.rotationSpeed.z * deltaTime;
 
-            // Normalize angles to 0-360 range
-            this.rotation.x = ((this.rotation.x % 360) + 360) % 360;
-            this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
-            this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
+        // Normalize angles to 0-360 range
+        this.rotation.x = ((this.rotation.x % 360) + 360) % 360;
+        this.rotation.y = ((this.rotation.y % 360) + 360) % 360;
+        this.rotation.z = ((this.rotation.z % 360) + 360) % 360;
         //}
 
         // Handle custom model interactions if enabled
@@ -1906,137 +1906,149 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D cube visualization - Top-down isometric view
+     * Draw 2D cube visualization - Top-down with height extrusion
      */
     draw2DCube(ctx) {
-        const s = this.cubeSize / 2;
-        const isoOffset = s * 0.4; // Isometric offset for depth
+        const s = (this.cubeSize / 2) * this.scale.x;
+        const h = this.cubeSize * this.scale.z * 0.3; // Height extrusion
 
-        // Draw top face (visible from top)
+        // Draw base square (bottom face)
         ctx.fillStyle = this.faceColor;
-        ctx.beginPath();
-        ctx.moveTo(0, -s - isoOffset); // Top point
-        ctx.lineTo(s, -isoOffset);      // Right point
-        ctx.lineTo(0, s - isoOffset);   // Bottom point
-        ctx.lineTo(-s, -isoOffset);     // Left point
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw front face (front side)
-        ctx.fillStyle = this.faceColor;
-        ctx.globalAlpha = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(-s, -isoOffset);  // Top left
-        ctx.lineTo(s, -isoOffset);   // Top right
-        ctx.lineTo(s, s);            // Bottom right
-        ctx.lineTo(-s, s);           // Bottom left
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw right face (right side)
-        ctx.globalAlpha = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(s, -isoOffset);       // Top
-        ctx.lineTo(0, s - isoOffset);    // Bottom inner
-        ctx.lineTo(0, s + s - isoOffset); // Bottom outer
-        ctx.lineTo(s, s);                // Front bottom
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(-s, -s, s * 2, s * 2);
         ctx.globalAlpha = 1.0;
-    }
+        ctx.strokeRect(-s, -s, s * 2, s * 2);
 
-    /**
-     * Draw 2D pyramid visualization - Top-down view
-     */
-    draw2DPyramid(ctx) {
-        const base = this.pyramidBaseSize / 2;
-        const isoOffset = this.pyramidHeight * 0.3; // Depth based on height
+        // Draw vertical edges from bottom corners upward
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
 
-        // Draw apex point (top of pyramid)
+        // Back-left edge
+        ctx.beginPath();
+        ctx.moveTo(-s, -s);
+        ctx.lineTo(-s, -s - h);
+        ctx.stroke();
+
+        // Back-right edge
+        ctx.beginPath();
+        ctx.moveTo(s, -s);
+        ctx.lineTo(s, -s - h);
+        ctx.stroke();
+
+        // Front-left edge
+        ctx.beginPath();
+        ctx.moveTo(-s, s);
+        ctx.lineTo(-s, s - h);
+        ctx.stroke();
+
+        // Front-right edge
+        ctx.beginPath();
+        ctx.moveTo(s, s);
+        ctx.lineTo(s, s - h);
+        ctx.stroke();
+
+        // Draw top face (extruded up)
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.9;
-
-        // Draw front faces
-        ctx.beginPath();
-        ctx.moveTo(0, -isoOffset); // Apex
-        ctx.lineTo(-base, base);   // Bottom left
-        ctx.lineTo(base, base);    // Bottom right
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw back face
-        ctx.globalAlpha = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(0, -isoOffset);  // Apex
-        ctx.lineTo(-base, base);    // Left
-        ctx.lineTo(-base, -base);   // Back left
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.globalAlpha = 0.7;
-        ctx.beginPath();
-        ctx.moveTo(0, -isoOffset);  // Apex
-        ctx.lineTo(base, base);     // Right
-        ctx.lineTo(base, -base);    // Back right
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw base square
-        ctx.globalAlpha = 0.5;
-        ctx.strokeRect(-base, -base, this.pyramidBaseSize, this.pyramidBaseSize);
+        ctx.fillRect(-s, -s - h, s * 2, s * 2);
+        ctx.globalAlpha = 1.0;
+        ctx.strokeRect(-s, -s - h, s * 2, s * 2);
 
         ctx.globalAlpha = 1.0;
     }
 
     /**
-     * Draw 2D sphere visualization - Top-down view (equator circle)
+     * Draw 2D pyramid visualization - Top-down with height extrusion
+     */
+    draw2DPyramid(ctx) {
+        const base = (this.pyramidBaseSize / 2) * this.scale.x;
+        const h = this.pyramidHeight * this.scale.z * 0.3;
+
+        // Draw base square
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.6;
+        ctx.fillRect(-base, -base, base * 2, base * 2);
+        ctx.globalAlpha = 1.0;
+        ctx.strokeRect(-base, -base, base * 2, base * 2);
+
+        // Draw apex point with extrusion
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(0, -h); // Apex
+        ctx.lineTo(base, base);
+        ctx.lineTo(-base, base);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw back triangles
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(0, -h);
+        ctx.lineTo(-base, base);
+        ctx.lineTo(-base, -base);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, -h);
+        ctx.lineTo(base, base);
+        ctx.lineTo(base, -base);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
+    }
+
+    /**
+     * Draw 2D sphere visualization - Top-down circle with scale
      */
     draw2DSphere(ctx) {
-        // Draw the sphere as a circle from top-down (equator view)
+        const r = this.sphereRadius * this.scale.x;
+
+        // Draw main circle
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
-        ctx.arc(0, 0, this.sphereRadius / 2, 0, Math.PI * 2);
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw latitude lines (concentric circles)
+        // Draw latitude lines
         ctx.strokeStyle = this.wireframeColor;
         ctx.globalAlpha = 0.3;
         const segments = Math.min(this.sphereDetail, 8);
         for (let i = 1; i < segments; i++) {
-            const radius = (i / segments) * (this.sphereRadius / 2);
+            const radius = (i / segments) * r;
             ctx.beginPath();
             ctx.arc(0, 0, radius, 0, Math.PI * 2);
             ctx.stroke();
         }
 
-        // Draw longitude lines (cross)
+        // Draw cross lines
         ctx.beginPath();
-        ctx.moveTo(-this.sphereRadius / 2, 0);
-        ctx.lineTo(this.sphereRadius / 2, 0);
-        ctx.moveTo(0, -this.sphereRadius / 2);
-        ctx.lineTo(0, this.sphereRadius / 2);
+        ctx.moveTo(-r, 0);
+        ctx.lineTo(r, 0);
+        ctx.moveTo(0, -r);
+        ctx.lineTo(0, r);
         ctx.stroke();
 
         ctx.globalAlpha = 1.0;
     }
 
     /**
-     * Draw 2D octahedron visualization - Top-down view (diamond shape at equator)
+     * Draw 2D octahedron visualization - Top-down diamond with extrusion
      */
     draw2DOctahedron(ctx) {
-        const s = this.octahedronSize;
+        const s = this.octahedronSize * this.scale.x;
+        const h = this.octahedronSize * this.scale.z * 0.3;
 
-        // Draw equator diamond (middle cross-section)
+        // Draw middle diamond
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
@@ -2048,34 +2060,33 @@ class Mesh3D extends Module {
         ctx.fill();
         ctx.stroke();
 
-        // Draw inner lines to show 3D structure
-        ctx.strokeStyle = this.wireframeColor;
-        ctx.globalAlpha = 0.4;
+        // Draw top point extrusion
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.moveTo(-s, 0);
-        ctx.lineTo(s, 0);
-        ctx.moveTo(0, -s);
-        ctx.lineTo(0, s);
+        ctx.moveTo(0, -h);
+        ctx.lineTo(s * 0.5, -s * 0.5);
+        ctx.lineTo(-s * 0.5, -s * 0.5);
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
 
         ctx.globalAlpha = 1.0;
     }
 
     /**
-     * Draw 2D torus visualization - Top-down view (donut shape)
+     * Draw 2D torus visualization - Top-down donut
      */
     draw2DTorus(ctx) {
-        const major = this.torusMajorRadius;
-        const minor = this.torusMinorRadius;
+        const major = this.torusMajorRadius * this.scale.x;
+        const minor = this.torusMinorRadius * this.scale.x;
 
-        // Fill the ring area
+        // Fill the ring
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
         ctx.arc(0, 0, major + minor, 0, Math.PI * 2);
         ctx.arc(0, 0, major - minor, 0, Math.PI * 2, true);
         ctx.fill();
-
         ctx.globalAlpha = 1.0;
 
         // Outer circle
@@ -2089,7 +2100,7 @@ class Mesh3D extends Module {
         ctx.arc(0, 0, major - minor, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Draw cross lines to show tube detail
+        // Radial lines
         ctx.globalAlpha = 0.3;
         const segments = Math.min(this.torusMinorSegments, 8);
         for (let i = 0; i < segments; i++) {
@@ -2109,11 +2120,11 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D cone visualization - Top-down view showing base circle and apex point
+     * Draw 2D cone visualization - Top-down circle with apex
      */
     draw2DCone(ctx) {
-        const r = this.coneRadius;
-        const apexOffset = this.coneHeight * 0.2; // Visual offset for apex
+        const r = this.coneRadius * this.scale.x;
+        const h = this.coneHeight * this.scale.z * 0.3;
 
         // Draw base circle
         ctx.fillStyle = this.faceColor;
@@ -2124,7 +2135,7 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw lines from apex to base edge (showing cone structure)
+        // Draw radial lines to apex
         ctx.strokeStyle = this.wireframeColor;
         ctx.globalAlpha = 0.5;
         const segments = 8;
@@ -2134,8 +2145,8 @@ class Mesh3D extends Module {
             const y = Math.sin(angle) * r;
 
             ctx.beginPath();
-            ctx.moveTo(0, -apexOffset); // Apex point
-            ctx.lineTo(x, y);           // Base edge
+            ctx.moveTo(0, -h);
+            ctx.lineTo(x, y);
             ctx.stroke();
         }
 
@@ -2143,45 +2154,63 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.fillStyle = this.wireframeColor;
         ctx.beginPath();
-        ctx.arc(0, -apexOffset, 3, 0, Math.PI * 2);
+        ctx.arc(0, -h, 4, 0, Math.PI * 2);
         ctx.fill();
     }
 
     /**
-     * Draw 2D cylinder visualization - Top-down view showing circular cross-section
+     * Draw 2D cylinder visualization - Top-down circle with segments
      */
     draw2DCylinder(ctx) {
-        const r = this.cylinderRadius;
+        const r = this.cylinderRadius * this.scale.x;
+        const h = this.cylinderHeight * this.scale.z * 0.3;
 
-        // Draw cylinder as a circle from top (showing the circular cross-section)
+        // Draw base circle
         ctx.fillStyle = this.faceColor;
-        ctx.globalAlpha = 0.7;
+        ctx.globalAlpha = 0.6;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw lines to indicate cylindrical segments
+        // Draw vertical edges indicating height
         ctx.strokeStyle = this.wireframeColor;
-        ctx.globalAlpha = 0.3;
-        const segments = Math.min(this.cylinderSegments, 8);
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 2;
+
+        const segments = 8;
         for (let i = 0; i < segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             const x = Math.cos(angle) * r;
             const y = Math.sin(angle) * r;
 
             ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(x, y);
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, y - h);
             ctx.stroke();
         }
 
-        // Draw concentric circles to show height
-        ctx.globalAlpha = 0.2;
-        for (let i = 1; i <= 2; i++) {
+        // Draw top circle (extruded up)
+        ctx.fillStyle = this.faceColor;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(0, -h, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+        ctx.stroke();
+
+        // Draw radial segments on top circle
+        ctx.strokeStyle = this.wireframeColor;
+        ctx.globalAlpha = 0.3;
+        for (let i = 0; i < segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+
             ctx.beginPath();
-            ctx.arc(0, 0, (i / 3) * r, 0, Math.PI * 2);
+            ctx.moveTo(0, -h);
+            ctx.lineTo(x, y - h);
             ctx.stroke();
         }
 
@@ -2189,13 +2218,13 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D icosahedron visualization - Top-down view (pentagonal cross-section)
+     * Draw 2D icosahedron visualization - Top-down pentagon
      */
     draw2DIcosahedron(ctx) {
-        const s = this.icosahedronSize;
-        const segments = 5; // Pentagon for icosahedron
+        const s = this.icosahedronSize * this.scale.x;
+        const segments = 5;
 
-        // Draw pentagonal cross-section
+        // Draw pentagon
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
@@ -2211,7 +2240,7 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw inner star pattern
+        // Draw star pattern
         ctx.strokeStyle = this.wireframeColor;
         ctx.globalAlpha = 0.4;
         for (let i = 0; i < segments; i++) {
@@ -2232,37 +2261,41 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D capsule visualization
+     * Draw 2D capsule visualization - Top-down with rounded ends
      */
     draw2DCapsule(ctx) {
-        const r = this.capsuleRadius;
-        const h = this.capsuleHeight / 2;
+        const r = this.capsuleRadius * this.scale.x;
+        const h = this.capsuleHeight * this.scale.z;
 
-        // Draw capsule body (rectangle)
+        // Draw body rectangle (from base upward)
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
-        ctx.fillRect(-r, -h, r * 2, h * 2);
+        ctx.fillRect(-r, -h, r * 2, h);
         ctx.globalAlpha = 1.0;
-        ctx.strokeRect(-r, -h, r * 2, h * 2);
+        ctx.strokeRect(-r, -h, r * 2, h);
 
-        // Draw top hemisphere
+        // Top hemisphere
+        ctx.globalAlpha = 0.8;
         ctx.beginPath();
         ctx.arc(0, -h, r, 0, Math.PI, true);
         ctx.fill();
         ctx.stroke();
 
-        // Draw bottom hemisphere
+        // Bottom hemisphere (at base/object position)
+        ctx.globalAlpha = 0.6;
         ctx.beginPath();
-        ctx.arc(0, h, r, 0, Math.PI);
+        ctx.arc(0, 0, r, 0, Math.PI);
         ctx.fill();
         ctx.stroke();
+
+        ctx.globalAlpha = 1.0;
     }
 
     /**
-     * Draw 2D prism visualization
+     * Draw 2D prism visualization - Top-down polygon
      */
     draw2DPrism(ctx) {
-        const r = this.prismRadius;
+        const r = this.prismRadius * this.scale.x;
         const sides = this.prismSides;
 
         // Draw polygon
@@ -2281,7 +2314,7 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw center lines
+        // Radial lines
         ctx.strokeStyle = this.wireframeColor;
         ctx.globalAlpha = 0.3;
         for (let i = 0; i < sides; i++) {
@@ -2297,12 +2330,13 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D tetrahedron visualization
+     * Draw 2D tetrahedron visualization - Top-down triangle
      */
     draw2DTetrahedron(ctx) {
-        const s = this.tetrahedronSize;
+        const s = this.tetrahedronSize * this.scale.x;
+        const h = this.tetrahedronSize * this.scale.z * 0.3;
 
-        // Draw triangle from top view
+        // Draw base triangle
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.beginPath();
@@ -2314,35 +2348,41 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw internal lines
+        // Draw apex point
+        ctx.fillStyle = this.wireframeColor;
+        ctx.beginPath();
+        ctx.arc(0, -h, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Lines to apex
         ctx.strokeStyle = this.wireframeColor;
         ctx.globalAlpha = 0.4;
         ctx.beginPath();
-        ctx.moveTo(0, 0);
+        ctx.moveTo(0, -h);
         ctx.lineTo(0, -s);
-        ctx.moveTo(0, 0);
+        ctx.moveTo(0, -h);
         ctx.lineTo(s * 0.866, s * 0.5);
-        ctx.moveTo(0, 0);
+        ctx.moveTo(0, -h);
         ctx.lineTo(-s * 0.866, s * 0.5);
         ctx.stroke();
         ctx.globalAlpha = 1.0;
     }
 
     /**
-     * Draw 2D plane/quad visualization - Top-down view showing full dimensions
+     * Draw 2D plane/quad visualization - Top-down rectangle
      */
     draw2DPlane(ctx) {
-        const w = this._shape === "quad" ? this.quadWidth / 2 : this.planeSize / 2;
-        const h = this._shape === "quad" ? this.quadHeight / 2 : this.planeSize / 2;
+        const w = (this._shape === "quad" ? this.quadWidth / 2 : this.planeSize / 2) * this.scale.x;
+        const h = (this._shape === "quad" ? this.quadHeight / 2 : this.planeSize / 2) * this.scale.y;
 
-        // Draw filled rectangle
+        // Draw rectangle
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.7;
         ctx.fillRect(-w, -h, w * 2, h * 2);
         ctx.globalAlpha = 1.0;
         ctx.strokeRect(-w, -h, w * 2, h * 2);
 
-        // Draw subdivision lines for quad
+        // Subdivision lines for quad
         if (this._shape === "quad") {
             ctx.strokeStyle = this.wireframeColor;
             ctx.globalAlpha = 0.3;
@@ -2367,7 +2407,7 @@ class Mesh3D extends Module {
 
             ctx.globalAlpha = 1.0;
         } else {
-            // Draw center cross for plane
+            // Cross for plane
             ctx.strokeStyle = this.wireframeColor;
             ctx.globalAlpha = 0.3;
             ctx.beginPath();
@@ -2381,20 +2421,19 @@ class Mesh3D extends Module {
     }
 
     /**
-     * Draw 2D custom model visualization - Top-down view with indicator
+     * Draw 2D custom model visualization
      */
     draw2DCustom(ctx) {
-        // Calculate bounds of custom model
-        let maxDist = 50; // Default
+        let maxDist = 50 * Math.max(this.scale.x, this.scale.y);
         if (this.vertices && this.vertices.length > 0) {
             maxDist = 0;
             for (const v of this.vertices) {
-                const dist = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+                const dist = Math.sqrt(v.x * v.x + v.y * v.y) * this.scale.x;
                 maxDist = Math.max(maxDist, dist);
             }
         }
 
-        // Draw bounding circle
+        // Bounding circle
         ctx.strokeStyle = this.wireframeColor;
         ctx.fillStyle = this.faceColor;
         ctx.globalAlpha = 0.3;
@@ -2404,7 +2443,7 @@ class Mesh3D extends Module {
         ctx.globalAlpha = 1.0;
         ctx.stroke();
 
-        // Draw vertex count indicator
+        // Label
         ctx.fillStyle = '#ffff00';
         ctx.font = 'bold 12px Arial';
         ctx.textAlign = 'center';
@@ -3237,7 +3276,7 @@ class Mesh3D extends Module {
      * Update method called each frame
      */
     update() {
-        
+
     }
 
     /**

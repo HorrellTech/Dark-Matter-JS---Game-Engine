@@ -20,7 +20,7 @@ class Camera3DRasterizer extends Module {
         this._fieldOfView = 60;
         this._nearPlane = 0.1;
         this._farPlane = 5000;
-        this._isActive = false;
+        this._isActive = true;
         this._backgroundColor = "#000000";
         this._renderTextureWidth = 320;
         this._renderTextureHeight = 240;
@@ -49,29 +49,46 @@ class Camera3DRasterizer extends Module {
 
         // Background properties
         this._skyColor = "#87CEEB";  // Sky blue
-        this._floorColor = "#8B4513"; // Brown
-        this._skyColorHorizon = "#af686cff"; // Sky at horizon (default same as sky)
-        this._floorColorHorizon = "#653721ff"; // Floor at horizon (darker brown)
+        this._floorColor = "#95d5f3"; // Brown
+        this._skyColorHorizon = "#da846aff"; // Sky at horizon (default same as sky)
+        this._floorColorHorizon = "#1a2c46"; // Floor at horizon (darker brown)
         this._backgroundType = "skybox"; // "skybox", "transparent", "solid"
 
         // Cloud properties
-        this._cloudsEnabled = false;
-        this._cloudSpeed = 0.5; // Speed multiplier for cloud movement
-        this._cloudDensity = 0.4; // 0-1, how much cloud coverage
-        this._cloudScale = 150; // Size of cloud patterns (larger = bigger clouds)
-        this._cloudSoftness = 0.6; // 0-1, edge softness
-        this._cloudHeight = 0.3; // 0-1, where clouds appear (0=horizon, 1=zenith)
-        this._cloudThickness = 0.4; // 0-1, vertical extent of cloud layer
-        this._cloudBrightness = 1.0; // Cloud color brightness multiplier
+        this._cloudsEnabled = true;
+        this._cloudSpeed = 2.5; // Speed multiplier for cloud movement
+        this._cloudDensity = 0.7; // 0-1, how much cloud coverage
+        this._cloudScale = 250; // Size of cloud patterns (larger = bigger clouds)
+        this._cloudSoftness = 0.8; // 0-1, edge softness
+        this._cloudHeight = 0.2; // 0-1, where clouds appear (0=horizon, 1=zenith)
+        this._cloudThickness = 0.8; // 0-1, vertical extent of cloud layer
+        this._cloudBrightness = 0.9; // Cloud color brightness multiplier
         this._cloudTime = 0; // Animation time tracker
         this._cloudNoiseCache = null; // Cache for performance
-        this._cloudResolution = 0.5; // 1.0 = full res, 0.5 = half res, etc.
+        this._cloudResolution = 0.3; // 1.0 = full res, 0.5 = half res, etc.
 
         // Water animation properties
-        this._waterEnabled = false;
-        this._waterSpeed = 1.0; // Speed multiplier for wave animation
-        this._waterWaveHeight = 10; // Height of wave pattern in pixels
+        this._waterEnabled = true;
+        this._waterSpeed = 2.0; // Speed multiplier for wave animation
+        this._waterWaveHeight = 6; // Height of wave pattern in pixels
         this._waterTime = 0; // Animation time tracker
+
+        // Hills/Mountains properties
+        this._hillsEnabled = true;
+        this._hillsSeed = 12345; // Seed for procedural generation
+        this._hillsMinHeight = 0.1; // 0-1, minimum height relative to horizon
+        this._hillsMaxHeight = 0.4; // 0-1, maximum height relative to horizon
+        this._hillsFrequency = 0.5; // How often hills appear (0-1)
+        this._hillsRoughness = 0.6; // 0-1, how jagged the hills are
+        this._hillsBaseColor = "#597561ff"; // Dark green base
+        this._hillsTopColor = "#4ba152ff"; // Brown/tan peaks
+        this._hillsUseFogColor = false; // Blend with fog color at distance
+        this._hillsFogBlend = 0.7; // 0-1, how much fog affects hills
+
+        // Water reflection properties
+        this._waterReflectionEnabled = true; // Show hills reflected in water
+        this._waterReflectionOpacity = 0.9; // 0-1, reflection visibility
+        this._waterReflectionDistortion = 0.55; // 0-1, wave distortion on reflection
 
         // Sun properties (Sun is always in light direction and colored as light color)
         this._showSun = true;
@@ -82,20 +99,20 @@ class Camera3DRasterizer extends Module {
         this._lensFlareEnabled = true;
         this._lensFlareIntensity = 0.8; // 0-1 intensity multiplier
         this._lensFlareCount = 5; // Number of flare elements
-        this._lensFlareSpacing = 0.15; // Distance between flares (0-1, screen space)
-        this._lensFlareSize = 20; // Base size of flare elements
+        this._lensFlareSpacing = 0.25; // Distance between flares (0-1, screen space)
+        this._lensFlareSize = 32; // Base size of flare elements
         this._lensFlareColorShift = true; // Apply chromatic aberration to flares
 
         // Specular properties
         this._specularEnabled = true;
         this._specularBleedingEnabled = false;
         this._specularPerMesh = false;
-        this._specularFullFace = false;
+        this._specularFullFace = true;
 
         // Specular bloom properties
-        this._specularBloomEnabled = false;
+        this._specularBloomEnabled = true;
         this._specularBloomIntensity = 0.5;
-        this._specularBloomRadius = 1.5; // Multiplier for base radius
+        this._specularBloomRadius = 2.5; // Multiplier for base radius
         this._specularBloomThreshold = 0.3; // Minimum specular intensity to trigger bloom
 
         // Emissive properties
@@ -134,12 +151,12 @@ class Camera3DRasterizer extends Module {
         this.exposeProperty("farPlane", "number", 1000, {
             min: 10, max: 10000, step: 1, onChange: (val) => this._farPlane = val
         });
-        this.exposeProperty("isActive", "boolean", false, {
+        /*this.exposeProperty("isActive", "boolean", false, {
             onChange: (val) => {
                 this._isActive = val;
                 if (val) this.setAsActiveCamera();
             }
-        });
+        });*/
         this.exposeProperty("backgroundColor", "color", "#000000", {
             onChange: (val) => this._backgroundColor = val
         });
@@ -167,9 +184,9 @@ class Camera3DRasterizer extends Module {
             options: ["raster"],
             onChange: (val) => this._renderingMethod = val
         });
-        this.exposeProperty("enableBackfaceCulling", "boolean", true, {
+        /*this.exposeProperty("enableBackfaceCulling", "boolean", true, {
             onChange: (val) => this._enableBackfaceCulling = val
-        });
+        });*/
 
         this.exposeProperty("lightDirection", "vector3", this._lightDirection, {
             onChange: (val) => this._lightDirection = val
@@ -291,6 +308,85 @@ class Camera3DRasterizer extends Module {
             onChange: (val) => this._waterWaveHeight = val
         });
 
+        this.exposeProperty("hillsEnabled", "boolean", false, {
+            onChange: (val) => this._hillsEnabled = val
+        });
+        this.exposeProperty("hillsSeed", "number", 12345, {
+            min: 0,
+            max: 999999,
+            step: 1,
+            onChange: (val) => {
+                this._hillsSeed = val;
+                this._hillsCache = null; // Clear cache when seed changes
+            }
+        });
+        this.exposeProperty("hillsMinHeight", "number", 0.1, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => {
+                this._hillsMinHeight = val;
+                this._hillsCache = null;
+            }
+        });
+        this.exposeProperty("hillsMaxHeight", "number", 0.4, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => {
+                this._hillsMaxHeight = val;
+                this._hillsCache = null;
+            }
+        });
+        this.exposeProperty("hillsFrequency", "number", 0.5, {
+            min: 0.1,
+            max: 2.0,
+            step: 0.1,
+            onChange: (val) => {
+                this._hillsFrequency = val;
+                this._hillsCache = null;
+            }
+        });
+        this.exposeProperty("hillsRoughness", "number", 0.6, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => {
+                this._hillsRoughness = val;
+                this._hillsCache = null;
+            }
+        });
+        this.exposeProperty("hillsBaseColor", "color", "#2d5016", {
+            onChange: (val) => this._hillsBaseColor = val
+        });
+        this.exposeProperty("hillsTopColor", "color", "#8b7355", {
+            onChange: (val) => this._hillsTopColor = val
+        });
+        this.exposeProperty("hillsUseFogColor", "boolean", true, {
+            onChange: (val) => this._hillsUseFogColor = val
+        });
+        this.exposeProperty("hillsFogBlend", "number", 0.7, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._hillsFogBlend = val
+        });
+        this.exposeProperty("waterReflectionEnabled", "boolean", true, {
+            onChange: (val) => this._waterReflectionEnabled = val
+        });
+        this.exposeProperty("waterReflectionOpacity", "number", 0.3, {
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => this._waterReflectionOpacity = val
+        });
+        this.exposeProperty("waterReflectionDistortion", "number", 0.05, {
+            min: 0,
+            max: 0.5,
+            step: 0.01,
+            onChange: (val) => this._waterReflectionDistortion = val
+        });
+
         this.exposeProperty("showSun", "boolean", true, {
             onChange: (val) => this._showSun = val
         });
@@ -373,12 +469,12 @@ class Camera3DRasterizer extends Module {
             onChange: (val) => this._specularBloomThreshold = val
         });
 
-        this.exposeProperty("emissiveIntensity", "number", 1.0, {
+        /*this.exposeProperty("emissiveIntensity", "number", 1.0, {
             min: 0,
             max: 3.0,
             step: 0.1,
             onChange: (val) => this._emissiveIntensity = val
-        });
+        });*/
 
         this.exposeProperty("fogEnabled", "boolean", false, {
             onChange: (val) => this._fogEnabled = val
@@ -408,6 +504,10 @@ class Camera3DRasterizer extends Module {
         this.exposeProperty("showDebugInfo", "boolean", false, {
             onChange: (val) => this._showDebugInfo = val
         });
+
+        // Hills cache for performance
+        this._hillsCache = null;
+        this._hillsCacheYaw = null;
 
         this.updateRenderTexture();
     }
@@ -881,6 +981,36 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+     * Check if a bounding sphere is within the camera frustum
+     */
+    isInFrustum(center, radius) {
+        const cameraSpace = this.worldToCameraSpace(center);
+
+        // Check depth
+        if (cameraSpace.x + radius < this._nearPlane || cameraSpace.x - radius > this._farPlane) {
+            return false;
+        }
+
+        // Check horizontal FOV
+        const aspect = this.viewportWidth / this.viewportHeight;
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const halfFovTan = Math.tan(fovRadians * 0.5);
+
+        const maxY = cameraSpace.x * halfFovTan * aspect;
+        if (Math.abs(cameraSpace.y) - radius > maxY) {
+            return false;
+        }
+
+        // Check vertical FOV
+        const maxZ = cameraSpace.x * halfFovTan;
+        if (Math.abs(cameraSpace.z) - radius > maxZ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Optimized pure raster rendering using scanline algorithm
      * Fast forward rasterization without Z-buffer overhead
      */
@@ -907,11 +1037,23 @@ class Camera3DRasterizer extends Module {
         const allTriangles = [];
         const specularHighlights = [];
         const meshSpecularData = new Map();
+            
+        this.preRender(buffer32, w, h); 
 
         allObjects.forEach(obj => {
             if (!obj.active) return;
             const mesh = obj.getModule("Mesh3D") || obj.getModule("CubeMesh3D") || obj.getModule("SphereMesh3D");
             if (!mesh) return;
+
+            // Calculate bounding sphere
+            const worldPos = obj.getWorldPosition();
+            const boundingRadius = mesh.getBoundingRadius ? mesh.getBoundingRadius() : 50;
+            const center = new Vector3(worldPos.x, worldPos.y, obj.depth || 0);
+
+            // Frustum culling
+            if (!this.isInFrustum(center, boundingRadius)) {
+                return; // Skip entire mesh
+            }
 
             const transformedVertices = mesh.transformVertices();
             if (!transformedVertices || !mesh.faces) return;
@@ -919,14 +1061,26 @@ class Camera3DRasterizer extends Module {
             const material = mesh.material;
             const faceColor = material ? material.diffuseColor : (mesh.faceColor || mesh._faceColor || "#888888");
 
-            mesh.faces.forEach((face, faceIndex) => {
+            // FIXED: Apply LOD subdivision if enabled
+            const facesToRender = mesh.enableLOD && typeof mesh.applyLODSubdivision === 'function'
+                ? mesh.applyLODSubdivision(mesh.faces, transformedVertices, this)
+                : mesh.faces.map(face => ({ face: face, level: 0 }));
+
+            facesToRender.forEach(({ face, level }) => {
                 this._debugStats.totalFaces++;
 
-                // Get vertex indices
-                const vertIndices = Array.isArray(face) ? face : face.indices;
-                if (!vertIndices || vertIndices.length < 3) return;
+                // FIXED: Handle both original faces (array of indices) and subdivided faces (array of Vector3)
+                let worldVerts;
+                if (face[0] instanceof Vector3) {
+                    // Subdivided face - vertices are already in world space
+                    worldVerts = face;
+                } else {
+                    // Original face - indices need to be resolved
+                    const vertIndices = Array.isArray(face) ? face : face.indices;
+                    if (!vertIndices || vertIndices.length < 3) return;
+                    worldVerts = vertIndices.map(idx => transformedVertices[idx]).filter(v => v);
+                }
 
-                const worldVerts = vertIndices.map(idx => transformedVertices[idx]).filter(v => v);
                 if (worldVerts.length < 3) return;
 
                 const cameraVerts = worldVerts.map(v => this.worldToCameraSpace(v));
@@ -950,6 +1104,11 @@ class Camera3DRasterizer extends Module {
 
                 // Get UV coordinates for this face
                 const getUV = (vertIdx) => {
+                    // For subdivided faces, use default UVs (can be enhanced later)
+                    if (face[0] instanceof Vector3) {
+                        return new Vector2(0, 0);
+                    }
+
                     if (mesh.uvCoords && mesh.uvCoords[vertIdx]) {
                         return mesh.uvCoords[vertIdx];
                     }
@@ -964,9 +1123,19 @@ class Camera3DRasterizer extends Module {
                     ];
 
                     // Get UVs for this triangle
-                    const uv0 = getUV(vertIndices[0]);
-                    const uv1 = getUV(vertIndices[Math.min(i, vertIndices.length - 1)]);
-                    const uv2 = getUV(vertIndices[Math.min(i + 1, vertIndices.length - 1)]);
+                    let uv0, uv1, uv2;
+                    if (face[0] instanceof Vector3) {
+                        // Subdivided face - use default UVs
+                        uv0 = new Vector2(0, 0);
+                        uv1 = new Vector2(0, 0);
+                        uv2 = new Vector2(0, 0);
+                    } else {
+                        // Original face - use proper UVs
+                        const vertIndices = Array.isArray(face) ? face : face.indices;
+                        uv0 = getUV(vertIndices[0]);
+                        uv1 = getUV(vertIndices[Math.min(i, vertIndices.length - 1)]);
+                        uv2 = getUV(vertIndices[Math.min(i + 1, vertIndices.length - 1)]);
+                    }
 
                     const centroidX = (screenVerts[0].cameraPos.x + screenVerts[i].cameraPos.x + screenVerts[i + 1].cameraPos.x) / 3;
                     const viewDepth = centroidX;
@@ -983,7 +1152,8 @@ class Camera3DRasterizer extends Module {
                         material: material,
                         faceColor: faceColor,
                         avgDepth: viewDepth,
-                        isCulled: isCulled
+                        isCulled: isCulled,
+                        lodLevel: level // Store LOD level for debugging
                     };
 
                     allTrianglesForShadows.push(tri);
@@ -1073,6 +1243,8 @@ class Camera3DRasterizer extends Module {
             this.renderSpecularHighlights(specularHighlights, imgData, w, h);
         }
 
+        this.postRender(buffer32, w, h);
+
         ctx.putImageData(imgData, 0, 0);
 
         // Draw visible light sources with occlusion testing
@@ -1096,6 +1268,494 @@ class Camera3DRasterizer extends Module {
 
         // Clear cache
         this._allTrianglesCache = null;
+    }
+
+    // THESE METHODS CAN BE USED IN MODULES TO HOOK INTO RENDERING PROCESS FOR SCREEN EFFECTS
+    preRender(buffer, width, height) {
+        // Override this is you want to render something before the objects are rendered
+    }
+
+    postRender(buffer, width, height) {
+        // Override this is you want to render something after the objects are rendered
+    }
+
+    // ==================== PUBLIC DRAWING API ====================
+    // These methods can be used in custom modules for screen effects
+
+    /**
+     * Set a pixel color at specific coordinates
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    setPixel(buffer, x, y, r, g, b, width, height) {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        const idx = y * width + x;
+        buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
+    }
+
+    /**
+     * Get pixel color at specific coordinates
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @returns {Object} - {r, g, b} color object or null if out of bounds
+     */
+    getPixel(buffer, x, y, width, height) {
+        if (x < 0 || x >= width || y < 0 || y >= height) return null;
+        const idx = y * width + x;
+        const pixel = buffer[idx];
+        return {
+            r: pixel & 0xFF,
+            g: (pixel >> 8) & 0xFF,
+            b: (pixel >> 16) & 0xFF
+        };
+    }
+
+    /**
+     * Blend a pixel with an existing color using alpha
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} alpha - Alpha (0-1)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    blendPixel(buffer, x, y, r, g, b, alpha, width, height) {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        if (alpha <= 0) return;
+        
+        const idx = y * width + x;
+        const existing = buffer[idx];
+        const existingR = existing & 0xFF;
+        const existingG = (existing >> 8) & 0xFF;
+        const existingB = (existing >> 16) & 0xFF;
+        
+        const newR = Math.round(existingR * (1 - alpha) + r * alpha);
+        const newG = Math.round(existingG * (1 - alpha) + g * alpha);
+        const newB = Math.round(existingB * (1 - alpha) + b * alpha);
+        
+        buffer[idx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+    }
+
+    /**
+     * Draw a line using Bresenham's algorithm
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} x0 - Start X
+     * @param {number} y0 - Start Y
+     * @param {number} x1 - End X
+     * @param {number} y1 - End Y
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    drawLine(buffer, x0, y0, x1, y1, r, g, b, width, height) {
+        x0 = Math.round(x0);
+        y0 = Math.round(y0);
+        x1 = Math.round(x1);
+        y1 = Math.round(y1);
+
+        const dx = Math.abs(x1 - x0);
+        const dy = Math.abs(y1 - y0);
+        const sx = x0 < x1 ? 1 : -1;
+        const sy = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+
+        while (true) {
+            this.setPixel(buffer, x0, y0, r, g, b, width, height);
+
+            if (x0 === x1 && y0 === y1) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) {
+                err -= dy;
+                x0 += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    /**
+     * Draw a circle (outline)
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} centerX - Center X
+     * @param {number} centerY - Center Y
+     * @param {number} radius - Radius
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    drawCircle(buffer, centerX, centerY, radius, r, g, b, width, height) {
+        let x = 0;
+        let y = radius;
+        let d = 3 - 2 * radius;
+
+        const drawCirclePoints = (cx, cy, x, y) => {
+            this.setPixel(buffer, cx + x, cy + y, r, g, b, width, height);
+            this.setPixel(buffer, cx - x, cy + y, r, g, b, width, height);
+            this.setPixel(buffer, cx + x, cy - y, r, g, b, width, height);
+            this.setPixel(buffer, cx - x, cy - y, r, g, b, width, height);
+            this.setPixel(buffer, cx + y, cy + x, r, g, b, width, height);
+            this.setPixel(buffer, cx - y, cy + x, r, g, b, width, height);
+            this.setPixel(buffer, cx + y, cy - x, r, g, b, width, height);
+            this.setPixel(buffer, cx - y, cy - x, r, g, b, width, height);
+        };
+
+        drawCirclePoints(centerX, centerY, x, y);
+        while (y >= x) {
+            x++;
+            if (d > 0) {
+                y--;
+                d = d + 4 * (x - y) + 10;
+            } else {
+                d = d + 4 * x + 6;
+            }
+            drawCirclePoints(centerX, centerY, x, y);
+        }
+    }
+
+    /**
+     * Fill a circle
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} centerX - Center X
+     * @param {number} centerY - Center Y
+     * @param {number} radius - Radius
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    fillCircle(buffer, centerX, centerY, radius, r, g, b, width, height) {
+        const radiusSq = radius * radius;
+        const minX = Math.max(0, Math.floor(centerX - radius));
+        const maxX = Math.min(width - 1, Math.ceil(centerX + radius));
+        const minY = Math.max(0, Math.floor(centerY - radius));
+        const maxY = Math.min(height - 1, Math.ceil(centerY + radius));
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const dx = x - centerX;
+                const dy = y - centerY;
+                if (dx * dx + dy * dy <= radiusSq) {
+                    this.setPixel(buffer, x, y, r, g, b, width, height);
+                }
+            }
+        }
+    }
+
+    /**
+     * Fill a rectangle
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} x - Top-left X
+     * @param {number} y - Top-left Y
+     * @param {number} rectWidth - Rectangle width
+     * @param {number} rectHeight - Rectangle height
+     * @param {number} r - Red (0-255)
+     * @param {number} g - Green (0-255)
+     * @param {number} b - Blue (0-255)
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    fillRect(buffer, x, y, rectWidth, rectHeight, r, g, b, width, height) {
+        const minX = Math.max(0, Math.floor(x));
+        const maxX = Math.min(width - 1, Math.floor(x + rectWidth));
+        const minY = Math.max(0, Math.floor(y));
+        const maxY = Math.min(height - 1, Math.floor(y + rectHeight));
+
+        const packedColor = (255 << 24) | (b << 16) | (g << 8) | r;
+
+        for (let py = minY; py <= maxY; py++) {
+            const rowStart = py * width;
+            for (let px = minX; px <= maxX; px++) {
+                buffer[rowStart + px] = packedColor;
+            }
+        }
+    }
+
+    /**
+     * Detect edges using Sobel operator
+     * Returns a new buffer with edge-detected image
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} threshold - Edge detection threshold (0-255)
+     * @returns {Uint8Array} - Edge map (0 = no edge, 255 = edge)
+     */
+    detectEdges(buffer, width, height, threshold = 50) {
+        const edgeMap = new Uint8Array(width * height);
+        
+        // Sobel kernels
+        const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+        const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                let gx = 0;
+                let gy = 0;
+
+                // Apply Sobel kernels
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = (y + ky) * width + (x + kx);
+                        const pixel = buffer[idx];
+                        
+                        // Convert to grayscale (average of RGB)
+                        const gray = ((pixel & 0xFF) + ((pixel >> 8) & 0xFF) + ((pixel >> 16) & 0xFF)) / 3;
+                        
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                        gx += gray * sobelX[kernelIdx];
+                        gy += gray * sobelY[kernelIdx];
+                    }
+                }
+
+                // Calculate gradient magnitude
+                const magnitude = Math.sqrt(gx * gx + gy * gy);
+                
+                const outputIdx = y * width + x;
+                edgeMap[outputIdx] = magnitude > threshold ? 255 : 0;
+            }
+        }
+
+        return edgeMap;
+    }
+
+    /**
+     * Apply a convolution kernel to the buffer
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {Array} kernel - 3x3 kernel (9 values)
+     * @param {number} divisor - Kernel divisor (sum of kernel values or custom)
+     * @returns {Uint32Array} - New buffer with effect applied
+     */
+    applyKernel(buffer, width, height, kernel, divisor = null) {
+        if (kernel.length !== 9) {
+            console.error("Kernel must be 3x3 (9 values)");
+            return buffer;
+        }
+
+        if (divisor === null) {
+            divisor = kernel.reduce((sum, val) => sum + val, 0);
+            if (divisor === 0) divisor = 1;
+        }
+
+        const output = new Uint32Array(width * height);
+
+        for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+                let r = 0, g = 0, b = 0;
+
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
+                        const idx = (y + ky) * width + (x + kx);
+                        const pixel = buffer[idx];
+                        
+                        const kernelIdx = (ky + 1) * 3 + (kx + 1);
+                        const weight = kernel[kernelIdx];
+
+                        r += (pixel & 0xFF) * weight;
+                        g += ((pixel >> 8) & 0xFF) * weight;
+                        b += ((pixel >> 16) & 0xFF) * weight;
+                    }
+                }
+
+                r = Math.max(0, Math.min(255, Math.round(r / divisor)));
+                g = Math.max(0, Math.min(255, Math.round(g / divisor)));
+                b = Math.max(0, Math.min(255, Math.round(b / divisor)));
+
+                const outputIdx = y * width + x;
+                output[outputIdx] = (255 << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+
+        // Copy edges from original
+        for (let x = 0; x < width; x++) {
+            output[x] = buffer[x]; // Top edge
+            output[(height - 1) * width + x] = buffer[(height - 1) * width + x]; // Bottom edge
+        }
+        for (let y = 0; y < height; y++) {
+            output[y * width] = buffer[y * width]; // Left edge
+            output[y * width + (width - 1)] = buffer[y * width + (width - 1)]; // Right edge
+        }
+
+        return output;
+    }
+
+    /**
+     * Apply a box blur
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} radius - Blur radius
+     * @returns {Uint32Array} - Blurred buffer
+     */
+    applyBoxBlur(buffer, width, height, radius = 1) {
+        const kernel = new Array(9).fill(1);
+        return this.applyKernel(buffer, width, height, kernel, 9);
+    }
+
+    /**
+     * Apply a Gaussian blur (approximate)
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @returns {Uint32Array} - Blurred buffer
+     */
+    applyGaussianBlur(buffer, width, height) {
+        const kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1];
+        return this.applyKernel(buffer, width, height, kernel, 16);
+    }
+
+    /**
+     * Apply a sharpen filter
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @returns {Uint32Array} - Sharpened buffer
+     */
+    applySharpen(buffer, width, height) {
+        const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+        return this.applyKernel(buffer, width, height, kernel, 1);
+    }
+
+    /**
+     * Apply brightness adjustment
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} amount - Brightness amount (-255 to 255)
+     */
+    adjustBrightness(buffer, width, height, amount) {
+        for (let i = 0; i < buffer.length; i++) {
+            const pixel = buffer[i];
+            let r = (pixel & 0xFF) + amount;
+            let g = ((pixel >> 8) & 0xFF) + amount;
+            let b = ((pixel >> 16) & 0xFF) + amount;
+
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            buffer[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+        }
+    }
+
+    /**
+     * Apply contrast adjustment
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} amount - Contrast amount (0.5 = less contrast, 2 = more contrast)
+     */
+    adjustContrast(buffer, width, height, amount) {
+        const factor = (259 * (amount + 255)) / (255 * (259 - amount));
+
+        for (let i = 0; i < buffer.length; i++) {
+            const pixel = buffer[i];
+            let r = ((pixel & 0xFF) - 128) * factor + 128;
+            let g = (((pixel >> 8) & 0xFF) - 128) * factor + 128;
+            let b = (((pixel >> 16) & 0xFF) - 128) * factor + 128;
+
+            r = Math.max(0, Math.min(255, r));
+            g = Math.max(0, Math.min(255, g));
+            b = Math.max(0, Math.min(255, b));
+
+            buffer[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+        }
+    }
+
+    /**
+     * Apply saturation adjustment
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} amount - Saturation amount (0 = grayscale, 1 = normal, 2 = double)
+     */
+    adjustSaturation(buffer, width, height, amount) {
+        for (let i = 0; i < buffer.length; i++) {
+            const pixel = buffer[i];
+            const r = pixel & 0xFF;
+            const g = (pixel >> 8) & 0xFF;
+            const b = (pixel >> 16) & 0xFF;
+
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+
+            const newR = Math.max(0, Math.min(255, gray + (r - gray) * amount));
+            const newG = Math.max(0, Math.min(255, gray + (g - gray) * amount));
+            const newB = Math.max(0, Math.min(255, gray + (b - gray) * amount));
+
+            buffer[i] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+        }
+    }
+
+    /**
+     * Convert buffer to grayscale
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     */
+    toGrayscale(buffer, width, height) {
+        for (let i = 0; i < buffer.length; i++) {
+            const pixel = buffer[i];
+            const r = pixel & 0xFF;
+            const g = (pixel >> 8) & 0xFF;
+            const b = (pixel >> 16) & 0xFF;
+
+            const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+
+            buffer[i] = (255 << 24) | (gray << 16) | (gray << 8) | gray;
+        }
+    }
+
+    /**
+     * Apply vignette effect
+     * @param {Uint32Array} buffer - 32-bit pixel buffer
+     * @param {number} width - Buffer width
+     * @param {number} height - Buffer height
+     * @param {number} intensity - Vignette intensity (0-1)
+     */
+    applyVignette(buffer, width, height, intensity = 0.5) {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const vignette = 1 - (distance / maxDist) * intensity;
+
+                const idx = y * width + x;
+                const pixel = buffer[idx];
+                let r = (pixel & 0xFF) * vignette;
+                let g = ((pixel >> 8) & 0xFF) * vignette;
+                let b = ((pixel >> 16) & 0xFF) * vignette;
+
+                r = Math.max(0, Math.min(255, r));
+                g = Math.max(0, Math.min(255, g));
+                b = Math.max(0, Math.min(255, b));
+
+                buffer[idx] = (255 << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
     }
 
     /**
@@ -1141,7 +1801,7 @@ class Camera3DRasterizer extends Module {
             return null;
         }
 
-        // Normalize light direction (pointing FROM the sun TO the scene)
+        // Normalize light direction (pointing FROM scene TO sun)
         const lightDir = this._lightDirection;
         const len = Math.sqrt(lightDir.x ** 2 + lightDir.y ** 2 + lightDir.z ** 2);
         const normalizedLight = {
@@ -1157,7 +1817,7 @@ class Camera3DRasterizer extends Module {
             z: -normalizedLight.z
         };
 
-        // Check if sun is above horizon (z component positive means above)
+        // Check if sun is above horizon (Z component positive means above in world space)
         if (sunDir.z <= 0) {
             return null; // Sun is below horizon
         }
@@ -1166,37 +1826,42 @@ class Camera3DRasterizer extends Module {
         const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
             this.gameObject.getWorldRotation() : 0;
         const yaw = (parentAngleDeg + (this._rotation.z || 0)) * (Math.PI / 180);
-        const pitch = -(this._rotation.y || 0) * (Math.PI / 180);
+        const pitch = (this._rotation.y || 0) * (Math.PI / 180);
+        const roll = (this._rotation.x || 0) * (Math.PI / 180);
 
-        // Apply yaw rotation to sun direction
-        let rotatedSunDir = { ...sunDir };
-        const temp = { ...rotatedSunDir };
-        rotatedSunDir.x = temp.x * Math.cos(-yaw) - temp.y * Math.sin(-yaw);
-        rotatedSunDir.y = temp.x * Math.sin(-yaw) + temp.y * Math.cos(-yaw);
-        // Z remains unchanged by yaw
+        // Apply camera rotations to sun direction (same order as camera space transform)
+        // First yaw (Z rotation)
+        const cosYaw = Math.cos(-yaw);
+        const sinYaw = Math.sin(-yaw);
+        let rotatedX = sunDir.x * cosYaw - sunDir.y * sinYaw;
+        let rotatedY = sunDir.x * sinYaw + sunDir.y * cosYaw;
+        let rotatedZ = sunDir.z;
 
-        // Check if sun is behind camera (based on X in camera space)
-        if (rotatedSunDir.x <= 0) {
-            return null;
+        // Then pitch (Y rotation)
+        const cosPitch = Math.cos(-pitch);
+        const sinPitch = Math.sin(-pitch);
+        const finalX = rotatedX * cosPitch + rotatedZ * sinPitch;
+        const finalY = rotatedY;
+        const finalZ = -rotatedX * sinPitch + rotatedZ * cosPitch;
+
+        // Check if sun is behind camera after rotation
+        if (finalX <= 0) {
+            return null; // Sun is behind camera
         }
 
-        // Project to screen space
+        // Project to screen space using perspective projection
         const aspect = this.viewportWidth / this.viewportHeight;
         const fovRadians = this._fieldOfView * (Math.PI / 180);
         const f = 1.0 / Math.tan(fovRadians * 0.5);
 
-        // Project sun direction as if it were at infinite distance
-        // This creates proper perspective projection
-        const ndcX = (rotatedSunDir.y / rotatedSunDir.x) * (f / aspect);
-        const ndcY = (rotatedSunDir.z / rotatedSunDir.x) * f;
-
-        // Apply pitch offset to NDC Y (affects vertical position based on camera pitch)
-        const pitchOffset = Math.tan(pitch) * f;
-        const adjustedNdcY = ndcY - pitchOffset;
+        // Perspective divide - treat as if sun is at a fixed large distance
+        const sunDistance = 1000.0; // Large but not infinite for stability
+        const ndcX = (finalY / sunDistance) * (f / aspect) / (finalX / sunDistance);
+        const ndcY = (finalZ / sunDistance) * f / (finalX / sunDistance);
 
         // Convert NDC to screen space
         const screenX = (ndcX * 0.5 + 0.5) * this.viewportWidth;
-        const screenY = (0.5 - adjustedNdcY * 0.5) * this.viewportHeight;
+        const screenY = (0.5 - ndcY * 0.5) * this.viewportHeight;
 
         return new Vector2(screenX, screenY);
     }
@@ -1546,93 +2211,64 @@ class Camera3DRasterizer extends Module {
         // Update cloud animation
         this._cloudTime += 0.016 * this._cloudSpeed;
 
-        // Calculate cloud layer bounds relative to UNCLAMPED horizon
-        // This allows clouds to render even when horizon is outside viewport
-        const cloudStartY = Math.floor(horizonY * this._cloudHeight);
-        const cloudEndY = Math.max(0, cloudStartY - Math.floor(Math.abs(horizonY) * this._cloudThickness));
+        // Cloud layer positioned relative to moving horizon
+        const cloudLayerHeight = h * this._cloudThickness;
+        const cloudTopOffset = horizonY - (h * this._cloudHeight);
+        const cloudStartY = cloudTopOffset;
+        const cloudEndY = cloudStartY - cloudLayerHeight;
 
-        // If cloud layer is completely outside viewport, skip
-        if (cloudStartY < 0 || cloudEndY >= h) return;
-
-        // Clamp rendering to viewport bounds
-        const renderStartY = Math.max(0, cloudEndY);
-        const renderEndY = Math.min(h, cloudStartY);
+        const renderStartY = Math.max(0, Math.floor(cloudEndY));
+        const renderEndY = Math.min(h, Math.ceil(cloudStartY));
 
         if (renderStartY >= renderEndY) return;
 
-        // Calculate step size based on resolution setting
         const pixelStep = Math.max(1, Math.round(1 / this._cloudResolution));
 
-        // Get camera yaw (rotation around Z axis) to rotate clouds with camera
         const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
             this.gameObject.getWorldRotation() : 0;
         const yaw = -(parentAngleDeg + (this._rotation.z || 0)) * (Math.PI / 180);
 
-        // Get camera pitch (rotation around Y axis) for vertical offset
-        const pitch = (this._rotation.y || 0) * (Math.PI / 180);
-
-        // Calculate FOV factors for proper perspective
         const fovRadians = this._fieldOfView * (Math.PI / 180);
         const fovFactor = Math.tan(fovRadians / 2);
 
-        // Render clouds scanline by scanline with adaptive resolution
         for (let y = renderStartY; y < renderEndY; y += pixelStep) {
-            // Calculate vertical position (0=horizon, 1=top of cloud layer)
-            // Use FULL cloud layer extent for proper interpolation
-            const verticalPos = (cloudStartY - y) / (cloudStartY - cloudEndY);
+            if (y < 0 || y >= h) continue;
 
-            // Apply perspective depth (clouds closer to horizon are "further away")
-            const depthFactor = 1.0 - verticalPos; // 0 at top, 1 at horizon
-            const perspectiveScale = 1.0 + depthFactor * 2.0; // Clouds stretch near horizon
+            const verticalPos = (cloudStartY - y) / cloudLayerHeight;
+            if (verticalPos < 0 || verticalPos > 1) continue;
 
-            // Calculate atmospheric fade (clouds fade at edges of layer)
-            const layerFade = Math.sin(verticalPos * Math.PI); // Peaks at middle of layer
+            const depthFactor = 1.0 - verticalPos;
+            const perspectiveScale = 1.0 + depthFactor * 2.0;
+            const layerFade = Math.sin(verticalPos * Math.PI);
 
             for (let x = 0; x < w; x += pixelStep) {
-                // Calculate normalized screen position (-1 to 1)
                 const screenX = (x / w - 0.5) * 2.0;
-                const screenY = (y / h - 0.5) * 2.0;
+                const viewDirX = screenX * fovFactor * (w / h);
 
-                // Convert screen space to view direction (accounting for FOV)
-                const viewDirX = screenX * fovFactor * (w / h); // Horizontal direction
-                const viewDirY = screenY * fovFactor; // Vertical direction
-
-                // Apply camera yaw rotation to horizontal direction
-                const rotatedX = Math.cos(yaw) * viewDirX - Math.sin(yaw) * 1.0; // 1.0 is "forward"
+                const rotatedX = Math.cos(yaw) * viewDirX - Math.sin(yaw) * 1.0;
                 const rotatedY = Math.sin(yaw) * viewDirX + Math.cos(yaw) * 1.0;
 
-                // Apply pitch offset to vertical sampling
-                const pitchAdjustedY = viewDirY - Math.tan(pitch);
-
-                // Calculate noise sampling coordinates with perspective and time offset
-                // Use rotated horizontal direction for proper camera rotation
                 const noiseX = (rotatedX * perspectiveScale + this._cloudTime * 0.1) / (this._cloudScale * 0.01);
                 const noiseY = (rotatedY * perspectiveScale + this._cloudTime * 0.05) / (this._cloudScale * 0.01);
 
-                // Sample multi-octave noise for detailed clouds
                 const cloudNoise = this.generateCloudFBM(noiseX, noiseY, 3);
 
-                // Apply density threshold to create cloud shapes
                 let cloudAlpha = (cloudNoise - (1.0 - this._cloudDensity)) / this._cloudDensity;
                 cloudAlpha = Math.max(0, Math.min(1, cloudAlpha));
 
-                // Apply softness (feathered edges)
                 if (this._cloudSoftness > 0) {
                     cloudAlpha = Math.pow(cloudAlpha, 1.0 + this._cloudSoftness * 2);
                 }
 
-                // Apply atmospheric fade
                 cloudAlpha *= layerFade;
 
                 if (cloudAlpha > 0.01) {
-                    // Cloud color (bright white with slight blue tint, affected by light color)
                     const lightRgb = this.hexToRgb(this._lightColor);
                     const cloudR = Math.round(255 * this._cloudBrightness * (lightRgb.r / 255));
                     const cloudG = Math.round(255 * this._cloudBrightness * (lightRgb.g / 255));
                     const cloudB = Math.round(255 * this._cloudBrightness * (lightRgb.b / 255));
 
-                    // Fill block of pixels for lower resolutions
-                    for (let py = 0; py < pixelStep && y + py < renderEndY; py++) {
+                    for (let py = 0; py < pixelStep && y + py < h; py++) {
                         const rowStart = (y + py) * w;
                         for (let px = 0; px < pixelStep && x + px < w; px++) {
                             const pixelIdx = rowStart + (x + px);
@@ -1642,7 +2278,6 @@ class Camera3DRasterizer extends Module {
                             const existingG = (existing >> 8) & 0xFF;
                             const existingB = (existing >> 16) & 0xFF;
 
-                            // Alpha blend clouds over sky
                             const newR = Math.round(existingR * (1 - cloudAlpha) + cloudR * cloudAlpha);
                             const newG = Math.round(existingG * (1 - cloudAlpha) + cloudG * cloudAlpha);
                             const newB = Math.round(existingB * (1 - cloudAlpha) + cloudB * cloudAlpha);
@@ -1656,6 +2291,416 @@ class Camera3DRasterizer extends Module {
     }
 
     /**
+ * Seeded random number generator for consistent hill generation
+ * @param {number} seed - Seed value
+ * @returns {Function} - Random function
+ */
+    createSeededRandom(seed) {
+        return function () {
+            seed = (seed * 9301 + 49297) % 233280;
+            return seed / 233280;
+        };
+    }
+
+    /**
+     * Generate hills profile for the entire 360-degree panorama
+     * Uses seed-based generation for consistency
+     * @returns {Array} - Array of height values (0-1) for each angle
+     */
+    generateHillsProfile() {
+        const random = this.createSeededRandom(this._hillsSeed);
+        const profile = [];
+        const resolution = 360; // One height value per degree
+
+        // Generate base octave heights using Perlin-like noise
+        const octaves = 4;
+        const heights = new Array(resolution).fill(0);
+
+        for (let octave = 0; octave < octaves; octave++) {
+            const frequency = Math.pow(2, octave) * this._hillsFrequency;
+            const amplitude = Math.pow(0.5, octave);
+
+            // Generate control points for this octave
+            const numPoints = Math.max(4, Math.floor(resolution / (20 / frequency)));
+            const controlPoints = [];
+
+            for (let i = 0; i < numPoints; i++) {
+                controlPoints.push({
+                    angle: (i / numPoints) * 360,
+                    height: random()
+                });
+            }
+
+            // Interpolate between control points
+            for (let angle = 0; angle < resolution; angle++) {
+                const t = (angle / resolution) * numPoints;
+                const idx0 = Math.floor(t) % numPoints;
+                const idx1 = (idx0 + 1) % numPoints;
+                const localT = t - Math.floor(t);
+
+                // Cubic interpolation for smoothness
+                const smoothT = localT * localT * (3 - 2 * localT);
+
+                const h0 = controlPoints[idx0].height;
+                const h1 = controlPoints[idx1].height;
+                const interpolated = h0 + (h1 - h0) * smoothT;
+
+                heights[angle] += interpolated * amplitude;
+            }
+        }
+
+        // Normalize and apply roughness
+        for (let angle = 0; angle < resolution; angle++) {
+            let height = heights[angle];
+
+            // Apply roughness (adds detail/jaggedness)
+            if (this._hillsRoughness > 0) {
+                const detailNoise = (random() - 0.5) * this._hillsRoughness * 0.2;
+                height += detailNoise;
+            }
+
+            // Clamp and scale to min/max range
+            height = Math.max(0, Math.min(1, height));
+            height = this._hillsMinHeight + height * (this._hillsMaxHeight - this._hillsMinHeight);
+
+            profile.push(height);
+        }
+
+        return profile;
+    }
+
+    /**
+     * Get hills height at a specific angle (with caching)
+     * @param {number} angle - Angle in degrees (0-360)
+     * @returns {number} - Height (0-1)
+     */
+    getHillsHeightAtAngle(angle) {
+        if (!this._hillsCache) {
+            this._hillsCache = this.generateHillsProfile();
+        }
+
+        // Normalize angle to 0-360
+        angle = ((angle % 360) + 360) % 360;
+
+        // Get integer angle and interpolate for sub-degree precision
+        const idx0 = Math.floor(angle) % 360;
+        const idx1 = (idx0 + 1) % 360;
+        const t = angle - Math.floor(angle);
+
+        return this._hillsCache[idx0] + (this._hillsCache[idx1] - this._hillsCache[idx0]) * t;
+    }
+
+    /**
+     * Render hills/mountains on the skybox
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} horizonY - Horizon line Y position
+     */
+    renderHills(buffer32, w, h, horizonY) {
+        if (!this._hillsEnabled) return;
+
+        const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
+            this.gameObject.getWorldRotation() : 0;
+        const yaw = (parentAngleDeg + (this._rotation.z || 0));
+
+        const baseColor = this.hexToRgb(this._hillsBaseColor);
+        const topColor = this.hexToRgb(this._hillsTopColor);
+        const fogColor = this._fogEnabled ? this.hexToRgb(this._fogColor) : null;
+
+        // Calculate FOV-based angle per pixel
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const fovDegrees = this._fieldOfView;
+        const aspect = w / h;
+        const horizontalFOV = 2 * Math.atan(Math.tan(fovRadians / 2) * aspect) * (180 / Math.PI);
+        const degreesPerPixel = horizontalFOV / w;
+
+        for (let x = 0; x < w; x++) {
+            // Calculate view angle relative to camera center, accounting for FOV
+            const pixelOffsetFromCenter = x - (w / 2);
+            const viewAngle = pixelOffsetFromCenter * degreesPerPixel;
+            const worldAngle = yaw + viewAngle;
+
+            const hillHeight = this.getHillsHeightAtAngle(worldAngle);
+            const hillPixelHeight = h * hillHeight;
+
+            // Hills always end at horizon
+            const hillTopY = horizonY - hillPixelHeight;
+            const hillBottomY = horizonY;
+
+            const distanceFactor = Math.abs((x - w / 2) / (w / 2)); // 0 at center, 1 at edges
+
+            // Calculate total height for gradient
+            const totalHeight = hillBottomY - hillTopY;
+            if (totalHeight <= 0) continue;
+
+            // Render ONLY visible pixels
+            const renderStartY = Math.max(0, Math.floor(hillTopY));
+            const renderEndY = Math.min(h, Math.ceil(hillBottomY));
+
+            if (renderStartY >= h || renderEndY <= 0) continue;
+
+            for (let y = renderStartY; y < renderEndY; y++) {
+                // Calculate gradient position
+                const heightGradient = (y - hillTopY) / totalHeight;
+
+                // Interpolate between top and base color
+                let r = Math.round(topColor.r + (baseColor.r - topColor.r) * heightGradient);
+                let g = Math.round(topColor.g + (baseColor.g - topColor.g) * heightGradient);
+                let b = Math.round(topColor.b + (baseColor.b - topColor.b) * heightGradient);
+
+                // Apply fog color blending if enabled
+                if (this._hillsUseFogColor && fogColor) {
+                    const fogBlend = this._hillsFogBlend * distanceFactor;
+                    r = Math.round(r * (1 - fogBlend) + fogColor.r * fogBlend);
+                    g = Math.round(g * (1 - fogBlend) + fogColor.g * fogBlend);
+                    b = Math.round(b * (1 - fogBlend) + fogColor.b * fogBlend);
+                }
+
+                const pixelIdx = y * w + x;
+                buffer32[pixelIdx] = (255 << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+    }
+
+    /**
+     * Render water reflections of hills and sun
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} horizonY - Horizon line Y position
+     * @param {Vector2} sunPos - Sun position in screen space (optional)
+     */
+    renderWaterReflections(buffer32, w, h, horizonY, sunPos = null) {
+        if (!this._waterEnabled || !this._waterReflectionEnabled) return;
+
+        // Render sun reflection first if sun is visible
+        if (sunPos && this._showSun) {
+            this.renderSunReflection(buffer32, w, h, horizonY, sunPos);
+        }
+
+        // Then render hills reflection
+        if (this._hillsEnabled) {
+            this.renderHillsReflection(buffer32, w, h, horizonY);
+        }
+    }
+
+    /**
+     * Render sun reflection in water
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} horizonY - Horizon line Y position
+     * @param {Vector2} sunPos - Sun position in screen space
+     */
+    renderSunReflection(buffer32, w, h, horizonY, sunPos) {
+        // Calculate reflected sun position relative to horizon
+        // The reflection should stay at horizon regardless of camera pitch
+        const sunDistanceFromHorizon = horizonY - sunPos.y;
+
+        // Only reflect if sun is above horizon
+        if (sunDistanceFromHorizon < 0) return;
+
+        // Reflection position is mirrored across horizon line
+        // Use reduced distance for artistic effect
+        const reflectionDistance = sunDistanceFromHorizon * 0.5;
+        const reflectedSunY = horizonY + reflectionDistance;
+
+        // Only render if reflection is visible in water area
+        if (reflectedSunY < horizonY || reflectedSunY >= h) return;
+
+        const centerX = Math.round(sunPos.x);
+        const centerY = Math.round(reflectedSunY);
+
+        // Parse light color for sun reflection
+        const sunColor = this.hexToRgb(this._lightColor);
+
+        // Sun reflection properties (slightly different from direct sun)
+        const reflectionOpacity = this._waterReflectionOpacity * 0.8; // Slightly dimmer
+        const coreRadius = this._sunSize * 0.7; // Smaller core
+        const glowRadius = this._sunGlowSize * 0.5; // Less glow
+
+        // Calculate distance from horizon for fade effect
+        const distanceFromHorizon = centerY - horizonY;
+        const maxDistance = h - horizonY;
+        const distanceFade = 1.0 - Math.min(1.0, distanceFromHorizon / maxDistance);
+
+        // Draw glow first (outer to inner for proper alpha blending)
+        const minGlowX = Math.max(0, centerX - glowRadius);
+        const maxGlowX = Math.min(w - 1, centerX + glowRadius);
+        const minGlowY = Math.max(Math.ceil(horizonY), centerY - glowRadius);
+        const maxGlowY = Math.min(h - 1, centerY + glowRadius);
+
+        for (let y = minGlowY; y <= maxGlowY; y++) {
+            // Apply wave distortion to Y coordinate
+            const waveOffset = Math.sin((y / h) * Math.PI * 4 + this._waterTime) *
+                this._waterReflectionDistortion * h * 0.5;
+
+            for (let x = minGlowX; x <= maxGlowX; x++) {
+                // Apply wave distortion to X coordinate
+                const xWaveOffset = Math.sin((x / w) * Math.PI * 8 + this._waterTime * 1.3) *
+                    this._waterReflectionDistortion * w * 0.3;
+
+                const distortedX = x + xWaveOffset;
+                const distortedY = y + waveOffset;
+
+                const dx = distortedX - centerX;
+                const dy = distortedY - centerY;
+                const distSq = dx * dx + dy * dy;
+                const glowRadiusSq = glowRadius * glowRadius;
+
+                if (distSq <= glowRadiusSq) {
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1.0 - (distance / glowRadius);
+                    const alpha = falloff * falloff * 0.2 * reflectionOpacity * distanceFade;
+
+                    if (alpha > 0.01) {
+                        const pixelIdx = y * w + x;
+                        const existing = buffer32[pixelIdx];
+
+                        const existingR = existing & 0xFF;
+                        const existingG = (existing >> 8) & 0xFF;
+                        const existingB = (existing >> 16) & 0xFF;
+
+                        const newR = Math.min(255, Math.round(existingR + sunColor.r * alpha));
+                        const newG = Math.min(255, Math.round(existingG + sunColor.g * alpha));
+                        const newB = Math.min(255, Math.round(existingB + sunColor.b * alpha));
+
+                        buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                    }
+                }
+            }
+        }
+
+        // Draw sun core (bright center)
+        const minCoreX = Math.max(0, centerX - coreRadius);
+        const maxCoreX = Math.min(w - 1, centerX + coreRadius);
+        const minCoreY = Math.max(Math.ceil(horizonY), centerY - coreRadius);
+        const maxCoreY = Math.min(h - 1, centerY + coreRadius);
+
+        for (let y = minCoreY; y <= maxCoreY; y++) {
+            // Apply wave distortion
+            const waveOffset = Math.sin((y / h) * Math.PI * 4 + this._waterTime) *
+                this._waterReflectionDistortion * h * 0.5;
+
+            for (let x = minCoreX; x <= maxCoreX; x++) {
+                const xWaveOffset = Math.sin((x / w) * Math.PI * 8 + this._waterTime * 1.3) *
+                    this._waterReflectionDistortion * w * 0.3;
+
+                const distortedX = x + xWaveOffset;
+                const distortedY = y + waveOffset;
+
+                const dx = distortedX - centerX;
+                const dy = distortedY - centerY;
+                const distSq = dx * dx + dy * dy;
+                const coreRadiusSq = coreRadius * coreRadius;
+
+                if (distSq <= coreRadiusSq) {
+                    const distance = Math.sqrt(distSq);
+                    const falloff = 1.0 - (distance / coreRadius);
+                    const smoothFalloff = falloff * falloff * (3 - 2 * falloff);
+                    const intensity = 0.5 + smoothFalloff * 0.3;
+
+                    const pixelIdx = y * w + x;
+                    const existing = buffer32[pixelIdx];
+
+                    const existingR = existing & 0xFF;
+                    const existingG = (existing >> 8) & 0xFF;
+                    const existingB = (existing >> 16) & 0xFF;
+
+                    const alpha = intensity * reflectionOpacity * distanceFade;
+                    const newR = Math.min(255, Math.round(existingR * (1 - alpha) + 255 * alpha));
+                    const newG = Math.min(255, Math.round(existingG * (1 - alpha) + 255 * alpha));
+                    const newB = Math.min(255, Math.round(existingB * (1 - alpha) + 255 * alpha));
+
+                    buffer32[pixelIdx] = (255 << 24) | (newB << 16) | (newG << 8) | newR;
+                }
+            }
+        }
+    }
+
+    /**
+     * Render hills reflection in water (extracted from renderWaterReflections)
+     * @param {Uint32Array} buffer32 - 32-bit pixel buffer
+     * @param {number} w - Width
+     * @param {number} h - Height
+     * @param {number} horizonY - Horizon line Y position
+     */
+    renderHillsReflection(buffer32, w, h, horizonY) {
+        const parentAngleDeg = (this.gameObject && this.gameObject.getWorldRotation) ?
+            this.gameObject.getWorldRotation() : 0;
+        const yaw = (parentAngleDeg + (this._rotation.z || 0));
+
+        const baseColor = this.hexToRgb(this._hillsBaseColor);
+        const topColor = this.hexToRgb(this._hillsTopColor);
+
+        // Calculate FOV-based angle per pixel (same as renderHills)
+        const fovRadians = this._fieldOfView * (Math.PI / 180);
+        const aspect = w / h;
+        const horizontalFOV = 2 * Math.atan(Math.tan(fovRadians / 2) * aspect) * (180 / Math.PI);
+        const degreesPerPixel = horizontalFOV / w;
+
+        for (let x = 0; x < w; x++) {
+            const pixelOffsetFromCenter = x - (w / 2);
+            const viewAngle = pixelOffsetFromCenter * degreesPerPixel;
+            const worldAngle = yaw + viewAngle;
+
+            const hillHeight = this.getHillsHeightAtAngle(worldAngle);
+            const hillPixelHeight = h * hillHeight;
+            const hillTopY = horizonY - hillPixelHeight;
+            const hillBottomY = horizonY;
+
+            if (hillPixelHeight <= 0) continue;
+
+            const distanceFactor = Math.abs((x - w / 2) / (w / 2));
+
+            const reflectionStartY = Math.ceil(horizonY);
+            const reflectionEndY = Math.ceil(horizonY + hillPixelHeight);
+
+            const renderStartY = Math.max(0, reflectionStartY);
+            const renderEndY = Math.min(h, reflectionEndY);
+
+            if (renderStartY >= renderEndY) continue;
+
+            for (let y = renderStartY; y < renderEndY; y++) {
+                const offsetFromHorizon = y - horizonY;
+
+                const waveOffset = Math.sin((x / w) * Math.PI * 4 + this._waterTime) *
+                    this._waterReflectionDistortion * h;
+
+                const sourceY = horizonY - offsetFromHorizon + waveOffset;
+
+                const totalHeight = hillBottomY - hillTopY;
+                if (totalHeight <= 0) continue;
+
+                const positionInHill = sourceY - hillTopY;
+                const clampedPositionInHill = Math.max(0, Math.min(totalHeight, positionInHill));
+                const heightGradient = clampedPositionInHill / totalHeight;
+
+                let r = Math.round(topColor.r + (baseColor.r - topColor.r) * heightGradient);
+                let g = Math.round(topColor.g + (baseColor.g - topColor.g) * heightGradient);
+                let b = Math.round(topColor.b + (baseColor.b - topColor.b) * heightGradient);
+
+                const pixelIdx = y * w + x;
+                const existing = buffer32[pixelIdx];
+                const existingR = existing & 0xFF;
+                const existingG = (existing >> 8) & 0xFF;
+                const existingB = (existing >> 16) & 0xFF;
+
+                const reflectionProgress = (y - reflectionStartY) / (reflectionEndY - reflectionStartY);
+                const reflectionFade = 1.0 - reflectionProgress;
+                const opacity = this._waterReflectionOpacity * reflectionFade * (1 - distanceFactor * 0.5);
+
+                r = Math.round(existingR * (1 - opacity) + r * opacity);
+                g = Math.round(existingG * (1 - opacity) + g * opacity);
+                b = Math.round(existingB * (1 - opacity) + b * opacity);
+
+                buffer32[pixelIdx] = (255 << 24) | (b << 16) | (g << 8) | r;
+            }
+        }
+    }
+
+    /**
      * Fast background clearing using 32-bit writes
      */
     clearBackgroundFast(buffer32, w, h) {
@@ -1664,23 +2709,60 @@ class Camera3DRasterizer extends Module {
             const bgPixel = (255 << 24) | (bgColor.b << 16) | (bgColor.g << 8) | bgColor.r;
             buffer32.fill(bgPixel);
         } else if (this._backgroundType === "skybox") {
+            // Calculate horizon position based on camera pitch
             const fovRadians = this._fieldOfView * (Math.PI / 180);
             const pitchRadians = (this._rotation.y || 0) * (Math.PI / 180);
-            const maxPitch = fovRadians / 2;
-            const normalizedPitch = -Math.max(-1, Math.min(1, pitchRadians / maxPitch));
-            const horizonOffset = normalizedPitch * 0.5;
-            const horizonRatio = 0.5 + horizonOffset;
-            // Remove clamping to allow horizon to move outside viewport bounds
-            const horizonY = Math.floor(h * horizonRatio);
 
-            // Draw sky gradient (may extend beyond top of viewport)
-            const skyStartY = Math.max(0, 0); // Always start from top
-            const skyEndY = Math.min(h, horizonY); // End at horizon or bottom of viewport
+            // Calculate how pitch affects horizon position (reduced intensity)
+            // Horizon moves up when looking down (negative pitch), down when looking up (positive pitch)
+            const fovHalfRadians = fovRadians / 2;
+            const pitchFactor = (-pitchRadians / fovHalfRadians) * 0.6; // Reduced from 1.0 to 0.6
+            const horizonY = (h * 0.5) + (h * pitchFactor);
 
-            for (let y = skyStartY; y < skyEndY; y++) {
-                // Calculate t based on full sky extent, not just visible portion
-                const t = horizonY > 0 ? y / horizonY : 0;
-                const color = this.interpolateColor(this._skyColor, this._skyColorHorizon, t);
+            // Large gradient heights to cover entire screen regardless of horizon position
+            const skyGradientHeight = h * 2.0;
+            const floorGradientHeight = h * 2.0;
+
+            // Sky gradient - extends upward from horizon
+            const skyStartY = horizonY - skyGradientHeight;
+            const skyEndY = horizonY;
+
+            // Floor gradient - extends downward from horizon
+            const floorStartY = horizonY;
+            const floorEndY = horizonY + floorGradientHeight;
+
+            // Render all visible pixels
+            for (let y = 0; y < h; y++) {
+                let color;
+
+                if (y < horizonY) {
+                    // Sky region
+                    const gradientPos = Math.max(0, Math.min(1, (y - skyStartY) / (skyEndY - skyStartY)));
+                    color = this.interpolateColor(this._skyColor, this._skyColorHorizon, gradientPos);
+                } else {
+                    // Floor region
+                    const gradientPos = Math.max(0, Math.min(1, (y - floorStartY) / (floorEndY - floorStartY)));
+
+                    if (this._waterEnabled) {
+                        // Animated water
+                        const yOffset = y - horizonY;
+                        const primaryWave = (yOffset / this._waterWaveHeight) + this._waterTime;
+                        const secondaryWave = (yOffset / (this._waterWaveHeight * 2.3)) + this._waterTime * 0.7;
+                        const tertiaryWave = (yOffset / (this._waterWaveHeight * 4.1)) + this._waterTime * 1.3;
+
+                        const baseWaveOffset = (
+                            Math.sin(primaryWave) * 0.035 +
+                            Math.sin(secondaryWave) * 0.020 +
+                            Math.sin(tertiaryWave) * 0.015
+                        ) * gradientPos * gradientPos;
+
+                        const animatedT = Math.max(0, Math.min(1, gradientPos + baseWaveOffset));
+                        color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
+                    } else {
+                        color = this.interpolateColor(this._floorColorHorizon, this._floorColor, gradientPos);
+                    }
+                }
+
                 const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
                 const rowStart = y * w;
                 for (let x = 0; x < w; x++) {
@@ -1688,9 +2770,14 @@ class Camera3DRasterizer extends Module {
                 }
             }
 
-            // Draw sun on top of sky gradient and clouds
+            // Update water animation time
+            if (this._waterEnabled) {
+                this._waterTime += 0.016 * this._waterSpeed;
+            }
+
+            // Draw sun on top of sky gradient and hills (if visible and above horizon)
             const sunPos = this.calculateSunPosition();
-            if (sunPos) {
+            if (sunPos && sunPos.y < horizonY) { // Only draw if sun position is above horizon line
                 this.drawSun(buffer32, w, h, sunPos);
 
                 // Draw lens flare if enabled
@@ -1699,63 +2786,19 @@ class Camera3DRasterizer extends Module {
                 }
             }
 
-            if (this._cloudsEnabled) {
-                this.renderClouds(buffer32, w, h, horizonY);
+            // Draw hills if enabled (BEFORE sun/clouds/water reflections)
+            if (this._hillsEnabled) {
+                this.renderHills(buffer32, w, h, horizonY);
             }
 
-            // Draw floor gradient with optional water animation (may start above viewport)
-            const floorStartY = Math.max(0, horizonY);
-            const floorEndY = h;
+            // Draw water reflections if enabled (sun + hills) - pass sunPos
+            if (this._waterEnabled && this._waterReflectionEnabled) {
+                this.renderWaterReflections(buffer32, w, h, horizonY, sunPos);
+            }
 
-            if (this._waterEnabled) {
-                // Animate water time
-                this._waterTime += 0.016 * this._waterSpeed;
-
-                const floorHeight = floorEndY - floorStartY;
-
-                // Pre-calculate wave phases for rows (performance optimization)
-                for (let y = floorStartY; y < floorEndY; y++) {
-                    // Calculate t relative to full floor extent
-                    const baseT = horizonY < h ? (y - horizonY) / (h - horizonY) : 0;
-                    const perspectiveFactor = baseT * baseT;
-
-                    // Calculate primary wave for this row
-                    const yOffset = y - horizonY;
-                    const primaryWave = (yOffset / this._waterWaveHeight) + this._waterTime;
-                    const secondaryWave = (yOffset / (this._waterWaveHeight * 2.3)) + this._waterTime * 0.7;
-                    const tertiaryWave = (yOffset / (this._waterWaveHeight * 4.1)) + this._waterTime * 1.3;
-
-                    // Sample wave at row start for base offset
-                    const baseWaveOffset = (
-                        Math.sin(primaryWave) * 0.035 +
-                        Math.sin(secondaryWave) * 0.020 +
-                        Math.sin(tertiaryWave) * 0.015
-                    ) * perspectiveFactor;
-
-                    // Calculate animated t for this row
-                    const animatedT = Math.max(0, Math.min(1, baseT + baseWaveOffset));
-
-                    // Get color for this row
-                    const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, animatedT);
-                    const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
-
-                    // Fill entire row with this color (fast row-based approach)
-                    const rowStart = y * w;
-                    for (let x = 0; x < w; x++) {
-                        buffer32[rowStart + x] = pixel;
-                    }
-                }
-            } else {
-                // Standard floor gradient without animation
-                for (let y = floorStartY; y < floorEndY; y++) {
-                    const t = horizonY < h ? (y - horizonY) / (h - horizonY) : 0;
-                    const color = this.interpolateColor(this._floorColorHorizon, this._floorColor, t);
-                    const pixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
-                    const rowStart = y * w;
-                    for (let x = 0; x < w; x++) {
-                        buffer32[rowStart + x] = pixel;
-                    }
-                }
+            // Draw clouds if enabled (AFTER sun so clouds can partially obscure it)
+            if (this._cloudsEnabled) {
+                this.renderClouds(buffer32, w, h, horizonY);
             }
         } else if (this._backgroundType === "transparent") {
             buffer32.fill(0);
@@ -1808,6 +2851,15 @@ class Camera3DRasterizer extends Module {
             // Pre-calculate barycentric denominators
             const invArea = 1.0 / area;
 
+            // Precalculate depths at vertices
+            const d0 = tri.v0.depth;
+            const d1 = tri.v1.depth;
+            const d2 = tri.v2.depth;
+
+            // Early depth rejection if triangle is entirely behind something
+            const minDepth = Math.min(d0, d1, d2);
+
+
             // Scanline loop with texture sampling
             for (let y = minY; y <= maxY; y++) {
                 let w0 = e0_dx * (y - v0y) - e0_dy * (minX - v0x);
@@ -1822,10 +2874,34 @@ class Camera3DRasterizer extends Module {
 
                 for (let x = minX; x <= maxX; x++) {
                     if (w0 >= 0 && w1 >= 0 && w2 >= 0) {
-                        // Calculate barycentric coordinates
+                        const pixelIdx = rowOffset + x;
+
+                        // Quick depth test BEFORE barycentric interpolation
+                        if (this._zBuffer && minDepth > this._zBuffer[pixelIdx]) {
+                            w0 += w0_step;
+                            w1 += w1_step;
+                            w2 += w2_step;
+                            continue;
+                        }
+
+                        // Calculate barycentric for accurate depth
                         const lambda0 = ((v1y - v2y) * (x - v2x) + (v2x - v1x) * (y - v2y)) * invArea;
                         const lambda1 = ((v2y - v0y) * (x - v2x) + (v0x - v2x) * (y - v2y)) * invArea;
                         const lambda2 = 1.0 - lambda0 - lambda1;
+
+                        const depth = d0 * lambda0 + d1 * lambda1 + d2 * lambda2;
+
+                        // Z-buffer test
+                        if (this._zBuffer && depth >= this._zBuffer[pixelIdx]) {
+                            w0 += w0_step;
+                            w1 += w1_step;
+                            w2 += w2_step;
+                            continue;
+                        }
+
+                        if (this._zBuffer) {
+                            this._zBuffer[pixelIdx] = depth;
+                        }
 
                         // Interpolate UV coordinates
                         const u = uv0.x * lambda0 + uv1.x * lambda1 + uv2.x * lambda2;
@@ -2672,9 +3748,9 @@ class Camera3DRasterizer extends Module {
 
     uploadToWebGLTexture(gl, texture) {
         if (!this._renderTexture || !this._isActive) return false;
-        
+
         gl.bindTexture(gl.TEXTURE_2D, texture);
-        
+
         // Upload the 2D canvas as a WebGL texture
         gl.texImage2D(
             gl.TEXTURE_2D,
@@ -2684,17 +3760,17 @@ class Camera3DRasterizer extends Module {
             gl.UNSIGNED_BYTE,
             this._renderTexture
         );
-        
+
         // Set texture parameters
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,
             this._renderTextureSmoothing ? gl.LINEAR : gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, 
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER,
             this._renderTextureSmoothing ? gl.LINEAR : gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        
+
         gl.bindTexture(gl.TEXTURE_2D, null);
-        
+
         return true;
     }
 
@@ -2714,13 +3790,13 @@ class Camera3DRasterizer extends Module {
         if (!this._isActive) return null;
 
         this.render3D();
-        
+
         // If WebGL mode, upload to WebGL texture
         if (useWebGL && gl && webGLTexture) {
             this.uploadToWebGLTexture(gl, webGLTexture);
             return webGLTexture;
         }
-        
+
         return this._renderTexture;
     }
 
@@ -2861,7 +3937,20 @@ class Camera3DRasterizer extends Module {
             _cloudThickness: this._cloudThickness,
             _cloudBrightness: this._cloudBrightness,
             _cloudResolution: this._cloudResolution,
-            _emissiveIntensity: this._emissiveIntensity || 1.0
+            _emissiveIntensity: this._emissiveIntensity || 1.0,
+            _hillsEnabled: this._hillsEnabled,
+            _hillsSeed: this._hillsSeed,
+            _hillsMinHeight: this._hillsMinHeight,
+            _hillsMaxHeight: this._hillsMaxHeight,
+            _hillsFrequency: this._hillsFrequency,
+            _hillsRoughness: this._hillsRoughness,
+            _hillsBaseColor: this._hillsBaseColor,
+            _hillsTopColor: this._hillsTopColor,
+            _hillsUseFogColor: this._hillsUseFogColor,
+            _hillsFogBlend: this._hillsFogBlend,
+            _waterReflectionEnabled: this._waterReflectionEnabled,
+            _waterReflectionOpacity: this._waterReflectionOpacity,
+            _waterReflectionDistortion: this._waterReflectionDistortion
         };
     }
 
@@ -2932,6 +4021,19 @@ class Camera3DRasterizer extends Module {
         } else {
             this._emissiveIntensity = 1.0;
         }
+        if (json._hillsEnabled !== undefined) { this._hillsEnabled = json._hillsEnabled; } else { this._hillsEnabled = false; }
+        if (json._hillsSeed !== undefined) { this._hillsSeed = json._hillsSeed; } else { this._hillsSeed = 12345; }
+        if (json._hillsMinHeight !== undefined) { this._hillsMinHeight = json._hillsMinHeight; } else { this._hillsMinHeight = 0.1; }
+        if (json._hillsMaxHeight !== undefined) { this._hillsMaxHeight = json._hillsMaxHeight; } else { this._hillsMaxHeight = 0.4; }
+        if (json._hillsFrequency !== undefined) { this._hillsFrequency = json._hillsFrequency; } else { this._hillsFrequency = 0.5; }
+        if (json._hillsRoughness !== undefined) { this._hillsRoughness = json._hillsRoughness; } else { this._hillsRoughness = 0.6; }
+        if (json._hillsBaseColor !== undefined) { this._hillsBaseColor = json._hillsBaseColor; } else { this._hillsBaseColor = "#2d5016"; }
+        if (json._hillsTopColor !== undefined) { this._hillsTopColor = json._hillsTopColor; } else { this._hillsTopColor = "#8b7355"; }
+        if (json._hillsUseFogColor !== undefined) { this._hillsUseFogColor = json._hillsUseFogColor; } else { this._hillsUseFogColor = true; }
+        if (json._hillsFogBlend !== undefined) { this._hillsFogBlend = json._hillsFogBlend; } else { this._hillsFogBlend = 0.7; }
+        if (json._waterReflectionEnabled !== undefined) { this._waterReflectionEnabled = json._waterReflectionEnabled; } else { this._waterReflectionEnabled = true; }
+        if (json._waterReflectionOpacity !== undefined) { this._waterReflectionOpacity = json._waterReflectionOpacity; } else { this._waterReflectionOpacity = 0.3; }
+        if (json._waterReflectionDistortion !== undefined) { this._waterReflectionDistortion = json._waterReflectionDistortion; } else { this._waterReflectionDistortion = 0.05; }
 
         this.updateRenderTexture();
     }

@@ -43,7 +43,7 @@ class MouseLook extends Module {
         this.camera = null;
         
         // Activate mode
-        this._activateMode = "rightButton"; // Options: "always", "rightButton", "middleButton", "leftButton", "freeLook"
+        this._activateMode = "leftButton"; // Options: "always", "rightButton", "middleButton", "leftButton", "freeLook"
         
         // Pointer lock settings
         this._lockCursor = false;
@@ -104,16 +104,16 @@ class MouseLook extends Module {
             onChange: (val) => this._lockCursor = val
         });
 
-        this.exposeProperty("screenWrap", "boolean", true, {
-            onChange: (val) => this._screenWrap = val
-        });
+        //this.exposeProperty("screenWrap", "boolean", true, {
+        //    onChange: (val) => this._screenWrap = val
+        //});
 
-        this.exposeProperty("wrapSensitivity", "number", 1.0, {
-            min: 0.1,
-            max: 5.0,
-            step: 0.1,
-            onChange: (val) => this._wrapSensitivity = val
-        });
+        //this.exposeProperty("wrapSensitivity", "number", 1.0, {
+        //    min: 0.1,
+        //    max: 5.0,
+        //    step: 0.1,
+        //    onChange: (val) => this._wrapSensitivity = val
+        //});
         
         // Bind methods to maintain 'this' context
         this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -343,7 +343,13 @@ class MouseLook extends Module {
     requestPointerLock() {
         const canvas = window.engine?.canvas || document.querySelector('canvas');
         if (canvas && !this._isPointerLocked) {
-            canvas.requestPointerLock();
+            // Focus the canvas first
+            canvas.focus();
+            
+            // Request pointer lock
+            canvas.requestPointerLock().catch(err => {
+                console.warn('Pointer lock request failed:', err);
+            });
         }
     }
     
@@ -354,11 +360,20 @@ class MouseLook extends Module {
     handleMouseDown(event) {
         if (!this.camera) return;
         
-        // Handle freeLook mode with pointer lock
+        // Ensure canvas is focused
+        const canvas = window.engine?.canvas || document.querySelector('canvas');
+        if (canvas && document.activeElement !== canvas) {
+            canvas.focus();
+        }
+        
+        // Handle pointer lock if enabled (for any activate mode)
+        if (this._lockCursor && !this._isPointerLocked) {
+            this.requestPointerLock();
+        }
+        
+        // Handle freeLook mode
         if (this._activateMode === "freeLook") {
-            if (this._lockCursor && !this._isPointerLocked) {
-                this.requestPointerLock();
-            } else if (!this._lockCursor) {
+            if (!this._lockCursor) {
                 this._isLooking = true;
                 this._lastMouseX = event.clientX;
                 this._lastMouseY = event.clientY;
@@ -367,7 +382,7 @@ class MouseLook extends Module {
         }
         
         // Check if the correct mouse button was pressed
-        if (this._activateMode === "always" ||
+        if (
            (this._activateMode === "rightButton" && event.button === 2) ||
            (this._activateMode === "middleButton" && event.button === 1) ||
            (this._activateMode === "leftButton" && event.button === 0)) {
@@ -423,7 +438,7 @@ class MouseLook extends Module {
         // - Y = pitch (tilt up/down around right axis)
         // - X = roll (unused by mouse look unless explicitly set)
         this._targetRotation.z = (this._targetRotation.z + yawDelta) % 360;
-        this._targetRotation.y = this._targetRotation.y - pitchDelta;
+        this._targetRotation.y = this._targetRotation.y + pitchDelta;
 
         // Clamp pitch (rotation.y) to prevent flipping
         this._targetRotation.y = Math.max(this.minPitch, Math.min(this.maxPitch, this._targetRotation.y));
