@@ -112,7 +112,7 @@ class TopDownCamera extends Module {
      */
     start() {
         // Get camera reference
-        this.camera = this.gameObject.getModule("Camera3D");
+        this.camera = this.gameObject.getModule("Camera3DRasterizer");
 
         if (!this.camera) {
             console.error("TopDownCamera requires a Camera3D module on the same GameObject");
@@ -154,7 +154,10 @@ class TopDownCamera extends Module {
      * @param {number} deltaTime - Time since last frame in seconds
      */
     loop(deltaTime) {
-        if (!this.camera || !window.input) return;
+        if (!this.camera) {
+            this.camera = this.gameObject.getModule("Camera3DRasterizer");
+            return;
+        }
 
         // Lock camera angle every frame to prevent changes
         this.lockCameraAngle();

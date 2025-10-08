@@ -930,3 +930,8 @@ class Module {
 
 // Make the Module class available globally
 window.Module = Module;
+
+// Import Vector2 for modules that need it
+if (typeof Vector2 === 'undefined' && window.Vector2) {
+    const Vector2 = window.Vector2;
+}

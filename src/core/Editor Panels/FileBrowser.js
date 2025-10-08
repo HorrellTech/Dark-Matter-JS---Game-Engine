@@ -567,11 +567,11 @@ class FileBrowser {
             const button = document.createElement('button');
             button.className = 'editor-window-tool-btn';
             button.title = WindowClass.description || `Open ${className}`;
-            
+
             // Use class properties for styling if available
             const icon = WindowClass.icon || 'fa-window-maximize';
             const color = WindowClass.color || '#64B5F6';
-            
+
             button.innerHTML = `<i class="fas ${icon}"></i> ${className}`;
             button.style.cssText = `
                 padding: 4px 8px;
@@ -615,19 +615,19 @@ class FileBrowser {
         try {
             // Create new instance
             const windowInstance = new WindowClass();
-            
+
             // Show the window
             windowInstance.show();
-            
+
             // Store reference for cleanup if needed
             if (!window.activeEditorWindows) {
                 window.activeEditorWindows = new Set();
             }
             window.activeEditorWindows.add(windowInstance);
-            
+
             // Clean up reference when window is closed
             const originalOnClose = windowInstance.onClose.bind(windowInstance);
-            windowInstance.onClose = function() {
+            windowInstance.onClose = function () {
                 if (window.activeEditorWindows) {
                     window.activeEditorWindows.delete(windowInstance);
                 }
@@ -659,7 +659,7 @@ class FileBrowser {
 
         this.editorWindows.set(WindowClass.name, WindowClass);
         this.updateEditorWindowToolbar();
-        
+
         console.log(`Registered EditorWindow: ${WindowClass.name}`);
     }
 
@@ -710,7 +710,7 @@ class FileBrowser {
 
         try {
             console.log('Scanning for EditorWindow scripts...');
-            
+
             // Get all JavaScript files
             const transaction = this.db.transaction(['files'], 'readonly');
             const store = transaction.objectStore('files');
@@ -1489,16 +1489,43 @@ window.${pascalCaseName} = ${pascalCaseName};
     async handleFileUpload(file) {
         return new Promise((resolve) => {
             if (file.type.startsWith('image/')) {
-                // For images, use FileReader with readAsDataURL
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const content = e.target.result; // This will be the base64 data URL
-                    await this.createFile(`${this.currentPath}/${file.name}`, content);
+                // Show image resize confirmation modal
+                this.showImageResizeModal(file, async (shouldResize, targetSize) => {
+                    if (shouldResize) {
+                        const resizedDataUrl = await this.resizeImage(file, targetSize);
+                        await this.createFile(`${this.currentPath}/${file.name}`, resizedDataUrl);
+                        this.showNotification(`Image resized and uploaded: ${file.name}`, 'success');
+                    } else {
+                        // Upload original image
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            await this.createFile(`${this.currentPath}/${file.name}`, e.target.result);
+                            this.showNotification(`Image uploaded: ${file.name}`, 'info');
+                        };
+                        reader.readAsDataURL(file);
+                    }
                     resolve();
-                };
-                reader.readAsDataURL(file);
+                });
+            } else if (file.type.startsWith('audio/')) {
+                // Show audio compression confirmation modal
+                this.showAudioCompressionModal(file, async (shouldCompress, quality) => {
+                    if (shouldCompress) {
+                        const compressedDataUrl = await this.compressAudio(file, quality);
+                        await this.createFile(`${this.currentPath}/${file.name}`, compressedDataUrl);
+                        this.showNotification(`Audio compressed and uploaded: ${file.name}`, 'success');
+                    } else {
+                        // Upload original audio
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            await this.createFile(`${this.currentPath}/${file.name}`, e.target.result);
+                            this.showNotification(`Audio uploaded: ${file.name}`, 'info');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                    resolve();
+                });
             } else {
-                // For non-image files, read as text
+                // For non-image/audio files, read as text
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     await this.createFile(`${this.currentPath}/${file.name}`, e.target.result);
@@ -1507,6 +1534,70 @@ window.${pascalCaseName} = ${pascalCaseName};
                 reader.readAsText(file);
             }
         });
+    }
+
+    /**
+ * Show modal to confirm image resize
+ * @param {File} file - The image file
+ * @param {Function} callback - Callback with (shouldResize, targetSize)
+ */
+    showImageResizeModal(file, callback) {
+        const modal = document.createElement('div');
+        modal.className = 'media-modal-overlay';
+        modal.innerHTML = `
+        <div class="media-modal-content" style="max-width: 500px;">
+            <div class="media-modal-header">
+                <h3 class="media-modal-title">Resize Image</h3>
+                <button class="media-modal-close">&times;</button>
+            </div>
+            <div class="media-modal-body">
+                <p>Would you like to resize this image to reduce file size?</p>
+                <p style="color: #aaa; font-size: 12px; margin-top: 10px;">
+                    Original: ${file.name} (${(file.size / 1024).toFixed(2)} KB)
+                </p>
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px;">Target Size:</label>
+                    <select id="imageSizeSelect" style="width: 100%; padding: 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                        <option value="64">64x64 (Recommended)</option>
+                        <option value="128">128x128</option>
+                        <option value="256">256x256</option>
+                        <option value="512">512x512</option>
+                        <option value="1024">1024x1024</option>
+                    </select>
+                </div>
+            </div>
+            <div class="media-modal-footer">
+                <button class="modal-btn-cancel">Upload Original</button>
+                <button class="modal-btn-ok">Resize & Upload</button>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(modal);
+
+        const closeBtn = modal.querySelector('.media-modal-close');
+        const cancelBtn = modal.querySelector('.modal-btn-cancel');
+        const okBtn = modal.querySelector('.modal-btn-ok');
+        const sizeSelect = modal.querySelector('#imageSizeSelect');
+
+        const cleanup = () => modal.remove();
+
+        closeBtn.onclick = () => {
+            cleanup();
+            callback(false);
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            callback(false);
+        };
+
+        okBtn.onclick = () => {
+            const targetSize = parseInt(sizeSelect.value);
+            cleanup();
+            callback(true, targetSize);
+        };
+
+        setTimeout(() => modal.classList.add('visible'), 10);
     }
 
     /**
@@ -1527,6 +1618,236 @@ window.${pascalCaseName} = ${pascalCaseName};
                 break;
             // Handle other file types as needed
         }
+    }
+
+    /**
+ * Resize an image to target dimensions
+ * @param {File} file - Image file
+ * @param {number} targetSize - Target width/height (square)
+ * @returns {Promise<string>} Data URL of resized image
+ */
+    async resizeImage(file, targetSize) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetSize;
+                    canvas.height = targetSize;
+                    const ctx = canvas.getContext('2d');
+
+                    // Calculate scaling to maintain aspect ratio
+                    const scale = Math.min(targetSize / img.width, targetSize / img.height);
+                    const scaledWidth = img.width * scale;
+                    const scaledHeight = img.height * scale;
+                    const x = (targetSize - scaledWidth) / 2;
+                    const y = (targetSize - scaledHeight) / 2;
+
+                    // Fill with transparency
+                    ctx.clearRect(0, 0, targetSize, targetSize);
+
+                    // Draw scaled image
+                    ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+
+                    // Convert to data URL with quality compression
+                    const dataUrl = canvas.toDataURL('image/png', 0.9);
+                    resolve(dataUrl);
+                };
+                img.onerror = reject;
+                img.src = e.target.result;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    /**
+     * Compress audio file
+     * @param {File} file - Audio file
+     * @param {number} quality - Compression quality (0.0 - 1.0)
+     * @returns {Promise<string>} Data URL of compressed audio
+     */
+    async compressAudio(file, quality) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const arrayBuffer = e.target.result;
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                    // Create offline context for rendering
+                    const sampleRate = Math.floor(audioBuffer.sampleRate * quality);
+                    const offlineContext = new OfflineAudioContext(
+                        audioBuffer.numberOfChannels,
+                        audioBuffer.duration * sampleRate,
+                        sampleRate
+                    );
+
+                    // Create buffer source
+                    const source = offlineContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(offlineContext.destination);
+                    source.start();
+
+                    // Render audio
+                    const renderedBuffer = await offlineContext.startRendering();
+
+                    // Convert to WAV format (simpler than MP3 encoding)
+                    const wav = this.audioBufferToWav(renderedBuffer);
+                    const blob = new Blob([wav], { type: 'audio/wav' });
+
+                    // Convert blob to data URL
+                    const dataUrlReader = new FileReader();
+                    dataUrlReader.onload = (event) => {
+                        resolve(event.target.result);
+                    };
+                    dataUrlReader.onerror = reject;
+                    dataUrlReader.readAsDataURL(blob);
+                } catch (error) {
+                    console.error('Audio compression error:', error);
+                    // Fallback to original file
+                    const fallbackReader = new FileReader();
+                    fallbackReader.onload = (event) => resolve(event.target.result);
+                    fallbackReader.readAsDataURL(file);
+                }
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    /**
+     * Convert AudioBuffer to WAV format
+     * @param {AudioBuffer} buffer - Audio buffer
+     * @returns {ArrayBuffer} WAV file data
+     */
+    audioBufferToWav(buffer) {
+        const numChannels = buffer.numberOfChannels;
+        const sampleRate = buffer.sampleRate;
+        const format = 1; // PCM
+        const bitDepth = 16;
+
+        const bytesPerSample = bitDepth / 8;
+        const blockAlign = numChannels * bytesPerSample;
+
+        const data = [];
+        for (let i = 0; i < buffer.length; i++) {
+            for (let channel = 0; channel < numChannels; channel++) {
+                const sample = Math.max(-1, Math.min(1, buffer.getChannelData(channel)[i]));
+                data.push(sample < 0 ? sample * 0x8000 : sample * 0x7FFF);
+            }
+        }
+
+        const dataLength = data.length * bytesPerSample;
+        const headerLength = 44;
+        const totalLength = headerLength + dataLength;
+
+        const arrayBuffer = new ArrayBuffer(totalLength);
+        const view = new DataView(arrayBuffer);
+
+        // RIFF header
+        this.writeString(view, 0, 'RIFF');
+        view.setUint32(4, totalLength - 8, true);
+        this.writeString(view, 8, 'WAVE');
+
+        // fmt chunk
+        this.writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, format, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * blockAlign, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitDepth, true);
+
+        // data chunk
+        this.writeString(view, 36, 'data');
+        view.setUint32(40, dataLength, true);
+
+        // Write audio data
+        let offset = 44;
+        for (let i = 0; i < data.length; i++) {
+            view.setInt16(offset, data[i], true);
+            offset += 2;
+        }
+
+        return arrayBuffer;
+    }
+
+    /**
+     * Write string to DataView
+     * @param {DataView} view - DataView
+     * @param {number} offset - Byte offset
+     * @param {string} string - String to write
+     */
+    writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
+    /**
+     * Show modal to confirm audio compression
+     * @param {File} file - The audio file
+     * @param {Function} callback - Callback with (shouldCompress, quality)
+     */
+    showAudioCompressionModal(file, callback) {
+        const modal = document.createElement('div');
+        modal.className = 'media-modal-overlay';
+        modal.innerHTML = `
+        <div class="media-modal-content" style="max-width: 500px;">
+            <div class="media-modal-header">
+                <h3 class="media-modal-title">Compress Audio</h3>
+                <button class="media-modal-close">&times;</button>
+            </div>
+            <div class="media-modal-body">
+                <p>Would you like to compress this audio file to reduce file size?</p>
+                <p style="color: #aaa; font-size: 12px; margin-top: 10px;">
+                    Original: ${file.name} (${(file.size / 1024).toFixed(2)} KB)
+                </p>
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px;">Audio Quality:</label>
+                    <select id="audioQualitySelect" style="width: 100%; padding: 8px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px;">
+                        <option value="0.5">Low (Smallest Size)</option>
+                        <option value="0.7" selected>Medium (Recommended)</option>
+                        <option value="0.9">High (Better Quality)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="media-modal-footer">
+                <button class="modal-btn-cancel">Upload Original</button>
+                <button class="modal-btn-ok">Compress & Upload</button>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(modal);
+
+        const closeBtn = modal.querySelector('.media-modal-close');
+        const cancelBtn = modal.querySelector('.modal-btn-cancel');
+        const okBtn = modal.querySelector('.modal-btn-ok');
+        const qualitySelect = modal.querySelector('#audioQualitySelect');
+
+        const cleanup = () => modal.remove();
+
+        closeBtn.onclick = () => {
+            cleanup();
+            callback(false);
+        };
+
+        cancelBtn.onclick = () => {
+            cleanup();
+            callback(false);
+        };
+
+        okBtn.onclick = () => {
+            const quality = parseFloat(qualitySelect.value);
+            cleanup();
+            callback(true, quality);
+        };
+
+        setTimeout(() => modal.classList.add('visible'), 10);
     }
 
     /**
@@ -1672,7 +1993,7 @@ window.${pascalCaseName} = ${pascalCaseName};
                 // Check if the new file is an EditorWindow
                 await this.checkAndRegisterEditorWindow(path, content);
             }
-            
+
             return result;
         } catch (error) {
             console.error('Failed to create/update file:', error);
@@ -1772,7 +2093,7 @@ window.${pascalCaseName} = ${pascalCaseName};
             if (path.endsWith('.js')) {
                 const fileName = path.split('/').pop().split('\\').pop();
                 const className = fileName.replace('.js', '');
-                
+
                 // Unregister if it was an EditorWindow
                 if (this.editorWindows.has(className)) {
                     this.unregisterEditorWindow(className);
@@ -2079,7 +2400,7 @@ window.${pascalCaseName} = ${pascalCaseName};
                 // Use ModuleReloader to load the EditorWindow class
                 if (window.moduleReloader) {
                     const success = window.moduleReloader.reloadModuleClass(pascalClassName, content);
-                    
+
                     if (success && window[pascalClassName]) {
                         // Register as EditorWindow
                         this.registerEditorWindow(window[pascalClassName]);
@@ -2176,13 +2497,13 @@ window.${pascalCaseName} = ${pascalCaseName};
         // Create a temporary notification element
         const notification = document.createElement('div');
         notification.className = `notification ${type}`;
-        
+
         // Create notification content with close button
         notification.innerHTML = `
             <span class="notification-message">${message}</span>
             <button class="notification-close" aria-label="Close notification">&times;</button>
         `;
-        
+
         document.body.appendChild(notification);
 
         // Add click handler for close button

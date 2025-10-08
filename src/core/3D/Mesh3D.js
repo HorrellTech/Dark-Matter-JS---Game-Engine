@@ -738,7 +738,7 @@ class Mesh3D extends Module {
             this.handleCustomModelInput();
         }
 
-        this.updateShape();
+        //this.updateShape();
     }
 
     /**

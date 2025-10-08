@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wolf3D Modules Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+
+        #gameCanvas {
+            border: 2px solid #fff;
+            display: block;
+            margin: 20px auto;
+            background: #000;
+        }
+
+        .controls {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .control-group {
+            margin: 10px 0;
+        }
+
+        .info {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        button {
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        button:active {
+            background: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <h1>Wolf3D Modules Test</h1>
+
+        <div class="info">
+            <p><strong>Controls:</strong></p>
+            <p>WASD - Move around</p>
+            <p>Mouse - Look around (click to lock cursor)</p>
+            <p>Arrow Keys - Turn (alternative to mouse)</p>
+        </div>
+
+        <div class="control-group">
+            <button onclick="createTestScene()">Create Test Scene</button>
+            <button onclick="clearScene()">Clear Scene</button>
+            <button onclick="generateMap()">Generate New Map</button>
+        </div>
+
+        <div class="control-group">
+            <label>Field of View:</label>
+            <input type="range" id="fovSlider" min="30" max="120" value="60" onchange="updateFOV(this.value)">
+            <span id="fovValue">60</span>°
+        </div>
+
+        <div class="control-group">
+            <label>Camera Speed:</label>
+            <input type="range" id="speedSlider" min="50" max="300" value="150" onchange="updateSpeed(this.value)">
+            <span id="speedValue">150</span>
+        </div>
+
+        <div class="info">
+            <p id="status">Ready to test Wolf3D modules...</p>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600" tabindex="0"></canvas>
+
+    <script type="module">
+        // Import the engine and modules
+        import { Engine } from './src/core/Engine.js';
+        import { GameObject } from './src/core/GameObject.js';
+        import { Wolf3DCamera } from './src/core/Modules/Wolf3D/Wolf3DCamera.js';
+        import { Wolf3DWall } from './src/core/Modules/Wolf3D/Wolf3DWall.js';
+        import { Wolf3DObject } from './src/core/Modules/Wolf3D/Wolf3DObject.js';
+        import { Wolf3DMap } from './src/core/Modules/Wolf3D/Wolf3DMap.js';
+
+        // Make classes globally available
+        window.Engine = Engine;
+        window.GameObject = GameObject;
+        window.Wolf3DCamera = Wolf3DCamera;
+        window.Wolf3DWall = Wolf3DWall;
+        window.Wolf3DObject = Wolf3DObject;
+        window.Wolf3DMap = Wolf3DMap;
+
+        // Global variables
+        let engine = null;
+        let camera = null;
+        let map = null;
+
+        // Initialize the test
+        window.addEventListener('load', () => {
+            initTest();
+        });
+
+        function initTest() {
+            const canvas = document.getElementById('gameCanvas');
+            if (!canvas) {
+                console.error('Canvas not found');
+                return;
+            }
+
+            // Create engine
+            engine = new Engine(canvas, {
+                useWebGL: false // Use 2D canvas for Wolf3D rendering
+            });
+
+            // Set up input manager
+            if (window.InputManager) {
+                window.input = new InputManager(canvas);
+            }
+
+            updateStatus('Engine initialized. Click "Create Test Scene" to begin.');
+        }
+
+        window.createTestScene = function() {
+            if (!engine) {
+                updateStatus('Engine not initialized');
+                return;
+            }
+
+            try {
+                // Clear existing scene
+                engine.gameObjects = [];
+
+                // Create camera game object
+                const cameraObj = new GameObject("Camera");
+                cameraObj.position.x = 320;
+                cameraObj.position.y = 320;
+
+                // Add Wolf3D camera module
+                camera = cameraObj.addModule(new Wolf3DCamera());
+                engine.addGameObject(cameraObj);
+
+                // Create map game object
+                const mapObj = new GameObject("Map");
+                map = mapObj.addModule(new Wolf3DMap());
+                engine.addGameObject(mapObj);
+
+                // Generate a test map
+                map.generateMap();
+
+                // Create walls from map data
+                createWallsFromMap();
+
+                // Create objects from map data
+                createObjectsFromMap();
+
+                // Load scene and start
+                engine.scene = { name: "Wolf3D Test", gameObjects: engine.gameObjects };
+                engine.loadScene(engine.scene);
+
+                updateStatus('Test scene created successfully!');
+            } catch (error) {
+                console.error('Error creating test scene:', error);
+                updateStatus('Error creating test scene: ' + error.message);
+            }
+        };
+
+        function createWallsFromMap() {
+            if (!map || !engine) return;
+
+            for (let y = 0; y < map.mapHeight; y++) {
+                for (let x = 0; x < map.mapWidth; x++) {
+                    const wallType = map.getWall(x, y);
+                    if (wallType > 0) {
+                        const worldPos = map.mapToWorld(x, y);
+
+                        const wallObj = new GameObject(`Wall_${x}_${y}`);
+                        wallObj.position.x = worldPos.x;
+                        wallObj.position.y = worldPos.y;
+
+                        const wall = wallObj.addModule(new Wolf3DWall());
+                        wall.height = 64;
+                        wall.width = 64;
+                        wall.color = wallType === 1 ? "#888888" : "#CC4444";
+
+                        engine.addGameObject(wallObj);
+                    }
+                }
+            }
+        }
+
+        function createObjectsFromMap() {
+            if (!map || !engine) return;
+
+            for (let y = 0; y < map.mapHeight; y++) {
+                for (let x = 0; x < map.mapWidth; x++) {
+                    const objectType = map.getObject(x, y);
+                    if (objectType > 0) {
+                        const worldPos = map.mapToWorld(x, y);
+
+                        const objName = `Object_${x}_${y}`;
+                        const obj = new GameObject(objName);
+                        obj.position.x = worldPos.x;
+                        obj.position.y = worldPos.y;
+
+                        const wolfObj = obj.addModule(new Wolf3DObject());
+                        wolfObj.width = 32;
+                        wolfObj.height = 32;
+                        wolfObj.billboard = true;
+
+                        // Set different properties based on object type
+                        switch (objectType) {
+                            case 1: // Barrel
+                                wolfObj.color = "#8B4513";
+                                wolfObj.isSolid = true;
+                                break;
+                            case 2: // Lamp
+                                wolfObj.color = "#FFFF00";
+                                wolfObj.isSolid = false;
+                                wolfObj.interactive = true;
+                                break;
+                            case 3: // Enemy
+                                wolfObj.color = "#FF0000";
+                                wolfObj.isSolid = true;
+                                break;
+                        }
+
+                        engine.addGameObject(obj);
+                    }
+                }
+            }
+        }
+
+        window.clearScene = function() {
+            if (engine) {
+                engine.gameObjects = [];
+                if (engine.running) {
+                    engine.stop();
+                }
+                updateStatus('Scene cleared');
+            }
+        };
+
+        window.generateMap = function() {
+            if (map) {
+                map.generateMap();
+                createWallsFromMap();
+                createObjectsFromMap();
+                updateStatus('New map generated');
+            }
+        };
+
+        function updateFOV(value) {
+            document.getElementById('fovValue').textContent = value;
+            if (camera) {
+                camera.fieldOfView = parseInt(value);
+            }
+        }
+
+        function updateSpeed(value) {
+            document.getElementById('speedValue').textContent = value;
+            if (camera) {
+                camera.moveSpeed = parseInt(value);
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        // Handle window focus for pointer lock
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.pointerLockElement) {
+                document.exitPointerLock();
+            }
+        });
+    </script>
+</body>
+</html>

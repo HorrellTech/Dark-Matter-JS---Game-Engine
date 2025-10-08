@@ -7285,8 +7285,9 @@ class WebGLCanvas {
     }
 
     /*
-    * Enhanced drawWithShader with context loss protection
-    */
+     * Enhanced drawWithShader with context loss protection
+     * Public method to allow custom shader rendering
+     */
     drawWithShader(shaderName, vertices, indices = null, uniforms = {}, attributes = {}) {
         if (this.isContextLost()) {
             // console.warn('Skipping drawWithShader - WebGL context is lost');

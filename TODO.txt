@@ -21,13 +21,8 @@
 
 - Update documentation to better reflect the app. Update templates for modules to use JSON serialization properly
 
-- Fix mouse pressed input issues
-
 - Fix ground decal chunk system to reach the edges of the viewport correctly
 
 - Fix infinite texture generator not chunking correctly
 
-- Add more physics functionality, like wind and wind direction, wind zone module that adds force to any rigidbodies 
-    within its rectangle radius etc
-
-- Make specular only draw when within the cameras FOV
+- Fix export to zip not referencing assets cprrectly. Single HTML works fine, but has file size limits

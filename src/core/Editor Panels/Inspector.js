@@ -515,7 +515,7 @@ class Inspector {
             this.showNoObjectMessage();
         } else {
             this.showObjectInspector();
-            
+
             // Update all module values after UI is built
             if (gameObject.modules) {
                 gameObject.modules.forEach(module => {
@@ -6090,9 +6090,12 @@ class Inspector {
      */
     setAssetProperty(module, propName, assetPath) {
         // Check if module has a specific setter method
-        const setterName = `set${propName.charAt(0).toUpperCase() + propName.slice(1)}`;
+        const setterName = `set${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
         if (typeof module[setterName] === 'function') {
             module[setterName](assetPath);
+
+            // Register with AssetManager for export
+            this.registerAssetForExport(module, propName, assetPath);
             return;
         }
 
@@ -6101,6 +6104,9 @@ class Inspector {
         const prop = exposedProps.find(p => p.name === propName);
         if (prop && prop.options && prop.options.onAssetSelected) {
             prop.options.onAssetSelected(assetPath);
+
+            // Register with AssetManager for export
+            this.registerAssetForExport(module, propName, assetPath);
             return;
         }
 
@@ -6109,6 +6115,62 @@ class Inspector {
             module.setProperty(propName, assetPath);
         } else {
             module[propName] = assetPath;
+        }
+
+        // Register with AssetManager for export
+        this.registerAssetForExport(module, propName, assetPath);
+    }
+
+    /**
+     * Register an asset with the AssetManager for export
+     * @param {Module} module - The module with the asset
+     * @param {string} propName - The property name (e.g., 'imageAsset')
+     * @param {string} assetPath - The path to the asset
+     */
+    registerAssetForExport(module, propName, assetPath) {
+        if (!assetPath || !window.assetManager) return;
+        
+        // Determine asset type from property name or module properties
+        let assetType = 'generic';
+        if (propName.includes('image') || propName.includes('Image')) {
+            assetType = 'image';
+        } else if (propName.includes('audio') || propName.includes('Audio')) {
+            assetType = 'audio';
+        } else if (propName.includes('video') || propName.includes('Video')) {
+            assetType = 'video';
+        } else if (module[propName] && module[propName].type) {
+            assetType = module[propName].type;
+        }
+        
+        // Generate asset ID
+        const assetId = assetPath.replace(/^[\/\\]+/, '').replace(/[\/\\]/g, '_');
+        
+        console.log(`Registering ${assetType} asset for export: ${assetPath} (ID: ${assetId})`);
+        
+        // Check if already registered
+        if (window.assetManager.hasAsset(assetId)) {
+            console.log(`Asset already registered: ${assetId}`);
+            return;
+        }
+        
+        // Get the actual asset element from the module
+        let assetElement = null;
+        
+        if (assetType === 'image' && module._image) {
+            assetElement = module._image;
+        } else if (assetType === 'audio' && module._audio) {
+            assetElement = module._audio;
+        }
+        
+        if (assetElement) {
+            window.assetManager.addAsset(assetId, assetElement, assetType, {
+                path: assetPath,
+                originalPath: assetPath
+            }).catch(error => {
+                console.warn(`Failed to register ${assetType} asset for export:`, error);
+            });
+        } else {
+            console.warn(`Could not find ${assetType} element on module for export registration`);
         }
     }
 

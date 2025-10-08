@@ -815,11 +815,12 @@ class ExportManager {
             'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
 
-            /*'Camera3D': 'src/core/3D/Camera3D.js',
+            /*'Camera3DRasterizer': 'src/core/3D/Camera3DRasterizer.js',
             'CubeMesh3D': 'src/core/3D/CubeMesh3D.js',
             'FlyCamera': 'src/core/3D/FlyCamera.js',
             'Mesh3D': 'src/core/3D/Mesh3D.js',
-            'MouseLook': 'src/core/3D/MouseLook.js',*/
+            'MouseLook': 'src/core/3D/MouseLook.js',
+            'Material': 'src/core/3D/Material.js',*/
 
             // Drawing Modules
             /*'DrawCircle': 'src/core/Modules/Drawing/DrawCircle.js',
@@ -1822,18 +1823,20 @@ html {
         // Use safer JSON embedding approach
         const scenesData = this.safeStringify(data.scenes);
         const prefabsData = this.safeStringify(data.prefabs);
-        // Only embed assets for standalone, not ZIP
-        const assetsData = settings.includeAssets ?// settings.standalone && settings.includeAssets ?
+
+        // For standalone mode, embed all assets
+        // For ZIP mode, don't embed assets at all - they'll be loaded from files
+        const assetsData = (settings.standalone && settings.includeAssets) ?
             this.safeStringify(data.assets) : 'null';
 
         // For ZIP mode, create asset mapping with just filenames as IDs
-        const assetMapping = settings.standalone ? 'null' :
-            this.safeStringify(this.createAssetMapping(data.assets));
-
+        const assetMapping = (!settings.standalone && settings.includeAssets) ?
+            this.safeStringify(this.createAssetMapping(data.assets)) : 'null';
 
         // Get the starting scene index from settings, default to 0
         const startingSceneIndex = settings.startingSceneIndex || 0;
         const maxFPS = settings.maxFPS !== undefined ? settings.maxFPS : 60;
+
 
         return `
 // Game Initialization - Fixed for Physics
@@ -1934,7 +1937,7 @@ async function initializeGame() {
     }
 
     ${settings.standalone ? `
-    // Standalone mode - embed assets directly
+    // Standalone mode - embed assets directly in the HTML
     const assetsData = ${assetsData};
     if (assetsData) {
         console.log('Loading embedded assets into AssetManager...');
@@ -1944,126 +1947,123 @@ async function initializeGame() {
         await new Promise(resolve => setTimeout(resolve, 100));
         console.log('AssetManager cache populated with:', Object.keys(window.assetManager.cache));
     }` : `
-    // ZIP mode - load assets from files dynamically on startup
+    // ZIP mode - load assets from separate files
     ${settings.includeAssets ? `
-    console.log('ZIP mode: Loading assets from asset files...');
+    console.log('ZIP mode: Pre-loading assets from asset files...');
     const assetMapping = ${assetMapping};
 
     let loadedCount = 0;
     const totalAssets = Object.keys(assetMapping).length;
     
     if (assetMapping) {
-        // Pre-load all assets from the assets folder using the mapping
         for (const [originalPath, fileName] of Object.entries(assetMapping)) {
             try {
                 const assetUrl = 'assets/' + fileName;
-                
-                // Determine asset type
                 const extension = fileName.split('.').pop().toLowerCase();
                 
                 if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(extension)) {
-                    // Load image asset
-                    console.log('Loading image asset:', assetUrl);
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
                     
                     await new Promise((resolve, reject) => {
                         img.onload = () => {
-                            console.log('Image loaded successfully:', fileName, 'dimensions:', img.width, 'x', img.height);
-                            
-                            // Generate asset ID from filename (without extension)
                             const assetId = fileName.replace(/\\.[^.]+$/, '');
                             
-                            // Cache under multiple variations for maximum compatibility
+                            // FIX: Normalize the original path to remove leading slashes
+                            const normalizedOriginalPath = originalPath.replace(/^[\/\\\\]+/, '');
+                            
+                            // Cache under ALL possible path variations INCLUDING the original path with leading slash
                             const pathVariations = [
-                                originalPath,                           // Original full path (e.g., "assets/player.png")
-                                fileName,                               // Just filename (e.g., "player.png")
-                                assetId,                               // Filename without extension (e.g., "player")
-                                originalPath.replace(/^[\/\\\\]+/, ''), // Path without leading slashes
-                                '/' + originalPath.replace(/^[\/\\\\]+/, ''), // Path with single leading slash
-                                originalPath.split('/').pop(),         // Just filename from path
-                                originalPath.split('/').pop().replace(/\\.[^.]+$/, '') // Filename without extension from path
+                                originalPath,                              // Original with slash (if present)
+                                normalizedOriginalPath,                    // Without leading slash
+                                fileName,                                   // Just the filename
+                                assetId,                                    // Filename without extension
+                                '/' + normalizedOriginalPath,              // With added leading slash
+                                originalPath.split('/').pop(),             // Just filename from path
+                                originalPath.split('\\\\').pop(),          // Just filename (Windows)
+                                normalizedOriginalPath.split('/').pop(),   // Normalized filename
+                                assetId.toLowerCase(),                     // Lowercase ID
+                                fileName.toLowerCase()                     // Lowercase filename
                             ];
                             
-                            if (img.complete && img.naturalWidth > 0) {
-                                pathVariations.forEach(variation => {
-                                    window.assetManager.cache[variation] = img;
-                                });
-                                console.log('Cached image under primary ID:', assetId, 'and', pathVariations.length, 'variations');
-                            }
+                            // Remove duplicates and cache
+                            const uniquePaths = [...new Set(pathVariations)];
+                            uniquePaths.forEach(variation => {
+                                window.assetManager.cache[variation] = img;
+                            });
+                            
+                            console.log('Loaded image:', fileName, 'cached under', uniquePaths.length, 'variations:', uniquePaths);
                             resolve();
                         };
                         img.onerror = (error) => {
-                            console.warn('Failed to load image asset:', assetUrl, error);
-                            resolve(); // Continue even if one asset fails
+                            console.warn('Failed to load image:', assetUrl, error);
+                            resolve();
                         };
                         img.src = assetUrl;
                     });
                 } else if (['mp3', 'wav', 'ogg', 'aac'].includes(extension)) {
-                    // Load audio asset
-                    try {
-                        const audio = new Audio();
-                        audio.crossOrigin = 'anonymous';
-                        audio.src = assetUrl;
-                        
-                        await new Promise((resolve) => {
-                            audio.addEventListener('canplaythrough', () => {
-                                // Generate asset ID from filename (without extension)
-                                const assetId = fileName.replace(/\\.[^.]+$/, '');
-                                
-                                const pathVariations = [
-                                    originalPath,
-                                    fileName,
-                                    assetId,
-                                    originalPath.replace(/^[\/\\\\]+/, ''),
-                                    '/' + originalPath.replace(/^[\/\\\\]+/, ''),
-                                    originalPath.split('/').pop(),
-                                    originalPath.split('/').pop().replace(/\\.[^.]+$/, '')
-                                ];
-                                
-                                pathVariations.forEach(variation => {
-                                    window.assetManager.cache[variation] = audio;
-                                });
-                                console.log('Loaded audio asset with ID:', assetId);
-                                resolve();
-                            }, { once: true });
-                            audio.addEventListener('error', () => {
-                                console.warn('Failed to load audio asset:', assetUrl);
-                                resolve();
-                            }, { once: true });
-                            audio.load();
-                        });
-                    } catch (error) {
-                        console.warn('Error loading audio asset:', fileName, error);
-                    }
-                } else if (extension === 'json') {
-                    // Load JSON asset
-                    try {
-                        const response = await fetch(assetUrl);
-                        if (response.ok) {
-                            const jsonData = await response.json();
-                            
-                            // Generate asset ID from filename (without extension)
+                    // FIXED: Proper audio loading
+                    const response = await fetch(assetUrl);
+                    const blob = await response.blob();
+                    const objectUrl = URL.createObjectURL(blob);
+                    
+                    const audio = new Audio();
+                    audio.crossOrigin = 'anonymous';
+                    
+                    await new Promise((resolve) => {
+                        audio.addEventListener('canplaythrough', () => {
                             const assetId = fileName.replace(/\\.[^.]+$/, '');
+                            const normalizedOriginalPath = originalPath.replace(/^[\/\\\\]+/, '');
                             
                             const pathVariations = [
                                 originalPath,
+                                normalizedOriginalPath,
                                 fileName,
                                 assetId,
-                                originalPath.replace(/^[\/\\\\]+/, ''),
-                                '/' + originalPath.replace(/^[\/\\\\]+/, ''),
+                                '/' + normalizedOriginalPath,
                                 originalPath.split('/').pop(),
-                                originalPath.split('/').pop().replace(/\\.[^.]+$/, '')
+                                originalPath.split('\\\\').pop(),
+                                assetId.toLowerCase(),
+                                fileName.toLowerCase()
                             ];
                             
-                            pathVariations.forEach(variation => {
-                                window.assetManager.cache[variation] = jsonData;
+                            const uniquePaths = [...new Set(pathVariations)];
+                            uniquePaths.forEach(variation => {
+                                window.assetManager.cache[variation] = audio;
                             });
-                            console.log('Loaded JSON asset with ID:', assetId);
-                        }
-                    } catch (error) {
-                        console.warn('Error loading JSON asset:', fileName, error);
-                    }
+                            
+                            console.log('Loaded audio:', fileName);
+                            resolve();
+                        }, { once: true });
+                        
+                        audio.addEventListener('error', () => {
+                            console.warn('Failed to load audio:', assetUrl);
+                            resolve();
+                        }, { once: true });
+                        
+                        audio.src = objectUrl;
+                        audio.load();
+                    });
+                } else if (extension === 'json') {
+                    const response = await fetch(assetUrl);
+                    const jsonData = await response.json();
+                    const assetId = fileName.replace(/\\.[^.]+$/, '');
+                    const normalizedOriginalPath = originalPath.replace(/^[\/\\\\]+/, '');
+                    
+                    const pathVariations = [
+                        originalPath,
+                        normalizedOriginalPath,
+                        fileName,
+                        assetId,
+                        '/' + normalizedOriginalPath
+                    ];
+                    
+                    const uniquePaths = [...new Set(pathVariations)];
+                    uniquePaths.forEach(variation => {
+                        window.assetManager.cache[variation] = jsonData;
+                    });
+                    
+                    console.log('Loaded JSON:', fileName);
                 }
             } catch (error) {
                 console.warn('Error loading asset:', originalPath, error);
@@ -2073,9 +2073,10 @@ async function initializeGame() {
             setLoadingProgress(Math.round((loadedCount / totalAssets) * 100));
         }
         
-        console.log('Finished loading assets. AssetManager cache keys:', Object.keys(window.assetManager.cache));
+        console.log('Finished loading assets. Cache keys:', Object.keys(window.assetManager.cache));
     }` : `
     console.log('ZIP mode: Asset loading disabled');`}`}
+
     
     // Prevent scrolling with keyboard
     document.addEventListener('keydown', (e) => {
@@ -2832,33 +2833,77 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            // First stringify normally
-            let jsonString = JSON.stringify(data);
+            // Check if the data is too large to safely stringify
+            const dataSize = this.estimateDataSize(data);
 
-            // Then escape it for safe embedding in JavaScript
-            // Use a more comprehensive escaping approach
-            /*jsonString = jsonString
-                .replace(/\\/g, '\\\\')     // Escape backslashes
-                .replace(/'/g, "\\'")       // Escape single quotes
-                .replace(/"/g, '\\"')       // Escape double quotes
-                .replace(/\n/g, '\\n')      // Escape newlines
-                .replace(/\r/g, '\\r')      // Escape carriage returns
-                .replace(/\t/g, '\\t')      // Escape tabs
-                .replace(/\f/g, '\\f')      // Escape form feeds
-                .replace(/\b/g, '\\b')      // Escape backspaces
-                .replace(/\v/g, '\\v')      // Escape vertical tabs
-                .replace(/\0/g, '\\0')      // Escape null characters
-                .replace(/\u2028/g, '\\u2028') // Escape line separator
-                .replace(/\u2029/g, '\\u2029') // Escape paragraph separator
-                .replace(/</g, '\\u003c')   // Escape < to prevent script injection
-                .replace(/>/g, '\\u003e')   // Escape > to prevent script injection
-                .replace(/\//g, '\\/');     // Escape forward slashes last*/
+            // If data is larger than 100MB, warn and consider using ZIP mode instead
+            if (dataSize > 100 * 1024 * 1024) {
+                console.warn('Data size is very large (' + Math.round(dataSize / 1024 / 1024) + 'MB). Consider using ZIP export mode instead.');
 
+                // For standalone mode with huge assets, we need to be more careful
+                // Try to chunk the data or reduce asset size
+                if (data.assets && Object.keys(data.assets).length > 0) {
+                    console.warn('Large asset data detected. Consider using ZIP export mode for better performance.');
+                }
+            }
+
+            // Use JSON.stringify directly without additional escaping
+            // The browser's JSON.stringify is optimized and handles special characters correctly
             return JSON.stringify(data);
-            //return `"${jsonString}"`;
+
         } catch (error) {
-            // console.error('Error in safeStringify:', error);
+            console.error('Error in safeStringify:', error);
+
+            // If we get a range error, the data is too large
+            if (error instanceof RangeError) {
+                console.error('Data is too large to stringify. Please use ZIP export mode or reduce asset sizes.');
+                throw new Error('Export data too large. Please use ZIP export mode instead of standalone HTML.');
+            }
+
             return 'null';
+        }
+    }
+
+    /**
+ * Estimate the size of data in bytes
+ * @param {*} data - Data to estimate
+ * @returns {number} - Estimated size in bytes
+ */
+    estimateDataSize(data) {
+        if (data === null || data === undefined) {
+            return 0;
+        }
+
+        try {
+            // Quick estimation by converting to string and measuring length
+            // This is much faster than actually stringifying everything
+            let size = 0;
+
+            if (typeof data === 'string') {
+                // Strings: roughly 2 bytes per character (UTF-16)
+                size = data.length * 2;
+            } else if (typeof data === 'object') {
+                if (Array.isArray(data)) {
+                    // Arrays: sum of all elements
+                    for (const item of data) {
+                        size += this.estimateDataSize(item);
+                    }
+                } else {
+                    // Objects: sum of keys and values
+                    for (const [key, value] of Object.entries(data)) {
+                        size += key.length * 2; // Key size
+                        size += this.estimateDataSize(value); // Value size
+                    }
+                }
+            } else {
+                // Primitives: minimal size
+                size = 8;
+            }
+
+            return size;
+        } catch (error) {
+            console.warn('Error estimating data size:', error);
+            return 0;
         }
     }
 
@@ -2866,43 +2911,80 @@ document.addEventListener('DOMContentLoaded', function() {
      * Create standalone HTML file
      */
     createStandaloneHTML(html, js, css, data, settings) {
-        let finalHtml = html;
-
         try {
+            // Check total size before processing
+            const estimatedJSSize = js.length;
+            const estimatedCSSSize = css.length;
+            const estimatedHTMLSize = html.length;
+            const totalSize = estimatedJSSize + estimatedCSSSize + estimatedHTMLSize;
+
+            console.log('Export size estimate:');
+            console.log('  JavaScript:', Math.round(estimatedJSSize / 1024), 'KB');
+            console.log('  CSS:', Math.round(estimatedCSSSize / 1024), 'KB');
+            console.log('  HTML:', Math.round(estimatedHTMLSize / 1024), 'KB');
+            console.log('  Total:', Math.round(totalSize / 1024 / 1024), 'MB');
+
+            // Warn if approaching browser limits (250MB as safe threshold)
+            if (totalSize > 250 * 1024 * 1024) {
+                throw new Error('Export file too large (' + Math.round(totalSize / 1024 / 1024) + 'MB). Please use ZIP export mode or reduce asset sizes.');
+            }
+
             // Minify CSS separately if enabled
             let finalCSS = css;
             if (settings.minifyCode) {
                 try {
                     finalCSS = this.minifyCSS(css);
+                    console.log('CSS minified:', Math.round(css.length / 1024), 'KB ->', Math.round(finalCSS.length / 1024), 'KB');
                 } catch (cssError) {
                     console.warn('CSS minification failed, using original:', cssError);
                     finalCSS = css;
                 }
             }
 
-            // Embed the CSS and JS directly into the HTML placeholders
-            finalHtml = html
-                .replace('/* CSS will be injected here */', finalCSS)
-                .replace('/* JavaScript will be injected here */', js);
+            // Build the final HTML in chunks to avoid string length issues
+            let finalHtml = html;
+
+            // Replace CSS placeholder
+            try {
+                finalHtml = finalHtml.replace('/* CSS will be injected here */', finalCSS);
+            } catch (error) {
+                console.error('Failed to inject CSS:', error);
+                throw new Error('Failed to embed CSS. File may be too large.');
+            }
+
+            // Replace JS placeholder
+            try {
+                finalHtml = finalHtml.replace('/* JavaScript will be injected here */', js);
+            } catch (error) {
+                console.error('Failed to inject JavaScript:', error);
+                throw new Error('Failed to embed JavaScript. File may be too large.');
+            }
 
             // Only minify HTML if specifically enabled - and do it carefully
             if (settings.minifyCode) {
                 try {
+                    const beforeMinify = finalHtml.length;
                     finalHtml = this.minifyHTML(finalHtml);
+                    console.log('HTML minified:', Math.round(beforeMinify / 1024), 'KB ->', Math.round(finalHtml.length / 1024), 'KB');
                 } catch (htmlError) {
                     console.warn('HTML minification failed, using original:', htmlError);
                     // Keep the unminified version
                 }
             }
 
+            console.log('Final export size:', Math.round(finalHtml.length / 1024 / 1024), 'MB');
+
             return finalHtml;
 
         } catch (error) {
             console.error('Error creating standalone HTML:', error);
-            // Return the basic version without minification
-            return html
-                .replace('/* CSS will be injected here */', css)
-                .replace('/* JavaScript will be injected here */', js);
+
+            // Provide helpful error message
+            if (error instanceof RangeError || error.message.includes('too large')) {
+                throw new Error('Export file too large for standalone HTML mode. Please use ZIP export mode instead, or reduce asset sizes by:\n1. Compressing images\n2. Using lower quality audio files\n3. Removing unused assets');
+            }
+
+            throw error;
         }
     }
 
@@ -3105,10 +3187,12 @@ document.addEventListener('DOMContentLoaded', function() {
             </select>
         </div>
         <div class="export-group">
-            <label>Export Format:</label>
+        <label>Export Format:</label>
             <select id="export-format">
-                <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML</option>
+                <option value="zip">ZIP Package (Recommended for projects with many assets)</option>
+                <option value="standalone" ${this.exportSettings.standalone ? 'selected' : ''}>Standalone HTML (Single file, may fail for large projects)</option>
             </select>
+            <small style="color: #888;">ZIP mode creates separate asset files and works better with large projects.</small>
         </div>
         <div class="export-group">
             <label>
@@ -3177,6 +3261,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 minifyCode: modal.querySelector('#export-minify-code').checked,
                 obfuscateCode: modal.querySelector('#export-obfuscate-code').checked
             };
+
+            // Check for large projects and recommend ZIP mode
+            if (settings.standalone && settings.includeAssets) {
+                const assetCount = Object.keys(await this.collectAssets()).length;
+                if (assetCount > 20) {
+                    const proceed = confirm(
+                        `Your project has ${assetCount} assets. Standalone HTML mode may fail with large projects.\n\n` +
+                        `Recommendation: Use ZIP export mode for better reliability.\n\n` +
+                        `Continue with standalone export anyway?`
+                    );
+
+                    if (!proceed) {
+                        return;
+                    }
+                }
+            }
 
             // Obfuscation requires minification
             if (settings.obfuscateCode) {
