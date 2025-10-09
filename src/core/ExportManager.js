@@ -20,7 +20,11 @@ class ExportManager {
             loadingBg: '#000000ff',        // dark gray background
             spinnerColor: '#4F8EF7',     // blue accent
             progressColor: '#2D3748',      // darker gray for progress bar
-            logoImage: null // base64 or file path
+            logoImage: null, // base64 or file path
+            // New compression options
+            compressAssets: false,         // Enable asset compression for smaller file size
+            compressionQuality: 0.8,       // Image compression quality (0.1-1.0)
+            maxFileSizeMB: 250             // Maximum file size in MB before warning
         };
     }
 
@@ -75,6 +79,40 @@ class ExportManager {
 
             // Collect all necessary files and data
             const exportData = await this.collectExportData(project, exportSettings);
+
+            // Check file size limits before generating content
+            const sizeEstimates = await this.estimateExportSize(exportData, exportSettings);
+            const warnings = this.checkSizeLimits(sizeEstimates, exportSettings);
+
+            if (warnings.length > 0) {
+                const warningMessage = warnings.join('\n\n');
+                console.warn('Export size warnings:', warningMessage);
+
+                // For critical warnings, ask user confirmation
+                const criticalWarnings = warnings.filter(w =>
+                    w.includes('Standalone HTML export') && w.includes('may fail') ||
+                    w.includes('exceeds recommended limit')
+                );
+
+                if (criticalWarnings.length > 0) {
+                    const proceed = confirm(
+                        'Export Size Warning:\n\n' + criticalWarnings.join('\n\n') +
+                        '\n\nDo you want to continue with the export anyway?'
+                    );
+
+                    if (!proceed) {
+                        throw new Error('Export cancelled by user due to size warnings.');
+                    }
+                }
+            }
+
+            // Show size information to user
+            console.log('Export size estimates:');
+            console.log('  HTML:', this.formatFileSize(sizeEstimates.html));
+            console.log('  CSS:', this.formatFileSize(sizeEstimates.css));
+            console.log('  JavaScript:', this.formatFileSize(sizeEstimates.js));
+            console.log('  Assets:', this.formatFileSize(sizeEstimates.assets));
+            console.log('  Total:', this.formatFileSize(sizeEstimates.total));
 
             // Generate the HTML5 package
             const htmlContent = this.generateHTML(exportData, exportSettings, exportData.customScripts);
@@ -170,6 +208,11 @@ class ExportManager {
         // Collect assets if enabled
         if (settings.includeAssets) {
             data.assets = await this.collectAssets();
+
+            // Apply compression if enabled
+            if (settings.compressAssets) {
+                data.assets = await this.compressAssets(data.assets, settings);
+            }
         }
 
         // Collect required engine files (this now uses the stored settings)
@@ -245,6 +288,11 @@ class ExportManager {
                         delete serialized.data.imageData;
                     }
 
+                    // Remove any direct image content that might cause duplication
+                    if (serialized.data.imageContent) {
+                        delete serialized.data.imageContent;
+                    }
+
                     // Ensure we're using asset references only
                     if (module.imageAsset && module.imageAsset.path) {
                         // Register the asset with AssetManager if it's not already there
@@ -262,6 +310,20 @@ class ExportManager {
                     }
 
                     console.log('Serialized SpriteRenderer without embedding image data, using asset reference:', serialized.data.imageAsset?.path);
+                }
+
+                // Also check for other modules that might embed asset data
+                if (serialized.data && typeof serialized.data === 'object') {
+                    // Remove any large base64 image data that might be embedded
+                    for (const [key, value] of Object.entries(serialized.data)) {
+                        if (key.toLowerCase().includes('image') &&
+                            typeof value === 'string' &&
+                            value.startsWith('data:image/') &&
+                            value.length > 100000) { // Only remove very large embedded images
+                            console.log(`Removing embedded image data from ${module.constructor.name}.${key} to prevent duplication`);
+                            delete serialized.data[key];
+                        }
+                    }
                 }
             } catch (error) {
                 console.warn(`Error serializing module ${module.constructor.name}:`, error);
@@ -321,24 +383,46 @@ class ExportManager {
     }
 
     /**
-     * Collect all assets used in the project
+     * Collect all assets used in the project (avoiding duplicates)
      */
     async collectAssets() {
         let assets = {};
+        const processedPaths = new Set(); // Track processed paths to avoid duplicates
 
-        // First, try to get assets from AssetManager
+        // First, try to get assets from AssetManager (most reliable source)
         if (window.assetManager) {
             try {
                 const assetManagerAssets = await window.assetManager.exportAssetsForGame();
-                assets = { ...assets, ...assetManagerAssets };
-                console.log('Collected assets from AssetManager:', Object.keys(assetManagerAssets));
+
+                // Process AssetManager assets first
+                for (const [path, assetData] of Object.entries(assetManagerAssets)) {
+                    const normalizedPath = this.normalizePath(path);
+
+                    // Skip if already processed
+                    if (processedPaths.has(normalizedPath)) {
+                        continue;
+                    }
+
+                    assets[normalizedPath] = {
+                        content: assetData.content,
+                        type: assetData.type,
+                        source: 'assetManager',
+                        size: this.estimateAssetSize(assetData.content, assetData.type)
+                    };
+
+                    processedPaths.add(normalizedPath);
+                    console.log('Collected asset from AssetManager:', normalizedPath, this.formatFileSize(assets[normalizedPath].size));
+                }
+
+                console.log('Collected assets from AssetManager:', Object.keys(assetManagerAssets).length);
             } catch (error) {
                 console.warn('Failed to collect assets from AssetManager:', error);
             }
         }
 
-        // Also collect from FileBrowser for any additional assets
-        if (window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
+        // Only scan FileBrowser if AssetManager didn't provide assets
+        // This avoids double-counting assets that are already in AssetManager
+        if (Object.keys(assets).length === 0 && window.fileBrowser && typeof window.fileBrowser.getAllFiles === 'function') {
             try {
                 const files = await window.fileBrowser.getAllFiles();
 
@@ -346,8 +430,8 @@ class ExportManager {
                     if (file.type === 'file') {
                         const normalizedPath = this.normalizePath(file.path);
 
-                        // Skip if already collected from AssetManager
-                        if (assets[normalizedPath]) {
+                        // Skip if already processed
+                        if (processedPaths.has(normalizedPath)) {
                             continue;
                         }
 
@@ -356,26 +440,29 @@ class ExportManager {
                         const assetExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp3', 'wav', 'ogg', 'json'];
 
                         if (assetExtensions.includes(extension)) {
-                            // For binary files, we need to handle them properly
                             let content = file.content;
                             let mimeType = this.detectMimeType(file.path);
 
                             // If it's not already a data URL, convert it
                             if (!content.startsWith('data:')) {
                                 if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
-                                    // For images, ensure it's a proper data URL
                                     content = `data:${mimeType};base64,${content}`;
                                 } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
-                                    // For audio, ensure it's a proper data URL
                                     content = `data:${mimeType};base64,${content}`;
                                 }
                             }
 
+                            const assetSize = this.estimateAssetSize(content, mimeType);
+
                             assets[normalizedPath] = {
                                 content: content,
                                 type: mimeType,
-                                source: 'fileBrowser'
+                                source: 'fileBrowser',
+                                size: assetSize
                             };
+
+                            processedPaths.add(normalizedPath);
+                            console.log('Collected asset from FileBrowser:', normalizedPath, this.formatFileSize(assetSize));
                         }
                     }
                 }
@@ -384,8 +471,198 @@ class ExportManager {
             }
         }
 
-        console.log('Final collected assets:', Object.keys(assets));
+        // Remove any embedded image data from SpriteRenderer modules to avoid duplication
+        // This is a common source of double-counting
+        // Log asset collection summary
+        const assetSummary = {};
+        for (const [path, asset] of Object.entries(assets)) {
+            const extension = path.split('.').pop().toLowerCase();
+            assetSummary[extension] = (assetSummary[extension] || 0) + 1;
+        }
+
+        console.log('Final collected assets (no duplicates):', Object.keys(assets).length);
+        console.log('Asset breakdown by type:', assetSummary);
+
+        // Calculate total estimated size
+        let totalSize = 0;
+        for (const asset of Object.values(assets)) {
+            totalSize += asset.size || 0;
+        }
+        console.log('Total estimated asset size:', this.formatFileSize(totalSize));
+
         return assets;
+    }
+
+    /**
+     * Estimate the actual size of an asset (accounting for base64 encoding)
+     * @param {string} content - Asset content (data URL or raw data)
+     * @param {string} mimeType - MIME type
+     * @returns {number} - Estimated size in bytes
+     */
+    estimateAssetSize(content, mimeType) {
+        if (!content) return 0;
+
+        try {
+            if (typeof content === 'string' && content.startsWith('data:')) {
+                // Extract base64 data from data URL
+                const commaIndex = content.indexOf(',');
+                if (commaIndex !== -1) {
+                    const base64Data = content.substring(commaIndex + 1);
+                    // Base64 is ~4/3 larger than original binary data
+                    return Math.ceil((base64Data.length * 3) / 4);
+                }
+            }
+
+            // For non-data URL content, estimate based on string length
+            return content.length;
+        } catch (error) {
+            console.warn('Error estimating asset size:', error);
+            return content.length || 0;
+        }
+    }
+
+    /**
+     * Compress assets for smaller file size
+     * @param {Object} assets - Assets object to compress
+     * @param {Object} settings - Export settings including compression options
+     * @returns {Object} - Compressed assets object
+     */
+    async compressAssets(assets, settings) {
+        if (!settings.compressAssets || !assets) {
+            return assets;
+        }
+
+        console.log('Compressing assets for smaller file size...');
+        const compressedAssets = {};
+        let totalOriginalSize = 0;
+        let totalCompressedSize = 0;
+
+        for (const [path, asset] of Object.entries(assets)) {
+            const originalContent = asset.content;
+            if (!originalContent) {
+                compressedAssets[path] = asset;
+                continue;
+            }
+
+            try {
+                let compressedContent = originalContent;
+                const extension = path.split('.').pop().toLowerCase();
+
+                // Handle different asset types
+                if (['png', 'jpg', 'jpeg', 'webp'].includes(extension)) {
+                    compressedContent = await this.compressImage(originalContent, settings.compressionQuality);
+                } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
+                    compressedContent = await this.compressAudio(originalContent, settings.compressionQuality);
+                } else {
+                    // For other asset types, keep as-is
+                    compressedContent = originalContent;
+                }
+
+                // Calculate size difference
+                const originalSize = typeof originalContent === 'string' ?
+                    (originalContent.startsWith('data:') ?
+                        Math.ceil((originalContent.split(',')[1].length * 3) / 4) :
+                        originalContent.length) :
+                    0;
+
+                const compressedSize = typeof compressedContent === 'string' ?
+                    (compressedContent.startsWith('data:') ?
+                        Math.ceil((compressedContent.split(',')[1].length * 3) / 4) :
+                        compressedContent.length) :
+                    0;
+
+                totalOriginalSize += originalSize;
+                totalCompressedSize += compressedSize;
+
+                // Only use compressed version if it's actually smaller
+                if (compressedSize < originalSize && compressedSize > 0) {
+                    compressedAssets[path] = {
+                        ...asset,
+                        content: compressedContent,
+                        originalSize: originalSize,
+                        compressedSize: compressedSize
+                    };
+                    console.log(`Compressed ${path}: ${this.formatFileSize(originalSize)} -> ${this.formatFileSize(compressedSize)}`);
+                } else {
+                    compressedAssets[path] = asset;
+                    console.log(`Compression not beneficial for ${path}, keeping original`);
+                }
+
+            } catch (error) {
+                console.warn(`Failed to compress asset ${path}:`, error);
+                compressedAssets[path] = asset; // Keep original if compression fails
+            }
+        }
+
+        const compressionRatio = totalOriginalSize > 0 ?
+            Math.round((1 - totalCompressedSize / totalOriginalSize) * 100) : 0;
+
+        console.log(`Asset compression completed: ${this.formatFileSize(totalOriginalSize)} -> ${this.formatFileSize(totalCompressedSize)} (${compressionRatio}% reduction)`);
+
+        return compressedAssets;
+    }
+
+    /**
+     * Compress image data
+     * @param {string} imageDataUrl - Image data URL
+     * @param {number} quality - Compression quality (0.1-1.0)
+     * @returns {Promise<string>} - Compressed image data URL
+     */
+    async compressImage(imageDataUrl, quality = 0.8) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    // Set canvas dimensions
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    // Draw and compress
+                    ctx.drawImage(img, 0, 0);
+
+                    // Determine output format based on original
+                    let outputFormat = 'image/jpeg'; // Default to JPEG for better compression
+                    if (imageDataUrl.includes('image/png')) {
+                        outputFormat = 'image/png';
+                    } else if (imageDataUrl.includes('image/webp')) {
+                        outputFormat = 'image/webp';
+                    }
+
+                    // Adjust quality based on format
+                    let finalQuality = quality;
+                    if (outputFormat === 'image/png') {
+                        // PNG doesn't support quality parameter, but we can still compress by reducing colors
+                        finalQuality = quality > 0.8 ? 0.8 : quality; // Cap PNG quality at 0.8
+                    }
+
+                    const compressedDataUrl = canvas.toDataURL(outputFormat, finalQuality);
+                    resolve(compressedDataUrl);
+
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            img.onerror = () => reject(new Error('Failed to load image for compression'));
+            img.src = imageDataUrl;
+        });
+    }
+
+    /**
+     * Compress audio data (basic implementation)
+     * @param {string} audioDataUrl - Audio data URL
+     * @param {number} quality - Compression quality (0.1-1.0)
+     * @returns {Promise<string>} - Compressed audio data URL (returns original for now)
+     */
+    async compressAudio(audioDataUrl, quality = 0.8) {
+        // For now, return original audio as compression is more complex
+        // In a full implementation, you might use Web Audio API or external libraries
+        console.log('Audio compression not implemented yet, returning original');
+        return audioDataUrl;
     }
 
     /**
@@ -803,11 +1080,11 @@ class ExportManager {
         const moduleMap = {
             // Visual Modules
             'SpriteRenderer': 'src/core/Modules/Visual/SpriteRenderer.js',
-            'SpriteRendererBackground': 'src/core/Modules/Visual/SpriteRendererBackground.js',
+            //'SpriteRendererBackground': 'src/core/Modules/Visual/SpriteRendererBackground.js',
             //'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
             'ObjectTiling': 'src/core/Modules/Visual/ObjectTiling.js',
             // Utility Modules
-            'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
+            //'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',
             //'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
@@ -864,21 +1141,21 @@ class ExportManager {
             'SnakeSegment': 'src/core/Modules/Snake/SnakeApple.js',*/
 
             // Physics and Collision Modules
-            'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
+            /*'RigidBody': 'src/core/Modules/Matter-js/RigidBody.js',
             'RigidBodyDragger': 'src/core/Modules/Matter-js/RigidBodyDragger.js',
             'Joint': 'src/core/Modules/Matter-js/Joint.js',
             'GravityFieldMatter': 'src/core/Modules/Matter-js/GravityFieldMatter.js',
             'WindZoneMatter': 'src/core/Modules/Matter-js/WindZoneMatter.js',
             'VehiclePhysics': 'src/core/Modules/Matter-js/VehiclePhysics.js',
-            'PlatformControllerMatter': 'src/core/Modules/Matter-js/PlatformControllerMatter.js',
+            'PlatformControllerMatter': 'src/core/Modules/Matter-js/PlatformControllerMatter.js',*/
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
-            'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
+            //'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
 
             // Other Modules
             'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
-            'AudioPlayer': 'src/core/Modules/AudioPlayer.js',
-            'BehaviorTrigger': 'src/core/Modules/BehaviorTrigger.js'
+            //'AudioPlayer': 'src/core/Modules/AudioPlayer.js',
+            //'BehaviorTrigger': 'src/core/Modules/BehaviorTrigger.js'
         };
 
         // If no className provided, return the entire mapping
@@ -2865,10 +3142,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
- * Estimate the size of data in bytes
- * @param {*} data - Data to estimate
- * @returns {number} - Estimated size in bytes
- */
+     * Estimate the size of data in bytes
+     * @param {*} data - Data to estimate
+     * @returns {number} - Estimated size in bytes
+     */
     estimateDataSize(data) {
         if (data === null || data === undefined) {
             return 0;
@@ -2905,6 +3182,173 @@ document.addEventListener('DOMContentLoaded', function() {
             console.warn('Error estimating data size:', error);
             return 0;
         }
+    }
+
+    /**
+     * Estimate the final export file size with better accuracy
+     * @param {Object} exportData - The collected export data
+     * @param {Object} settings - Export settings
+     * @returns {Object} - Size estimates in bytes
+     */
+    async estimateExportSize(exportData, settings) {
+        const estimates = {
+            html: 0,
+            css: 0,
+            js: 0,
+            assets: 0,
+            total: 0,
+            compressed: 0
+        };
+
+        try {
+            // Estimate HTML size (base template + embedded content)
+            const baseHTMLSize = 15000; // Base HTML template size
+            estimates.html = baseHTMLSize;
+
+            // Estimate CSS size
+            const baseCSSSize = 20000; // Base CSS size
+            estimates.css = baseCSSSize;
+
+            // Estimate JavaScript size (engine + modules + game code)
+            let jsSize = 0;
+
+            // Engine files
+            for (const filePath of exportData.engineFiles || []) {
+                try {
+                    const content = await this.loadFileContent(filePath);
+                    jsSize += content.length;
+                } catch (error) {
+                    console.warn(`Could not estimate size for ${filePath}:`, error);
+                    jsSize += 50000; // Estimate 50KB per engine file
+                }
+            }
+
+            // Custom modules
+            for (const module of exportData.modules || []) {
+                try {
+                    const content = await this.loadFileContent(module.filePath);
+                    jsSize += content.length;
+                } catch (error) {
+                    console.warn(`Could not estimate size for module ${module.filePath}:`, error);
+                    jsSize += 10000; // Estimate 10KB per module
+                }
+            }
+
+            // Custom scripts
+            for (const script of exportData.customScripts || []) {
+                jsSize += (script.content || '').length;
+            }
+
+            // Game initialization code (estimated)
+            jsSize += 50000; // Estimate 50KB for game init code
+
+            estimates.js = jsSize;
+
+            // Estimate assets size (now using deduplicated assets)
+            if (settings.includeAssets && exportData.assets) {
+                for (const [path, asset] of Object.entries(exportData.assets)) {
+                    if (asset.size !== undefined) {
+                        // Use pre-calculated size if available
+                        estimates.assets += asset.size;
+                    } else if (asset.content) {
+                        // Fallback to calculating size
+                        const assetSize = this.estimateAssetSize(asset.content, asset.type);
+                        estimates.assets += assetSize;
+                    } else {
+                        // Estimate based on file type if no content available
+                        const extension = path.split('.').pop().toLowerCase();
+                        if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
+                            estimates.assets += 50000; // Estimate 50KB per image
+                        } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
+                            estimates.assets += 100000; // Estimate 100KB per audio file
+                        } else {
+                            estimates.assets += 10000; // Estimate 10KB for other assets
+                        }
+                    }
+                }
+
+                console.log(`Estimated assets size: ${this.formatFileSize(estimates.assets)} for ${Object.keys(exportData.assets).length} assets`);
+            }
+
+            // Apply compression estimates
+            if (settings.compressAssets) {
+                // Image compression typically reduces size by 30-70%
+                estimates.assets = Math.ceil(estimates.assets * 0.5);
+            }
+
+            if (settings.minifyCode) {
+                // Code minification typically reduces size by 20-40%
+                estimates.js = Math.ceil(estimates.js * 0.7);
+                estimates.css = Math.ceil(estimates.css * 0.8);
+            }
+
+            if (settings.obfuscateCode) {
+                // Obfuscation can reduce size further by 10-20%
+                estimates.js = Math.ceil(estimates.js * 0.85);
+            }
+
+            // Calculate total
+            estimates.total = estimates.html + estimates.css + estimates.js + estimates.assets;
+
+            // For standalone mode, account for JSON overhead in embedding
+            if (settings.standalone) {
+                estimates.total += 10000; // JSON structure overhead
+            }
+
+            return estimates;
+
+        } catch (error) {
+            console.warn('Error estimating export size:', error);
+            // Return conservative estimates as fallback
+            return {
+                html: 15000,
+                css: 20000,
+                js: 500000,
+                assets: 1000000,
+                total: 2000000,
+                compressed: 1500000
+            };
+        }
+    }
+
+    /**
+     * Format bytes into human readable format
+     * @param {number} bytes - Size in bytes
+     * @returns {string} - Formatted size string
+     */
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    /**
+     * Check if estimated size exceeds limits and return warnings
+     * @param {Object} sizeEstimates - Size estimates from estimateExportSize
+     * @param {Object} settings - Export settings
+     * @returns {Array} - Array of warning messages
+     */
+    checkSizeLimits(sizeEstimates, settings) {
+        const warnings = [];
+        const maxSizeBytes = (settings.maxFileSizeMB || 250) * 1024 * 1024;
+
+        if (sizeEstimates.total > maxSizeBytes) {
+            warnings.push(`Export size (${this.formatFileSize(sizeEstimates.total)}) exceeds recommended limit (${this.formatFileSize(maxSizeBytes)}). Consider using ZIP export mode or reducing asset sizes.`);
+        }
+
+        if (sizeEstimates.total > 100 * 1024 * 1024) { // 100MB
+            warnings.push('Export size is very large and may cause browser memory issues. Consider using ZIP export mode.');
+        }
+
+        if (settings.standalone && sizeEstimates.total > 50 * 1024 * 1024) { // 50MB for standalone
+            warnings.push('Standalone HTML export with large files may fail. Strongly recommend using ZIP export mode.');
+        }
+
+        return warnings;
     }
 
     /**
@@ -3135,6 +3579,33 @@ document.addEventListener('DOMContentLoaded', function() {
         <button class="export-close-button">&times;</button>
     </div>
     <div class="export-modal-body">
+        <!-- Size Estimation Display -->
+        <div id="export-size-estimation" class="export-size-display" style="display: none;">
+            <h3>Estimated Export Size</h3>
+            <div class="size-breakdown">
+                <div class="size-item">
+                    <span class="size-label">HTML:</span>
+                    <span class="size-value" id="size-html">-</span>
+                </div>
+                <div class="size-item">
+                    <span class="size-label">CSS:</span>
+                    <span class="size-value" id="size-css">-</span>
+                </div>
+                <div class="size-item">
+                    <span class="size-label">JavaScript:</span>
+                    <span class="size-value" id="size-js">-</span>
+                </div>
+                <div class="size-item">
+                    <span class="size-label">Assets:</span>
+                    <span class="size-value" id="size-assets">-</span>
+                </div>
+                <div class="size-item size-total">
+                    <span class="size-label">Total:</span>
+                    <span class="size-value" id="size-total">-</span>
+                </div>
+            </div>
+            <div id="size-warnings" class="size-warnings"></div>
+        </div>
         <div class="export-group">
             <label>Game Title:</label>
             <input type="text" id="export-title" value="${this.exportSettings.customTitle}" placeholder="My Awesome Game">
@@ -3213,6 +3684,33 @@ document.addEventListener('DOMContentLoaded', function() {
             </label>
             <small style="color: #888;">Note: Obfuscation automatically enables minification and may increase export time.</small>
         </div>
+        <div class="export-group">
+            <label>
+                <input type="checkbox" id="export-compress-assets" ${this.exportSettings.compressAssets ? 'checked' : ''}>
+                Compress Assets (Reduces image file sizes)
+            </label>
+            <small style="color: #888;">Compresses images to reduce export file size. May affect image quality.</small>
+        </div>
+        <div class="export-group" id="compression-quality-group" style="display: none;">
+            <label for="export-compression-quality">Compression Quality:</label>
+            <select id="export-compression-quality">
+                <option value="0.9" ${this.exportSettings.compressionQuality === 0.9 ? 'selected' : ''}>High (90% - Best quality)</option>
+                <option value="0.8" ${this.exportSettings.compressionQuality === 0.8 ? 'selected' : ''}>Good (80% - Balanced)</option>
+                <option value="0.7" ${this.exportSettings.compressionQuality === 0.7 ? 'selected' : ''}>Medium (70% - Good compression)</option>
+                <option value="0.5" ${this.exportSettings.compressionQuality === 0.5 ? 'selected' : ''}>Low (50% - Maximum compression)</option>
+            </select>
+            <small style="color: #888;">Lower quality = smaller file size, but reduced image quality.</small>
+        </div>
+        <div class="export-group">
+            <label for="export-max-size">Max File Size (MB):</label>
+            <select id="export-max-size">
+                <option value="100" ${this.exportSettings.maxFileSizeMB === 100 ? 'selected' : ''}>100 MB</option>
+                <option value="250" ${this.exportSettings.maxFileSizeMB === 250 ? 'selected' : ''}>250 MB (Recommended)</option>
+                <option value="500" ${this.exportSettings.maxFileSizeMB === 500 ? 'selected' : ''}>500 MB</option>
+                <option value="1000" ${this.exportSettings.maxFileSizeMB === 1000 ? 'selected' : ''}>1 GB</option>
+            </select>
+            <small style="color: #888;">Warning threshold for large exports. ZIP mode recommended for large projects.</small>
+        </div>
     </div>
     <div class="export-modal-footer">
         <button id="export-cancel">Cancel</button>
@@ -3235,6 +3733,108 @@ document.addEventListener('DOMContentLoaded', function() {
                 minifyCheckbox.disabled = false;
             }
         });
+
+        // Show/hide compression quality setting
+        const compressCheckbox = modal.querySelector('#export-compress-assets');
+        const qualityGroup = modal.querySelector('#compression-quality-group');
+
+        compressCheckbox.addEventListener('change', () => {
+            if (compressCheckbox.checked) {
+                qualityGroup.style.display = 'block';
+            } else {
+                qualityGroup.style.display = 'none';
+            }
+        });
+
+        // Initialize compression quality visibility
+        if (compressCheckbox.checked) {
+            qualityGroup.style.display = 'block';
+        }
+
+        // Size estimation and preview functionality
+        async function updateSizeEstimation() {
+            const sizeDisplay = modal.querySelector('#export-size-estimation');
+            const sizeWarnings = modal.querySelector('#size-warnings');
+
+            try {
+                // Get current settings
+                const currentSettings = {
+                    includeAssets: modal.querySelector('#export-include-assets').checked,
+                    minifyCode: modal.querySelector('#export-minify-code').checked,
+                    obfuscateCode: modal.querySelector('#export-obfuscate-code').checked,
+                    compressAssets: modal.querySelector('#export-compress-assets').checked,
+                    compressionQuality: parseFloat(modal.querySelector('#export-compression-quality').value),
+                    maxFileSizeMB: parseInt(modal.querySelector('#export-max-size').value),
+                    standalone: modal.querySelector('#export-format').value === 'standalone'
+                };
+
+                // Get project data for estimation
+                const project = {
+                    name: modal.querySelector('#export-title').value || 'game',
+                    scenes: window.editor ? window.editor.scenes : []
+                };
+
+                if (project.scenes.length === 0) {
+                    sizeDisplay.style.display = 'none';
+                    return;
+                }
+
+                // Collect export data for size estimation
+                const exportManager = window.exportManager;
+                const originalSettings = { ...exportManager.exportSettings };
+                exportManager.exportSettings = { ...originalSettings, ...currentSettings };
+
+                const exportData = await exportManager.collectExportData(project, currentSettings);
+
+                // Get size estimates
+                const sizeEstimates = await exportManager.estimateExportSize(exportData, currentSettings);
+                const warnings = exportManager.checkSizeLimits(sizeEstimates, currentSettings);
+
+                // Update display
+                modal.querySelector('#size-html').textContent = exportManager.formatFileSize(sizeEstimates.html);
+                modal.querySelector('#size-css').textContent = exportManager.formatFileSize(sizeEstimates.css);
+                modal.querySelector('#size-js').textContent = exportManager.formatFileSize(sizeEstimates.js);
+                modal.querySelector('#size-assets').textContent = exportManager.formatFileSize(sizeEstimates.assets);
+                modal.querySelector('#size-total').textContent = exportManager.formatFileSize(sizeEstimates.total);
+
+                // Show warnings
+                if (warnings.length > 0) {
+                    sizeWarnings.innerHTML = warnings.map(w => `<div class="warning-item">${w}</div>`).join('');
+                } else {
+                    sizeWarnings.innerHTML = '';
+                }
+
+                sizeDisplay.style.display = 'block';
+
+                // Restore original settings
+                exportManager.exportSettings = originalSettings;
+
+            } catch (error) {
+                console.warn('Error updating size estimation:', error);
+                sizeDisplay.style.display = 'none';
+            }
+        }
+
+        // Update size estimation when settings change
+        const updateTriggers = [
+            '#export-include-assets',
+            '#export-minify-code',
+            '#export-obfuscate-code',
+            '#export-compress-assets',
+            '#export-compression-quality',
+            '#export-max-size',
+            '#export-format'
+        ];
+
+        updateTriggers.forEach(selector => {
+            const element = modal.querySelector(selector);
+            if (element) {
+                element.addEventListener('change', updateSizeEstimation);
+            }
+        });
+
+        // Initial size estimation
+        setTimeout(updateSizeEstimation, 100);
 
         // Event handlers
         modal.querySelector('.export-close-button').addEventListener('click', () => {
@@ -3259,7 +3859,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 standalone: modal.querySelector('#export-format').value === 'standalone',
                 includeAssets: modal.querySelector('#export-include-assets').checked,
                 minifyCode: modal.querySelector('#export-minify-code').checked,
-                obfuscateCode: modal.querySelector('#export-obfuscate-code').checked
+                obfuscateCode: modal.querySelector('#export-obfuscate-code').checked,
+                compressAssets: modal.querySelector('#export-compress-assets').checked,
+                compressionQuality: parseFloat(modal.querySelector('#export-compression-quality').value),
+                maxFileSizeMB: parseInt(modal.querySelector('#export-max-size').value)
             };
 
             // Check for large projects and recommend ZIP mode

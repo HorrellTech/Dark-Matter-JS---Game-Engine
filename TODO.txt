@@ -25,4 +25,12 @@
 
 - Fix infinite texture generator not chunking correctly
 
-- Fix export to zip not referencing assets cprrectly. Single HTML works fine, but has file size limits
+- Fix export to zip not referencing assets correctly. Single HTML works fine, but has file size limits
+
+- Add other modules as asset packs to keep export file size to a minimum
+
+- Add module asset pack for a canvas that can snap to the viewport position and size, and drawing modules to accompany it 
+
+- Add a property type for code, so people can have custom code run on events within their module
+
+- Make drawing modules start with their game object width and height as size
