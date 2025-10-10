@@ -22,6 +22,8 @@ class GameObject {
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
 
+        this.isEditorSelected = false; // Whether selected in editor
+
         this.usePolygonCollision = false; // Enable polygon collision
         this.polygonPointCount = 3; // Number of points in the polygon
         this.polygonAngleOffset = 0; // Angle offset for polygon points

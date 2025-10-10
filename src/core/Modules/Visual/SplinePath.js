@@ -1,6 +1,22 @@
 /**
  * Spline Path Module
  * Creates curved paths with edge generation, color, and perlin texture generation
+ * 
+ * // Check if player is on the path
+if (splinePath.isPointInPath(playerPos, 10)) {
+    console.log("Player is on the path!");
+}
+
+// Get waypoints for AI pathfinding
+const waypoints = splinePath.getPathFollowingPoints(50, true);
+waypoints.forEach(wp => {
+    // wp.position, wp.tangent, wp.angle, wp.width
+});
+
+// Move along path at constant speed
+const distance = speed * deltaTime;
+const t = splinePath.getTAtLength(distance);
+const pos = splinePath.getOffsetPositionAt(t, 10); // 10px to the right
  */
 class SplinePath extends Module {
     static namespace = "Visual";
@@ -84,6 +100,15 @@ class SplinePath extends Module {
         this._shimmerCache = new Map(); // Cache for shimmer effects
         this._lastFrameTime = 0;
         this._frameCount = 0;
+
+        // Dashed line properties
+        this.showDashedLine = false;
+        this.dashedLineColor = "#FFFF00";
+        this.dashedLineWidth = 2;
+        this.dashLength = 20;
+        this.dashGap = 10;
+        this.dashedLineOpacity = 1.0;
+        this.dashedLineOffset = 0; // Offset from center (0 = center, positive = right, negative = left)
 
         this._shimmerChunks = null;
         this._shimmerChunksDirty = true;
@@ -199,6 +224,47 @@ class SplinePath extends Module {
             description: "Type of spline interpolation",
             options: ["linear", "quadratic", "cubic", "catmull-rom"],
             onChange: (value) => { this.pathType = value; }
+        });
+
+        // Dashed line properties
+        this.exposeProperty("showDashedLine", "boolean", this.showDashedLine, {
+            description: "Show dashed center line",
+            onChange: (value) => { this.showDashedLine = value; }
+        });
+
+        this.exposeProperty("dashedLineColor", "color", this.dashedLineColor, {
+            description: "Color of the dashed line",
+            onChange: (value) => { this.dashedLineColor = value; }
+        });
+
+        this.exposeProperty("dashedLineWidth", "number", this.dashedLineWidth, {
+            description: "Width of the dashed line",
+            min: 1, max: 10,
+            onChange: (value) => { this.dashedLineWidth = value; }
+        });
+
+        this.exposeProperty("dashLength", "number", this.dashLength, {
+            description: "Length of each dash",
+            min: 5, max: 100,
+            onChange: (value) => { this.dashLength = value; }
+        });
+
+        this.exposeProperty("dashGap", "number", this.dashGap, {
+            description: "Gap between dashes",
+            min: 5, max: 100,
+            onChange: (value) => { this.dashGap = value; }
+        });
+
+        this.exposeProperty("dashedLineOpacity", "number", this.dashedLineOpacity, {
+            description: "Opacity of the dashed line",
+            min: 0, max: 1, step: 0.1,
+            onChange: (value) => { this.dashedLineOpacity = value; }
+        });
+
+        this.exposeProperty("dashedLineOffset", "number", this.dashedLineOffset, {
+            description: "Offset from center (0=center, +right, -left)",
+            min: -50, max: 50,
+            onChange: (value) => { this.dashedLineOffset = value; }
         });
 
         this.exposeProperty("tension", "number", this.tension, {
@@ -672,6 +738,65 @@ class SplinePath extends Module {
         if (this.showEdges) {
             this.drawEdges(ctx, visibleRange);
         }
+        if (this.showDashedLine) {
+            this.drawDashedLine(ctx, visibleRange);
+        }
+        ctx.restore();
+    }
+
+    drawDashedLine(ctx, visibleRange) {
+        if (!this.showDashedLine || this.dashLength <= 0) return;
+
+        const { startSegment, endSegment } = visibleRange;
+
+        ctx.save();
+        ctx.strokeStyle = this.dashedLineColor;
+        ctx.lineWidth = this.dashedLineWidth;
+        ctx.globalAlpha = this.dashedLineOpacity;
+        ctx.lineCap = 'butt';
+        ctx.setLineDash([this.dashLength, this.dashGap]);
+
+        // Calculate total path length for dash positioning
+        let pathLength = 0;
+        const segmentLengths = [];
+
+        for (let i = startSegment; i < endSegment; i++) {
+            const t1 = i / this.segments;
+            const t2 = (i + 1) / this.segments;
+            const p1 = this.getPointAt(t1);
+            const p2 = this.getPointAt(t2);
+            const segLength = Math.sqrt(
+                Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
+            );
+            segmentLengths.push(segLength);
+            pathLength += segLength;
+        }
+
+        // Draw the dashed line along the path center (or offset)
+        ctx.beginPath();
+
+        for (let i = startSegment; i < endSegment; i++) {
+            const t = i / this.segments;
+            const point = this.getPointAt(t);
+            const tangent = this.getTangentAt(t);
+            const normal = new Vector2(-tangent.y, tangent.x);
+
+            // Apply offset from center
+            const offset = normal.multiply(this.dashedLineOffset);
+            const linePoint = new Vector2(
+                point.x + offset.x,
+                point.y + offset.y
+            );
+
+            if (i === startSegment) {
+                ctx.moveTo(linePoint.x, linePoint.y);
+            } else {
+                ctx.lineTo(linePoint.x, linePoint.y);
+            }
+        }
+
+        ctx.stroke();
+        ctx.setLineDash([]);
         ctx.restore();
     }
 
@@ -1007,25 +1132,25 @@ class SplinePath extends Module {
                     // Create wavy, organic water-like patterns
                     // Main flow lines (diagonal waves)
                     const wave1 = Math.sin((nx * 3 + ny * 0.5) * Math.PI * 2) * 0.5 + 0.5;
-                    
+
                     // Cross waves for more complexity
                     const wave2 = Math.sin((ny * 2 - nx * 0.3) * Math.PI * 2) * 0.3 + 0.5;
-                    
+
                     // Small ripples
                     const ripple1 = Math.sin((nx * 8 + ny * 2) * Math.PI * 2) * 0.2 + 0.5;
                     const ripple2 = Math.sin((ny * 6 - nx * 4) * Math.PI * 2) * 0.15 + 0.5;
-                    
+
                     // Combine waves with different weights for natural look
                     const combined = (
-                        wave1 * 0.4 + 
-                        wave2 * 0.3 + 
-                        ripple1 * 0.2 + 
+                        wave1 * 0.4 +
+                        wave2 * 0.3 +
+                        ripple1 * 0.2 +
                         ripple2 * 0.1
                     );
-                    
+
                     // Add some randomness for sparkle effect
                     const sparkle = Math.sin(nx * 123.456 + ny * 789.012) * 0.1 + 0.5;
-                    
+
                     const intensity = (combined * 0.9 + sparkle * 0.1) * 0.5;
 
                     data[idx] = 255;
@@ -1047,7 +1172,7 @@ class SplinePath extends Module {
 
             // Continuous flow offset with slight wave motion
             const flowOffset = (time * flowSpeed) % shimmerSize;
-            
+
             // Add perpendicular wave motion for more realistic water movement
             const waveOffset = Math.sin(time * 2 + chunk.midT * 10) * 3;
 
@@ -1212,6 +1337,32 @@ class SplinePath extends Module {
         ctx.translate(worldPos.x, worldPos.y);
         ctx.rotate(worldAngle * Math.PI / 180);
 
+        // Only draw full gizmos if object is selected
+        if (!this.gameObject.isEditorSelected) {
+
+            // Draw spline icon background
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fillStyle = this.gameObject.isEditorSelected ? "#FF9800" : "rgba(255, 152, 0, 0.6)";
+            ctx.fill();
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw route/spline icon (wavy line)
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(-6, -2);
+            ctx.quadraticCurveTo(-2, -6, 2, -2);
+            ctx.quadraticCurveTo(6, 2, 6, 2);
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        }
+
         // Draw spline curve preview
         ctx.strokeStyle = "#FFA500";
         ctx.lineWidth = 2;
@@ -1294,6 +1445,27 @@ class SplinePath extends Module {
                 ctx.fillText("Right-click to delete", point.x, point.y - this.gizmoRadius * 2 - 5);
             }
         }
+
+        // Always draw icon at object position to show spline module is attached
+
+        // Draw spline icon background
+        ctx.beginPath();
+        ctx.arc(0, 0, 12, 0, Math.PI * 2);
+        ctx.fillStyle = this.gameObject.isEditorSelected ? "#FF9800" : "rgba(255, 152, 0, 0.6)";
+        ctx.fill();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw route/spline icon (wavy line)
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(-6, -2);
+        ctx.quadraticCurveTo(-2, -6, 2, -2);
+        ctx.quadraticCurveTo(6, 2, 6, 2);
+        ctx.stroke();
 
         ctx.restore();
     }
@@ -1648,6 +1820,336 @@ class SplinePath extends Module {
         return false;
     }
 
+    // ========================================
+    // PUBLIC API METHODS
+    // ========================================
+
+    /**
+     * Check if a world point is within the spline path boundaries
+     * @param {Vector2} worldPos - World position to check
+     * @param {number} tolerance - Additional tolerance in pixels (default: 0)
+     * @returns {boolean} True if point is within the path
+     */
+    isPointInPath(worldPos, tolerance = 0) {
+        const localPos = this.worldToLocal(worldPos);
+
+        // Find closest point on path
+        const closest = this.getClosestPointOnPath(worldPos);
+        if (!closest) return false;
+
+        // Check if distance is within path width + tolerance
+        const maxDistance = (this.pathWidth / 2) + tolerance;
+        return closest.distance <= maxDistance;
+    }
+
+    /**
+     * Get the closest point on the spline path to a given position
+     * @param {Vector2} worldPos - World position to check
+     * @returns {Object|null} {point: Vector2, t: number, distance: number, tangent: Vector2}
+     */
+    getClosestPointOnPath(worldPos) {
+        if (this.points.length < 2) return null;
+
+        const localPos = this.worldToLocal(worldPos);
+
+        let closestT = 0;
+        let closestDistance = Infinity;
+        let closestPoint = null;
+
+        // Sample along the path to find closest point
+        const samples = this.segments * 2; // Higher resolution for accuracy
+
+        for (let i = 0; i <= samples; i++) {
+            const t = i / samples;
+            const point = this.getPointAt(t);
+
+            const dx = localPos.x - point.x;
+            const dy = localPos.y - point.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestT = t;
+                closestPoint = point.clone();
+            }
+        }
+
+        // Refine using gradient descent for more accuracy
+        const refinementSteps = 3;
+        const refinementDelta = 0.001;
+
+        for (let step = 0; step < refinementSteps; step++) {
+            const t1 = Math.max(0, closestT - refinementDelta);
+            const t2 = Math.min(1, closestT + refinementDelta);
+
+            const p1 = this.getPointAt(t1);
+            const p2 = this.getPointAt(t2);
+
+            const d1 = Math.sqrt(
+                Math.pow(localPos.x - p1.x, 2) +
+                Math.pow(localPos.y - p1.y, 2)
+            );
+            const d2 = Math.sqrt(
+                Math.pow(localPos.x - p2.x, 2) +
+                Math.pow(localPos.y - p2.y, 2)
+            );
+
+            if (d1 < closestDistance) {
+                closestT = t1;
+                closestDistance = d1;
+                closestPoint = p1;
+            } else if (d2 < closestDistance) {
+                closestT = t2;
+                closestDistance = d2;
+                closestPoint = p2;
+            }
+        }
+
+        return {
+            point: this.localToWorld(closestPoint),
+            localPoint: closestPoint,
+            t: closestT,
+            distance: closestDistance,
+            tangent: this.getTangentAt(closestT)
+        };
+    }
+
+    /**
+     * Get evenly spaced points along the path for path following
+     * @param {number} spacing - Distance between points in pixels
+     * @param {boolean} includeData - Include additional data (tangent, normal, width)
+     * @returns {Array} Array of Vector2 positions or objects with position and data
+     */
+    getPathFollowingPoints(spacing = 50, includeData = false) {
+        if (this.points.length < 2) return [];
+
+        const totalLength = this.getPathLength();
+        const numPoints = Math.max(2, Math.ceil(totalLength / spacing));
+        const points = [];
+
+        for (let i = 0; i < numPoints; i++) {
+            const t = i / (numPoints - 1);
+            const localPoint = this.getPointAt(t);
+            const worldPoint = this.localToWorld(localPoint);
+
+            if (includeData) {
+                const tangent = this.getTangentAt(t);
+                const normal = new Vector2(-tangent.y, tangent.x);
+                const widthVariation = this.getWidthVariation(t, localPoint);
+                const currentWidth = this.pathWidth * widthVariation;
+
+                points.push({
+                    position: worldPoint,
+                    localPosition: localPoint,
+                    t: t,
+                    tangent: tangent,
+                    normal: normal,
+                    width: currentWidth,
+                    angle: Math.atan2(tangent.y, tangent.x) * 180 / Math.PI
+                });
+            } else {
+                points.push(worldPoint);
+            }
+        }
+
+        return points;
+    }
+
+    /**
+     * Get waypoints at specific t values along the path
+     * @param {Array<number>} tValues - Array of t values (0-1) to sample
+     * @param {boolean} includeData - Include additional data
+     * @returns {Array} Array of positions or data objects
+     */
+    getWaypointsAtT(tValues, includeData = false) {
+        if (this.points.length < 2) return [];
+
+        return tValues.map(t => {
+            const clampedT = Math.max(0, Math.min(1, t));
+            const localPoint = this.getPointAt(clampedT);
+            const worldPoint = this.localToWorld(localPoint);
+
+            if (includeData) {
+                const tangent = this.getTangentAt(clampedT);
+                const normal = new Vector2(-tangent.y, tangent.x);
+                const widthVariation = this.getWidthVariation(clampedT, localPoint);
+                const currentWidth = this.pathWidth * widthVariation;
+
+                return {
+                    position: worldPoint,
+                    localPosition: localPoint,
+                    t: clampedT,
+                    tangent: tangent,
+                    normal: normal,
+                    width: currentWidth,
+                    angle: Math.atan2(tangent.y, tangent.x) * 180 / Math.PI
+                };
+            }
+
+            return worldPoint;
+        });
+    }
+
+    /**
+     * Get approximate total length of the path
+     * @param {number} samples - Number of samples for approximation (default: segments)
+     * @returns {number} Approximate path length in pixels
+     */
+    getPathLength(samples = null) {
+        if (this.points.length < 2) return 0;
+
+        const cacheKey = `length_${samples || this.segments}`;
+        if (this._pathCache.has(cacheKey)) {
+            return this._pathCache.get(cacheKey);
+        }
+
+        const numSamples = samples || this.segments;
+        let totalLength = 0;
+        let prevPoint = this.getPointAt(0);
+
+        for (let i = 1; i <= numSamples; i++) {
+            const t = i / numSamples;
+            const point = this.getPointAt(t);
+
+            const dx = point.x - prevPoint.x;
+            const dy = point.y - prevPoint.y;
+            totalLength += Math.sqrt(dx * dx + dy * dy);
+
+            prevPoint = point;
+        }
+
+        this._pathCache.set(cacheKey, totalLength);
+        return totalLength;
+    }
+
+    /**
+     * Get control points (nodes) in world coordinates
+     * @returns {Array<Vector2>} Array of world position vectors
+     */
+    getControlPoints() {
+        return this.points.map(p => this.localToWorld(p));
+    }
+
+    /**
+     * Get control points with additional data
+     * @returns {Array<Object>} Array of objects with position and index
+     */
+    getControlPointsData() {
+        return this.points.map((p, index) => ({
+            position: this.localToWorld(p),
+            localPosition: p.clone(),
+            index: index,
+            isFirst: index === 0,
+            isLast: index === this.points.length - 1
+        }));
+    }
+
+    /**
+     * Get edge points (left and right boundaries) for a given t value
+     * @param {number} t - Parameter along the path (0-1)
+     * @returns {Object} {left: Vector2, right: Vector2, center: Vector2}
+     */
+    getEdgePointsAt(t) {
+        const localCenter = this.getPointAt(t);
+        const tangent = this.getTangentAt(t);
+        const normal = new Vector2(-tangent.y, tangent.x);
+        const widthVariation = this.getWidthVariation(t, localCenter);
+        const currentWidth = this.pathWidth * widthVariation;
+        const halfWidth = currentWidth / 2;
+
+        const leftLocal = new Vector2(
+            localCenter.x + normal.x * halfWidth,
+            localCenter.y + normal.y * halfWidth
+        );
+        const rightLocal = new Vector2(
+            localCenter.x - normal.x * halfWidth,
+            localCenter.y - normal.y * halfWidth
+        );
+
+        return {
+            left: this.localToWorld(leftLocal),
+            right: this.localToWorld(rightLocal),
+            center: this.localToWorld(localCenter)
+        };
+    }
+
+    /**
+     * Sample the entire path with edge boundaries
+     * @param {number} spacing - Distance between samples
+     * @returns {Array<Object>} Array of {left, right, center} positions
+     */
+    getPathBoundaries(spacing = 50) {
+        if (this.points.length < 2) return [];
+
+        const totalLength = this.getPathLength();
+        const numSamples = Math.max(2, Math.ceil(totalLength / spacing));
+        const boundaries = [];
+
+        for (let i = 0; i < numSamples; i++) {
+            const t = i / (numSamples - 1);
+            boundaries.push(this.getEdgePointsAt(t));
+        }
+
+        return boundaries;
+    }
+
+    /**
+     * Get a position offset from the path center at a given t
+     * @param {number} t - Parameter along the path (0-1)
+     * @param {number} offset - Offset from center (positive = right, negative = left)
+     * @returns {Vector2} World position
+     */
+    getOffsetPositionAt(t, offset) {
+        const localCenter = this.getPointAt(t);
+        const tangent = this.getTangentAt(t);
+        const normal = new Vector2(-tangent.y, tangent.x);
+
+        const offsetLocal = new Vector2(
+            localCenter.x + normal.x * offset,
+            localCenter.y + normal.y * offset
+        );
+
+        return this.localToWorld(offsetLocal);
+    }
+
+    /**
+     * Find t value for a given arc length along the path
+     * @param {number} targetLength - Target arc length from start
+     * @returns {number} t value (0-1)
+     */
+    getTAtLength(targetLength) {
+        if (this.points.length < 2) return 0;
+        if (targetLength <= 0) return 0;
+
+        const totalLength = this.getPathLength();
+        if (targetLength >= totalLength) return 1;
+
+        // Binary search for approximate t value
+        let currentLength = 0;
+        let prevPoint = this.getPointAt(0);
+
+        const samples = this.segments * 2;
+        for (let i = 1; i <= samples; i++) {
+            const t = i / samples;
+            const point = this.getPointAt(t);
+
+            const dx = point.x - prevPoint.x;
+            const dy = point.y - prevPoint.y;
+            const segmentLength = Math.sqrt(dx * dx + dy * dy);
+
+            if (currentLength + segmentLength >= targetLength) {
+                // Interpolate within this segment
+                const segmentT = (targetLength - currentLength) / segmentLength;
+                return ((i - 1) + segmentT) / samples;
+            }
+
+            currentLength += segmentLength;
+            prevPoint = point;
+        }
+
+        return 1;
+    }
+
     toJSON() {
         const json = super.toJSON();
         json.points = this.points.map(p => ({ x: p.x, y: p.y }));
@@ -1679,6 +2181,14 @@ class SplinePath extends Module {
         json.textureResolution = this.textureResolution;
 
         json.usePerlinEdges = this.usePerlinEdges;
+
+        json.showDashedLine = this.showDashedLine;
+        json.dashedLineColor = this.dashedLineColor;
+        json.dashedLineWidth = this.dashedLineWidth;
+        json.dashLength = this.dashLength;
+        json.dashGap = this.dashGap;
+        json.dashedLineOpacity = this.dashedLineOpacity;
+        json.dashedLineOffset = this.dashedLineOffset;
 
         return json;
     }
@@ -1716,6 +2226,14 @@ class SplinePath extends Module {
         if (json.textureResolution !== undefined) this.textureResolution = json.textureResolution;
 
         if (json.usePerlinEdges !== undefined) this.usePerlinEdges = json.usePerlinEdges;
+
+        if (json.showDashedLine !== undefined) this.showDashedLine = json.showDashedLine;
+        if (json.dashedLineColor !== undefined) this.dashedLineColor = json.dashedLineColor;
+        if (json.dashedLineWidth !== undefined) this.dashedLineWidth = json.dashedLineWidth;
+        if (json.dashLength !== undefined) this.dashLength = json.dashLength;
+        if (json.dashGap !== undefined) this.dashGap = json.dashGap;
+        if (json.dashedLineOpacity !== undefined) this.dashedLineOpacity = json.dashedLineOpacity;
+        if (json.dashedLineOffset !== undefined) this.dashedLineOffset = json.dashedLineOffset;
     }
 }
 

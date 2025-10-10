@@ -1584,11 +1584,11 @@ class Editor {
                     if (this.hierarchy.selectedObjects.includes(clickedObj)) {
                         // Deselect
                         this.hierarchy.selectedObjects = this.hierarchy.selectedObjects.filter(obj => obj !== clickedObj);
-                        clickedObj.setSelected(false);
+                        clickedObj.isEditorSelected = false;  // Directly set the property
                     } else {
                         // Add to selection
                         this.hierarchy.selectedObjects.push(clickedObj);
-                        clickedObj.setSelected(true);
+                        clickedObj.isEditorSelected = true;  // Directly set the property
                     }
                     if (this.hierarchy.selectedObjects.length === 1) {
                         this.hierarchy.selectGameObject(clickedObj);
@@ -1597,10 +1597,15 @@ class Editor {
                     }
                 } else {
                     // Single select
-                    this.hierarchy.selectedObjects.forEach(obj => obj.setSelected(false));
+                    this.hierarchy.selectedObjects.forEach(obj => obj.isEditorSelected = false);  // Directly set the property
                     this.hierarchy.selectedObjects = [clickedObj];
-                    clickedObj.setSelected(true);
+                    clickedObj.isEditorSelected = true;  // Directly set the property
                     this.hierarchy.selectGameObject(clickedObj);
+                }
+            } else {
+                // Deselect if clicking empty space
+                if (!isTextInput && this.hierarchy && this.hierarchy.selectedObject) {
+                    //this.hierarchy.selectedObject.isEditorSelected = false;  // Directly set the property
                 }
             }
 

@@ -246,6 +246,14 @@ class Module {
         return this.gameObject.getModule(moduleName);
     }
 
+    isEditorSelected() {
+        return this.gameObject ? this.gameObject.isEditorSelected : false;
+    }
+
+    isSelected() {
+        return this.isEditorSelected();
+    }
+
     /**
      * Get the current viewport from the engine
      * @returns {Object|null} The current viewport or null if not available

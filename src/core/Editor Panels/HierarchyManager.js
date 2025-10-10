@@ -9,8 +9,7 @@ class HierarchyManager {
         this.selectedObject = null;
         this.selectedObjects = [];
 
-        if(!window.prefabManager)
-        {
+        if (!window.prefabManager) {
             this.prefabManager = new PrefabManager(this); // Add prefab manager
         }
 
@@ -504,17 +503,17 @@ class HierarchyManager {
                 if (this.selectedObjects.includes(gameObject)) {
                     // Deselect
                     this.selectedObjects = this.selectedObjects.filter(obj => obj !== gameObject);
-                    gameObject.setSelected(false);
+                    gameObject.isEditorSelected = false;  // Directly set the property
                 } else {
                     // Add to selection
                     this.selectedObjects.push(gameObject);
-                    gameObject.setSelected(true);
+                    gameObject.isEditorSelected = true;  // Directly set the property
                 }
             } else {
                 // Single select (clear previous)
-                this.selectedObjects.forEach(obj => obj.setSelected(false));
+                this.selectedObjects.forEach(obj => obj.isEditorSelected = false);  // Directly set the property
                 this.selectedObjects = [gameObject];
-                gameObject.setSelected(true);
+                gameObject.isEditorSelected = true;  // Directly set the property
             }
 
             // Update UI
@@ -1181,7 +1180,7 @@ class HierarchyManager {
      * @returns {Object} Serialized GameObject data
      */
     serializeGameObject(gameObject) {
-        
+
         return gameObject.toJSON();
     }
 
@@ -1201,13 +1200,13 @@ class HierarchyManager {
     selectGameObject(gameObject) {
         // Deselect previous
         if (this.selectedObject) {
-            this.selectedObject.setSelected(false);
+            this.selectedObject.isEditorSelected = false;  // Directly set the property
         }
 
         // Select new
         this.selectedObject = gameObject;
         if (gameObject) {
-            gameObject.setSelected(true);
+            gameObject.isEditorSelected = true;  // Directly set the property
         }
 
         // Update UI
