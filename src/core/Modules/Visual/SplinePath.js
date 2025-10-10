@@ -981,11 +981,11 @@ class SplinePath extends Module {
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = 0.15;
 
-        const shimmerSize = 32;
+        const shimmerSize = 64; // Increased for more detail
         const flowSpeed = 40 * (this.shimmerSpeed || 1.0);
 
-        // Generate shimmer texture once and reuse (static pattern)
-        const cacheKey = 'shimmer_static';
+        // Generate wavy shimmer texture once and reuse (static pattern)
+        const cacheKey = 'shimmer_wavy';
 
         if (!this._shimmerCache.has(cacheKey)) {
             const shimmerCanvas = document.createElement('canvas');
@@ -1000,11 +1000,33 @@ class SplinePath extends Module {
                 for (let x = 0; x < shimmerSize; x++) {
                     const idx = (y * shimmerSize + x) * 4;
 
-                    // Create seamless tiling pattern - static, animation comes from translation
-                    const wave1 = Math.sin((x / shimmerSize) * Math.PI * 2) * 0.5 + 0.5;
-                    const wave2 = Math.sin((y / shimmerSize) * Math.PI * 2) * 0.3 + 0.5;
-                    const combined = (wave1 * 0.7 + wave2 * 0.3);
-                    const intensity = combined * 0.4;
+                    // Normalized coordinates for seamless tiling
+                    const nx = x / shimmerSize;
+                    const ny = y / shimmerSize;
+
+                    // Create wavy, organic water-like patterns
+                    // Main flow lines (diagonal waves)
+                    const wave1 = Math.sin((nx * 3 + ny * 0.5) * Math.PI * 2) * 0.5 + 0.5;
+                    
+                    // Cross waves for more complexity
+                    const wave2 = Math.sin((ny * 2 - nx * 0.3) * Math.PI * 2) * 0.3 + 0.5;
+                    
+                    // Small ripples
+                    const ripple1 = Math.sin((nx * 8 + ny * 2) * Math.PI * 2) * 0.2 + 0.5;
+                    const ripple2 = Math.sin((ny * 6 - nx * 4) * Math.PI * 2) * 0.15 + 0.5;
+                    
+                    // Combine waves with different weights for natural look
+                    const combined = (
+                        wave1 * 0.4 + 
+                        wave2 * 0.3 + 
+                        ripple1 * 0.2 + 
+                        ripple2 * 0.1
+                    );
+                    
+                    // Add some randomness for sparkle effect
+                    const sparkle = Math.sin(nx * 123.456 + ny * 789.012) * 0.1 + 0.5;
+                    
+                    const intensity = (combined * 0.9 + sparkle * 0.1) * 0.5;
 
                     data[idx] = 255;
                     data[idx + 1] = 255;
@@ -1023,9 +1045,11 @@ class SplinePath extends Module {
         for (const chunk of chunks) {
             const angle = Math.atan2(chunk.tangent.y, chunk.tangent.x);
 
-            // Continuous flow offset using modulo only for the visual offset, not the cache
-            // This keeps the pattern seamlessly repeating
+            // Continuous flow offset with slight wave motion
             const flowOffset = (time * flowSpeed) % shimmerSize;
+            
+            // Add perpendicular wave motion for more realistic water movement
+            const waveOffset = Math.sin(time * 2 + chunk.midT * 10) * 3;
 
             ctx.save();
             ctx.beginPath();
@@ -1063,14 +1087,14 @@ class SplinePath extends Module {
             ctx.translate(chunk.centerPoint.x, chunk.centerPoint.y);
             ctx.rotate(angle);
 
-            // Use modulo for seamless looping translation
-            ctx.translate(flowOffset, 0);
+            // Apply flow offset and wave motion
+            ctx.translate(flowOffset, waveOffset);
 
             const pattern = ctx.createPattern(shimmerCanvas, 'repeat');
             ctx.fillStyle = pattern;
 
             // Draw large enough to cover the clipped area with repeating pattern
-            ctx.fillRect(-shimmerSize * 8, -this.pathWidth * 2, shimmerSize * 16, this.pathWidth * 4);
+            ctx.fillRect(-shimmerSize * 8, -this.pathWidth * 3, shimmerSize * 16, this.pathWidth * 6);
 
             ctx.restore();
         }
