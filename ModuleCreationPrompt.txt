@@ -18,6 +18,7 @@ class MyModule extends Module {
     static description = "Brief description";
     static allowMultiple = false;
     static iconClass = "fas fa-cube";
+    static color = "#4CAF50"; // Optional: Custom color for module in editor
 
     constructor() {
         super("MyModule");
@@ -25,10 +26,13 @@ class MyModule extends Module {
         this.ignoreGameObjectTransform = false;
 
         this.speed = 100; // Default speed
-        
+
         // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
             description: "Movement speed",
+            min: 0,
+            max: 1000,
+            step: 10,
             onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
                 this.speed = val; // Update speed when property changes
             }
@@ -37,12 +41,12 @@ class MyModule extends Module {
 
     // Style the exposed properties
     style(style) {
-        style.startGroup("Movement Settings", false, { 
+        style.startGroup("Movement Settings", false, {
             backgroundColor: 'rgba(100,150,255,0.1)',
             borderRadius: '6px',
             padding: '8px'
         });
-        
+
         style.exposeProperty("speed", "number", this.speed, {
             description: "Movement speed in pixels per second",
             min: 0,
@@ -53,11 +57,11 @@ class MyModule extends Module {
                 slider: true
             }
         });
-        
+
         style.endGroup();
-        
+
         style.addDivider();
-        
+
         style.addHelpText("This is a helpful hint");
     }
 
@@ -73,10 +77,18 @@ class MyModule extends Module {
 
     draw(ctx) {
         // Render to canvas
+        // Note: GameObject transform is automatically applied
     }
 
     drawGizmos(ctx) {
-        // Draw debug gizmos (optional)
+        // Draw debug gizmos for interactive editing (optional)
+        // This enables visual editing of module properties in the editor
+    }
+
+    handleGizmoInteraction(worldPos, isClick = false) {
+        // Handle interactive gizmo editing (optional)
+        // Return interaction info for editor feedback
+        // Example: return { type: 'select', index: 0 };
     }
 
     onDestroy() {
@@ -86,7 +98,6 @@ class MyModule extends Module {
     toJSON() { // Serialize module state
         return {
             ...super.toJSON(),
-
             speed: this.speed
         };
     }
@@ -95,7 +106,7 @@ class MyModule extends Module {
         super.fromJSON(data);
 
         if (!data) return;
-        
+
         this.speed = data.speed || 100; // Default to 100 if not provided
     }
 }
@@ -109,12 +120,24 @@ window.MyModule = MyModule; // Register globally
 - "image" (for loading image assets for use)
 - "vector2" (for Vector2 objects, does NOT have static methods for add/ subtract etc)
 
+**Advanced Property Types:**
+- "pointarray" (for arrays of Vector2 points - enables gizmo editing)
+- "code" (for custom JavaScript code execution)
+- "asset" (for referencing other game assets)
+
+**Interactive Gizmos:**
+- Implement `drawGizmos(ctx)` to draw visual editing tools
+- Implement `handleGizmoInteraction(worldPos, isClick)` for user interaction
+- Use point arrays for draggable control points
+- Gizmos enable visual editing of module parameters in the editor
+
 **Available Input:**
 - window.input.keyDown("w") - check if key held
 - window.input.keyPressed("") - check if space key just pressed
 - window.input.mouseDown("left") - mouse button states
 - window.input.getMousePosition(worldSpace = true)
 - window.input.didMouseMove()
+- window.input.isTapped() - for touch interactions
 
 **Transform Access:**
 - this.gameObject.position (Vector2)

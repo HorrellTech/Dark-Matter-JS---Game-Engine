@@ -3,22 +3,23 @@
 <p align="center">
   <img src="logo.png" alt="Dark Matter JS Logo" width="300"/>
   <br>
-  <em>A powerful, component-based 2D game engine for the web.</em>
+  <em>A powerful, component-based 2D/3D game engine for the web with visual editor.</em>
 </p>
 
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#documentation">Documentation</a> •
-  <a href="#examples">Examples</a> 
-  
-https://horrelltech.github.io/Dark-Matter-JS---Game-Engine/
+  <a href="#examples">Examples</a> •
+  <a href="#recent-updates">Recent Updates</a>
+
+🌐 https://horrelltech.github.io/Dark-Matter-JS---Game-Engine/
 
 ## Overview
 
-Dark Matter JS is a browser-based game development environment with an integrated editor and runtime engine. Built with modern web technologies, it provides a complete solution for creating, testing, and deploying 2D games directly in your browser.
+Dark Matter JS is a comprehensive browser-based game development environment with an integrated visual editor and runtime engine. Built with modern web technologies, it provides a complete solution for creating, testing, and deploying 2D and 3D games directly in your browser.
 
-The engine follows a component-based architecture similar to popular engines like Unity, making it intuitive for developers familiar with those tools while being accessible to newcomers.
+The engine follows a component-based architecture similar to popular engines like Unity, making it intuitive for developers familiar with those tools while being accessible to newcomers. With extensive module libraries and visual editing tools, you can create complex games without writing extensive code.
 
 ## Features
 
@@ -26,26 +27,42 @@ The engine follows a component-based architecture similar to popular engines lik
 - **Component-Based Architecture**: Build games using reusable modules and components
 - **Scene Management**: Organize your game with a flexible scene system
 - **Game Object Hierarchy**: Parent-child relationships between game objects
-- **Vector Math**: Built-in 2D vector mathematics for transformations and physics
+- **Vector Math**: Built-in 2D/3D vector mathematics for transformations and physics
 - **Input System**: Comprehensive keyboard, mouse, and touch input handling
+- **Collision Detection**: Advanced collision system with polygon support
+
+### Visual Modules & Effects
+- **Metroidvania System**: Complete metroidvania framework with player, tilemap, and camera modules
+- **Spline Paths**: Create curved paths with edge generation and perlin texture generation
+- **Water Effects**: Puddle/lake module with customizable points and cloud reflections
+- **Particle Systems**: Advanced particle effects for visual enhancement
+- **Sprite Rendering**: Image and sprite sheet animation support
+- **Drawing Modules**: Various drawing tools for shapes, capsules, circles, and more
+- **UI Components**: Button, text, and interface elements
+- **Lighting System**: Point lights, darkness, and light blockers
+
+### 3D Capabilities
+- **3D Rendering**: WebGL-based 3D graphics with custom shaders
+- **3D Models**: Support for 3D mesh rendering and manipulation
+- **3D Camera**: Multiple camera types including fly camera and orbit controls
 
 ### Editor Features
 - **Visual Editor**: Create and arrange game objects in a visual scene editor
-- **Inspector Panel**: Modify object properties in real-time
+- **Inspector Panel**: Modify object properties in real-time with extensive customization
 - **Hierarchy View**: Manage game objects and their relationships
 - **Project Browser**: Organize game assets and scripts
-- **Console**: Debug your game with an integrated console
-- **Play Mode**: Test your game instantly within the editor
+- **Interactive Gizmos**: Drag and edit module points directly in the editor
 - **Grid & Snapping**: Precise object placement with customizable grid
 - **Zen Mode**: Toggle fullscreen/window mode for distraction-free editing
-- **AI Assistant in Script Editor**: Get code help, generate modules, and ask questions directly in the script editor
-
+- **AI Assistant**: Get code help, generate modules, and ask questions directly in the script editor
 
 ### Development Features
 - **Script Editor**: Write and edit game scripts with syntax highlighting and AI-powered assistance
-- **Module System**: Create and manage reusable components
-- **Scene Serialization**: Save and load your game scenes
-- **Export System**: Package your games for distribution
+- **Module System**: Create and manage reusable components with JSON serialization
+- **Scene Serialization**: Save and load your game scenes with full state preservation
+- **Export System**: Package your games for distribution (HTML5, ZIP formats)
+- **Asset Management**: Comprehensive asset loading and management system
+- **Mobile Support**: Touch-friendly interface and mobile-optimized controls
 
 ## Getting Started
 
@@ -114,17 +131,47 @@ Game objects are the fundamental building blocks in Dark Matter JS. Each game ob
 
 ### Modules
 Modules are components that add behavior and functionality to game objects:
-- **Built-in Modules**
-  - SpriteRenderer: Renders images and animations
-  - Transform: Handles positioning and hierarchy
-  - Drawing: Different modules for drawing shapes and one for infinitely generated, parallax backgrounds
-  - Tween: For tweening an objects values (for example sine in and out position.x)
-  - KeyboardController: Basic keyboard controller to control a game object with the keyboard
 
-- **Custom Modules**
-  - Create your own modules by extending the Module class
-  - Expose properties for the inspector
-  - Implement lifecycle methods (preload, start, loop, etc.)
+#### Built-in Module Categories
+- **Metroidvania System**
+  - MetroidvaniaPlayer: Advanced 2D player with movement, jumping, wall jumping, and abilities
+  - MetroidvaniaTilemap: 2D tile-based world with collision detection and room management
+  - MetroidvaniaCamera: Room-based camera with smooth transitions and dead zones
+
+- **Visual & Graphics**
+  - SpriteRenderer: Renders images and sprite sheet animations
+  - SplinePath: Creates curved paths with edge generation and perlin textures
+  - PuddleLake: Water effects with customizable points and cloud reflections
+  - ParticleSystem: Advanced particle effects and emitters
+  - Drawing modules: Shapes, capsules, circles, and procedural backgrounds
+
+- **User Interface**
+  - Button: Customizable UI buttons with click actions
+  - Text: Text rendering and formatting
+
+- **Physics & Movement**
+  - PlatformCharacterAuto: Advanced platform character with realistic physics
+  - BasicPhysics: Simple physics simulation
+  - KeyboardController: Input-based movement control
+
+- **3D Graphics**
+  - 3D rendering with WebGL support
+  - 3D models and mesh rendering
+  - Multiple camera types and lighting
+
+- **Audio**
+  - AudioPlayer: Sound effect and music playback
+
+- **Effects & Lighting**
+  - PointLight: Dynamic lighting system
+  - Darkness: Darkness and shadow effects
+  - PostScreenEffects: Screen-space visual effects
+
+#### Custom Modules
+- Create your own modules by extending the Module class
+- Expose properties for the inspector with full gizmo support
+- Implement lifecycle methods (preload, start, loop, etc.)
+- Full JSON serialization support for scene persistence
 
 ### Lifecycle Methods
 When creating custom modules, you can implement these methods:
@@ -202,6 +249,21 @@ Dark Matter JS consists of several key components:
 - **FileBrowser**: Project asset management
 - **ScriptEditor**: Code editing environment
 
+## Recent Updates
+
+### Version 2.0 - Major Feature Release
+- ✅ **Metroidvania Framework**: Complete metroidvania game system with player controller, tilemap collision, and room-based camera
+- ✅ **Advanced Visual Modules**: Spline path system with perlin texture generation and interactive gizmos
+- ✅ **Water Effects**: Puddle/lake module with customizable points and cloud reflection generation
+- ✅ **Enhanced Editor**: Full gizmo support for interactive module editing
+- ✅ **Mobile Touch Support**: Fixed touch interactions for buttons and UI elements
+- ✅ **3D Graphics Pipeline**: WebGL-based 3D rendering with custom shaders and materials
+
+### Module System Enhancements
+- **JSON Serialization**: All modules now support proper JSON serialization for scene persistence
+- **Interactive Gizmos**: Visual editing tools for module parameters (points, paths, etc.)
+- **Property Templates**: Improved property exposure system with validation and constraints
+
 ## Development Roadmap
 
 - [x] Core engine architecture
@@ -215,6 +277,11 @@ Dark Matter JS consists of several key components:
 - [x] Particle effects
 - [x] HTML5 export
 - [x] Physics engine integration
+- [x] Metroidvania framework
+- [x] Advanced visual modules
+- [x] Interactive gizmo system
+- [x] Mobile touch support
 - [ ] Audio system
 - [ ] Animation system
-- [ ] WebGL functionality for better performance
+- [ ] Advanced AI pathfinding
+- [ ] Multiplayer networking

@@ -78,6 +78,8 @@ class Editor {
 
         this.panningAnimationFrame = null;
 
+        this.activeModuleInteraction = null; // Track active module interaction
+
         this.initEditor();
     }
 
@@ -145,7 +147,7 @@ class Editor {
                     const data = e.dataTransfer.getData(type);
                     if (typeof data === 'string' && data.endsWith('.js')) {
                         jsPath = data;
-                        
+
                         e.preventDefault();
                         break;
                     }
@@ -950,7 +952,7 @@ class Editor {
                     this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
                 }
                 this.activeScene.dirty = true;
-               // this.refreshCanvas();
+                // this.refreshCanvas();
                 return;
             }
 
@@ -1686,9 +1688,39 @@ class Editor {
                     this.dragInfo.dragMode = 'free';
                     return;
                 }
+
+                // Check for module gizmo interactions BEFORE object dragging
+                if (selectedObj.modules && Array.isArray(selectedObj.modules)) {
+                    for (const module of selectedObj.modules) {
+                        if (typeof module.onMouseDown === "function") {
+                            const handled = module.onMouseDown(worldPos, e.button);
+                            if (handled) {
+                                this.activeModuleInteraction = module;
+                                return; // Module handled the interaction
+                            }
+                        }
+                    }
+                }
             }
 
             if (clickedObj) {
+                // Check for gizmo interactions first
+                if (clickedObj.modules && Array.isArray(clickedObj.modules)) {
+                    for (const module of clickedObj.modules) {
+                        if (typeof module.onMouseDown === "function") {
+                            const handled = module.onMouseDown(worldPos, e.button);
+                            if (handled) {
+                                this.activeModuleInteraction = module;
+                                // Also select the object
+                                if (this.hierarchy) {
+                                    this.hierarchy.selectGameObject(clickedObj);
+                                }
+                                return; // Module handled the interaction
+                            }
+                        }
+                    }
+                }
+
                 // Start dragging the object in free mode
                 this.dragInfo.dragging = true;
                 this.dragInfo.object = clickedObj;
@@ -1778,8 +1810,9 @@ class Editor {
             // Only refresh if mouse is over viewport handles or transform handles
             const overViewportHandle = this.isOnViewportMoveHandle(worldPos) || this.isOnViewportSettingsHandle(worldPos);
             const overTransformHandle = this.hierarchy?.selectedObject && this.isOverTransformHandle(worldPos);
+            const overGizmo = this.isOverGizmo(worldPos);
 
-            if (overViewportHandle || overTransformHandle) {
+            if (overViewportHandle || overTransformHandle || overGizmo) {
                 this.refreshCanvas();
             }
             return;
@@ -1896,6 +1929,15 @@ class Editor {
             this.dragInfo.object.position = newPosition;
 
             this.refreshCanvas();
+        }
+
+        // Handle module interactions
+        if (this.activeModuleInteraction) {
+            if (typeof this.activeModuleInteraction.onMouseMove === "function") {
+                this.activeModuleInteraction.onMouseMove(worldPos);
+                this.refreshCanvas();
+            }
+            return;
         }
 
         if (this.inspector) {
@@ -2107,6 +2149,10 @@ class Editor {
     handleMouseUp(e) {
         document.body.classList.remove('viewport-dragging');
 
+        // Get world position first
+        const screenPos = this.getAdjustedMousePosition(e);
+        const worldPos = this.screenToWorldPosition(screenPos);
+
         // Clear viewport interaction state
         if (this.viewportInteraction.dragging) {
             this.viewportInteraction.dragging = false;
@@ -2117,6 +2163,15 @@ class Editor {
             if (this.activeScene) {
                 this.activeScene.dirty = true;
             }
+        }
+
+        // Handle module interactions
+        if (this.activeModuleInteraction) {
+            if (typeof this.activeModuleInteraction.onMouseUp === "function") {
+                this.activeModuleInteraction.onMouseUp(worldPos, e.button);
+            }
+            this.activeModuleInteraction = null;
+            this.refreshCanvas();
         }
 
         this.dragInfo.dragging = false;
@@ -2457,5 +2512,53 @@ class Editor {
                 }
             }, 300);
         }, 3000);
+    }
+
+    /**
+     * Handle gizmo interactions for modules
+     * @param {GameObject} gameObject - The game object containing modules
+     * @param {Vector2} worldPos - Mouse position in world coordinates
+     * @param {boolean} isClick - Whether this is a click event
+     * @returns {Object|null} Interaction result or null if no interaction
+     */
+    handleGizmoInteraction(gameObject, worldPos, isClick = false) {
+        if (!gameObject || !gameObject.modules) return null;
+
+        // Check each module for gizmo interaction
+        for (const module of gameObject.modules) {
+            if (typeof module.handleGizmoInteraction === "function") {
+                const interaction = module.handleGizmoInteraction(worldPos, isClick);
+                if (interaction) {
+                    // Mark scene as dirty if gizmo was modified
+                    if (isClick && this.activeScene) {
+                        this.activeScene.dirty = true;
+                    }
+                    return interaction;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if mouse is over any gizmo
+     * @param {Vector2} worldPos - Mouse position in world coordinates
+     * @returns {boolean} True if over a gizmo
+     */
+    isOverGizmo(worldPos) {
+        if (!this.activeScene || !this.activeScene.gameObjects) return false;
+
+        // Check all game objects for gizmo interactions
+        for (const gameObject of this.activeScene.gameObjects) {
+            if (gameObject.active) {
+                const interaction = this.handleGizmoInteraction(gameObject, worldPos, false);
+                if (interaction) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

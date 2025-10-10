@@ -1,29 +1,17 @@
 - Fix mobile touch not performing actions when tapping buttons etc. Seems to work for welcome screen and canvas.
 
-- Add module for drawing a FAS Icon type thing 
-
-- Fix asset manager not transferring image references for particle emitter, create an 
-    easier way to load images into a module and have them save to asset manager cache
-    for the rendering pipeline.
-
 - Add full metroidvania modules, player, world tilemap, room-switching camera viewport instead of camera follow.
-
-- Add a layer system for game objects, so scenes will contain layers, and each layer will hold its own game objects. Selecting a
-    game object in the editor will switch the editor scene layer to show that layers objects and the one selected/highlighted.
 
 - Add three.js for webGL 3D capabilities.
 
 - Add a spline path/road/river module, with edge generation, color, perlin texture generation for textured paths.
 
-- Add a puddle/lake module with customizable points, cloud reflection generation etc.
+- Add a puddle/lake module with customizable points, fake cloud reflection generation etc.
 
-- Make sure we have editor ability to edit modules with gizmos, so points can be dragged around to position for point arrays etc.
+- Make sure we have editor ability to edit modules with gizmos, so points can be dragged around to position for point arrays etc, so adding a module with spline, the
+user will be able to manipulate the spline in the editor, updating its values.
 
 - Update documentation to better reflect the app. Update templates for modules to use JSON serialization properly
-
-- Fix ground decal chunk system to reach the edges of the viewport correctly
-
-- Fix infinite texture generator not chunking correctly
 
 - Fix export to zip not referencing assets correctly. Single HTML works fine, but has file size limits
 

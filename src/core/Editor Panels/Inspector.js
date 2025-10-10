@@ -2741,6 +2741,9 @@ class Inspector {
             case 'gradient':
                 return this.generateGradientUI(prop, module, value);
 
+            case 'code':
+                return this.generateCodeUI(prop, module, value);
+
             default:
                 return `
                 <div class="property-row" style="${rowStyle}">
@@ -2911,6 +2914,59 @@ class Inspector {
             </div>
         </div>
     `;
+    }
+
+    /**
+     * Generate UI for code properties
+     */
+    generateCodeUI(prop, module, value) {
+        const codeId = `code-${module.id}-${prop.name}`;
+        const currentCode = value || prop.options?.defaultCode || '// Enter your JavaScript code here\n// Available variables:\n// - this: the module instance\n// - gameObject: the attached game object\n// - engine: the game engine\n// - input: input manager\n// - deltaTime: time since last frame\n\nconsole.log("Code executed!");';
+
+        return `
+        <div class="property-row code-property">
+            <label>${this.formatPropertyName(prop.name)}</label>
+            <div class="code-editor-container" id="${codeId}" data-prop-name="${prop.name}">
+                <div class="code-editor-toolbar">
+                    <button class="code-format-btn" title="Format Code">
+                        <i class="fas fa-code"></i>
+                    </button>
+                    <button class="code-run-btn" title="Test Run Code">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="code-clear-btn" title="Clear Code">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <div class="code-status"></div>
+                </div>
+                <div class="code-editor-wrapper">
+                    <textarea class="code-editor-textarea"
+                              placeholder="Enter your JavaScript code here..."
+                              spellcheck="false">${currentCode}</textarea>
+                </div>
+                <div class="code-help">
+                    <details>
+                        <summary>Available Variables & Context</summary>
+                        <div class="code-help-content">
+                            <strong>Available in your code:</strong>
+                            <ul>
+                                <li><code>this</code> - The module instance</li>
+                                <li><code>gameObject</code> - The GameObject this module is attached to</li>
+                                <li><code>engine</code> - The game engine</li>
+                                <li><code>input</code> - Input manager</li>
+                                <li><code>deltaTime</code> - Time since last frame</li>
+                                <li><code>module</code> - Alias for 'this'</li>
+                            </ul>
+                            <strong>Examples:</strong>
+                            <pre>gameObject.position.x += 100 * deltaTime;
+this.someProperty = "modified";
+console.log("Module name:", this.name);</pre>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </div>
+        `;
     }
 
     /**

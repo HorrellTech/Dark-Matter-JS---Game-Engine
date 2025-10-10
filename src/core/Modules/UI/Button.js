@@ -381,13 +381,13 @@ class Button extends Module {
     loop(deltaTime) {
         // Get mouse position - use screen space for viewport positioning, world space otherwise
         const mousePos = window.input.getMousePosition(!this.useViewportPositioning);
-        
+
         // Get button bounds
         const bounds = this.getButtonBounds();
-        
+
         const wasHovered = this.isHovered;
-        this.isHovered = this.enableHover && 
-                        mousePos.x >= bounds.left && mousePos.x <= bounds.right && 
+        this.isHovered = this.enableHover &&
+                        mousePos.x >= bounds.left && mousePos.x <= bounds.right &&
                         mousePos.y >= bounds.top && mousePos.y <= bounds.bottom;
 
         // Handle mouse interactions
@@ -403,10 +403,68 @@ class Button extends Module {
         } else {
             this.isPressed = false;
         }
-        
+
         // Reset pressed state if mouse is no longer down
         if (!window.input.mouseDown("left")) {
             this.isPressed = false;
+        }
+
+        // Handle touch interactions
+        this.handleTouchInteractions(bounds);
+    }
+
+    handleTouchInteractions(bounds) {
+        // Check for tap events (touch equivalent of click)
+        if (window.input.isTapped()) {
+            const touches = window.input.touchesEnded;
+            let touchHandled = false;
+
+            // Check if any ended touch was within button bounds
+            for (const id in touches) {
+                const touch = touches[id];
+                if (touch && touch.position) {
+                    const touchPos = touch.position;
+
+                    // Check if touch position is within button bounds
+                    if (touchPos.x >= bounds.left && touchPos.x <= bounds.right &&
+                        touchPos.y >= bounds.top && touchPos.y <= bounds.bottom) {
+
+                        // Execute click action for touch
+                        this.executeClickAction();
+                        touchHandled = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Handle touch hover/press simulation for visual feedback
+        const activeTouches = window.input.getTouches();
+        let touchOverButton = false;
+
+        // Check if any active touch is over the button
+        for (const id in activeTouches) {
+            const touch = activeTouches[id];
+            if (touch && touch.position) {
+                const touchPos = touch.position;
+
+                if (touchPos.x >= bounds.left && touchPos.x <= bounds.right &&
+                    touchPos.y >= bounds.top && touchPos.y <= bounds.bottom) {
+                    touchOverButton = true;
+
+                    // Simulate press state for visual feedback
+                    if (this.enableHover) {
+                        this.isHovered = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Update hover state based on touch position
+        if (!touchOverButton && Object.keys(activeTouches).length === 0) {
+            // Only reset hover if no touches are active
+            this.isHovered = false;
         }
     }
 

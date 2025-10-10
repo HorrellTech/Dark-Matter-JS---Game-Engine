@@ -230,15 +230,15 @@ class Module {
     }
 
     getBackgroundCanvas() {
-        return window.engine ? window.engine.backgroundCanvas : null;
+        return window.engine.getBackgroundCanvas();
     }
 
     getMainCanvas() {
-        return window.engine ? window.engine.mainCanvas : null;
+        return window.engine ? window.engine.getMainCanvas() : null;
     }
 
     getGUICanvas() {
-        return window.engine ? window.engine.guiCanvas : null;
+        return window.engine ? window.engine.getGUICanvas() : null;
     }
 
     getModule(moduleName) {

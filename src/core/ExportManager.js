@@ -3085,6 +3085,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     /**
      * Create asset mapping for ZIP mode (original path -> filename)
+     * Enhanced to handle all path variations and edge cases
      */
     createAssetMapping(assets) {
         if (!assets) return {};
@@ -3093,9 +3094,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
         for (const originalPath of Object.keys(assets)) {
             const fileName = originalPath.split('/').pop();
+
+            // Create comprehensive mapping for all possible path variations
+            const pathVariations = [
+                originalPath,
+                originalPath.replace(/^[\/\\]+/, ''), // Remove leading slashes
+                fileName,
+                originalPath.split('/').pop(),
+                originalPath.split('\\').pop(), // Handle Windows paths
+                '/' + originalPath.replace(/^[\/\\]+/, ''), // Add leading slash
+                originalPath.replace(/^[\/\\]+/, '').split('/').pop(), // Just filename
+            ];
+
+            // Add all variations to mapping
+            pathVariations.forEach(variation => {
+                if (variation && !mapping[variation]) {
+                    mapping[variation] = fileName;
+                }
+            });
+
+            // Also map the original path to filename
             mapping[originalPath] = fileName;
         }
 
+        console.log('Created comprehensive asset mapping:', mapping);
         return mapping;
     }
 
