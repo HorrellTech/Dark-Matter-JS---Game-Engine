@@ -27,7 +27,9 @@ class AssetManagerWindow extends EditorWindow {
             'top_down_cars_and_road_cone.dmjs',
             'asteroids.dmjs',
             '2d_context_3d.dmjs',
-            'matter_js.dmjs'
+            'matter_js.dmjs',
+            'puddle_lake_generator.dmjs',
+            'splines.dmjs'
             // Add more known asset filenames here
         ];
 

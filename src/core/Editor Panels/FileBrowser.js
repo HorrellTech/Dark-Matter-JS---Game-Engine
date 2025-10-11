@@ -32,6 +32,23 @@ class FileBrowser {
                 onDoubleClick: (file) => this.openSceneFile(file)
             };
 
+            this.fileTypes['.spritecode'] = {
+                icon: 'fa-palette',
+                color: '#3b82f6',
+                onDoubleClick: (file) => {
+                    if (window.spriteCode) {
+                        window.spriteCode.openModal();
+                        window.spriteCode.loadDrawingFromFile(file.path);
+                    }
+                }
+            };
+
+            this.fileTypes['.doc'] = {
+                icon: 'fa-book',
+                color: '#4CAF50',
+                onDoubleClick: (file) => this.showDocModal(file)
+            };
+
             // Scan for existing EditorWindow scripts
             this.scanForEditorWindowScripts();
         });
@@ -113,6 +130,7 @@ class FileBrowser {
             <button class="fb-button" id="fbNewFolder" title="New Folder"><i class="fas fa-folder-plus"></i></button>
             <div class="fb-separator"></div>
             <button class="fb-button" id="fbNewScript" title="New Script"><i class="fas fa-file-code"></i></button>
+            <button class="fb-button" id="fbNewDoc" title="New Documentation File"><i class="fas fa-book"></i></button>
             <button class="fb-button" id="fbNewTextFile" title="New Text File"><i class="fas fa-file-alt"></i></button>
             <button class="fb-button" id="fbNewScene" title="New Scene"><i class="fas fa-file"></i></button>
             <div class="fb-separator"></div>
@@ -188,6 +206,7 @@ class FileBrowser {
         document.getElementById('fbNewScene').addEventListener('click', () => this.promptNewSceneFile());
         document.getElementById('fbUploadFile').addEventListener('click', () => this.uploadFile());
         document.getElementById('fbDeleteItem').addEventListener('click', () => this.deleteSelected());
+        document.getElementById('fbNewDoc')?.addEventListener('click', () => this.promptNewDoc());
 
         // Breadcrumb navigation
         this.breadcrumb.addEventListener('click', (e) => {
@@ -916,6 +935,76 @@ class FileBrowser {
         }
     }
 
+    async promptNewMarkdown() {
+        if (!this.db) {
+            this.showNotification('File system not initialized yet. Please wait...', 'warning');
+            return;
+        }
+
+        const name = await this.promptDialog('New Markdown File', 'Enter markdown file name:');
+        if (!name) return; // User cancelled
+
+        try {
+            // Normalize path
+            const normalizedPath = this.normalizePath(this.currentPath);
+
+            // Ensure filename has .md extension
+            const fileName = name.endsWith('.md') ? name : `${name}.md`;
+
+            // Generate template for markdown file
+            const templateContent = `# ${name.replace(/\.md$/, '')}
+
+## Getting Started
+
+Replace this with your documentation content.
+
+### Features
+
+- Item 1
+- Item 2
+- Item 3
+
+### Installation
+
+Instructions for installation here.
+
+### Usage
+
+Usage instructions here.
+
+### Examples
+
+\`\`\`javascript
+// Code examples go here
+const example = "Hello World";
+\`\`\`
+
+### Additional Resources
+
+- [Link 1](https://example.com)
+- [Link 2](https://example.com)
+`;
+
+            // Create the filepath
+            const filePath = normalizedPath === '/'
+                ? `/${fileName}`
+                : `${normalizedPath}/${fileName}`;
+
+            // Create the file
+            const success = await this.createFile(filePath, templateContent);
+
+            if (success) {
+                this.showNotification(`Created markdown file: ${fileName}`, 'info');
+                await this.loadContent(this.currentPath);
+            } else {
+                this.showNotification(`Failed to create markdown file: ${fileName}`, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to create markdown file:', error);
+            this.showNotification(`Failed to create markdown file: ${error.message}`, 'error');
+        }
+    }
+
     /**
      * Show the export assets modal
      */
@@ -965,6 +1054,8 @@ class FileBrowser {
         }
     }
 
+
+
     /**
      * Show context menu for an item
      * @param {Event} e - Context menu event
@@ -995,6 +1086,8 @@ class FileBrowser {
 
             // Check if it's a script file
             const isScript = item.name.endsWith('.js');
+
+            const isMarkdown = item.name.endsWith('.md');
 
             // Add open action
             menuHTML += `<div class="fb-menu-item fb-menu-open">Open</div>`;
@@ -1036,6 +1129,8 @@ class FileBrowser {
                 <div class="fb-menu-item fb-menu-delete">Delete</div>
                 <div class="context-menu-separator"></div>
                 <div class="fb-menu-item fb-menu-copy-link">Copy Link</div>
+                <div class="context-menu-separator"></div>
+                <div class="fb-menu-item fb-menu-edit">Edit</div>
                 <div class="context-menu-separator"></div>
                 <div class="fb-menu-item fb-menu-copy">Copy</div>
                 <div class="fb-menu-item fb-menu-cut">Cut</div>
@@ -1084,6 +1179,11 @@ class FileBrowser {
                 if (confirm(`Delete ${itemName}?`)) {
                     this.deleteItem(item.dataset.path).then(() => this.refreshFiles());
                 }
+                menu.remove();
+            });
+
+            menu.querySelector('.fb-menu-edit')?.addEventListener('click', () => {
+                this.editFile(item.dataset.path);
                 menu.remove();
             });
 
@@ -1151,6 +1251,54 @@ class FileBrowser {
 
         // Show notification
         this.showNotification(`Path copied to clipboard: ${text}`, 'info');
+    }
+
+    async promptNewDoc() {
+        if (!this.db) {
+            this.showNotification('File system not initialized yet. Please wait...', 'warning');
+            return;
+        }
+
+        const name = await this.promptDialog('New Documentation File', 'Enter documentation file name:');
+        if (!name) return; // User cancelled
+
+        try {
+            // Normalize path
+            const normalizedPath = this.normalizePath(this.currentPath);
+
+            // Ensure filename has .doc extension
+            const fileName = name.endsWith('.doc') ? name : `${name}.doc`;
+
+            // Generate template for documentation file (JSON structure)
+            const templateContent = JSON.stringify({
+                "Getting Started": {
+                    "Introduction": "# Welcome to Your Documentation\n\nThis is a sample documentation file.\n\n## Features\n\n- Easy to edit\n- Supports Markdown formatting\n- Organized by categories and topics",
+                    "Installation": "## Installation\n\n1. Create a new documentation file\n2. Add categories and topics\n3. Use Markdown for content formatting\n\n> **Tip**: You can use the SpriteCodeDocs modal to view and edit your documentation."
+                },
+                "API Reference": {
+                    "Overview": "# API Overview\n\nThis section contains API documentation.\n\n## Endpoints\n\n- `GET /api/data` - Retrieve data\n- `POST /api/data` - Create new data",
+                    "Authentication": "## Authentication\n\nUse Bearer tokens for API access.\n\n```javascript\nfetch('/api/data', {\n  headers: {\n    'Authorization': 'Bearer YOUR_TOKEN'\n  }\n});\n```"
+                }
+            }, null, 2);
+
+            // Create the filepath
+            const filePath = normalizedPath === '/'
+                ? `/${fileName}`
+                : `${normalizedPath}/${fileName}`;
+
+            // Create the file
+            const success = await this.createFile(filePath, templateContent);
+
+            if (success) {
+                this.showNotification(`Created documentation file: ${fileName}`, 'info');
+                await this.loadContent(this.currentPath);
+            } else {
+                this.showNotification(`Failed to create documentation file: ${fileName}`, 'error');
+            }
+        } catch (error) {
+            console.error('Failed to create documentation file:', error);
+            this.showNotification(`Failed to create documentation file: ${error.message}`, 'error');
+        }
     }
 
     async promptNewFolder() {
@@ -1525,13 +1673,35 @@ window.${pascalCaseName} = ${pascalCaseName};
                     resolve();
                 });
             } else {
-                // For non-image/audio files, read as text
+                // For non-image/audio files, read as text with proper encoding
                 const reader = new FileReader();
                 reader.onload = async (e) => {
-                    await this.createFile(`${this.currentPath}/${file.name}`, e.target.result);
+                    try {
+                        // Ensure we have the complete file content
+                        const content = e.target.result;
+                        if (content === null || content === undefined) {
+                            console.warn(`Failed to read content for file: ${file.name}`);
+                            resolve();
+                            return;
+                        }
+
+                        // For very large files, ensure we're not truncating
+                        console.log(`Reading file ${file.name} with size: ${content.length} characters`);
+                        await this.createFile(`${this.currentPath}/${file.name}`, content);
+                        resolve();
+                    } catch (error) {
+                        console.error(`Error processing file ${file.name}:`, error);
+                        resolve();
+                    }
+                };
+
+                reader.onerror = (error) => {
+                    console.error(`FileReader error for ${file.name}:`, error);
                     resolve();
                 };
-                reader.readAsText(file);
+
+                // Use readAsText with explicit encoding for better compatibility
+                reader.readAsText(file, 'UTF-8');
             }
         });
     }
@@ -1877,6 +2047,52 @@ window.${pascalCaseName} = ${pascalCaseName};
         });
     }
 
+    async editFile(path) {
+        const file = await this.getFile(path);
+        if (!file) {
+            this.showNotification(`File not found: ${path}`, 'error');
+            return;
+        }
+
+        try {
+            // Check if ScriptEditor.js is loaded
+            if (!window.ScriptEditor) {
+                console.log("ScriptEditor not found, attempting to load it dynamically...");
+                try {
+                    // Use relative path (consistent with loadScriptIfNeeded)
+                    await this.loadScriptFromUrl('src/core/ScriptEditor.js');
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    if (!window.ScriptEditor) {
+                        throw new Error("ScriptEditor class still not available after loading");
+                    }
+                    console.log("ScriptEditor loaded successfully");
+                } catch (err) {
+                    console.error("Failed to load ScriptEditor.js:", err);
+                    this.showNotification("Cannot load Script Editor. Please check console for details.", "error");
+                    return;
+                }
+            }
+
+            // Initialize ScriptEditor if needed
+            if (!window.scriptEditor) {
+                try {
+                    window.scriptEditor = new window.ScriptEditor();
+                    console.log("ScriptEditor initialized on demand");
+                } catch (err) {
+                    console.error("Error instantiating ScriptEditor:", err);
+                    this.showNotification("Failed to initialize Script Editor", "error");
+                    return;
+                }
+            }
+
+            // Open the file in the editor
+            window.scriptEditor.loadFile(path, file.content);
+        } catch (error) {
+            console.error("Failed to open file in editor:", error);
+            this.showNotification("Failed to open file in editor", "error");
+        }
+    }
+
     /**
      * Get all files in the file system
      * @returns {Promise<Array>} Array of file objects
@@ -2002,14 +2218,24 @@ window.${pascalCaseName} = ${pascalCaseName};
     }
 
     async getFile(path) {
-        if (!this.db) return null;
+        if (!this.db || !path || typeof path !== 'string') return null;
 
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['files'], 'readonly');
             const store = transaction.objectStore('files');
 
-            store.get(path).onsuccess = (e) => {
-                resolve(e.target.result);
+            const request = store.get(path);
+            request.onsuccess = (e) => {
+                const result = e.target.result;
+                if (result) {
+                    // Ensure we're getting the complete content
+                    console.log(`Retrieved file ${path}: ${result.content ? result.content.length : 0} characters`);
+                }
+                resolve(result);
+            };
+            request.onerror = (e) => {
+                console.error('Error getting file:', path, e.target.error);
+                resolve(null);
             };
         });
     }
@@ -2753,6 +2979,8 @@ window.${pascalCaseName} = ${pascalCaseName};
                 element.classList.add('prefab-file');
             } else if (extension === 'scene') {
                 icon = 'fa-gamepad';
+            } else if (extension === 'doc') {
+                icon = 'fa-book';
             } else if (extension === 'json') {
                 icon = 'fa-file-code'; // Or a different icon if you prefer
             } else if (['mp3', 'wav', 'ogg', 'aac', 'flac'].includes(extension)) {
@@ -2821,6 +3049,19 @@ window.${pascalCaseName} = ${pascalCaseName};
                 console.error("Failed to initialize ScriptEditor:", error);
                 this.showNotification("Failed to initialize script editor", "error");
             }
+            return;
+        }
+
+        if (fileName.endsWith('.md')) {
+            // Double-click opens the markdown viewer
+            // IMPORTANT: Pass the full content, not a truncated version
+            this.showMarkdownModal(file);
+            return;
+        }
+
+        if (fileName.endsWith('.doc')) {
+            // Double-click opens the documentation viewer
+            this.showDocModal(file);
             return;
         }
 
@@ -3168,9 +3409,656 @@ window.${pascalCaseName} = ${pascalCaseName};
         });
     }
 
+    showMarkdownModal(file) {
+        const existingModal = document.getElementById('markdownViewerModal');
+        if (existingModal) existingModal.remove();
+
+        if (!file || !file.content) {
+            console.error('File or file content is missing:', file);
+            this.showNotification('Cannot display markdown: file content missing', 'error');
+            return;
+        }
+
+        console.log(`showMarkdownModal ENTRY: content length = ${file.content.length}`);
+        console.log(`showMarkdownModal ENTRY: first 50 chars = ${file.content.substring(0, 50)}`);
+
+        // Store content immediately in a local variable
+        const markdownContent = file.content;
+
+        console.log(`Stored in local var: ${markdownContent.length} characters`);
+
+        const modalOverlay = document.createElement('div');
+        modalOverlay.id = 'markdownViewerModal';
+        modalOverlay.className = 'media-modal-overlay';
+        modalOverlay.innerHTML = `
+    <div class="media-modal-content" style="max-width: 1080px; max-height: 98vh; display: flex; flex-direction: column;">
+        <div class="media-modal-header" style="flex-shrink: 0;">
+            <h3 class="media-modal-title">${file.name}</h3>
+            <button class="media-modal-close">&times;</button>
+        </div>
+        <div class="media-modal-body" style="flex: 1; overflow-x: hidden; overflow-y: auto; padding: 20px; min-height: 0;">  <!-- Added overflow-y: auto for explicit vertical scrolling -->
+            <div id="markdownContent" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; line-height: 1.6; color: #e0e0e0; width: 100%;">
+                Loading...
+            </div>
+        </div>
+    </div>
+`;
+        document.body.appendChild(modalOverlay);
+
+        const closeBtn = modalOverlay.querySelector('.media-modal-close');
+        closeBtn.onclick = () => modalOverlay.remove();
+        modalOverlay.onclick = (e) => {
+            if (e.target === modalOverlay) modalOverlay.remove();
+        };
+
+        console.log(`About to call loadAndRenderMarkdown with ${markdownContent.length} chars`);
+        this.loadAndRenderMarkdown(markdownContent);
+
+        setTimeout(() => {
+            modalOverlay.classList.add('visible');
+            //const bodyDiv = modalOverlay.querySelector('.media-modal-body');
+            //if (bodyDiv) bodyDiv.scrollTop = 0;
+        }, 10);
+    }
+
+    /**
+     * Custom markdown parser to replace marked.js
+     * @param {string} markdown - Markdown text to parse
+     * @returns {string} HTML string
+     */
+    parseMarkdown(markdown) {
+        if (!markdown || typeof markdown !== 'string') {
+            return '';
+        }
+
+        // Split into lines for processing
+        const lines = markdown.split('\n');
+        const html = [];
+        let inCodeBlock = false;
+        let codeBlockContent = [];
+        let inList = false;
+        let listItems = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+
+            // Handle code blocks
+            if (line.trim().startsWith('```')) {
+                if (inCodeBlock) {
+                    // End code block
+                    html.push(`<pre><code>${this.escapeHtml(codeBlockContent.join('\n'))}</code></pre>`);
+                    inCodeBlock = false;
+                    codeBlockContent = [];
+                } else {
+                    // Start code block
+                    if (inList) {
+                        html.push('</ul>');
+                        inList = false;
+                    }
+                    inCodeBlock = true;
+                }
+                continue;
+            }
+
+            if (inCodeBlock) {
+                codeBlockContent.push(line);
+                continue;
+            }
+
+            // Handle headers
+            const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+            if (headerMatch) {
+                if (inList) {
+                    html.push('</ul>');
+                    inList = false;
+                }
+                const level = headerMatch[1].length;
+                const text = this.parseInlineElements(headerMatch[2]);
+                html.push(`<h${level}>${text}</h${level}>`);
+                continue;
+            }
+
+            // Handle horizontal rules
+            if (line.trim().match(/^[-*_]{3,}$/)) {
+                if (inList) {
+                    html.push('</ul>');
+                    inList = false;
+                }
+                html.push('<hr>');
+                continue;
+            }
+
+            // Handle blockquotes
+            if (line.trim().startsWith('>')) {
+                if (inList) {
+                    html.push('</ul>');
+                    inList = false;
+                }
+                const quoteText = line.trim().substring(1).trim();
+                html.push(`<blockquote>${this.parseInlineElements(quoteText)}</blockquote>`);
+                continue;
+            }
+
+            // Handle lists
+            const listMatch = line.match(/^(\s*)([-*+])\s+(.+)$/);
+            if (listMatch) {
+                const indent = listMatch[1].length;
+                const marker = listMatch[2];
+                const text = listMatch[3];
+
+                if (!inList) {
+                    html.push('<ul>');
+                    inList = true;
+                }
+
+                html.push(`<li>${this.parseInlineElements(text)}</li>`);
+                continue;
+            }
+
+            // Handle empty lines
+            if (line.trim() === '') {
+                if (inList) {
+                    html.push('</ul>');
+                    inList = false;
+                }
+                continue;
+            }
+
+            // Handle paragraphs
+            if (inList) {
+                html.push('</ul>');
+                inList = false;
+            }
+            html.push(`<p>${this.parseInlineElements(line)}</p>`);
+        }
+
+        // Close any open lists
+        if (inList) {
+            html.push('</ul>');
+        }
+
+        return html.join('\n');
+    }
+
+    /**
+     * Parse inline markdown elements (bold, italic, code, links)
+     * @param {string} text - Text to parse
+     * @returns {string} HTML string
+     */
+    parseInlineElements(text) {
+        if (!text) return '';
+
+        // Escape HTML first
+        //text = this.escapeHtml(text);
+
+        // Handle inline code
+        text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Handle links
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+        // Handle bold and italic (process ** first, then *)
+        text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+        return text;
+    }
+
+    /**
+     * Escape HTML characters
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    loadAndRenderMarkdown(markdownContent) {
+        console.log('=== loadAndRenderMarkdown START ===');
+        console.log('Type of markdownContent:', typeof markdownContent);
+        console.log('Is null/undefined?', markdownContent == null);
+
+        // Validate content exists and is a string
+        if (!markdownContent || typeof markdownContent !== 'string') {
+            console.error('Invalid markdown content:', typeof markdownContent, markdownContent ? markdownContent.length : 0);
+            const contentDiv = document.getElementById('markdownContent');
+            if (contentDiv) {
+                contentDiv.innerHTML = `<p style="color: #ff6b6b;">Error: Invalid markdown content</p>`;
+            }
+            return;
+        }
+
+        const originalLength = markdownContent.length;
+        console.log(`Original content length: ${originalLength}`);
+
+        // Store content in a constant that cannot be modified
+        const fullMarkdownContent = String(markdownContent);
+
+        console.log(`Stored content length: ${fullMarkdownContent.length}`);
+        console.log('First 300 chars:', fullMarkdownContent.substring(0, 300));
+        console.log('Last 300 chars:', fullMarkdownContent.substring(fullMarkdownContent.length - 300));
+
+        // Render directly - no chunking needed
+        this.renderMarkdownDirectly(fullMarkdownContent);
+    }
+
+    ensureMarkedLibrary(callback) {
+        if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+            callback();
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+        script.crossOrigin = 'anonymous';
+
+        script.onload = () => {
+            setTimeout(callback, 100);
+        };
+
+        script.onerror = (e) => {
+            console.error('Failed to load marked.js', e);
+            this.showMarkdownError('Failed to load markdown parser');
+        };
+
+        document.head.appendChild(script);
+    }
+
+    /**
+     * Render markdown content in chunks for better performance with large files
+     */
+    async renderMarkdownInChunks(fullContent, config) {
+        const chunks = this.chunkMarkdownContent(fullContent, config.chunkSize);
+        const totalChunks = chunks.length;
+
+        console.log(`Splitting content into ${totalChunks} chunks`);
+
+        // Show progress indicator if enabled
+        let progressDiv;
+        if (config.showProgress) {
+            progressDiv = this.showChunkingProgress(0, totalChunks);
+        }
+
+        try {
+            // Process chunks sequentially to avoid overwhelming the browser
+            const htmlParts = [];
+
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                console.log(`Processing chunk ${chunk.chunkNumber}/${totalChunks} (${chunk.startIndex}-${chunk.endIndex})`);
+
+                // Update progress
+                if (progressDiv) {
+                    this.updateChunkingProgress(progressDiv, i + 1, totalChunks);
+                }
+
+                // Render this chunk
+                const chunkHtml = await this.renderMarkdownChunk(chunk.content, chunk.chunkNumber);
+                htmlParts.push(chunkHtml);
+
+                // Yield control to browser to prevent freezing
+                if (i < chunks.length - 1) {
+                    await this.yieldToBrowser();
+                }
+            }
+
+            // Combine all HTML parts
+            const completeHtml = htmlParts.join('');
+            console.log(`Chunked rendering complete. Total HTML length: ${completeHtml.length}`);
+
+            // Display the complete content
+            this.displayMarkdownContent(completeHtml);
+
+            // Remove progress indicator
+            if (progressDiv) {
+                progressDiv.remove();
+            }
+
+        } catch (error) {
+            console.error('Error in chunked rendering:', error);
+            if (progressDiv) {
+                progressDiv.remove();
+            }
+            // Use showNotification instead of the missing showMarkdownError
+            this.showNotification(`Chunked rendering failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Display the final markdown HTML content
+     */
+    displayMarkdownContent(htmlContent) {
+        const contentDiv = document.getElementById('markdownContent');
+        if (!contentDiv) {
+            console.error('markdownContent div not found');
+            return;
+        }
+
+        // Log for debugging
+        console.log('Setting HTML length:', htmlContent.length);
+        console.log('Setting HTML starts with:', htmlContent.substring(0, 500));
+
+        contentDiv.innerHTML = htmlContent;
+        this.styleMarkdownContent(contentDiv);
+
+        // Force a layout reflow and ensure scrolling resets after rendering
+        requestAnimationFrame(() => {
+            // Force reflow to ensure height calculations are complete
+            contentDiv.offsetHeight;
+
+            // Reset scroll on the modal body (the scrollable container)
+            const modalBody = contentDiv.closest('.media-modal-body');
+            if (modalBody) {
+                modalBody.scrollTop = 0;
+            }
+            // Removed contentDiv.scrollTop reset since the body handles scrolling now
+        });
+    }
+
+    /**
+     * Show progress indicator for chunked rendering
+     */
+    showChunkingProgress(current, total) {
+        const progressDiv = document.createElement('div');
+        progressDiv.id = 'markdownProgress';
+        progressDiv.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        z-index: 10000;
+        text-align: center;
+        border: 2px solid #64B5F6;
+    `;
+
+        progressDiv.innerHTML = `
+        <div style="margin-bottom: 10px;">
+            <i class="fas fa-spinner fa-spin"></i>
+        </div>
+        <div>Rendering markdown content...</div>
+        <div style="margin-top: 10px; font-size: 12px; color: #aaa;">
+            Chunk <span id="currentChunk">0</span> of ${total}
+        </div>
+        <div style="margin-top: 5px;">
+            <div style="width: 200px; height: 4px; background: #333; margin: 0 auto;">
+                <div id="progressBar" style="height: 100%; width: 0%; background: #64B5F6; transition: width 0.3s;"></div>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(progressDiv);
+        return progressDiv;
+    }
+
+    /**
+     * Update the chunking progress indicator
+     */
+    updateChunkingProgress(progressDiv, current, total) {
+        const currentChunkSpan = progressDiv.querySelector('#currentChunk');
+        const progressBar = progressDiv.querySelector('#progressBar');
+
+        if (currentChunkSpan) {
+            currentChunkSpan.textContent = current;
+        }
+
+        if (progressBar) {
+            const percentage = (current / total) * 100;
+            progressBar.style.width = `${percentage}%`;
+        }
+    }
+
+    /**
+     * Yield control to browser to prevent UI freezing
+     */
+    yieldToBrowser() {
+        return new Promise(resolve => {
+            setTimeout(resolve, 0);
+        });
+    }
+
+    /**
+     * Render a single markdown chunk
+     */
+    renderMarkdownChunk(chunkContent, chunkNumber) {
+        return new Promise((resolve, reject) => {
+            try {
+                // Use custom parser instead of marked
+                const htmlContent = this.parseMarkdown(chunkContent);
+                resolve(htmlContent);
+
+            } catch (error) {
+                console.error(`Error rendering chunk ${chunkNumber}:`, error);
+                reject(error);
+            }
+        });
+    }
+
+    /**
+     * Render markdown content directly (for smaller files)
+     */
+    renderMarkdownDirectly(markdownContent) {
+        try {
+            // Use custom parser
+            const htmlContent = this.parseMarkdown(markdownContent);
+
+            // Display the content
+            this.displayMarkdownContent(htmlContent);
+
+        } catch (error) {
+            console.error('Error in direct rendering:', error);
+            this.showNotification(`Rendering failed: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+ * Break large markdown content into smaller chunks for progressive loading
+ * @param {string} content - The full markdown content
+ * @param {number} chunkSize - Size of each chunk in characters (default: 50KB)
+ * @returns {Array} Array of content chunks with metadata
+ */
+    chunkMarkdownContent(content, chunkSize = 50000) {
+        const chunks = [];
+        const totalLength = content.length;
+
+        for (let i = 0; i < totalLength; i += chunkSize) {
+            const chunkContent = content.slice(i, i + chunkSize);
+            const chunkInfo = {
+                content: chunkContent,
+                startIndex: i,
+                endIndex: Math.min(i + chunkSize, totalLength),
+                chunkNumber: Math.floor(i / chunkSize) + 1,
+                isLastChunk: (i + chunkSize) >= totalLength
+            };
+            chunks.push(chunkInfo);
+        }
+
+        return chunks;
+    }
+
+    styleMarkdownContent(contentDiv) {
+        // Set base styles on the container first to prevent layout shifts
+        contentDiv.style.cssText = `
+        /* Removed flex: 1 to prevent it from filling the body and interfering with body-level scrolling */
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        line-height: 1.6;
+        color: #e0e0e0;
+        width: 100%;
+        padding: 0;  /* Keep padding removed as before */
+        margin-top: 0;
+    `;
+
+        // Style headings
+        contentDiv.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
+            heading.style.cssText = `
+            margin-top: ${heading.tagName === 'H1' ? '0' : '24px'};
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+            border-bottom: ${heading.tagName === 'H1' || heading.tagName === 'H2' ? '1px solid #444' : 'none'};
+            padding-bottom: ${heading.tagName === 'H1' || heading.tagName === 'H2' ? '10px' : '0'};
+        `;
+
+            if (heading.tagName === 'H1') {
+                heading.style.fontSize = '32px';
+                heading.style.color = '#64B5F6';
+            } else if (heading.tagName === 'H2') {
+                heading.style.fontSize = '24px';
+                heading.style.color = '#81C784';
+            } else if (heading.tagName === 'H3') {
+                heading.style.fontSize = '20px';
+                heading.style.color = '#FFB74D';
+            }
+        });
+
+        // Style paragraphs
+        contentDiv.querySelectorAll('p').forEach(p => {
+            p.style.marginBottom = '12px';
+        });
+
+        // Style code blocks
+        contentDiv.querySelectorAll('pre').forEach(pre => {
+            pre.style.cssText = `
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+        `;
+        });
+
+        // Style inline code
+        contentDiv.querySelectorAll('code').forEach(code => {
+            if (!code.parentElement.tagName === 'PRE') {
+                code.style.cssText = `
+                background: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 3px;
+                padding: 2px 6px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                color: #FFB74D;
+            `;
+            }
+        });
+
+        // Style lists
+        contentDiv.querySelectorAll('ul, ol').forEach(list => {
+            list.style.cssText = `
+            margin: 12px 0;
+            padding-left: 24px;
+        `;
+        });
+
+        contentDiv.querySelectorAll('li').forEach(li => {
+            li.style.marginBottom = '8px';
+        });
+
+        // Style blockquotes
+        contentDiv.querySelectorAll('blockquote').forEach(bq => {
+            bq.style.cssText = `
+            border-left: 4px solid #64B5F6;
+            background: rgba(100, 181, 246, 0.1);
+            padding: 12px 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+        `;
+        });
+
+        // Style links
+        contentDiv.querySelectorAll('a').forEach(link => {
+            link.style.cssText = `
+            color: #64B5F6;
+            text-decoration: none;
+            cursor: pointer;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s;
+        `;
+            link.addEventListener('mouseenter', () => {
+                link.style.borderBottomColor = '#64B5F6';
+            });
+            link.addEventListener('mouseleave', () => {
+                link.style.borderBottomColor = 'transparent';
+            });
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.open(link.href, '_blank');
+            });
+        });
+
+        // Style tables
+        contentDiv.querySelectorAll('table').forEach(table => {
+            table.style.cssText = `
+            border-collapse: collapse;
+            width: 100%;
+            margin: 16px 0;
+        `;
+
+            table.querySelectorAll('th, td').forEach(cell => {
+                cell.style.cssText = `
+                border: 1px solid #444;
+                padding: 10px 12px;
+                text-align: left;
+            `;
+            });
+
+            table.querySelectorAll('th').forEach(th => {
+                th.style.cssText = `
+                border: 1px solid #444;
+                padding: 10px 12px;
+                background: #2a2a2a;
+                font-weight: 600;
+            `;
+            });
+        });
+
+        // Style horizontal rules
+        contentDiv.querySelectorAll('hr').forEach(hr => {
+            hr.style.cssText = `
+            border: none;
+            border-top: 2px solid #444;
+            margin: 24px 0;
+        `;
+        });
+    }
+
     isEditableFile(filename) {
-        const textExtensions = ['.js', '.json', '.txt', '.html', '.css', '.md'];
+        const textExtensions = ['.js', '.json', '.txt', '.html', '.css'];
         return textExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+    }
+
+    /**
+     * Show the documentation modal for .doc files
+     * @param {Object} file - The file object containing path, name, and content
+     */
+    showDocModal(file) {
+        try {
+            const data = JSON.parse(file.content);
+            if (window.SpriteCodeDocs) {
+                const docs = new window.SpriteCodeDocs();
+                docs.loadFromJSONObject(data);
+                docs.open();
+            } else {
+                this.showNotification('SpriteCodeDocs not available', 'error');
+            }
+        } catch (e) {
+            console.error('Error parsing documentation JSON:', e);
+            this.showNotification('Invalid documentation file format', 'error');
+        }
     }
 
     /**

@@ -233,6 +233,48 @@ class SpriteCodeDocs {
     this.renderSidebar();
   }
 
+  /**
+   * Loads documentation from a JSON string.
+   * @param {string} jsonString - A JSON string containing the documentation structure.
+   */
+  loadFromJSON(jsonString) {
+    try {
+      const data = JSON.parse(jsonString);
+      this.setDocumentation(data);
+    } catch (e) {
+      console.error('Invalid JSON provided to loadFromJSON:', e);
+    }
+  }
+
+  /**
+   * Loads documentation from a JSON object.
+   * @param {object} jsonObject - A JSON object containing the documentation structure.
+   */
+  loadFromJSONObject(jsonObject) {
+    if (typeof jsonObject === 'object' && jsonObject !== null) {
+      this.setDocumentation(jsonObject);
+    } else {
+      console.error('Invalid JSON object provided to loadFromJSONObject');
+    }
+  }
+
+  /**
+   * Loads documentation from a URL pointing to a JSON file.
+   * @param {string} url - The URL of the JSON file.
+   */
+  async loadFromURL(url) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      this.setDocumentation(data);
+    } catch (e) {
+      console.error('Failed to load documentation from URL:', e);
+    }
+  }
+
   // Render the sidebar with categories and topics
   renderSidebar() {
     const sidebar = this.modal.querySelector('.docs-sidebar');
@@ -751,6 +793,8 @@ class SpriteCodeDocs {
     return div.innerHTML;
   }
 }
+
+window.SpriteCodeDocs = SpriteCodeDocs;
 
 // Example usage:
 /*

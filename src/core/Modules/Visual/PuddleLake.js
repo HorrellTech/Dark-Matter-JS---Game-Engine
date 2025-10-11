@@ -1,10 +1,10 @@
 /**
  * Puddle/Lake Module
- * Creates water effects with customizable points, cloud reflection generation, and water animation
+ * Creates smooth water effects with customizable control points
  */
 class PuddleLake extends Module {
     static namespace = "Visual";
-    static description = "Creates water effects with customizable points, cloud reflection generation, and water animation";
+    static description = "Creates smooth water effects with customizable control points and wave animation";
     static allowMultiple = true;
     static iconClass = "fas fa-water";
     static color = "#2196F3";
@@ -12,7 +12,7 @@ class PuddleLake extends Module {
     constructor() {
         super("PuddleLake");
 
-        // Shape properties
+        // Control points for spline interpolation
         this.points = [
             new Vector2(-50, -30),
             new Vector2(50, -20),
@@ -20,22 +20,25 @@ class PuddleLake extends Module {
             new Vector2(-40, 35)
         ];
 
+        // Number of control points
+        this.pointCount = 4;
+
         // Water appearance
         this.waterColor = "#4FC3F7";
         this.waterOpacity = 0.7;
         this.waterDepth = 10;
 
+        // Smoothness - higher = smoother curves
+        this.smoothness = 20;
+
         // Reflection properties
         this.enableReflections = true;
         this.reflectionOpacity = 0.3;
-        this.reflectionScale = 1.0;
-        this.reflectionOffset = new Vector2(0, 0);
 
         // Cloud reflection properties
         this.enableCloudReflections = true;
         this.cloudReflectionOpacity = 0.2;
         this.cloudReflectionSpeed = 0.5;
-        this.cloudReflectionScale = 1.2;
 
         // Animation properties
         this.animateWaves = true;
@@ -63,15 +66,45 @@ class PuddleLake extends Module {
         this.showGizmos = true;
         this.gizmoRadius = 8;
         this.selectedPointIndex = -1;
+        this.draggingPointIndex = -1;
+        this.isDragging = false;
+        this.dragOffset = new Vector2(0, 0);
+        this.hoveredPoint = -1;
 
         // Animation state
         this.animationTime = 0;
+
+        // Performance optimization
+        this._pathCache = new Map();
+        this._lastViewport = null;
+        this._visibleSegmentCache = null;
+        this.viewportCulling = true;
+        this.cullingPadding = 100;
 
         this.setupProperties();
     }
 
     setupProperties() {
-        // Shape properties
+        // Point count control
+        this.exposeProperty("pointCount", "number", this.pointCount, {
+            description: "Number of control points for the puddle shape",
+            min: 3, max: 20,
+            onChange: (value) => {
+                this.regeneratePuddle(value);
+            }
+        });
+
+        // Smoothness control
+        this.exposeProperty("smoothness", "number", this.smoothness, {
+            description: "Smoothness of the puddle outline (segments per edge)",
+            min: 5, max: 50,
+            onChange: (value) => {
+                this.smoothness = value;
+                this.clearCaches();
+            }
+        });
+
+        // Water appearance
         this.exposeProperty("waterColor", "color", this.waterColor, {
             description: "Color of the water",
             onChange: (value) => { this.waterColor = value; }
@@ -99,17 +132,6 @@ class PuddleLake extends Module {
             description: "Opacity of reflections",
             min: 0, max: 1, step: 0.1,
             onChange: (value) => { this.reflectionOpacity = value; }
-        });
-
-        this.exposeProperty("reflectionScale", "number", this.reflectionScale, {
-            description: "Scale of reflections",
-            min: 0.1, max: 2, step: 0.1,
-            onChange: (value) => { this.reflectionScale = value; }
-        });
-
-        this.exposeProperty("reflectionOffset", "vector2", this.reflectionOffset, {
-            description: "Offset for reflections",
-            onChange: (value) => { this.reflectionOffset = value; }
         });
 
         // Cloud reflection properties
@@ -154,6 +176,18 @@ class PuddleLake extends Module {
             onChange: (value) => { this.waveFrequency = value; }
         });
 
+        // Ripple properties
+        this.exposeProperty("enableRipples", "boolean", this.enableRipples, {
+            description: "Enable ripple effects",
+            onChange: (value) => { this.enableRipples = value; }
+        });
+
+        this.exposeProperty("rippleSpeed", "number", this.rippleSpeed, {
+            description: "Speed of ripples",
+            min: 0, max: 5, step: 0.1,
+            onChange: (value) => { this.rippleSpeed = value; }
+        });
+
         // Edge properties
         this.exposeProperty("showEdges", "boolean", this.showEdges, {
             description: "Show water edges",
@@ -170,6 +204,38 @@ class PuddleLake extends Module {
             min: 0, max: 10,
             onChange: (value) => { this.edgeWidth = value; }
         });
+
+        // Foam properties
+        this.exposeProperty("enableFoam", "boolean", this.enableFoam, {
+            description: "Enable foam effects",
+            onChange: (value) => { this.enableFoam = value; }
+        });
+
+        this.exposeProperty("foamDensity", "number", this.foamDensity, {
+            description: "Density of foam bubbles",
+            min: 0, max: 1, step: 0.1,
+            onChange: (value) => { this.foamDensity = value; }
+        });
+    }
+
+    /**
+     * Regenerate puddle with specified number of points in a circular arrangement
+     */
+    regeneratePuddle(count) {
+        this.pointCount = Math.max(3, Math.min(20, count));
+        this.points = [];
+
+        // Generate points in a roughly circular arrangement with some randomness
+        for (let i = 0; i < this.pointCount; i++) {
+            const angle = (i / this.pointCount) * Math.PI * 2;
+            const radius = 50 + Math.sin(angle * 2.5) * 15;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+
+            this.points.push(new Vector2(x, y));
+        }
+
+        this.clearCaches();
     }
 
     start() {
@@ -178,56 +244,90 @@ class PuddleLake extends Module {
 
     loop(deltaTime) {
         this.animationTime += deltaTime;
+        this._pointTestCache = new Map(); // Reset point test cache each frame
     }
 
     /**
-     * Add a point to the water shape
-     * @param {Vector2} point - The point to add
-     * @param {number} index - Index to insert at (optional)
+     * Clear all caches
      */
-    addPoint(point, index = null) {
-        if (index === null || index >= this.points.length) {
-            this.points.push(point.clone());
-        } else {
-            this.points.splice(index, 0, point.clone());
-        }
+    clearCaches() {
+        this._pathCache.clear();
+        this._lastViewport = null;
+        this._visibleSegmentCache = null;
     }
 
     /**
-     * Remove a point from the water shape
-     * @param {number} index - Index of the point to remove
+     * Get smooth interpolated points along the puddle boundary
      */
-    removePoint(index) {
-        if (index >= 0 && index < this.points.length) {
-            this.points.splice(index, 1);
+    getInterpolatedPoints() {
+        if (this.points.length < 3) return this.points;
+
+        // Include animation state in cache key to catch wave changes
+        const cacheKey = `interpolated_${this.smoothness}_${Math.floor(this.animationTime / 0.1)}`;
+        if (this._pathCache.has(cacheKey)) {
+            return this._pathCache.get(cacheKey);
         }
+
+        const interpolated = [];
+
+        // Use Catmull-Rom spline for smooth closed curves
+        for (let i = 0; i < this.points.length; i++) {
+            const p0 = this.points[(i - 1 + this.points.length) % this.points.length];
+            const p1 = this.points[i];
+            const p2 = this.points[(i + 1) % this.points.length];
+            const p3 = this.points[(i + 2) % this.points.length];
+
+            // Generate segments between p1 and p2
+            for (let j = 0; j < this.smoothness; j++) {
+                const t = j / this.smoothness;
+                const point = this.catmullRomPoint(p0, p1, p2, p3, t);
+                interpolated.push(point);
+            }
+        }
+
+        // Cache the result
+        if (this._pathCache.size > 10) {
+            this._pathCache.clear(); // Prevent unbounded cache growth
+        }
+        this._pathCache.set(cacheKey, interpolated);
+        return interpolated;
     }
 
     /**
-     * Update a point in the water shape
-     * @param {number} index - Index of the point to update
-     * @param {Vector2} point - New position
+     * Catmull-Rom spline interpolation
      */
-    updatePoint(index, point) {
-        if (index >= 0 && index < this.points.length) {
-            this.points[index] = point.clone();
-        }
+    catmullRomPoint(p0, p1, p2, p3, t) {
+        const tt = t * t;
+        const ttt = tt * t;
+
+        const tension = 0.5;
+        const q1 = -tension * ttt + 2 * tension * tt - tension * t;
+        const q2 = (2 - tension) * ttt + (tension - 3) * tt + 1;
+        const q3 = (tension - 2) * ttt + (3 - 2 * tension) * tt + tension * t;
+        const q4 = -tension * ttt + tension * tt;
+
+        return new Vector2(
+            0.5 * (p1.x * q2 + p2.x * q3 + p0.x * q1 + p3.x * q4),
+            0.5 * (p1.y * q2 + p2.y * q3 + p0.y * q1 + p3.y * q4)
+        );
     }
 
     /**
-     * Check if a point is inside the water shape
-     * @param {Vector2} point - Point to test
-     * @returns {boolean} True if point is inside water
+     * Check if a point is inside the water shape using ray casting
      */
     containsPoint(point) {
-        if (this.points.length < 3) return false;
+        const cacheKey = `${point.x}_${point.y}`;
+        if (this._pointTestCache && this._pointTestCache.has(cacheKey)) {
+            return this._pointTestCache.get(cacheKey);
+        }
 
-        // Use ray casting algorithm for point-in-polygon test
+        const interpolated = this.getInterpolatedPoints();
+        if (interpolated.length < 3) return false;
+
         let inside = false;
-        for (let i = 0, j = this.points.length - 1; i < this.points.length; j = i++) {
-            const pi = this.points[i];
-            const pj = this.points[j];
-
+        for (let i = 0, j = interpolated.length - 1; i < interpolated.length; j = i++) {
+            const pi = interpolated[i];
+            const pj = interpolated[j];
             if (((pi.y > point.y) !== (pj.y > point.y)) &&
                 (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)) {
                 inside = !inside;
@@ -238,43 +338,77 @@ class PuddleLake extends Module {
     }
 
     /**
-     * Generate wave offset at a given position and time
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
-     * @param {number} time - Current time
-     * @returns {number} Wave offset
+     * Get wave offset at a given position and time
      */
     getWaveOffset(x, y, time) {
         if (!this.animateWaves) return 0;
 
         const wave1 = Math.sin(x * this.waveFrequency + time * this.waveSpeed) * this.waveAmplitude;
         const wave2 = Math.sin(y * this.waveFrequency * 0.7 + time * this.waveSpeed * 1.3) * this.waveAmplitude * 0.5;
-        const ripple = Math.sin((x + y) * this.rippleFrequency + time * this.rippleSpeed) * this.rippleAmplitude;
+        const ripple = this.enableRipples ?
+            Math.sin((x + y) * this.rippleFrequency + time * this.rippleSpeed) * this.rippleAmplitude :
+            0;
 
         return wave1 + wave2 + ripple;
     }
 
     /**
      * Generate cloud pattern for reflections
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
-     * @param {number} time - Current time
-     * @returns {number} Cloud density (0-1)
      */
     getCloudDensity(x, y, time) {
         if (!this.enableCloudReflections) return 0;
 
-        // Create moving cloud patterns
         const cloud1 = Math.sin(x * 0.01 + time * this.cloudReflectionSpeed) *
-                      Math.cos(y * 0.015 + time * this.cloudReflectionSpeed * 0.7);
-
+            Math.cos(y * 0.015 + time * this.cloudReflectionSpeed * 0.7);
         const cloud2 = Math.sin(x * 0.008 + y * 0.012 + time * this.cloudReflectionSpeed * 0.5) * 0.5;
 
         return Math.max(0, (cloud1 + cloud2) * 0.5 + 0.5);
     }
 
+    /**
+     * Get bounding box of the puddle
+     */
+    getBounds() {
+        if (this.points.length === 0) {
+            return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+        }
+
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+
+        for (const point of this.points) {
+            minX = Math.min(minX, point.x);
+            minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x);
+            maxY = Math.max(maxY, point.y);
+        }
+
+        return {
+            minX, minY, maxX, maxY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
+    }
+
     draw(ctx) {
         if (this.points.length < 3) return;
+
+        const viewport = this.viewport;
+        const bounds = this.getBounds();
+
+        // Simple viewport culling
+        if (viewport) {
+            const padding = this.cullingPadding;
+            const minX = viewport.x - viewport.width / 2 - padding;
+            const maxX = viewport.x + viewport.width / 2 + padding;
+            const minY = viewport.y - viewport.height / 2 - padding;
+            const maxY = viewport.y + viewport.height / 2 + padding;
+
+            if (bounds.maxX < minX || bounds.minX > maxX ||
+                bounds.maxY < minY || bounds.minY > maxY) {
+                return;
+            }
+        }
 
         ctx.save();
 
@@ -300,66 +434,46 @@ class PuddleLake extends Module {
     }
 
     drawWaterBody(ctx) {
-        ctx.beginPath();
+        const interpolated = this.getInterpolatedPoints();
+        if (interpolated.length < 3) return;
 
-        // Move to first point
-        const startPoint = this.points[0];
+        ctx.beginPath();
+        const startPoint = interpolated[0];
         ctx.moveTo(startPoint.x, startPoint.y);
 
-        // Draw path with wave animation
-        for (let i = 1; i < this.points.length; i++) {
-            const point = this.points[i];
+        // Draw smooth polygon
+        for (let i = 1; i < interpolated.length; i++) {
+            const point = interpolated[i];
             const waveOffset = this.getWaveOffset(point.x, point.y, this.animationTime);
-
-            // Add some curve to make it look more natural
-            if (i > 1) {
-                const prevPoint = this.points[i - 1];
-                const midX = (prevPoint.x + point.x) / 2;
-                const midY = (prevPoint.y + point.y) / 2 + waveOffset;
-                ctx.quadraticCurveTo(prevPoint.x, prevPoint.y + waveOffset, midX, midY);
-            } else {
-                ctx.lineTo(point.x, point.y + waveOffset);
-            }
+            ctx.lineTo(point.x, point.y + waveOffset);
         }
 
-        // Close the path
         ctx.closePath();
 
-        // Fill with water color and opacity
+        // Fill with water color
         ctx.fillStyle = this.waterColor;
         ctx.globalAlpha = this.waterOpacity;
         ctx.fill();
 
-        // Add wave overlay for animation
+        // Wave overlay
         if (this.animateWaves) {
-            this.drawWaveOverlay(ctx);
+            this.drawWaveOverlay(ctx, interpolated);
         }
     }
 
-    drawWaveOverlay(ctx) {
+    drawWaveOverlay(ctx, interpolated) {
         ctx.beginPath();
-
-        // Create a slightly smaller path for wave overlay
-        const startPoint = this.points[0];
+        const startPoint = interpolated[0];
         ctx.moveTo(startPoint.x, startPoint.y);
 
-        for (let i = 1; i < this.points.length; i++) {
-            const point = this.points[i];
+        for (let i = 1; i < interpolated.length; i++) {
+            const point = interpolated[i];
             const waveOffset = this.getWaveOffset(point.x, point.y, this.animationTime);
-
-            if (i > 1) {
-                const prevPoint = this.points[i - 1];
-                const midX = (prevPoint.x + point.x) / 2;
-                const midY = (prevPoint.y + point.y) / 2 + waveOffset;
-                ctx.quadraticCurveTo(prevPoint.x, prevPoint.y + waveOffset, midX, midY);
-            } else {
-                ctx.lineTo(point.x, point.y + waveOffset);
-            }
+            ctx.lineTo(point.x, point.y + waveOffset);
         }
 
         ctx.closePath();
 
-        // Create wave gradient
         const gradient = ctx.createLinearGradient(0, -50, 0, 50);
         gradient.addColorStop(0, "rgba(255, 255, 255, 0.1)");
         gradient.addColorStop(0.5, "rgba(255, 255, 255, 0)");
@@ -371,82 +485,68 @@ class PuddleLake extends Module {
     }
 
     drawReflections(ctx) {
-        if (this.points.length < 3) return;
+        const interpolated = this.getInterpolatedPoints();
+        if (interpolated.length < 3) return;
 
         ctx.save();
+
+        // Create clipping region using the water body boundary
+        ctx.beginPath();
+        ctx.moveTo(interpolated[0].x, interpolated[0].y);
+        for (let i = 1; i < interpolated.length; i++) {
+            const point = interpolated[i];
+            const waveOffset = this.getWaveOffset(point.x, point.y, this.animationTime);
+            ctx.lineTo(point.x, point.y + waveOffset);
+        }
+        ctx.closePath();
+        ctx.clip();
+
+        // Now draw depth gradient within the clipped region
         ctx.globalAlpha = this.reflectionOpacity;
 
-        // Scale and translate for reflection
-        ctx.scale(this.reflectionScale, -this.reflectionScale);
-        ctx.translate(this.reflectionOffset.x, this.reflectionOffset.y);
+        // Get bounds for gradient direction
+        const bounds = this.getBounds();
 
-        // Draw reflected objects (simplified - in a real implementation,
-        // this would reflect actual game objects above the water)
-        this.drawReflectedObjects(ctx);
+        // Draw gradient from top (surface) to bottom (depth) - all within water body
+        const gradient = ctx.createLinearGradient(0, bounds.minY, 0, bounds.maxY);
+        gradient.addColorStop(0, "rgba(173, 216, 230, 0.2)");      // Light blue at surface (top)
+        gradient.addColorStop(0.5, "rgba(70, 130, 180, 0.4)");     // Medium blue in middle
+        gradient.addColorStop(1, "rgba(25, 25, 112, 0.7)");        // Dark blue at bottom (depth)
 
-        // Draw cloud reflections
+        ctx.fillStyle = gradient;
+
+        // Fill the entire bounds area (clipping will constrain it to water shape)
+        ctx.beginPath();
+        ctx.moveTo(interpolated[0].x, interpolated[0].y);
+        for (let i = 1; i < interpolated.length; i++) {
+            const point = interpolated[i];
+            const waveOffset = this.getWaveOffset(point.x, point.y, this.animationTime);
+            ctx.lineTo(point.x, point.y + waveOffset);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw cloud reflections if enabled
         if (this.enableCloudReflections) {
-            this.drawCloudReflections(ctx);
+            this.drawCloudReflections(ctx, interpolated);
         }
 
         ctx.restore();
     }
 
-    drawReflectedObjects(ctx) {
-        // This is a simplified version - in a full implementation,
-        // this would reflect actual game objects above the water surface
-
+    drawCloudReflections(ctx, interpolated) {
         ctx.beginPath();
+        const sampleRate = Math.max(1, Math.floor(interpolated.length / 6)); // Reduced from 8
 
-        // Create some simple reflected shapes
-        const reflectionPoints = this.points.map(p => ({
-            x: p.x,
-            y: -p.y - this.waterDepth // Reflect below water surface
-        }));
-
-        ctx.moveTo(reflectionPoints[0].x, reflectionPoints[0].y);
-
-        for (let i = 1; i < reflectionPoints.length; i++) {
-            const point = reflectionPoints[i];
-            const waveOffset = this.getWaveOffset(point.x, -point.y, this.animationTime) * 0.5;
-
-            if (i > 1) {
-                const prevPoint = reflectionPoints[i - 1];
-                const midX = (prevPoint.x + point.x) / 2;
-                const midY = (prevPoint.y + point.y) / 2 + waveOffset;
-                ctx.quadraticCurveTo(prevPoint.x, prevPoint.y + waveOffset, midX, midY);
-            } else {
-                ctx.lineTo(point.x, point.y + waveOffset);
-            }
-        }
-
-        ctx.closePath();
-
-        // Create reflection gradient
-        const gradient = ctx.createLinearGradient(0, -this.waterDepth, 0, 0);
-        gradient.addColorStop(0, "rgba(100, 100, 100, 0.1)");
-        gradient.addColorStop(1, "rgba(50, 50, 50, 0.3)");
-
-        ctx.fillStyle = gradient;
-        ctx.fill();
-    }
-
-    drawCloudReflections(ctx) {
-        // Draw cloud-like reflections on the water surface
-        ctx.beginPath();
-
-        for (let i = 0; i < this.points.length; i++) {
-            const point = this.points[i];
+        for (let i = 0; i < interpolated.length; i += sampleRate) {
+            const point = interpolated[i];
             const cloudDensity = this.getCloudDensity(point.x, point.y, this.animationTime);
 
             if (cloudDensity > 0.1) {
                 const cloudSize = 20 + cloudDensity * 30;
                 ctx.moveTo(point.x + cloudSize, point.y);
-
-                // Draw cloud shape
                 ctx.arc(point.x - cloudSize * 0.3, point.y, cloudSize * 0.6, 0, Math.PI * 2);
                 ctx.arc(point.x + cloudSize * 0.3, point.y, cloudSize * 0.8, 0, Math.PI * 2);
-                ctx.arc(point.x, point.y - cloudSize * 0.2, cloudSize * 0.5, 0, Math.PI * 2);
             }
         }
 
@@ -456,7 +556,10 @@ class PuddleLake extends Module {
     }
 
     drawEdges(ctx) {
-        if (this.edgeWidth <= 0 || this.points.length < 3) return;
+        if (this.edgeWidth <= 0) return;
+
+        const interpolated = this.getInterpolatedPoints();
+        if (interpolated.length < 3) return;
 
         ctx.strokeStyle = this.edgeColor;
         ctx.lineWidth = this.edgeWidth;
@@ -464,28 +567,12 @@ class PuddleLake extends Module {
         ctx.lineJoin = 'round';
 
         ctx.beginPath();
+        ctx.moveTo(interpolated[0].x, interpolated[0].y);
 
-        // Draw path outline with wave animation
-        const startPoint = this.points[0];
-        ctx.moveTo(startPoint.x, startPoint.y + this.getWaveOffset(startPoint.x, startPoint.y, this.animationTime));
-
-        for (let i = 1; i < this.points.length; i++) {
-            const point = this.points[i];
+        for (let i = 1; i < interpolated.length; i++) {
+            const point = interpolated[i];
             const waveOffset = this.getWaveOffset(point.x, point.y, this.animationTime);
-
-            if (i > 1) {
-                const prevPoint = this.points[i - 1];
-                const midX = (prevPoint.x + point.x) / 2;
-                const midY = (prevPoint.y + point.y) / 2 + waveOffset;
-                ctx.quadraticCurveTo(
-                    prevPoint.x,
-                    prevPoint.y + this.getWaveOffset(prevPoint.x, prevPoint.y, this.animationTime),
-                    midX,
-                    midY
-                );
-            } else {
-                ctx.lineTo(point.x, point.y + waveOffset);
-            }
+            ctx.lineTo(point.x, point.y + waveOffset);
         }
 
         ctx.closePath();
@@ -493,26 +580,27 @@ class PuddleLake extends Module {
     }
 
     drawFoam(ctx) {
-        if (this.foamDensity <= 0 || this.points.length < 3) return;
+        if (this.foamDensity <= 0) return;
 
+        const interpolated = this.getInterpolatedPoints();
         ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
 
-        // Generate foam bubbles around the edges
-        for (let i = 0; i < this.points.length; i++) {
-            const point = this.points[i];
+        const step = Math.max(1, Math.floor(interpolated.length / 20));
+        const bubbleCount = Math.floor(this.foamDensity * 5);
 
-            // Generate random foam bubbles near edges
-            const bubbleCount = Math.floor(this.foamDensity * 10);
+        for (let i = 0; i < interpolated.length; i += step) {
+            const point = interpolated[i];
 
+            // Use deterministic "random" based on index + time
             for (let b = 0; b < bubbleCount; b++) {
-                const bubbleAngle = Math.random() * Math.PI * 2;
-                const bubbleDistance = Math.random() * 15;
+                const seed = i * 73 + b * 37 + Math.floor(this.animationTime * 10) % 100;
+                const bubbleAngle = (seed * 12.9898) % (Math.PI * 2);
+                const bubbleDistance = ((seed * 78.233) % 100) / 100 * 15;
                 const bubbleX = point.x + Math.cos(bubbleAngle) * bubbleDistance;
                 const bubbleY = point.y + Math.sin(bubbleAngle) * bubbleDistance;
 
-                // Check if bubble is inside water
                 if (this.containsPoint(new Vector2(bubbleX, bubbleY))) {
-                    const bubbleSize = this.foamSize * (0.5 + Math.random() * 0.5);
+                    const bubbleSize = this.foamSize * (0.5 + ((seed * 45.164) % 100) / 200);
                     ctx.beginPath();
                     ctx.arc(bubbleX, bubbleY, bubbleSize, 0, Math.PI * 2);
                     ctx.fill();
@@ -526,16 +614,23 @@ class PuddleLake extends Module {
 
         ctx.save();
 
-        // Draw water shape outline
+        const worldPos = this.gameObject.getWorldPosition();
+        const worldAngle = this.gameObject.angle;
+
+        ctx.translate(worldPos.x, worldPos.y);
+        ctx.rotate(worldAngle * Math.PI / 180);
+
+        // Draw puddle outline
+        const interpolated = this.getInterpolatedPoints();
         ctx.strokeStyle = "#2196F3";
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
 
         ctx.beginPath();
-        if (this.points.length > 0) {
-            ctx.moveTo(this.points[0].x, this.points[0].y);
-            for (let i = 1; i < this.points.length; i++) {
-                ctx.lineTo(this.points[i].x, this.points[i].y);
+        if (interpolated.length > 0) {
+            ctx.moveTo(interpolated[0].x, interpolated[0].y);
+            for (let i = 1; i < interpolated.length; i++) {
+                ctx.lineTo(interpolated[i].x, interpolated[i].y);
             }
             ctx.closePath();
         }
@@ -543,154 +638,446 @@ class PuddleLake extends Module {
 
         ctx.setLineDash([]);
 
-        // Draw control points
-        for (let i = 0; i < this.points.length; i++) {
-            const point = this.points[i];
-            const isSelected = i === this.selectedPointIndex;
-
-            // Draw point circle
+        if (!this.gameObject.isEditorSelected) {
+            // Draw simple icon when not selected
             ctx.beginPath();
-            ctx.arc(point.x, point.y, isSelected ? this.gizmoRadius * 1.5 : this.gizmoRadius, 0, Math.PI * 2);
-            ctx.fillStyle = isSelected ? "#FF0000" : "#2196F3";
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(33, 150, 243, 0.6)";
             ctx.fill();
             ctx.strokeStyle = "#FFFFFF";
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Draw point index
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 6, 0, Math.PI);
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        }
+
+        // Draw control points
+        for (let i = 0; i < this.points.length; i++) {
+            const point = this.points[i];
+            const isSelected = i === this.selectedPointIndex;
+            const isHovered = i === this.hoveredPoint;
+            const isDragging = i === this.draggingPointIndex;
+
+            if (isHovered || isSelected || isDragging) {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, this.gizmoRadius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(33, 150, 243, 0.2)";
+                ctx.fill();
+            }
+
+            ctx.beginPath();
+            ctx.arc(point.x, point.y,
+                isDragging ? this.gizmoRadius * 1.7 :
+                    (isSelected ? this.gizmoRadius * 1.5 : this.gizmoRadius),
+                0, Math.PI * 2);
+
+            ctx.fillStyle = isDragging ? "#FF4444" :
+                (isSelected ? "#FF0000" :
+                    (isHovered ? "#00A8FF" : "#2196F3"));
+            ctx.fill();
+
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
             ctx.fillStyle = "#FFFFFF";
-            ctx.font = "12px Arial";
+            ctx.font = "bold 12px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(i.toString(), point.x, point.y);
         }
 
+        // Icon at center
+        const bounds = this.getBounds();
+        const centerX = bounds.minX + bounds.width / 2;
+        const centerY = bounds.minY + bounds.height / 2;
+
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 12, 0, Math.PI * 2);
+        ctx.fillStyle = this.gameObject.isEditorSelected ? "#2196F3" : "rgba(33, 150, 243, 0.6)";
+        ctx.fill();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 6, 0, Math.PI);
+        ctx.stroke();
+
         ctx.restore();
     }
 
     /**
-     * Handle gizmo interaction for point editing
-     * @param {Vector2} worldPos - Mouse position in world coordinates
-     * @param {boolean} isClick - Whether this is a click event
+     * Handle gizmo interaction from the editor
      */
     handleGizmoInteraction(worldPos, isClick = false) {
         if (!this.showGizmos) return null;
 
-        const threshold = this.gizmoRadius * 2;
+        if (isClick) {
+            return this.onMouseDown(worldPos, 0);
+        } else {
+            return this.onMouseMove(worldPos);
+        }
+    }
 
-        // Check if clicking on a point
+    /**
+     * Convert world position to local space
+     */
+    worldToLocal(worldPos) {
+        if (!this.gameObject) return worldPos.clone();
+
+        const goWorldPos = this.gameObject.getWorldPosition();
+        const goAngle = this.gameObject.angle;
+
+        let local = worldPos.subtract(goWorldPos);
+
+        const angleRad = -goAngle * Math.PI / 180;
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+
+        return new Vector2(
+            local.x * cos - local.y * sin,
+            local.x * sin + local.y * cos
+        );
+    }
+
+    /**
+     * Convert local position to world space
+     */
+    localToWorld(localPos) {
+        if (!this.gameObject) return localPos.clone();
+
+        const goWorldPos = this.gameObject.getWorldPosition();
+        const goAngle = this.gameObject.angle;
+
+        const angleRad = goAngle * Math.PI / 180;
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+
+        const rotated = new Vector2(
+            localPos.x * cos - localPos.y * sin,
+            localPos.x * sin + localPos.y * cos
+        );
+
+        return rotated.add(goWorldPos);
+    }
+
+    /**
+     * Handle mouse down for gizmo interaction
+     */
+    onMouseDown(worldPos, button) {
+        if (!this.showGizmos) return false;
+
+        const localPos = this.worldToLocal(worldPos);
+
+        // Check for point selection/dragging
         for (let i = 0; i < this.points.length; i++) {
             const point = this.points[i];
             const distance = Math.sqrt(
-                Math.pow(worldPos.x - point.x, 2) +
-                Math.pow(worldPos.y - point.y, 2)
+                Math.pow(localPos.x - point.x, 2) +
+                Math.pow(localPos.y - point.y, 2)
             );
 
-            if (distance <= threshold) {
-                if (isClick) {
-                    this.selectedPointIndex = i;
-                    return { type: 'select', index: i };
-                }
-                return { type: 'hover', index: i };
+            if (distance <= this.gizmoRadius * 2) {
+                this.selectedPointIndex = i;
+                this.draggingPointIndex = i;
+                this.isDragging = true;
+                this.dragOffset.x = localPos.x - point.x;
+                this.dragOffset.y = localPos.y - point.y;
+                return true;
             }
         }
 
-        // Check if clicking inside water to add new point
-        if (isClick && this.points.length >= 3 && this.containsPoint(worldPos)) {
-            // Add point near the edge
-            const nearestEdgeIndex = this.getNearestEdgeIndex(worldPos);
-            if (nearestEdgeIndex !== -1) {
-                this.addPoint(worldPos, nearestEdgeIndex + 1);
-                this.selectedPointIndex = nearestEdgeIndex + 1;
-                return { type: 'add', index: this.selectedPointIndex };
+        return false;
+    }
+
+    /**
+     * Handle mouse move for gizmo interaction
+     */
+    onMouseMove(worldPos) {
+        if (!this.showGizmos) return false;
+
+        const localPos = this.worldToLocal(worldPos);
+
+        // Update dragging
+        if (this.isDragging && this.draggingPointIndex >= 0) {
+            this.points[this.draggingPointIndex].x = localPos.x - this.dragOffset.x;
+            this.points[this.draggingPointIndex].y = localPos.y - this.dragOffset.y;
+            this.clearCaches();
+            return true;
+        }
+
+        // Update hover states
+        this.hoveredPoint = -1;
+
+        for (let i = 0; i < this.points.length; i++) {
+            const point = this.points[i];
+            const distance = Math.sqrt(
+                Math.pow(localPos.x - point.x, 2) +
+                Math.pow(localPos.y - point.y, 2)
+            );
+
+            if (distance <= this.gizmoRadius * 2) {
+                this.hoveredPoint = i;
+                return true;
             }
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle mouse up event
+     */
+    onMouseUp(worldPos, button) {
+        if (this.isDragging) {
+            this.isDragging = false;
+            this.draggingPointIndex = -1;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get public API method to check if point is in water
+     */
+    containsPointWorld(worldPos) {
+        const localPos = this.worldToLocal(worldPos);
+        return this.containsPoint(localPos);
+    }
+
+    /**
+     * Get closest point on the puddle boundary
+     */
+    getClosestPointOnBoundary(worldPos) {
+        const localPos = this.worldToLocal(worldPos);
+        const interpolated = this.getInterpolatedPoints();
+
+        if (interpolated.length < 2) return null;
+
+        let closestPoint = null;
+        let closestDistance = Infinity;
+
+        for (let i = 0; i < interpolated.length; i++) {
+            const point = interpolated[i];
+            const distance = Math.sqrt(
+                Math.pow(localPos.x - point.x, 2) +
+                Math.pow(localPos.y - point.y, 2)
+            );
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestPoint = point;
+            }
+        }
+
+        return {
+            point: closestPoint ? this.localToWorld(closestPoint) : null,
+            distance: closestDistance
+        };
+    }
+
+    /**
+ * Check if a world position is inside the water
+ */
+    isPointInWater(worldPos) {
+        const localPos = this.worldToLocal(worldPos);
+        return this.containsPoint(localPos);
+    }
+
+    /**
+     * Get all control points in world space
+     */
+    getControlPointsWorld() {
+        return this.points.map(p => this.localToWorld(p));
+    }
+
+    /**
+     * Get all interpolated boundary points in world space
+     */
+    getBoundaryPointsWorld() {
+        return this.getInterpolatedPoints().map(p => this.localToWorld(p));
+    }
+
+    /**
+     * Get the center of the puddle in world space
+     */
+    getCenterWorld() {
+        const bounds = this.getBounds();
+        const centerLocal = new Vector2(
+            bounds.minX + bounds.width / 2,
+            bounds.minY + bounds.height / 2
+        );
+        return this.localToWorld(centerLocal);
+    }
+
+    /**
+     * Get bounding box in world space
+     */
+    getBoundsWorld() {
+        const bounds = this.getBounds();
+        const topLeft = this.localToWorld(new Vector2(bounds.minX, bounds.minY));
+        const bottomRight = this.localToWorld(new Vector2(bounds.maxX, bounds.maxY));
+        return {
+            minX: topLeft.x,
+            minY: topLeft.y,
+            maxX: bottomRight.x,
+            maxY: bottomRight.y,
+            width: Math.abs(bottomRight.x - topLeft.x),
+            height: Math.abs(bottomRight.y - topLeft.y)
+        };
+    }
+
+    /**
+     * Get puddle area (approximate)
+     */
+    getArea() {
+        const bounds = this.getBounds();
+        return bounds.width * bounds.height * Math.PI / 4; // Approximate as ellipse
+    }
+
+    /**
+     * Get distance from world position to puddle boundary
+     */
+    getDistanceToBoundary(worldPos) {
+        const result = this.getClosestPointOnBoundary(worldPos);
+        return result ? result.distance : Infinity;
+    }
+
+    /**
+     * Add a new control point at world position
+     */
+    addControlPoint(worldPos) {
+        const localPos = this.worldToLocal(worldPos);
+        this.points.push(localPos);
+        this.pointCount = this.points.length;
+        this.clearCaches();
+        return this.points.length - 1;
+    }
+
+    /**
+     * Remove control point by index
+     */
+    removeControlPoint(index) {
+        if (index >= 0 && index < this.points.length && this.points.length > 3) {
+            this.points.splice(index, 1);
+            this.pointCount = this.points.length;
+            this.clearCaches();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Set control point position in world space
+     */
+    setControlPointWorld(index, worldPos) {
+        if (index >= 0 && index < this.points.length) {
+            this.points[index] = this.worldToLocal(worldPos);
+            this.clearCaches();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get control point in world space
+     */
+    getControlPointWorld(index) {
+        if (index >= 0 && index < this.points.length) {
+            return this.localToWorld(this.points[index]);
+        }
+        return null;
+    }
+
+    /**
+     * Check if world position is near the boundary (within distance)
+     */
+    isNearBoundary(worldPos, distance = 20) {
+        return this.getDistanceToBoundary(worldPos) <= distance;
+    }
+
+    /**
+     * Get the closest point on boundary in world space
+     */
+    getClosestBoundaryPointWorld(worldPos) {
+        const result = this.getClosestPointOnBoundary(worldPos);
+        return result ? result.point : null;
+    }
+
+    /**
+     * Cast a ray from world position in direction and check intersection with boundary
+     * Returns intersection point and distance, or null if no hit
+     */
+    raycastBoundary(worldPos, directionNormalized, maxDistance = Infinity) {
+        const localPos = this.worldToLocal(worldPos);
+        const interpolated = this.getInterpolatedPoints();
+
+        let closestHit = null;
+        let closestDist = maxDistance;
+
+        for (let i = 0; i < interpolated.length; i++) {
+            const p1 = interpolated[i];
+            const p2 = interpolated[(i + 1) % interpolated.length];
+            const hit = this.rayLineSegmentIntersection(localPos, directionNormalized, p1, p2);
+
+            if (hit && hit.distance < closestDist && hit.distance > 0) {
+                closestDist = hit.distance;
+                closestHit = {
+                    point: this.localToWorld(hit.point),
+                    distance: hit.distance
+                };
+            }
+        }
+
+        return closestHit;
+    }
+
+    /**
+     * Helper for raycast - ray to line segment intersection
+     */
+    rayLineSegmentIntersection(rayOrigin, rayDir, p1, p2) {
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const det = rayDir.x * dy - rayDir.y * dx;
+
+        if (Math.abs(det) < 1e-10) return null;
+
+        const t = ((p1.x - rayOrigin.x) * dy - (p1.y - rayOrigin.y) * dx) / det;
+        const u = ((p1.x - rayOrigin.x) * rayDir.y - (p1.y - rayOrigin.y) * rayDir.x) / det;
+
+        if (t > 0 && u >= 0 && u <= 1) {
+            return {
+                point: new Vector2(rayOrigin.x + rayDir.x * t, rayOrigin.y + rayDir.y * t),
+                distance: t
+            };
         }
 
         return null;
     }
 
-    /**
-     * Get the index of the nearest edge to a point
-     * @param {Vector2} point - Point to test
-     * @returns {number} Index of nearest edge, or -1 if not found
-     */
-    getNearestEdgeIndex(point) {
-        if (this.points.length < 2) return -1;
-
-        let nearestIndex = -1;
-        let nearestDistance = Infinity;
-
-        for (let i = 0; i < this.points.length; i++) {
-            const p1 = this.points[i];
-            const p2 = this.points[(i + 1) % this.points.length];
-
-            // Calculate distance from point to line segment
-            const distance = this.pointToLineDistance(point, p1, p2);
-
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestIndex = i;
-            }
-        }
-
-        // Only return if close enough to an edge
-        return nearestDistance <= 20 ? nearestIndex : -1;
-    }
-
-    /**
-     * Calculate distance from a point to a line segment
-     * @param {Vector2} point - Point to test
-     * @param {Vector2} lineStart - Start of line segment
-     * @param {Vector2} lineEnd - End of line segment
-     * @returns {number} Distance to line segment
-     */
-    pointToLineDistance(point, lineStart, lineEnd) {
-        const A = point.x - lineStart.x;
-        const B = point.y - lineStart.y;
-        const C = lineEnd.x - lineStart.x;
-        const D = lineEnd.y - lineStart.y;
-
-        const dot = A * C + B * D;
-        const lenSq = C * C + D * D;
-
-        if (lenSq === 0) {
-            // Line segment is a point
-            return Math.sqrt(A * A + B * B);
-        }
-
-        let param = dot / lenSq;
-
-        let xx, yy;
-        if (param < 0) {
-            xx = lineStart.x;
-            yy = lineStart.y;
-        } else if (param > 1) {
-            xx = lineEnd.x;
-            yy = lineEnd.y;
-        } else {
-            xx = lineStart.x + param * C;
-            yy = lineStart.y + param * D;
-        }
-
-        const dx = point.x - xx;
-        const dy = point.y - yy;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
     toJSON() {
         const json = super.toJSON();
         json.points = this.points.map(p => ({ x: p.x, y: p.y }));
+        json.pointCount = this.pointCount;
+        json.smoothness = this.smoothness;
         json.waterColor = this.waterColor;
         json.waterOpacity = this.waterOpacity;
         json.waterDepth = this.waterDepth;
         json.enableReflections = this.enableReflections;
         json.reflectionOpacity = this.reflectionOpacity;
-        json.reflectionScale = this.reflectionScale;
-        json.reflectionOffset = { x: this.reflectionOffset.x, y: this.reflectionOffset.y };
         json.enableCloudReflections = this.enableCloudReflections;
         json.cloudReflectionOpacity = this.cloudReflectionOpacity;
         json.cloudReflectionSpeed = this.cloudReflectionSpeed;
-        json.cloudReflectionScale = this.cloudReflectionScale;
         json.animateWaves = this.animateWaves;
         json.waveSpeed = this.waveSpeed;
         json.waveAmplitude = this.waveAmplitude;
@@ -714,17 +1101,16 @@ class PuddleLake extends Module {
         if (json.points && Array.isArray(json.points)) {
             this.points = json.points.map(p => new Vector2(p.x, p.y));
         }
+        if (json.pointCount !== undefined) this.pointCount = json.pointCount;
+        if (json.smoothness !== undefined) this.smoothness = json.smoothness;
         if (json.waterColor !== undefined) this.waterColor = json.waterColor;
         if (json.waterOpacity !== undefined) this.waterOpacity = json.waterOpacity;
         if (json.waterDepth !== undefined) this.waterDepth = json.waterDepth;
         if (json.enableReflections !== undefined) this.enableReflections = json.enableReflections;
         if (json.reflectionOpacity !== undefined) this.reflectionOpacity = json.reflectionOpacity;
-        if (json.reflectionScale !== undefined) this.reflectionScale = json.reflectionScale;
-        if (json.reflectionOffset) this.reflectionOffset = new Vector2(json.reflectionOffset.x, json.reflectionOffset.y);
         if (json.enableCloudReflections !== undefined) this.enableCloudReflections = json.enableCloudReflections;
         if (json.cloudReflectionOpacity !== undefined) this.cloudReflectionOpacity = json.cloudReflectionOpacity;
         if (json.cloudReflectionSpeed !== undefined) this.cloudReflectionSpeed = json.cloudReflectionSpeed;
-        if (json.cloudReflectionScale !== undefined) this.cloudReflectionScale = json.cloudReflectionScale;
         if (json.animateWaves !== undefined) this.animateWaves = json.animateWaves;
         if (json.waveSpeed !== undefined) this.waveSpeed = json.waveSpeed;
         if (json.waveAmplitude !== undefined) this.waveAmplitude = json.waveAmplitude;
