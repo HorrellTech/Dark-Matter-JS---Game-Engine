@@ -8,6 +8,12 @@ class ScriptEditor {
         this.aiSettings = this.loadAISettings();
         this.createModal();
         this.setupEventListeners();
+
+        this.minimap = null;
+        this.breadcrumbs = [];
+        this.codeStats = {};
+        this.selectedText = '';
+        this.bookmarks = [];
     }
 
     loadAISettings() {
@@ -555,6 +561,8 @@ class ScriptEditor {
         this.editor.setValue(content);
         this.editor.clearHistory();
 
+        this.setupAdvancedFeatures();
+
         // Setup cursor activity for hint display
         this.editor.on("cursorActivity", () => {
             const position = this.editor.getCursor();
@@ -582,6 +590,28 @@ class ScriptEditor {
         setTimeout(() => {
             this.editor.refresh();
         }, 10);
+    }
+
+    setupErrorHighlighting() {
+        if (!this.editor) return;
+
+        this.editor.on('change', () => {
+            const code = this.editor.getValue();
+
+            // Simple error detection - look for common patterns
+            const lines = code.split('\n');
+            lines.forEach((line, index) => {
+                // Unclosed brackets/parentheses
+                const openBrackets = (line.match(/[\[\{]/g) || []).length;
+                const closeBrackets = (line.match(/[\]\}]/g) || []).length;
+
+                if (openBrackets > closeBrackets) {
+                    this.editor.addLineClass(index, 'background', 'se-warning-line');
+                } else {
+                    this.editor.removeLineClass(index, 'background', 'se-warning-line');
+                }
+            });
+        });
     }
 
     async loadCodeMirrorDependencies() {
@@ -2269,33 +2299,25 @@ class ScriptEditor {
 
         // Force immediate layout recalculation and CodeMirror resize
         if (this.editor) {
-            // Get the CodeMirror wrapper element
             const cmWrapper = this.editor.getWrapperElement();
-
-            // Trigger reflow to ensure CSS changes are applied
             void editorContainer.offsetHeight;
 
-            // Force CodeMirror to recalculate its size immediately
-            this.editor.setSize(null, null); // Auto-size
+            this.editor.setSize(null, null);
             this.editor.refresh();
 
-            // Continue refreshing during the CSS transition (400ms)
             let frameCount = 0;
-            const maxFrames = 24; // ~400ms at 60fps
+            const maxFrames = 24;
 
             const animationLoop = () => {
                 if (frameCount < maxFrames) {
-                    // Force size recalculation each frame
                     this.editor.setSize(null, null);
                     this.editor.refresh();
                     frameCount++;
                     requestAnimationFrame(animationLoop);
                 } else {
-                    // Final refresh after animation completes
                     this.editor.setSize(null, null);
                     this.editor.refresh();
 
-                    // Restore focus if it was in the editor
                     if (document.activeElement &&
                         (document.activeElement.closest('.se-modal-editor-container') ||
                             document.activeElement.closest('.CodeMirror'))) {
@@ -2923,6 +2945,201 @@ Generate complete, functional modules that follow this architecture.`;
         dialog.querySelector('#se-cancel-code-selection').addEventListener('click', () => {
             document.body.removeChild(dialog);
         });
+    }
+
+    setupAdvancedFeatures() {
+        if (!this.editor) return;
+
+        // Quick peek - Ctrl+Alt+P
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen) return;
+            if (e.ctrlKey && e.altKey && e.code === 'KeyP') {
+                e.preventDefault();
+                this.toggleMinimap();
+            }
+        });
+
+        // Bookmark toggle - Ctrl+B
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.editor) return;
+            if (e.ctrlKey && e.code === 'KeyB' && !e.shiftKey) {
+                e.preventDefault();
+                this.toggleBookmark();
+            }
+        });
+
+        // Copy qualified name - Ctrl+Shift+C
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen) return;
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyC') {
+                e.preventDefault();
+                this.copyQualifiedName();
+            }
+        });
+
+        // Delete line - Ctrl+Shift+K
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.editor) return;
+            if (e.ctrlKey && e.shiftKey && e.code === 'KeyK') {
+                e.preventDefault();
+                const cursor = this.editor.getCursor();
+                this.editor.replaceRange('', { line: cursor.line, ch: 0 }, { line: cursor.line + 1, ch: 0 });
+            }
+        });
+
+        // Duplicate line - Ctrl+D
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.editor) return;
+            if (e.ctrlKey && e.code === 'KeyD') {
+                e.preventDefault();
+                const cursor = this.editor.getCursor();
+                const line = this.editor.getLine(cursor.line);
+                this.editor.replaceRange(line + '\n', { line: cursor.line, ch: 0 });
+            }
+        });
+
+        // Move line up - Alt+Up
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.editor) return;
+            if (e.altKey && e.code === 'ArrowUp') {
+                e.preventDefault();
+                this.moveLineUp();
+            }
+        });
+
+        // Move line down - Alt+Down
+        document.addEventListener('keydown', (e) => {
+            if (!this.isOpen || !this.editor) return;
+            if (e.altKey && e.code === 'ArrowDown') {
+                e.preventDefault();
+                this.moveLineDown();
+            }
+        });
+
+        // Update code stats on change
+        this.editor.on('change', () => {
+            this.updateCodeStats();
+            this.updateBreadcrumbs();
+        });
+    }
+
+    toggleMinimap() {
+        if (!this.minimap) {
+            this.createMinimap();
+        }
+        this.minimap.classList.toggle('visible');
+    }
+
+    createMinimap() {
+        const editorContainer = this.modal.querySelector('.se-modal-editor-container');
+        this.minimap = document.createElement('div');
+        this.minimap.className = 'se-minimap';
+        this.minimap.innerHTML = '<canvas id="se-minimap-canvas"></canvas>';
+        editorContainer.appendChild(this.minimap);
+    }
+
+    toggleBookmark() {
+        if (!this.editor) return;
+        const cursor = this.editor.getCursor();
+        const line = cursor.line;
+
+        const existingIndex = this.bookmarks.indexOf(line);
+        if (existingIndex > -1) {
+            this.bookmarks.splice(existingIndex, 1);
+            this.editor.removeLineClass(line, 'background', 'se-bookmarked-line');
+        } else {
+            this.bookmarks.push(line);
+            this.editor.addLineClass(line, 'background', 'se-bookmarked-line');
+        }
+    }
+
+    moveLineUp() {
+        const cursor = this.editor.getCursor();
+        if (cursor.line === 0) return;
+
+        const line = this.editor.getLine(cursor.line);
+        const prevLine = this.editor.getLine(cursor.line - 1);
+
+        this.editor.replaceRange(line + '\n' + prevLine + '\n',
+            { line: cursor.line - 1, ch: 0 },
+            { line: cursor.line + 1, ch: 0 }
+        );
+
+        this.editor.setCursor({ line: cursor.line - 1, ch: cursor.ch });
+    }
+
+    moveLineDown() {
+        const cursor = this.editor.getCursor();
+        if (cursor.line === this.editor.lineCount() - 1) return;
+
+        const line = this.editor.getLine(cursor.line);
+        const nextLine = this.editor.getLine(cursor.line + 1);
+
+        this.editor.replaceRange(nextLine + '\n' + line + '\n',
+            { line: cursor.line, ch: 0 },
+            { line: cursor.line + 2, ch: 0 }
+        );
+
+        this.editor.setCursor({ line: cursor.line + 1, ch: cursor.ch });
+    }
+
+    updateCodeStats() {
+        if (!this.editor) return;
+
+        const code = this.editor.getValue();
+        const lines = code.split('\n').length;
+        const chars = code.length;
+        const functions = (code.match(/(?:function|async\s+function|\w+\s*\()/g) || []).length;
+        const classes = (code.match(/class\s+\w+/g) || []).length;
+
+        this.codeStats = { lines, chars, functions, classes };
+        this.updateStatsDisplay();
+    }
+
+    updateStatsDisplay() {
+        const statusEl = this.modal.querySelector('.se-modal-status');
+        let statsDiv = statusEl.querySelector('.se-code-stats');
+
+        if (!statsDiv) {
+            statsDiv = document.createElement('span');
+            statsDiv.className = 'se-code-stats';
+            statusEl.appendChild(statsDiv);
+        }
+
+        const { lines, chars, functions, classes } = this.codeStats;
+        statsDiv.innerHTML = `| Lines: ${lines} | Chars: ${chars} | Functions: ${functions} | Classes: ${classes}`;
+    }
+
+    updateBreadcrumbs() {
+        if (!this.editor) return;
+
+        const code = this.editor.getValue();
+        const cursor = this.editor.getCursor();
+        const lineNum = cursor.line;
+
+        // Simple breadcrumb extraction (class and function names)
+        const classMatch = code.substring(0, this.editor.getRange({ line: 0, ch: 0 }, { line: lineNum, ch: 0 }).length).match(/class\s+(\w+)/g);
+        const funcMatch = code.substring(0, this.editor.getRange({ line: 0, ch: 0 }, { line: lineNum, ch: 0 }).length).match(/(?:async\s+)?(?:function|\w+\s*\()/g);
+
+        this.breadcrumbs = [];
+        if (classMatch && classMatch.length > 0) {
+            const lastClass = classMatch[classMatch.length - 1].match(/\w+$/)[0];
+            this.breadcrumbs.push(lastClass);
+        }
+        if (funcMatch && funcMatch.length > 0) {
+            this.breadcrumbs.push('...');
+        }
+    }
+
+    copyQualifiedName() {
+        if (this.breadcrumbs.length === 0) {
+            this.showStatusMessage('No qualified name found', true);
+            return;
+        }
+
+        const qualified = this.breadcrumbs.join('.');
+        navigator.clipboard.writeText(qualified);
+        this.showStatusMessage(`Copied: ${qualified}`);
     }
 }
 
