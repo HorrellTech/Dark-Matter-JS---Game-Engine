@@ -619,9 +619,9 @@
     width: 100% !important;
 }
 
-.se-ai-panel {
+/*.se-ai-panel {
     transition: margin-right 0.4s ease;
-}
+}*/
 
 .se-ai-panel:not(.open) {
     margin-right: -400px;
