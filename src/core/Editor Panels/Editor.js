@@ -1,7 +1,7 @@
 class Editor {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
-        this.ctx = this.canvas.getContext('2d');
+        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
         this.fps = 0;
         this.lastFrameTime = performance.now();
         this.frameCount = 0;
@@ -1550,7 +1550,6 @@ class Editor {
 
     handleMouseDown(e) {
         if (e.button === 0) { // Left click
-            // Prevent deselection if editing in inspector
             const active = document.activeElement;
             const isTextInput = (
                 active &&
@@ -1561,34 +1560,27 @@ class Editor {
                 )
             );
 
-            // Use the adjusted mouse position
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
-
             const clickedObj = this.findObjectAtPosition(worldPos);
 
-            // Prevent changing selection if editing in inspector
             if (isTextInput) {
-                // If clicking on the currently selected object, allow transform handles
                 if (clickedObj && this.hierarchy.selectedObject === clickedObj) {
                     // Allow transform handle logic below
                 } else {
-                    // Do not change selection or deselect
                     return;
                 }
             }
 
             if (clickedObj) {
-                // Multi-select logic
+                // Multi-select logic - only works if Ctrl+Click (not when editing modules)
                 if (e.ctrlKey && this.hierarchy) {
                     if (this.hierarchy.selectedObjects.includes(clickedObj)) {
-                        // Deselect
                         this.hierarchy.selectedObjects = this.hierarchy.selectedObjects.filter(obj => obj !== clickedObj);
-                        clickedObj.isEditorSelected = false;  // Directly set the property
+                        clickedObj.isEditorSelected = false;
                     } else {
-                        // Add to selection
                         this.hierarchy.selectedObjects.push(clickedObj);
-                        clickedObj.isEditorSelected = true;  // Directly set the property
+                        clickedObj.isEditorSelected = true;
                     }
                     if (this.hierarchy.selectedObjects.length === 1) {
                         this.hierarchy.selectGameObject(clickedObj);
@@ -1597,19 +1589,14 @@ class Editor {
                     }
                 } else {
                     // Single select
-                    this.hierarchy.selectedObjects.forEach(obj => obj.isEditorSelected = false);  // Directly set the property
+                    this.hierarchy.selectedObjects.forEach(obj => obj.isEditorSelected = false);
                     this.hierarchy.selectedObjects = [clickedObj];
-                    clickedObj.isEditorSelected = true;  // Directly set the property
+                    clickedObj.isEditorSelected = true;
                     this.hierarchy.selectGameObject(clickedObj);
-                }
-            } else {
-                // Deselect if clicking empty space
-                if (!isTextInput && this.hierarchy && this.hierarchy.selectedObject) {
-                    //this.hierarchy.selectedObject.isEditorSelected = false;  // Directly set the property
                 }
             }
 
-            // First check if we're interacting with the viewport
+            // Check viewport handles
             if (this.isOnViewportMoveHandle(worldPos)) {
                 this.viewportInteraction.dragging = true;
                 this.viewportInteraction.startPos = worldPos.clone();
@@ -1617,22 +1604,18 @@ class Editor {
                     x: this.activeScene.settings.viewportX || 0,
                     y: this.activeScene.settings.viewportY || 0
                 };
-
-                // Add global document event listeners for smoother dragging
                 document.addEventListener('mousemove', this.handleDocumentMouseMove);
                 document.addEventListener('mouseup', this.handleDocumentMouseUp);
-
                 return;
             }
 
-            // Check if clicking on settings gear
             if (this.isOnViewportSettingsHandle(worldPos)) {
                 this.showViewportSettings();
                 return;
             }
 
-            // Check for transform handle interaction if an object is selected
-            if (this.hierarchy && this.hierarchy.selectedObject) {
+            // Check for transform handle interaction if an object is selected and NOT holding Ctrl
+            if (this.hierarchy && this.hierarchy.selectedObject && !e.ctrlKey) {
                 const selectedObj = this.hierarchy.selectedObject;
                 const objPos = selectedObj.getWorldPosition();
                 const handleSize = this.transformHandles.size / this.camera.zoom;
@@ -1647,15 +1630,12 @@ class Editor {
                     this.dragInfo.object = selectedObj;
                     this.dragInfo.startPos = worldPos;
                     this.dragInfo.dragMode = 'rotate';
-                    this.transformHandles.rotationStartAngle = Math.atan2(
-                        toMouse.y,
-                        toMouse.x
-                    );
+                    this.transformHandles.rotationStartAngle = Math.atan2(toMouse.y, toMouse.x);
                     this.dragInfo.startAngle = selectedObj.angle;
                     return;
                 }
 
-                // Check X handle first
+                // Check X handle
                 const xHandlePos = new Vector2(objPos.x + handleSize, objPos.y);
                 if (worldPos.distance(xHandlePos) < this.transformHandles.arrowSize * 1.5 / this.camera.zoom) {
                     this.dragInfo.dragging = true;
@@ -1679,7 +1659,7 @@ class Editor {
                     return;
                 }
 
-                // Check center box (always enable free movement if shift is down)
+                // Check center box
                 if (this.shiftKeyDown || (
                     worldPos.x > objPos.x - centerBoxSize / 2 &&
                     worldPos.x < objPos.x + centerBoxSize / 2 &&
@@ -1693,74 +1673,72 @@ class Editor {
                     this.dragInfo.dragMode = 'free';
                     return;
                 }
+            }
 
-                // Check for module gizmo interactions BEFORE object dragging
-                if (selectedObj.modules && Array.isArray(selectedObj.modules)) {
-                    for (const module of selectedObj.modules) {
-                        if (typeof module.onMouseDown === "function") {
-                            const handled = module.onMouseDown(worldPos, e.button);
-                            if (handled) {
-                                this.activeModuleInteraction = module;
-                                return; // Module handled the interaction
+            // Check for module gizmo interactions ONLY when Ctrl is held
+            if (e.ctrlKey) {
+                if (this.hierarchy && this.hierarchy.selectedObject) {
+                    const selectedObj = this.hierarchy.selectedObject;
+                    if (selectedObj.modules && Array.isArray(selectedObj.modules)) {
+                        for (const module of selectedObj.modules) {
+                            if (typeof module.onMouseDown === "function") {
+                                const handled = module.onMouseDown(worldPos, e.button);
+                                if (handled) {
+                                    this.activeModuleInteraction = module;
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (clickedObj) {
+                    if (clickedObj.modules && Array.isArray(clickedObj.modules)) {
+                        for (const module of clickedObj.modules) {
+                            if (typeof module.onMouseDown === "function") {
+                                const handled = module.onMouseDown(worldPos, e.button);
+                                if (handled) {
+                                    this.activeModuleInteraction = module;
+                                    if (this.hierarchy) {
+                                        this.hierarchy.selectGameObject(clickedObj);
+                                    }
+                                    return;
+                                }
                             }
                         }
                     }
                 }
             }
 
-            if (clickedObj) {
-                // Check for gizmo interactions first
-                if (clickedObj.modules && Array.isArray(clickedObj.modules)) {
-                    for (const module of clickedObj.modules) {
-                        if (typeof module.onMouseDown === "function") {
-                            const handled = module.onMouseDown(worldPos, e.button);
-                            if (handled) {
-                                this.activeModuleInteraction = module;
-                                // Also select the object
-                                if (this.hierarchy) {
-                                    this.hierarchy.selectGameObject(clickedObj);
-                                }
-                                return; // Module handled the interaction
-                            }
-                        }
-                    }
-                }
-
-                // Start dragging the object in free mode
+            if (clickedObj && !e.ctrlKey) {
+                // Normal object dragging (no Ctrl, no module interaction)
                 this.dragInfo.dragging = true;
                 this.dragInfo.object = clickedObj;
                 this.dragInfo.startPos = worldPos;
                 this.dragInfo.objectStartPos = clickedObj.position.clone();
                 this.dragInfo.dragMode = 'free';
 
-                // Also select the object
                 if (this.hierarchy) {
                     this.hierarchy.selectGameObject(clickedObj);
                 }
-            } else {
-                // Deselect if clicking empty space
-                if (!isTextInput && this.hierarchy && this.hierarchy.selectedObject) {
-                    this.hierarchy.selectedObject.setSelected(false);
-                    this.hierarchy.selectedObject = null;
+            } else if (!clickedObj && !isTextInput && this.hierarchy && this.hierarchy.selectedObject && !e.ctrlKey) {
+                // Deselect if clicking empty space (and not Ctrl)
+                this.hierarchy.selectedObject.setSelected(false);
+                this.hierarchy.selectedObject = null;
 
-                    // Update hierarchy UI
-                    document.querySelectorAll('.hierarchy-item').forEach(item => {
-                        item.classList.remove('selected');
-                    });
+                document.querySelectorAll('.hierarchy-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
 
-                    // Show "no object selected" in inspector
-                    if (this.inspector) {
-                        this.inspector.showNoObjectMessage();
-                    }
-
-                    this.refreshCanvas();
+                if (this.inspector) {
+                    this.inspector.showNoObjectMessage();
                 }
+
+                this.refreshCanvas();
             }
         } else if (e.button === 1) { // Middle click
-            // Prevent default scrolling behavior
             e.preventDefault();
 
-            // Start panning the camera
             this.dragInfo.dragging = true;
             this.dragInfo.isPanning = true;
             this.dragInfo.startPos = new Vector2(e.offsetX, e.offsetY);
@@ -1771,8 +1749,6 @@ class Editor {
     }
 
     handleMouseMove(e) {
-        //if (!this.dragInfo.dragging) return;
-
         const screenPos = this.getAdjustedMousePosition(e);
         const worldPos = this.screenToWorldPosition(screenPos);
         this.mousePosition = worldPos.clone();
@@ -1781,27 +1757,23 @@ class Editor {
 
         // Handle viewport dragging first
         if (this.viewportInteraction.dragging) {
-            e.preventDefault(); // Prevent selection during drag
+            e.preventDefault();
 
             document.body.classList.add('viewport-dragging');
 
             const currentPos = worldPos;
             const delta = currentPos.subtract(this.viewportInteraction.startPos);
 
-            // Update viewport position
             this.activeScene.settings.viewportX = this.viewportInteraction.initialViewport.x + delta.x;
             this.activeScene.settings.viewportY = this.viewportInteraction.initialViewport.y + delta.y;
 
-            // Snap to grid if enabled
             if (this.grid.snapToGrid) {
                 this.activeScene.settings.viewportX = this.grid.snapValue(this.activeScene.settings.viewportX);
                 this.activeScene.settings.viewportY = this.grid.snapValue(this.activeScene.settings.viewportY);
             }
 
-            // Mark scene as modified
             this.activeScene.dirty = true;
 
-            // Sync to game if running
             if (this.engine && this.engine.running) {
                 syncEditorToGame();
             }
@@ -1812,7 +1784,6 @@ class Editor {
 
         // If not dragging, just refresh canvas to update hover effects on handles
         if (!this.dragInfo.dragging) {
-            // Only refresh if mouse is over viewport handles or transform handles
             const overViewportHandle = this.isOnViewportMoveHandle(worldPos) || this.isOnViewportSettingsHandle(worldPos);
             const overTransformHandle = this.hierarchy?.selectedObject && this.isOverTransformHandle(worldPos);
             const overGizmo = this.isOverGizmo(worldPos);
@@ -1834,7 +1805,6 @@ class Editor {
 
             this.dragInfo.object.angle = this.dragInfo.startAngle + angleDiff;
 
-            // Update inspector if available
             if (this.inspector) {
                 this.inspector.updateTransformValues();
             }
@@ -1842,7 +1812,6 @@ class Editor {
             this.refreshCanvas();
             return;
         } else if (this.dragInfo.isPanning) {
-            // Pan the camera using adjusted coordinates
             const currentPos = this.getAdjustedMousePosition(e);
             const delta = new Vector2(
                 currentPos.x - this.dragInfo.startPos.x,
@@ -1850,7 +1819,6 @@ class Editor {
             );
 
             this.camera.position = this.dragInfo.cameraStartPos.add(delta);
-            // Use requestAnimationFrame for smoother panning
             if (!this.panningAnimationFrame) {
                 this.panningAnimationFrame = requestAnimationFrame(() => {
                     this.refreshCanvas();
@@ -1858,17 +1826,13 @@ class Editor {
                 });
             }
         } else if (this.dragInfo.object) {
-            // Always use adjusted mouse position for correct zoom handling
             const screenPos = this.getAdjustedMousePosition(e);
             const worldPos = this.screenToWorldPosition(screenPos);
 
             let localPos = worldPos;
             if (this.dragInfo.object.parent) {
-                // Convert world position to parent's local space
                 const parent = this.dragInfo.object.parent;
-                // Translate to parent origin
                 let rel = worldPos.subtract(parent.getWorldPosition());
-                // Rotate by negative parent angle
                 const angleRad = -parent.angle * Math.PI / 180;
                 const cos = Math.cos(angleRad);
                 const sin = Math.sin(angleRad);
@@ -1878,14 +1842,11 @@ class Editor {
                 );
             }
 
-            // Calculate delta in local space
             let newPosition = localPos;
 
-            // If dragging started from a specific offset, preserve it
             if (this.dragInfo.objectStartPos) {
                 let startWorldPos = this.dragInfo.object.parent
                     ? (() => {
-                        // Same conversion for start position
                         const parent = this.dragInfo.object.parent;
                         let rel = this.dragInfo.startPos.subtract(parent.getWorldPosition());
                         const angleRad = -parent.angle * Math.PI / 180;
@@ -1901,16 +1862,13 @@ class Editor {
                 newPosition = newPosition.add(offset);
             }
 
-            // Axis constraints
             if (!this.shiftKeyDown && this.dragInfo.dragMode === 'x') {
                 newPosition.y = this.dragInfo.object.position.y;
             } else if (!this.shiftKeyDown && this.dragInfo.dragMode === 'y') {
                 newPosition.x = this.dragInfo.object.position.x;
             }
 
-            // Snap to grid if enabled (snap in world space, then convert to local)
             if (this.grid.snapToGrid) {
-                // Convert local position to world position
                 let parentWorld = this.dragInfo.object.parent ? this.dragInfo.object.parent.getWorldPosition() : new Vector2(0, 0);
                 let angleRad = this.dragInfo.object.parent ? this.dragInfo.object.parent.angle * Math.PI / 180 : 0;
                 let cos = Math.cos(angleRad);
@@ -1919,9 +1877,7 @@ class Editor {
                     parentWorld.x + newPosition.x * cos - newPosition.y * sin,
                     parentWorld.y + newPosition.x * sin + newPosition.y * cos
                 );
-                // Snap world position
                 let snappedWorld = this.grid.snapPosition(worldPos);
-                // Convert snapped world position back to local
                 let rel = snappedWorld.subtract(parentWorld);
                 let localAngleRad = -angleRad;
                 let localCos = Math.cos(localAngleRad);
@@ -1948,6 +1904,38 @@ class Editor {
         if (this.inspector) {
             this.inspector.updateTransformValues();
         }
+    }
+
+    handleMouseUp(e) {
+        document.body.classList.remove('viewport-dragging');
+
+        const screenPos = this.getAdjustedMousePosition(e);
+        const worldPos = this.screenToWorldPosition(screenPos);
+
+        if (this.viewportInteraction.dragging) {
+            this.viewportInteraction.dragging = false;
+            this.viewportInteraction.startPos = null;
+            this.viewportInteraction.initialViewport = null;
+
+            if (this.activeScene) {
+                this.activeScene.dirty = true;
+            }
+        }
+
+        // Handle module interactions
+        if (this.activeModuleInteraction) {
+            if (typeof this.activeModuleInteraction.onMouseUp === "function") {
+                this.activeModuleInteraction.onMouseUp(worldPos, e.button);
+            }
+            this.activeModuleInteraction = null;
+            this.refreshCanvas();
+        }
+
+        this.dragInfo.dragging = false;
+        this.dragInfo.isPanning = false;
+        this.dragInfo.object = null;
+        this.dragInfo.dragMode = null;
+        this.transformHandles.activeAxis = null;
     }
 
     isOverTransformHandle(worldPos) {

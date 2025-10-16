@@ -1329,10 +1329,13 @@ const example = "Hello World";
             // Normalize path
             const normalizedPath = this.normalizePath(this.currentPath);
 
+            // Sanitize the user-provided name
+            const sanitizedName = this.sanitizeName(name, true); // true for file
+
             // Ensure filename has .js extension
-            const fileName = name.endsWith('.js') ? name : `${name}.js`;
+            const fileName = sanitizedName.endsWith('.js') ? sanitizedName : `${sanitizedName}.js`;
             // Ensure class name is PascalCase for consistency
-            const baseName = name.replace(/\.js$/, '');
+            const baseName = fileName.replace(/\.js$/, '');
             const className = baseName;//.charAt(0).toUpperCase() + baseName.slice(1);
 
             // Generate template code for the new module
@@ -1355,6 +1358,39 @@ const example = "Hello World";
         } catch (error) {
             console.error('Failed to create script:', error);
             this.showNotification(`Failed to create script: ${error.message}`, 'error');
+        }
+    }
+
+    async cleanupExistingNames() {
+        if (!this.db) return;
+
+        try {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            const allFiles = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+
+            const toRename = allFiles.filter(file => {
+                const sanitized = this.sanitizeName(file.name, file.type === 'file');
+                return file.name !== sanitized;
+            });
+
+            if (toRename.length === 0) {
+                this.showNotification('No unsanitized names found', 'info');
+                return;
+            }
+
+            for (const file of toRename) {
+                const sanitizedName = this.sanitizeName(file.name, file.type === 'file');
+                await this.renameItem(file.path, sanitizedName);
+            }
+
+            this.showNotification(`Renamed ${toRename.length} items`, 'success');
+            await this.refreshFiles();
+        } catch (error) {
+            console.error('Error during cleanup:', error);
+            this.showNotification('Cleanup failed', 'error');
         }
     }
 
@@ -1636,6 +1672,13 @@ window.${pascalCaseName} = ${pascalCaseName};
 
     async handleFileUpload(file) {
         return new Promise((resolve) => {
+            // Sanitize the file name before processing
+            const sanitizedName = this.sanitizeName(file.name, true);
+            if (file.name !== sanitizedName) {
+                // Create a new File object with the sanitized name (for internal use)
+                file = new File([file], sanitizedName, { type: file.type });
+            }
+
             if (file.type.startsWith('image/')) {
                 // Show image resize confirmation modal
                 this.showImageResizeModal(file, async (shouldResize, targetSize) => {
@@ -2150,6 +2193,13 @@ window.${pascalCaseName} = ${pascalCaseName};
         // Normalize path
         path = this.normalizePath(path);
 
+        // Extract and sanitize the name before proceeding
+        const rawName = path.split('/').pop();
+        const sanitizedName = this.sanitizeName(rawName, true); // Assume file unless specified
+        if (rawName !== sanitizedName) {
+            path = path.replace(rawName, sanitizedName); // Update path with sanitized name
+        }
+
         try {
             const name = path.split('/').pop();
             const parentPathArray = path.split('/').slice(0, -1);
@@ -2195,7 +2245,6 @@ window.${pascalCaseName} = ${pascalCaseName};
                     reject(e.target.error);
                 };
 
-                // Add transaction complete handler
                 transaction.oncomplete = () => resolve(true);
                 transaction.onerror = (e) => reject(e.target.error);
             });
@@ -2364,6 +2413,16 @@ window.${pascalCaseName} = ${pascalCaseName};
 
             if (!item) throw new Error('Item not found');
 
+            // Extract the original extension from the current name
+            const originalName = item.name;
+            const lastDotIndex = originalName.lastIndexOf('.');
+            const originalExtension = lastDotIndex !== -1 ? originalName.substring(lastDotIndex) : '';
+
+            // If newName doesn't have an extension and the original had one, append it
+            if (originalExtension && !newName.includes('.')) {
+                newName += originalExtension;
+            }
+
             // Calculate new path
             const parentPath = item.parentPath;
             const newPath = `${parentPath}/${newName}`;
@@ -2382,6 +2441,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                     store.add(updatedItem).onsuccess = () => resolve();
                 }
             });
+
+            // If it's a folder, update all child paths recursively
+            if (item.type === 'folder') {
+                await this.updateChildPaths(store, path, newPath);
+            }
 
             // If it was a folder, refresh the parent folder in the directory tree
             if (item.type === 'folder' && this.directoryTree) {
@@ -2815,6 +2879,46 @@ window.${pascalCaseName} = ${pascalCaseName};
         }
     }
 
+    /**
+     * Sanitize a file or folder name by replacing whitespace with underscores,
+     * trimming to a reasonable length (50 characters for base name), and cleaning up.
+     * @param {string} name - The original name
+     * @param {boolean} isFile - Whether this is a file (to handle extensions)
+     * @returns {string} The sanitized name
+     */
+    sanitizeName(name, isFile = false) {
+        let baseName = name;
+        let extension = '';
+
+        if (isFile && name.includes('.')) {
+            const lastDot = name.lastIndexOf('.');
+            baseName = name.substring(0, lastDot);
+            extension = name.substring(lastDot);
+        }
+
+        // Replace all whitespace with underscores
+        let sanitized = baseName.replace(/\s+/g, '_');
+
+        // Trim to 50 characters
+        sanitized = sanitized.substring(0, 50);
+
+        // Remove leading and trailing underscores
+        sanitized = sanitized.replace(/^_+|_+$/g, '');
+
+        // Remove leading dots and slashes
+        sanitized = sanitized.replace(/^[./\\]+/, '');
+
+        // Replace multiple consecutive underscores with a single underscore
+        sanitized = sanitized.replace(/_+/g, '_');
+
+        // Ensure it's not empty
+        if (!sanitized) {
+            sanitized = 'unnamed';
+        }
+
+        return sanitized + extension;
+    }
+
     async loadContent(path) {
         this.content.innerHTML = '';
         if (!this.db) return;
@@ -2836,6 +2940,17 @@ window.${pascalCaseName} = ${pascalCaseName};
                     resolve(results);
                 };
             });
+
+            // Sanitize names if they contain spaces or whitespace
+            /*for (const item of items) {
+                const sanitizedName = this.sanitizeName(item.name, item.type === 'file');
+                if (item.name !== sanitizedName) {
+                    await this.renameItem(item.path, sanitizedName);
+                    // Update the item in the array with new name and path
+                    item.name = sanitizedName;
+                    item.path = item.parentPath === '/' ? `/${sanitizedName}` : `${item.parentPath}/${sanitizedName}`;
+                }
+            }*/
 
             // Sort: folders first, then alphabetically
             items.sort((a, b) => {

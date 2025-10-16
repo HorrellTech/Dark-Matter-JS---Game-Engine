@@ -74,20 +74,20 @@ class Engine {
                     } else {
                         console.warn("WebGL context not available in WebGLCanvas");
                         this.useWebGL = false;
-                        this.ctx = this.canvas.getContext('2d');
+                        this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
                         console.log("Falling back to Canvas 2D context");
                     }
                 } else {
                     console.warn("WebGLCanvas constructor returned null/undefined");
                     this.useWebGL = false;
-                    this.ctx = this.canvas.getContext('2d');
+                    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
                     console.log("Falling back to Canvas 2D context");
                 }
             } catch (error) {
                 console.error("Failed to initialize WebGLCanvas:", error);
                 console.error("Error stack:", error.stack);
                 this.useWebGL = false;
-                this.ctx = this.canvas.getContext('2d');
+                this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
                 console.log("Falling back to Canvas 2D context due to error");
             }
         } else {
@@ -95,7 +95,7 @@ class Engine {
                 console.warn("WebGLCanvas not available - falling back to 2D context");
             }
             // Fallback to standard 2D context
-            this.ctx = this.canvas.getContext('2d');
+            this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
             console.log("Using standard Canvas 2D context");
         }
 
@@ -164,6 +164,9 @@ class Engine {
         if (window.MelodiCode) {
             this.melodicode = new window.MelodiCode();
         }
+
+        // Initialize AssetManager integration
+        this.setupAssetManager();
 
         // Set up resize observer to continuously monitor container size
         this.setupResizeObserver();
@@ -306,6 +309,46 @@ class Engine {
         // Ensure viewport is properly initialized
         this.viewport.dirty = true;
         this.updateViewport();
+    }
+
+    /**
+     * Setup AssetManager integration
+     */
+    setupAssetManager() {
+        // Ensure AssetManager is available
+        if (!window.assetManager) {
+            console.warn('AssetManager not available, creating new instance...');
+            window.assetManager = new AssetManager(window.fileBrowser || null);
+        }
+
+        // Store reference for easy access
+        this.assetManager = window.assetManager;
+
+        // Initialize assets on engine start if not already done
+        if (this.assetManager && !this.assetManager.initialized) {
+            // Initialize assets asynchronously
+            setTimeout(() => {
+                this.assetManager.initializeAssetsOnStart().then(() => {
+                    console.log('Asset Pipeline ready for modules');
+                }).catch(error => {
+                    console.error('Failed to initialize Asset Pipeline:', error);
+                });
+            }, 100);
+        }
+    }
+
+    /**
+     * Get asset by name (simple API for modules)
+     * @param {string} assetName - Asset name (e.g., "player.png", "music.mp3")
+     * @returns {any} - The asset or null if not found
+     */
+    getAsset(assetName) {
+        if (!this.assetManager) {
+            console.warn('AssetManager not available');
+            return null;
+        }
+
+        return this.assetManager.getAsset(assetName);
     }
 
     /**

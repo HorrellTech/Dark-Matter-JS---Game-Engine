@@ -5,6 +5,7 @@ class AssetManager {
         this.loadingPromises = new Map();
         this.assetRegistry = new Map();
         this.modal = null;
+        this.initialized = false; // Track if assets have been initialized
 
         // Asset type handlers
         this.typeHandlers = {
@@ -74,6 +75,58 @@ class AssetManager {
     }
 
     /**
+     * Initialize assets on engine start - loads all assets from FileBrowser without duplicates
+     */
+    async initializeAssetsOnStart() {
+        if (this.initialized) {
+            console.log('Assets already initialized, skipping...');
+            return;
+        }
+
+        if (!this.fileBrowser) {
+            console.warn('No FileBrowser available for asset initialization');
+            return;
+        }
+
+        try {
+            console.log('Initializing Asset Pipeline - loading assets from FileBrowser...');
+            const allFiles = await this.fileBrowser.getAllFiles();
+            let loadedCount = 0;
+            let duplicateCount = 0;
+
+            for (const file of allFiles) {
+                if (file.type === 'file') {
+                    const assetType = this.detectAssetType(file.path);
+                    if (assetType === 'image' || assetType === 'audio' || assetType === 'json' || assetType === 'text') {
+                        const normalizedPath = this.normalizePath(file.path);
+                        const assetId = this.generateAssetId(normalizedPath);
+
+                        // Check if already exists to prevent duplicates
+                        if (this.assetRegistry.has(assetId)) {
+                            duplicateCount++;
+                            continue;
+                        }
+
+                        try {
+                            await this.registerAssetFromPath(file.path);
+                            loadedCount++;
+                        } catch (error) {
+                            console.warn(`Failed to load asset ${file.path}:`, error);
+                        }
+                    }
+                }
+            }
+
+            this.initialized = true;
+            console.log(`Asset Pipeline initialized: ${loadedCount} assets loaded, ${duplicateCount} duplicates skipped`);
+            console.log('Available assets:', this.getAvailableAssetPaths());
+
+        } catch (error) {
+            console.error('Error initializing assets on start:', error);
+        }
+    }
+
+    /**
      * Scan FileBrowser for existing assets and register them
      */
     async scanAndRegisterAssets() {
@@ -99,6 +152,88 @@ class AssetManager {
         } catch (error) {
             console.error('Error scanning FileBrowser for assets:', error);
         }
+    }
+
+    /**
+     * Enhanced asset registration with better deduplication
+     * @param {string} path - Asset path
+     * @param {string} type - Asset type
+     * @param {any} content - Asset content
+     * @returns {Promise<string>} - Asset ID
+     */
+    async registerAsset(path, type, content) {
+        const normalizedPath = this.normalizePath(path);
+        const assetId = this.generateAssetId(normalizedPath);
+        
+        // Check if already exists
+        if (this.assetRegistry.has(assetId)) {
+            console.log(`Asset already exists: ${assetId}`);
+            return assetId;
+        }
+
+        try {
+            // Process and store the asset
+            const processedAsset = await this.typeHandlers[type](content, { path: normalizedPath });
+            
+            // Store in cache and registry
+            this.cache.set(assetId, processedAsset);
+            this.cache.set(normalizedPath, processedAsset);
+            
+            this.assetRegistry.set(assetId, {
+                id: assetId,
+                type: type,
+                metadata: {
+                    path: normalizedPath,
+                    originalPath: path,
+                    addedAt: Date.now(),
+                    size: this.getAssetSize(processedAsset),
+                    dimensions: this.getAssetDimensions(processedAsset)
+                }
+            });
+
+            console.log(`Registered new asset: ${assetId} (${type})`);
+            return assetId;
+            
+        } catch (error) {
+            console.error(`Failed to register asset ${path}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Batch import assets from files
+     * @param {FileList|Array} files - Files to import
+     * @returns {Promise<Object>} - Import results
+     */
+    async importFiles(files) {
+        const results = {
+            success: [],
+            failed: [],
+            duplicates: []
+        };
+
+        for (const file of files) {
+            try {
+                const assetType = this.detectAssetType(file.name);
+                const assetId = this.generateAssetId(file.name);
+                
+                // Check for duplicates
+                if (this.assetRegistry.has(assetId)) {
+                    results.duplicates.push(file.name);
+                    continue;
+                }
+
+                // Register the asset
+                await this.registerAsset(file.name, assetType, file);
+                results.success.push(file.name);
+                
+            } catch (error) {
+                console.error(`Failed to import ${file.name}:`, error);
+                results.failed.push({ name: file.name, error: error.message });
+            }
+        }
+
+        return results;
     }
 
     /**
@@ -135,6 +270,42 @@ class AssetManager {
         const normalizedPath = this.normalizePath(path);
         this.cache.delete(normalizedPath);
         this.cache.delete(path);
+    }
+
+    /**
+     * Get asset by name (simple API for modules) - supports filename with extension
+     * @param {string} assetName - Asset name (e.g., "player.png", "music.mp3")
+     * @returns {any} - The asset or null if not found
+     */
+    getAsset(assetName) {
+        if (!assetName) return null;
+
+        // First try direct cache lookup
+        if (this.cache.has(assetName)) {
+            return this.cache.get(assetName);
+        }
+
+        // Try with generated asset ID
+        const assetId = this.generateAssetId(assetName);
+        if (this.cache.has(assetId)) {
+            return this.cache.get(assetId);
+        }
+
+        // Try normalized path variations
+        const normalizedPath = this.normalizePath(assetName);
+        if (this.cache.has(normalizedPath)) {
+            return this.cache.get(normalizedPath);
+        }
+
+        // Try all stored cache keys for partial matches
+        for (const [key, asset] of this.cache) {
+            if (key.endsWith(assetName) || assetName.endsWith(key)) {
+                return asset;
+            }
+        }
+
+        console.warn(`Asset not found: ${assetName}`);
+        return null;
     }
 
     /**
@@ -754,6 +925,94 @@ class AssetManager {
     }
 
     /**
+     * Get assets with enhanced metadata for UI display
+     * @param {string} type - Optional type filter
+     * @returns {Array<Object>} - Enhanced asset information
+     */
+    getEnhancedAssetInfo(type = null) {
+        const assets = [];
+        
+        for (const [id, metadata] of this.assetRegistry) {
+            if (type && metadata.type !== type) continue;
+            
+            const asset = this.cache.get(id);
+            const assetInfo = {
+                id: id,
+                type: metadata.type,
+                path: metadata.metadata.path || metadata.metadata.originalPath,
+                displayName: this.getDisplayName(metadata.metadata.path || id),
+                metadata: metadata.metadata,
+                asset: asset,
+                size: this.getAssetSize(asset),
+                dimensions: this.getAssetDimensions(asset)
+            };
+            
+            assets.push(assetInfo);
+        }
+        
+        return assets.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }
+
+    /**
+     * Get asset size information
+     * @param {any} asset - The asset object
+     * @returns {string} - Formatted size string
+     */
+    getAssetSize(asset) {
+        if (!asset) return '0 B';
+        
+        if (asset instanceof HTMLImageElement) {
+            // Estimate image size (rough calculation)
+            const width = asset.naturalWidth || asset.width || 64;
+            const height = asset.naturalHeight || asset.height || 64;
+            const estimatedBytes = width * height * 4; // Assuming RGBA
+            return this.formatBytes(estimatedBytes);
+        }
+        
+        if (asset instanceof HTMLAudioElement) {
+            return 'Audio file';
+        }
+        
+        if (typeof asset === 'string') {
+            return this.formatBytes(asset.length);
+        }
+        
+        if (typeof asset === 'object') {
+            return this.formatBytes(JSON.stringify(asset).length);
+        }
+        
+        return 'Unknown';
+    }
+
+    /**
+     * Get asset dimensions for images
+     * @param {any} asset - The asset object
+     * @returns {Object|null} - Width and height or null
+     */
+    getAssetDimensions(asset) {
+        if (asset instanceof HTMLImageElement) {
+            return {
+                width: asset.naturalWidth || asset.width || 0,
+                height: asset.naturalHeight || asset.height || 0
+            };
+        }
+        return null;
+    }
+
+    /**
+     * Format bytes to human readable string
+     * @param {number} bytes - Number of bytes
+     * @returns {string} - Formatted string
+     */
+    formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    /**
      * Generate a unique asset ID from a path
      * @param {string} path - Asset path
      * @returns {string} - Generated asset ID
@@ -1151,6 +1410,11 @@ class AssetManager {
     }
 
     async showExportModal() {
+        if (!this.fileBrowser) {
+            console.error('FileBrowser not connected to AssetManager');
+            return;
+        }
+
         const files = await this.fileBrowser.getAllFiles();
         const tree = this.modal.querySelector('.asset-tree');
         tree.innerHTML = '';

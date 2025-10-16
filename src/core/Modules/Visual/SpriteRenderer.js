@@ -32,6 +32,8 @@ class SpriteRenderer extends Module {
 
         this.drawingCanvas = "normal"; // Options: normal, background, gui
 
+        this.visible = true;
+
         // Sprite properties
         this.color = "#ffffff";
         this.flipX = false;
@@ -55,6 +57,8 @@ class SpriteRenderer extends Module {
         this._isLoaded = false;
         this._imageWidth = 0;
         this._imageHeight = 0;
+
+        this.imageCache = new Map();
 
         // Make sure this is called after all properties are set up
         this.registerProperties();
@@ -85,13 +89,21 @@ class SpriteRenderer extends Module {
 
         this.exposeProperty("drawingCanvas", "enum", this.drawingCanvas, {
             description: "Which canvas to draw the sprite on",
-            options: [ 
+            options: [
                 { value: "normal", label: "Normal" },
                 { value: "background", label: "Background" },
                 { value: "gui", label: "GUI" }
             ],
             onChange: (value) => {
                 this.drawingCanvas = value;
+            }
+        });
+
+        this.exposeProperty("visible", "boolean", this.visible, {
+            description: "Whether the sprite is visible",
+            onChange: (value) => {
+                this.visible = value;
+                window.editor?.refreshCanvas();
             }
         });
 
@@ -814,6 +826,12 @@ class SpriteRenderer extends Module {
             return;
         }
 
+        // Normalize the path to prevent issues with double slashes or malformed paths
+        path = path.replace(/\/+/g, '/'); // Collapse multiple slashes to a single slash
+        if (!path.startsWith('/')) {
+            path = '/' + path; // Ensure it starts with a single slash
+        }
+
         if (this.imageAsset && this.imageAsset.path === path) {
             console.log('Sprite path unchanged, skipping');
             return;
@@ -838,6 +856,13 @@ class SpriteRenderer extends Module {
 
             if (image) {
                 console.log('Image loaded successfully:', image.src || 'data URL');
+
+                // Auto-size sprite to match image if using defaults
+                if (this.width === 64 && this.height === 64) {
+                    this.width = image.naturalWidth;
+                    this.height = image.naturalHeight;
+                    console.log(`Auto-sized sprite to ${this.width}x${this.height}`);
+                }
             } else {
                 console.warn('Failed to load image');
             }
@@ -857,6 +882,8 @@ class SpriteRenderer extends Module {
       * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
       */
     draw(ctx) {
+        if (!this.visible) return;
+
         // Don't draw if we have no image or width/height is zero
         if (!this._image || !this._isLoaded || this.width === 0 || this.height === 0) {
             this.drawPlaceholder(ctx);
@@ -880,16 +907,16 @@ class SpriteRenderer extends Module {
         // Draw a specific frame from a spritesheet
         //    this.drawFrame(ctx, -pivotX, -pivotY);
         //} else {
-            /*if(this.drawingCanvas == "background") {
-                ctx = this.getBackgroundCanvas();
-            } else if(this.drawingCanvas == "gui") {
-                ctx = this.getGUIContextCanvas();
-            } else {
-                ctx = this.getMainCanvas();
-            }*/
+        /*if(this.drawingCanvas == "background") {
+            ctx = this.getBackgroundCanvas();
+        } else if(this.drawingCanvas == "gui") {
+            ctx = this.getGUIContextCanvas();
+        } else {
+            ctx = this.getMainCanvas();
+        }*/
 
-            // Draw based on scale mode - Always use drawWithScaleMode
-            this.drawWithScaleMode(ctx, -pivotX, -pivotY);
+        // Draw based on scale mode - Always use drawWithScaleMode
+        this.drawWithScaleMode(ctx, -pivotX, -pivotY);
         //}
 
         // Apply color tint if not white (after drawing the image)
@@ -1643,6 +1670,31 @@ class SpriteRenderer extends Module {
         } catch (error) {
             console.error('Error loading from AssetManager:', error);
             return null;
+        }
+    }
+
+    /**
+     * Enhanced asset selection from Asset Browser
+     * @param {string} assetId - Asset ID from AssetManager
+     */
+    async selectAssetById(assetId) {
+        if (!assetId) return;
+
+        try {
+            // Get asset info from AssetManager
+            if (window.assetManager) {
+                const assetInfo = window.assetManager.assetRegistry.get(assetId);
+                if (assetInfo) {
+                    await this.setSprite(assetInfo.metadata.path || assetId);
+                    return;
+                }
+            }
+
+            // Fallback to direct path
+            await this.setSprite(assetId);
+
+        } catch (error) {
+            console.error('Error selecting asset by ID:', error);
         }
     }
 

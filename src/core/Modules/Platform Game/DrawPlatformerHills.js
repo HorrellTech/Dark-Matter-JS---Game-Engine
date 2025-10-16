@@ -9,6 +9,8 @@ class DrawPlatformerHills extends Module {
     constructor() {
         super("DrawPlatformerHills");
 
+        this.ignoreGameObjectTransform = true;
+
         // Original properties
         this.backgroundColor = "#87CEEB"; // Sky blue (day color)
         this.hillColor = "#228B22"; // Base hill color (will be dark)
@@ -809,8 +811,8 @@ class DrawPlatformerHills extends Module {
             console.warn(`DrawPlatformerHills: Slow frame detected: ${frameTime.toFixed(2)}ms`);
         }
 
-        this.gameObject.position.x = window.engine.viewport.x + (window.engine.viewport.width / 2) || 0;
-        this.gameObject.position.y = window.engine.viewport.y + (window.engine.viewport.height / 2) || 0;
+        //this.gameObject.position.x = window.engine.viewport.x + (window.engine.viewport.width / 2) || 0;
+        //this.gameObject.position.y = window.engine.viewport.y + (window.engine.viewport.height / 2) || 0;
     }
 
     // Update time progression
@@ -1434,10 +1436,10 @@ class DrawPlatformerHills extends Module {
         const viewportX = window.engine.viewport.x || 0;
         const viewportY = window.engine.viewport.y || 0;
 
-        // Stars have minimal parallax
+        // Stars have minimal parallax - NEGATED for correct direction
         const starParallax = 0.1;
-        const parallaxOffsetX = viewportX * (1 - starParallax);
-        const parallaxOffsetY = viewportY * (1 - starParallax);
+        const parallaxOffsetX = -viewportX * (1 - starParallax);  // Negated
+        const parallaxOffsetY = -viewportY * (1 - starParallax);  // Negated
 
         if (this.enableInfiniteStars) {
             // Infinite star generation
@@ -1677,7 +1679,7 @@ class DrawPlatformerHills extends Module {
             viewportBounds.bottom - viewportBounds.top + 64);
 
         // Calculate night strength for consistent darkness with smooth transitions
-        let nightStrength = 1;
+        let nightStrength;
         if (this.currentTime < 0.15) {
             nightStrength = 1;
         } else if (this.currentTime < 0.35) {
@@ -1712,14 +1714,14 @@ class DrawPlatformerHills extends Module {
             const layerColor = this.darkenColor(this.hillColor, darkenPercent);
             ctx.fillStyle = layerColor;
 
-            // Calculate parallax offset for this layer (X and Y)
+            // Calculate parallax offset for this layer (X and Y) - NEGATED for correct parallax direction
             let layerRatio = 1;
             if (this.hillLayers > 1) {
                 layerRatio = layer / (this.hillLayers - 1);
             }
             const parallaxAmount = this.parallaxStrength * layerRatio;
-            const parallaxOffsetX = viewportX * parallaxAmount;
-            const parallaxOffsetY = viewportY * parallaxAmount;
+            const parallaxOffsetX = -viewportX * parallaxAmount;  // Negated
+            const parallaxOffsetY = -viewportY * parallaxAmount;  // Negated
 
             // Calculate which segments are visible for this layer
             const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
@@ -2072,8 +2074,8 @@ class DrawPlatformerHills extends Module {
                 const t = i / points;
                 // x always sticks to viewport edge
                 const x = left + t * width;
-                // Only the wave shape gets parallax
-                const parallaxOffsetX = viewportX * (1 - parallaxFactor);
+                // Only the wave shape gets parallax - NEGATED for correct direction
+                const parallaxOffsetX = -viewportX * (1 - parallaxFactor);  // Negated
                 const waveX = x + parallaxOffsetX;
                 const y = baseY + pulse + Math.sin(t * freq * Math.PI * 2 + phase) * amp;
                 ctx.lineTo(x, y);
@@ -2190,9 +2192,10 @@ class DrawPlatformerHills extends Module {
     drawBuildings(ctx, viewportBounds, viewportX, viewportY) {
         if (!this.enableBuildings) return;
 
-        // Calculate parallax offset for buildings
-        const parallaxOffsetX = viewportX * this.buildingParallax;
-        const parallaxOffsetY = viewportY * this.buildingParallax;
+        // Calculate parallax offset for buildings - NEGATED for correct direction
+        const parallaxOffsetX = -viewportX * this.buildingParallax;  // Negated
+        const parallaxOffsetY = -viewportY * this.buildingParallax;  // Negated
+
 
         // Calculate which segments are visible with extra margin for infinite generation
         const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;
@@ -2374,9 +2377,9 @@ class DrawPlatformerHills extends Module {
 
         ctx.save();
 
-        // Apply parallax to clouds
-        const parallaxOffsetX = viewportX * (1 - this.cloudParallax);
-        const parallaxOffsetY = viewportY * (1 - this.cloudParallax);
+        // Apply parallax to clouds - NEGATED for correct direction
+        const parallaxOffsetX = -viewportX * (1 - this.cloudParallax);  // Negated
+        const parallaxOffsetY = -viewportY * (1 - this.cloudParallax);  // Negated
 
         // Calculate which cloud segments are visible
         const effectiveViewportLeft = viewportBounds.left - parallaxOffsetX;

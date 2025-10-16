@@ -311,12 +311,36 @@ class AnimationToolWindow extends EditorWindow {
         `;
 
         // Frame control buttons
-        const frameButtons = [
-            { id: 'add-frame', icon: '➕', title: 'Add Frame', action: () => this.addFrame() },
-            { id: 'duplicate-frame', icon: '📋', title: 'Duplicate Frame', action: () => this.duplicateFrame() },
-            { id: 'delete-frame', icon: '🗑️', title: 'Delete Frame', action: () => this.deleteFrame() },
-            { id: 'move-left', icon: '◀️', title: 'Move Frame Left', action: () => this.moveFrameLeft() },
-            { id: 'move-right', icon: '▶️', title: 'Move Frame Right', action: () => this.moveFrameRight() },
+        const frameButtons = [{
+                id: 'add-frame',
+                icon: '➕',
+                title: 'Add Frame',
+                action: () => this.addFrame()
+            },
+            {
+                id: 'duplicate-frame',
+                icon: '📋',
+                title: 'Duplicate Frame',
+                action: () => this.duplicateFrame()
+            },
+            {
+                id: 'delete-frame',
+                icon: '🗑️',
+                title: 'Delete Frame',
+                action: () => this.deleteFrame()
+            },
+            {
+                id: 'move-left',
+                icon: '◀️',
+                title: 'Move Frame Left',
+                action: () => this.moveFrameLeft()
+            },
+            {
+                id: 'move-right',
+                icon: '▶️',
+                title: 'Move Frame Right',
+                action: () => this.moveFrameRight()
+            },
         ];
 
         frameButtons.forEach(btn => {
@@ -488,16 +512,51 @@ class AnimationToolWindow extends EditorWindow {
     }
 
     createToolGrid(container) {
-        const tools = [
-            { id: 'brush', icon: '🖌️', name: 'Brush' },
-            { id: 'pen', icon: '✏️', name: 'Pen' },
-            { id: 'pencil', icon: '✎', name: 'Pencil' },
-            { id: 'eraser', icon: '🧽', name: 'Eraser' },
-            { id: 'fill', icon: '🪣', name: 'Fill Bucket' },
-            { id: 'line', icon: '📏', name: 'Line' },
-            { id: 'rectangle', icon: '⬛', name: 'Rectangle' },
-            { id: 'circle', icon: '⭕', name: 'Circle' },
-            { id: 'eyedropper', icon: '💉', name: 'Eyedropper' }
+        const tools = [{
+                id: 'brush',
+                icon: '🖌️',
+                name: 'Brush'
+            },
+            {
+                id: 'pen',
+                icon: '✏️',
+                name: 'Pen'
+            },
+            {
+                id: 'pencil',
+                icon: '✎',
+                name: 'Pencil'
+            },
+            {
+                id: 'eraser',
+                icon: '🧽',
+                name: 'Eraser'
+            },
+            {
+                id: 'fill',
+                icon: '🪣',
+                name: 'Fill Bucket'
+            },
+            {
+                id: 'line',
+                icon: '📏',
+                name: 'Line'
+            },
+            {
+                id: 'rectangle',
+                icon: '⬛',
+                name: 'Rectangle'
+            },
+            {
+                id: 'circle',
+                icon: '⭕',
+                name: 'Circle'
+            },
+            {
+                id: 'eyedropper',
+                icon: '💉',
+                name: 'Eyedropper'
+            }
         ];
 
         const toolGrid = document.createElement('div');
@@ -1936,19 +1995,54 @@ class AnimationToolWindow extends EditorWindow {
             font-size: 10px;
         `;
 
-            const blendModes = [
-                { value: 'source-over', label: 'Normal' },
-                { value: 'multiply', label: 'Multiply' },
-                { value: 'screen', label: 'Screen' },
-                { value: 'overlay', label: 'Overlay' },
-                { value: 'darken', label: 'Darken' },
-                { value: 'lighten', label: 'Lighten' },
-                { value: 'color-dodge', label: 'Color Dodge' },
-                { value: 'color-burn', label: 'Color Burn' },
-                { value: 'hard-light', label: 'Hard Light' },
-                { value: 'soft-light', label: 'Soft Light' },
-                { value: 'difference', label: 'Difference' },
-                { value: 'exclusion', label: 'Exclusion' }
+            const blendModes = [{
+                    value: 'source-over',
+                    label: 'Normal'
+                },
+                {
+                    value: 'multiply',
+                    label: 'Multiply'
+                },
+                {
+                    value: 'screen',
+                    label: 'Screen'
+                },
+                {
+                    value: 'overlay',
+                    label: 'Overlay'
+                },
+                {
+                    value: 'darken',
+                    label: 'Darken'
+                },
+                {
+                    value: 'lighten',
+                    label: 'Lighten'
+                },
+                {
+                    value: 'color-dodge',
+                    label: 'Color Dodge'
+                },
+                {
+                    value: 'color-burn',
+                    label: 'Color Burn'
+                },
+                {
+                    value: 'hard-light',
+                    label: 'Hard Light'
+                },
+                {
+                    value: 'soft-light',
+                    label: 'Soft Light'
+                },
+                {
+                    value: 'difference',
+                    label: 'Difference'
+                },
+                {
+                    value: 'exclusion',
+                    label: 'Exclusion'
+                }
             ];
 
             blendModes.forEach(mode => {
@@ -2206,7 +2300,7 @@ class AnimationToolWindow extends EditorWindow {
             };
 
             let filePath = this.currentFilePath;
-            
+
             if (!filePath) {
                 const fileName = await this.showSaveFileDialog();
                 if (!fileName) return;
@@ -2221,7 +2315,7 @@ class AnimationToolWindow extends EditorWindow {
                 if (!dirExists) {
                     await window.fileBrowser.createDirectory(animationsDir);
                 }
-                
+
                 const success = await window.fileBrowser.writeFile(filePath, JSON.stringify(data, null, 2));
                 if (success) {
                     this.hasUnsavedChanges = false;
@@ -2465,9 +2559,17 @@ class AnimationToolWindow extends EditorWindow {
         });
 
         saveBtn.addEventListener('click', () => {
-            const fileName = document.getElementById('fileName').value.trim();
-            const directory = document.getElementById('directorySelect').value;
-            
+            const fileNameInput = form.querySelector('#fileName');
+            const directorySelect = form.querySelector('#directorySelect');
+
+            if (!fileNameInput || !directorySelect) {
+                console.error('Form elements not found');
+                return;
+            }
+
+            const fileName = fileNameInput.value.trim();
+            const directory = directorySelect.value;
+
             if (!fileName) {
                 alert('Please enter a file name');
                 return;
@@ -2475,23 +2577,27 @@ class AnimationToolWindow extends EditorWindow {
 
             const finalFileName = fileName.endsWith('.anim') ? fileName : `${fileName}.anim`;
             const fullPath = directory === '/' ? `/${finalFileName}` : `${directory}/${finalFileName}`;
-            
+
             modal.remove();
             callback(fullPath);
         });
 
         // Enter key handler
-        document.getElementById('fileName').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+        form.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.target.id === 'fileName') {
+                const saveBtn = form.querySelector('button:last-child');
                 saveBtn.click();
             }
         });
 
-        // Focus the input
+        // Focus the input - use form selector instead
         setTimeout(() => {
-            document.getElementById('fileName').focus();
-            document.getElementById('fileName').select();
-        }, 100);
+            const fileNameInput = form.querySelector('#fileName');
+            if (fileNameInput) {
+                fileNameInput.focus();
+                fileNameInput.select();
+            }
+        }, 50);
     }
 
     /**
@@ -2588,7 +2694,7 @@ class AnimationToolWindow extends EditorWindow {
                     store.getAll().onsuccess = e => resolve(e.target.result);
                 });
 
-                animationFiles = allFiles.filter(file => 
+                animationFiles = allFiles.filter(file =>
                     file.type === 'file' && file.name.endsWith('.anim')
                 ).sort((a, b) => b.modified - a.modified); // Sort by most recent first
 
@@ -2669,7 +2775,7 @@ class AnimationToolWindow extends EditorWindow {
         // Search functionality
         searchInput.addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
-            const filtered = animationFiles.filter(file => 
+            const filtered = animationFiles.filter(file =>
                 file.name.toLowerCase().includes(searchTerm) ||
                 file.path.toLowerCase().includes(searchTerm)
             );
@@ -2737,6 +2843,197 @@ class AnimationToolWindow extends EditorWindow {
     }
 
     async exportSpriteSheet() {
+        // Show export options modal instead of directly exporting
+        this.showExportModal();
+    }
+
+    showExportModal() {
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            width: 400px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        `;
+
+        const title = document.createElement('h3');
+        title.textContent = 'Export Sprite Sheet';
+        title.style.cssText = `
+            color: #fff;
+            margin: 0 0 20px 0;
+            text-align: center;
+        `;
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        `;
+
+        const darkMatterBtn = document.createElement('button');
+        darkMatterBtn.textContent = 'Export To Dark Matter';
+        darkMatterBtn.style.cssText = `
+            padding: 12px;
+            background: #0078d4;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        `;
+        darkMatterBtn.addEventListener('click', () => {
+            alert('Not yet working');
+        });
+
+        const deviceBtn = document.createElement('button');
+        deviceBtn.textContent = 'Export To Device';
+        deviceBtn.style.cssText = `
+            padding: 12px;
+            background: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        `;
+        deviceBtn.addEventListener('click', async () => {
+            modal.remove();
+            await this.exportToDevice();
+        });
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent =  'Cancel';
+        cancelBtn.style.cssText = `
+            padding: 12px;
+            background: #6c757d;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        `;
+        cancelBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        buttonContainer.appendChild(deviceBtn);
+        buttonContainer.appendChild(darkMatterBtn);
+        buttonContainer.appendChild(cancelBtn);
+
+        dialog.appendChild(title);
+        dialog.appendChild(buttonContainer);
+        modal.appendChild(dialog);
+
+        document.body.appendChild(modal);
+    }
+
+    async exportToDevice() {
+        try {
+            // Prompt for filename
+            const fileName = prompt('Export filename (without extension):', this.projectName + '_spritesheet');
+            if (!fileName) return;
+
+            // Calculate sprite sheet dimensions
+            const animGroups = Array.from(this.animationGroups.values());
+            const maxFrames = Math.max(...animGroups.map(g => g.frames.length));
+            const animCount = animGroups.length;
+
+            const sheetWidth = maxFrames * this.canvasWidth;
+            const sheetHeight = animCount * this.canvasHeight;
+
+            // Create sprite sheet canvas
+            const sheetCanvas = document.createElement('canvas');
+            sheetCanvas.width = sheetWidth;
+            sheetCanvas.height = sheetHeight;
+            const sheetCtx = sheetCanvas.getContext('2d');
+
+            // Keep transparent background
+            sheetCtx.clearRect(0, 0, sheetWidth, sheetHeight);
+
+            // Draw each animation group as a row
+            animGroups.forEach((group, groupIndex) => {
+                group.frames.forEach((frame, frameIndex) => {
+                    if (frame.imageData) {
+                        const x = frameIndex * this.canvasWidth;
+                        const y = groupIndex * this.canvasHeight;
+
+                        // Create temporary canvas for this frame
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = this.canvasWidth;
+                        tempCanvas.height = this.canvasHeight;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.putImageData(frame.imageData, 0, 0);
+
+                        // Draw to sprite sheet
+                        sheetCtx.drawImage(tempCanvas, x, y);
+                    }
+                });
+            });
+
+            // Export as PNG to device (download)
+            sheetCanvas.toBlob((blob) => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${fileName}.png`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+                this.showNotification(`Sprite sheet exported to device as ${fileName}.png`);
+            });
+
+            // Optionally, still save metadata to internal file browser
+            const metadata = {
+                spriteWidth: this.canvasWidth,
+                spriteHeight: this.canvasHeight,
+                animations: animGroups.map((group, index) => ({
+                    name: group.name,
+                    row: index,
+                    frameCount: group.frames.length,
+                    frameRate: this.frameRate
+                }))
+            };
+
+            const spriteSheetsDir = '/SpriteSheets';
+            if (window.fileBrowser) {
+                const dirExists = await window.fileBrowser.exists(spriteSheetsDir);
+                if (!dirExists) {
+                    await window.fileBrowser.createDirectory(spriteSheetsDir);
+                }
+
+                const jsonPath = `${spriteSheetsDir}/${fileName}.json`;
+                const jsonSuccess = await window.fileBrowser.writeFile(jsonPath, JSON.stringify(metadata, null, 2));
+                if (jsonSuccess) {
+                    if (window.assetManager && window.assetManager.cache) {
+                        window.assetManager.cache[jsonPath] = JSON.stringify(metadata, null, 2);
+                    }
+                    await window.fileBrowser.refreshFiles();
+                }
+            }
+
+        } catch (error) {
+            console.error('Error exporting sprite sheet:', error);
+            this.showNotification('Error exporting sprite sheet', 'error');
+        }
+    }
+
+    async exportToDarkMatter() {
         try {
             // Prompt for filename
             const fileName = prompt('Export filename (without extension):', this.projectName + '_spritesheet');
@@ -2792,8 +3089,14 @@ class AnimationToolWindow extends EditorWindow {
                     const reader = new FileReader();
                     reader.onload = async () => {
                         const dataUrl = reader.result;
-                        const success = await window.fileBrowser.writeFile(`${spriteSheetsDir}/${fileName}.png`, dataUrl);
+                        const pngPath = `${spriteSheetsDir}/${fileName}.png`;
+                        const success = await window.fileBrowser.writeFile(pngPath, dataUrl);
                         if (success) {
+                            // NEW: Register the PNG with AssetManager to ensure it's cached and exported
+                            if (window.assetManager && window.assetManager.cache) {
+                                window.assetManager.cache[pngPath] = dataUrl;  // Cache the data URL
+                                console.log(`Registered sprite sheet PNG with AssetManager: ${pngPath}`);
+                            }
                             this.showNotification(`Sprite sheet exported as ${fileName}.png`);
                             // Refresh file browser
                             await window.fileBrowser.refreshFiles();
@@ -2814,8 +3117,14 @@ class AnimationToolWindow extends EditorWindow {
                     }))
                 };
 
-                const success = await window.fileBrowser.writeFile(`${spriteSheetsDir}/${fileName}.json`, JSON.stringify(metadata, null, 2));
-                if (success) {
+                const jsonPath = `${spriteSheetsDir}/${fileName}.json`;
+                const jsonSuccess = await window.fileBrowser.writeFile(jsonPath, JSON.stringify(metadata, null, 2));
+                if (jsonSuccess) {
+                    // NEW: Register the JSON with AssetManager (optional, but good for completeness)
+                    if (window.assetManager && window.assetManager.cache) {
+                        window.assetManager.cache[jsonPath] = JSON.stringify(metadata, null, 2);
+                        console.log(`Registered sprite sheet JSON with AssetManager: ${jsonPath}`);
+                    }
                     await window.fileBrowser.refreshFiles();
                 }
             }

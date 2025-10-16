@@ -7,12 +7,7 @@ class ModulesManager {
         
         // Define core modules that should always be available
         this.coreModules = [
-            'SpriteRenderer',
-            'RigidBody', 
-            'Collider',
-            'BoundingBoxCollider',
-            'DrawCircle',
-            'DrawRectangle'
+            'NullModule'
             //'BabylonRenderer'
         ];
     }
@@ -33,15 +28,15 @@ class ModulesManager {
         for (const moduleName of this.coreModules) {
             // Check if module constructor exists in window
             if (window[moduleName]) {
-                console.log(`Registering core module: ${moduleName}`);
+                //console.log(`Registering core module: ${moduleName}`);
                 window.moduleRegistry.register(window[moduleName]);
                 this.loadedModules.set(moduleName, window[moduleName]);
             } else {
-                console.error(`Core module not found: ${moduleName}`);
+                //console.error(`Core module not found: ${moduleName}`);
             }
         }
         
-        console.log("Core modules initialized");
+        //console.log("Core modules initialized");
     }
 
     /**

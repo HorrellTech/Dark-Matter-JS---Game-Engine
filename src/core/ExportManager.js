@@ -205,9 +205,26 @@ class ExportManager {
         // Collect custom modules (after scenes are serialized)
         data.modules = this.collectModules(data);
 
-        // Collect assets if enabled
+        // Collect assets if enabled - use AssetManager if available
         if (settings.includeAssets) {
-            data.assets = await this.collectAssets();
+            if (window.assetManager) {
+                console.log('Collecting assets from AssetManager for export...');
+                data.assets = await window.assetManager.exportAssetsForGame();
+
+                // Also collect any additional assets from FileBrowser that might not be in AssetManager
+                const fileBrowserAssets = await this.collectAssetsFromFileBrowser();
+                for (const [path, asset] of Object.entries(fileBrowserAssets)) {
+                    if (!data.assets[path]) {
+                        data.assets[path] = asset;
+                        console.log('Added additional asset from FileBrowser:', path);
+                    }
+                }
+
+                console.log(`Export data includes ${Object.keys(data.assets).length} assets`);
+            } else {
+                console.log('AssetManager not available, falling back to FileBrowser collection...');
+                data.assets = await this.collectAssets();
+            }
 
             // Apply compression if enabled
             if (settings.compressAssets) {
@@ -239,18 +256,7 @@ class ExportManager {
      * Serialize a game object for export
      */
     serializeGameObject(obj) {
-        const serialized = {
-            id: obj.id,
-            name: obj.name,
-            position: { x: obj.position.x, y: obj.position.y },
-            angle: obj.angle || 0,
-            scale: obj.scale ? { x: obj.scale.x, y: obj.scale.y } : { x: 1, y: 1 },
-            size: obj.size ? { width: obj.size.x, height: obj.size.y } : { width: 50, height: 50 },
-            active: obj.active,
-            visible: obj.visible !== false,
-            depth: obj.depth || 0,
-            modules: []
-        };
+        const serialized = obj.toJSON();
 
         // Serialize modules
         if (obj.modules) {
@@ -322,6 +328,12 @@ class ExportManager {
                             value.length > 100000) { // Only remove very large embedded images
                             console.log(`Removing embedded image data from ${module.constructor.name}.${key} to prevent duplication`);
                             delete serialized.data[key];
+                        } else if (key.toLowerCase().includes('audio') &&
+                            typeof value === 'string' &&
+                            value.startsWith('data:audio/') &&
+                            value.length > 100000) { // Only remove very large embedded audio
+                            console.log(`Removing embedded audio data from ${module.constructor.name}.${key} to prevent duplication`);
+                            delete serialized.data[key];
                         }
                     }
                 }
@@ -380,6 +392,61 @@ class ExportManager {
         }
 
         return normalized;
+    }
+
+    /**
+     * Collect assets from FileBrowser that might not be in AssetManager
+     */
+    async collectAssetsFromFileBrowser() {
+        let assets = {};
+
+        if (!window.fileBrowser || typeof window.fileBrowser.getAllFiles !== 'function') {
+            return assets;
+        }
+
+        try {
+            const files = await window.fileBrowser.getAllFiles();
+
+            for (const file of files) {
+                if (file.type === 'file') {
+                    const normalizedPath = this.normalizePath(file.path);
+
+                    // Determine if this is an asset file
+                    const extension = file.path.split('.').pop().toLowerCase();
+                    const assetExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 
+                        'mp3', 'wav', 'ogg', 'json', 'txt'];
+
+                    if (assetExtensions.includes(extension)) {
+                        let content = file.content;
+                        let mimeType = this.detectMimeType(file.path);
+
+                        // If it's not already a data URL, convert it
+                        if (!content.startsWith('data:')) {
+                            if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(extension)) {
+                                content = `data:${mimeType};base64,${content}`;
+                            } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
+                                content = `data:${mimeType};base64,${content}`;
+                            }
+                        }
+
+                        const assetSize = this.estimateAssetSize(content, mimeType);
+
+                        assets[normalizedPath] = {
+                            content: content,
+                            type: mimeType,
+                            source: 'fileBrowser',
+                            size: assetSize
+                        };
+
+                        console.log('Collected additional asset from FileBrowser:', normalizedPath, this.formatFileSize(assetSize));
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to collect additional assets from FileBrowser:', error);
+        }
+
+        return assets;
     }
 
     /**

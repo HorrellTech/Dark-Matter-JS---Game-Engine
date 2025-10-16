@@ -22,7 +22,7 @@ class GameObject {
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
 
-        this.isEditorSelected = false; // Whether selected in editor
+        this.isEditorSelected = this.selected; // Whether selected in editor
 
         this.usePolygonCollision = false; // Enable polygon collision
         this.polygonPointCount = 3; // Number of points in the polygon
@@ -984,6 +984,7 @@ class GameObject {
      */
     setSelected(selected) {
         this.selected = selected;
+        this.isEditorSelected = selected;
     }
 
     /**
@@ -1118,6 +1119,7 @@ class GameObject {
             colliderHeight: this.colliderHeight || 0,
             angle: this.angle,
             depth: this.depth,
+            depthToY: this.depthToY,
             active: this.active,
             editorColor: this.editorColor,
             visible: this.visible,
@@ -1169,6 +1171,7 @@ class GameObject {
 
         obj.angle = json.angle;
         obj.depth = json.depth;
+        obj.depthToY = json.depthToY;
         obj.active = json.active;
         if (json.visible !== undefined) obj.visible = json.visible;
         obj.tags = Array.isArray(json.tags) ? [...json.tags] : [];

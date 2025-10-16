@@ -237,8 +237,8 @@ class Module {
         return window.engine ? window.engine.getMainCanvas() : null;
     }
 
-    getGUICanvas() {
-        return window.engine ? window.engine.getGUICanvas() : null;
+    getGuiCanvas() {
+        return window.engine ? window.engine.getGuiCanvas() : null;
     }
 
     getModule(moduleName) {
