@@ -29,7 +29,8 @@ class AssetManagerWindow extends EditorWindow {
             '2d_context_3d.dmjs',
             'matter_js.dmjs',
             'puddle_lake_generator.dmjs',
-            'splines.dmjs'
+            'splines.dmjs',
+            'platformer_procedurally_generated.dmjs'
             // Add more known asset filenames here
         ];
 
