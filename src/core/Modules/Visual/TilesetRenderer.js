@@ -201,19 +201,54 @@ class TilesetRenderer extends Module {
      */
     loadTilesetFromSpriteRenderer() {
         if (!this.spriteRendererRef) {
+            // Try multiple ways to get the SpriteRenderer
             this.spriteRendererRef = this.getModule("SpriteRenderer");
-            //return;
+            
+            // If still not found, try looking in gameObject modules directly
+            if (!this.spriteRendererRef && this.gameObject && this.gameObject.modules) {
+                this.spriteRendererRef = this.gameObject.modules.find(m => 
+                    m.constructor.name === "SpriteRenderer" || m.name === "SpriteRenderer"
+                );
+            }
+            
+            if (!this.spriteRendererRef) {
+                console.warn("TilesetRenderer: Could not find SpriteRenderer module");
+                return;
+            }
+            
+            console.log("TilesetRenderer: Found SpriteRenderer module");
         }
+
+        // Debug: Check SpriteRenderer state
+        console.log("TilesetRenderer: SpriteRenderer state:", {
+            hasImage: !!this.spriteRendererRef._image,
+            isLoaded: this.spriteRendererRef._isLoaded,
+            imageWidth: this.spriteRendererRef._imageWidth,
+            imageHeight: this.spriteRendererRef._imageHeight,
+            imageAssetPath: this.spriteRendererRef.imageAsset?.path,
+            enabled: this.spriteRendererRef.enabled
+        });
 
         // Get the image from the SpriteRenderer
         if (this.spriteRendererRef._image && this.spriteRendererRef._isLoaded) {
-            this.spriteRendererRef.visible = false; // Hide the sprite itself
+            // IMPORTANT: Disable and hide the SpriteRenderer so it doesn't draw
+            this.spriteRendererRef.enabled = false;
+            this.spriteRendererRef.visible = false;
+            
             this._tilesetImage = this.spriteRendererRef._image;
             this._imageWidth = this.spriteRendererRef._imageWidth;
             this._imageHeight = this.spriteRendererRef._imageHeight;
             this._isLoaded = true;
             this.updateTileDimensions();
-            // window.editor?.refreshCanvas();
+            console.log(`TilesetRenderer: ✓ Loaded tileset image (${this._imageWidth}x${this._imageHeight})`);
+            console.log(`TilesetRenderer: Tile dimensions: ${this._tileWidth}x${this._tileHeight}`);
+            console.log(`TilesetRenderer: Disabled SpriteRenderer (enabled=${this.spriteRendererRef.enabled}, visible=${this.spriteRendererRef.visible})`);
+        } else if (this.spriteRendererRef._image && !this.spriteRendererRef._isLoaded) {
+            console.log("TilesetRenderer: ⚠ SpriteRenderer has image but isLoaded=false");
+        } else if (!this.spriteRendererRef._image && this.spriteRendererRef._isLoaded) {
+            console.log("TilesetRenderer: ⚠ SpriteRenderer isLoaded=true but no image");
+        } else {
+            console.log("TilesetRenderer: ⏳ SpriteRenderer found but image not loaded yet");
         }
     }
 
@@ -441,7 +476,20 @@ class TilesetRenderer extends Module {
     }
 
     start() {
-        //this.loadTilesetFromSpriteRenderer();
+        this.spriteRendererRef = this.getModule("SpriteRenderer");
+        if (this.spriteRendererRef) {
+            // Override the isSpriteLoaded callback to load tileset when sprite loads
+            const originalCallback = this.spriteRendererRef.isSpriteLoaded;
+            this.spriteRendererRef.isSpriteLoaded = () => {
+                if (originalCallback) {
+                    originalCallback.call(this.spriteRendererRef);
+                }
+                this.loadTilesetFromSpriteRenderer();
+            };
+            
+            // Try loading immediately if already loaded
+            this.loadTilesetFromSpriteRenderer();
+        }
     }
 
     loop(deltaTime) {
@@ -454,11 +502,30 @@ class TilesetRenderer extends Module {
     draw(ctx) {
         if(!this.spriteRendererRef) {
             this.spriteRendererRef = this.getModule("SpriteRenderer");
-            this.loadTilesetFromSpriteRenderer();
+            if(this.spriteRendererRef) {
+                // Override the isSpriteLoaded callback
+                const originalCallback = this.spriteRendererRef.isSpriteLoaded;
+                this.spriteRendererRef.isSpriteLoaded = () => {
+                    if (originalCallback) {
+                        originalCallback.call(this.spriteRendererRef);
+                    }
+                    this.loadTilesetFromSpriteRenderer();
+                };
+                this.loadTilesetFromSpriteRenderer();
+            }
+
+            if(this.spriteRendererRef._image) {
+                this.loadTilesetFromSpriteRenderer();
+            }
         }
 
         if (!this.visible || !this._tilesetImage || !this._isLoaded) {
             return;
+        }
+
+        if(this.spriteRendererRef) {
+            this.spriteRendererRef.enabled = false; // Ensure the sprite itself is hidden
+            console.log(`TilesetRenderer: Drawing tilemap (SpriteRenderer enabled=${this.spriteRendererRef.enabled}, visible=${this.spriteRendererRef.visible})`);
         }
 
         const viewport = this.viewport;
@@ -511,6 +578,34 @@ class TilesetRenderer extends Module {
      */
     drawGizmos(ctx) {
         if (!this.gameObject) return;
+
+        if(!this.spriteRendererRef) {
+            this.spriteRendererRef = this.getModule("SpriteRenderer");
+            if(this.spriteRendererRef) {
+                // Override the isSpriteLoaded callback
+                const originalCallback = this.spriteRendererRef.isSpriteLoaded;
+                this.spriteRendererRef.isSpriteLoaded = () => {
+                    if (originalCallback) {
+                        originalCallback.call(this.spriteRendererRef);
+                    }
+                    this.loadTilesetFromSpriteRenderer();
+                };
+                this.loadTilesetFromSpriteRenderer();
+            }
+
+            if(this.spriteRendererRef._image) {
+                this.loadTilesetFromSpriteRenderer();
+            }
+        }
+
+        if (!this.visible || !this._tilesetImage || !this._isLoaded) {
+            return;
+        }
+
+        if(this.spriteRendererRef) {
+            this.spriteRendererRef.enabled = false; // Ensure the sprite itself is hidden
+            console.log(`TilesetRenderer: Drawing tilemap (SpriteRenderer enabled=${this.spriteRendererRef.enabled}, visible=${this.spriteRendererRef.visible})`);
+        }
 
         const worldPos = this.gameObject.getWorldPosition();
 

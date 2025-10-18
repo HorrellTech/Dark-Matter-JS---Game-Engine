@@ -246,6 +246,11 @@ class Module {
         return this.gameObject.getModule(moduleName);
     }
 
+    getAllModules() {
+        if (!this.gameObject) return [];
+        return this.gameObject.getAllModules();
+    }
+
     isEditorSelected() {
         return this.gameObject ? this.gameObject.isEditorSelected : false;
     }

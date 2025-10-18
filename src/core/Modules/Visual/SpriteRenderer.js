@@ -317,6 +317,7 @@ class SpriteRenderer extends Module {
             if (this.imageAsset.path) {
                 const asset = await this.loadFromAssetManager(this.imageAsset.path);
                 if (asset) {
+                    this.isSpriteSet();
                     return asset;
                 }
             }
@@ -326,6 +327,7 @@ class SpriteRenderer extends Module {
                 try {
                     const image = await this.loadImageFromFileBrowser(this.imageAsset.path);
                     if (image) {
+                        this.isSpriteSet();
                         console.log('Image loaded via FileBrowser successfully');
                         this._image = image;
                         this._imageWidth = image.naturalWidth || image.width;
@@ -343,6 +345,7 @@ class SpriteRenderer extends Module {
                 console.log('Loading embedded image data');
                 const image = await this.imageAsset.load();
                 if (image) {
+                    this.isSpriteSet();
                     this._image = image;
                     this._imageWidth = image.naturalWidth || image.width;
                     this._imageHeight = image.naturalHeight || image.height;
@@ -353,6 +356,7 @@ class SpriteRenderer extends Module {
 
             // Final fallback for exported games
             if (this.imageAsset.path) {
+                this.isSpriteSet();
                 return await this.fallbackLoadImage(this.imageAsset.path);
             }
 
@@ -812,6 +816,10 @@ class SpriteRenderer extends Module {
         return baseUrl + possiblePaths[0];
     }
 
+    isSpriteSet() {
+        // Override this method to indicate if a sprite is set
+    }
+
     /**
      * Set the sprite image by path
      * @param {string} path - File path to the image
@@ -872,6 +880,8 @@ class SpriteRenderer extends Module {
                 window.editor.refreshCanvas();
             }
 
+            this.isSpriteSet();
+
         } catch (error) {
             console.error("Error setting sprite:", error);
         }
@@ -882,7 +892,7 @@ class SpriteRenderer extends Module {
       * @param {CanvasRenderingContext2D} ctx - Canvas rendering context
       */
     draw(ctx) {
-        if (!this.visible) return;
+        if (!this.visible || !this.enabled) return;
 
         // Don't draw if we have no image or width/height is zero
         if (!this._image || !this._isLoaded || this.width === 0 || this.height === 0) {

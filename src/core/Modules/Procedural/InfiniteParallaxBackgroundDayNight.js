@@ -80,6 +80,33 @@ class InfiniteParallaxBackgroundDayNight extends Module {
         this.starSeed = this.seed + 9999; // separate seed for stars
         this.starsGenerated = false;
 
+        // Clouds
+        this.enableClouds = true;
+        this.cloudCount = 15;
+        this.cloudMinSize = 40;
+        this.cloudMaxSize = 120;
+        this.cloudSpeed = 0.3; // multiplier for cloud movement
+        this.cloudOpacity = 0.7;
+        this.cloudColor = "#FFFFFF";
+        this.cloudQuality = "medium"; // "low", "medium", "high"
+        this.cloudSeed = this.seed + 7777;
+        this.cloudsGenerated = false;
+        this.clouds = [];
+
+        // Fog
+        this.enableFog = true;
+        this.fogDensity = 0.3; // 0-1
+        this.fogColor = "#E8F4F8";
+        this.fogSpeed = 0.1; // multiplier for fog movement
+        this.fogLayerCount = 3; // number of fog layers
+        this.fogQuality = "medium"; // "low", "medium", "high"
+        this.fogHeight = 200; // height from bottom where fog appears
+        this.fogSeed = this.seed + 8888;
+
+        // Add to the stars array initialization:
+        this.fogLayers = [];
+        this.fogInitialized = false;
+
         // Advanced settings
         this.noiseScale = 0.003;
         this.hillPointCount = 50;
@@ -91,6 +118,8 @@ class InfiniteParallaxBackgroundDayNight extends Module {
 
         // Initialize time
         this.currentTime = this.startAtTime;
+
+
 
         this.setupProperties();
     }
@@ -199,6 +228,130 @@ class InfiniteParallaxBackgroundDayNight extends Module {
             max: 10,
             step: 0.5,
             onChange: (val) => { this.starTwinkleSpeed = val; }
+        });
+
+        // Clouds
+        this.exposeProperty("enableClouds", "boolean", this.enableClouds, {
+            description: "Enable clouds",
+            onChange: (val) => { this.enableClouds = val; }
+        });
+
+        this.exposeProperty("cloudCount", "number", this.cloudCount, {
+            description: "Number of clouds",
+            min: 0,
+            max: 50,
+            step: 1,
+            onChange: (val) => {
+                this.cloudCount = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        this.exposeProperty("cloudMinSize", "number", this.cloudMinSize, {
+            description: "Minimum cloud size",
+            min: 20,
+            max: 100,
+            step: 5,
+            onChange: (val) => {
+                this.cloudMinSize = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        this.exposeProperty("cloudMaxSize", "number", this.cloudMaxSize, {
+            description: "Maximum cloud size",
+            min: 50,
+            max: 300,
+            step: 10,
+            onChange: (val) => {
+                this.cloudMaxSize = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        this.exposeProperty("cloudSpeed", "number", this.cloudSpeed, {
+            description: "Cloud movement speed",
+            min: 0,
+            max: 5,
+            step: 0.1,
+            onChange: (val) => { this.cloudSpeed = val; }
+        });
+
+        this.exposeProperty("cloudOpacity", "number", this.cloudOpacity, {
+            description: "Cloud opacity (0-1)",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => { this.cloudOpacity = val; }
+        });
+
+        this.exposeProperty("cloudColor", "color", this.cloudColor, {
+            description: "Cloud color",
+            onChange: (val) => { this.cloudColor = val; }
+        });
+
+        this.exposeProperty("cloudQuality", "select", this.cloudQuality, {
+            description: "Cloud rendering quality",
+            options: ["low", "medium", "high"],
+            onChange: (val) => {
+                this.cloudQuality = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        // Fog
+        this.exposeProperty("enableFog", "boolean", this.enableFog, {
+            description: "Enable fog between layers",
+            onChange: (val) => { this.enableFog = val; }
+        });
+
+        this.exposeProperty("fogDensity", "number", this.fogDensity, {
+            description: "Fog density (0-1)",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => { this.fogDensity = val; }
+        });
+
+        this.exposeProperty("fogColor", "color", this.fogColor, {
+            description: "Fog color",
+            onChange: (val) => { this.fogColor = val; }
+        });
+
+        this.exposeProperty("fogSpeed", "number", this.fogSpeed, {
+            description: "Fog movement speed",
+            min: 0,
+            max: 2,
+            step: 0.05,
+            onChange: (val) => { this.fogSpeed = val; }
+        });
+
+        this.exposeProperty("fogLayerCount", "number", this.fogLayerCount, {
+            description: "Number of fog layers",
+            min: 1,
+            max: 5,
+            step: 1,
+            onChange: (val) => {
+                this.fogLayerCount = val;
+                this.fogInitialized = false;
+            }
+        });
+
+        this.exposeProperty("fogQuality", "select", this.fogQuality, {
+            description: "Fog rendering quality",
+            options: ["low", "medium", "high"],
+            onChange: (val) => {
+                this.fogQuality = val;
+                this.fogInitialized = false;
+            }
+        });
+
+        this.exposeProperty("fogHeight", "number", this.fogHeight, {
+            description: "Fog height from bottom",
+            min: 50,
+            max: 500,
+            step: 10,
+            onChange: (val) => { this.fogHeight = val; }
         });
 
         // Day Colors
@@ -422,6 +575,155 @@ class InfiniteParallaxBackgroundDayNight extends Module {
             step: 0.01,
             style: { label: "Current Time", slider: true },
             onChange: (val) => { this.currentTime = val; }
+        });
+
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Clouds", false);
+
+        style.exposeProperty("enableClouds", "boolean", this.enableClouds, {
+            description: "Enable clouds in the sky",
+            style: { label: "Enable Clouds" },
+            onChange: (val) => { this.enableClouds = val; }
+        });
+
+        style.exposeProperty("cloudCount", "number", this.cloudCount, {
+            description: "Number of clouds to display",
+            min: 0,
+            max: 50,
+            step: 1,
+            style: { label: "Cloud Count", slider: true },
+            onChange: (val) => {
+                this.cloudCount = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        style.exposeProperty("cloudMinSize", "number", this.cloudMinSize, {
+            description: "Minimum cloud size",
+            min: 20,
+            max: 100,
+            step: 5,
+            style: { label: "Min Size", slider: true },
+            onChange: (val) => {
+                this.cloudMinSize = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        style.exposeProperty("cloudMaxSize", "number", this.cloudMaxSize, {
+            description: "Maximum cloud size",
+            min: 50,
+            max: 300,
+            step: 10,
+            style: { label: "Max Size", slider: true },
+            onChange: (val) => {
+                this.cloudMaxSize = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        style.exposeProperty("cloudSpeed", "number", this.cloudSpeed, {
+            description: "Cloud movement speed",
+            min: 0,
+            max: 5,
+            step: 0.1,
+            style: { label: "Cloud Speed", slider: true },
+            onChange: (val) => { this.cloudSpeed = val; }
+        });
+
+        style.exposeProperty("cloudOpacity", "number", this.cloudOpacity, {
+            description: "Cloud transparency",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            style: { label: "Opacity", slider: true },
+            onChange: (val) => { this.cloudOpacity = val; }
+        });
+
+        style.exposeProperty("cloudColor", "color", this.cloudColor, {
+            description: "Cloud color",
+            style: { label: "Cloud Color" },
+            onChange: (val) => { this.cloudColor = val; }
+        });
+
+        style.exposeProperty("cloudQuality", "select", this.cloudQuality, {
+            description: "Rendering quality for clouds",
+            options: ["low", "medium", "high"],
+            style: { label: "Quality" },
+            onChange: (val) => {
+                this.cloudQuality = val;
+                this.cloudsGenerated = false;
+            }
+        });
+
+        style.endGroup();
+
+        style.addDivider();
+
+        style.startGroup("Fog", false);
+
+        style.exposeProperty("enableFog", "boolean", this.enableFog, {
+            description: "Enable fog between hill layers",
+            style: { label: "Enable Fog" },
+            onChange: (val) => { this.enableFog = val; }
+        });
+
+        style.exposeProperty("fogDensity", "number", this.fogDensity, {
+            description: "Fog density/opacity",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            style: { label: "Density", slider: true },
+            onChange: (val) => { this.fogDensity = val; }
+        });
+
+        style.exposeProperty("fogColor", "color", this.fogColor, {
+            description: "Fog color",
+            style: { label: "Fog Color" },
+            onChange: (val) => { this.fogColor = val; }
+        });
+
+        style.exposeProperty("fogSpeed", "number", this.fogSpeed, {
+            description: "Fog movement speed",
+            min: 0,
+            max: 2,
+            step: 0.05,
+            style: { label: "Fog Speed", slider: true },
+            onChange: (val) => { this.fogSpeed = val; }
+        });
+
+        style.exposeProperty("fogLayerCount", "number", this.fogLayerCount, {
+            description: "Number of fog layers",
+            min: 1,
+            max: 5,
+            step: 1,
+            style: { label: "Fog Layers", slider: true },
+            onChange: (val) => {
+                this.fogLayerCount = val;
+                this.fogInitialized = false;
+            }
+        });
+
+        style.exposeProperty("fogQuality", "select", this.fogQuality, {
+            description: "Rendering quality for fog",
+            options: ["low", "medium", "high"],
+            style: { label: "Quality" },
+            onChange: (val) => {
+                this.fogQuality = val;
+                this.fogInitialized = false;
+            }
+        });
+
+        style.exposeProperty("fogHeight", "number", this.fogHeight, {
+            description: "Fog starting height from bottom",
+            min: 50,
+            max: 500,
+            step: 10,
+            style: { label: "Fog Height", slider: true },
+            onChange: (val) => { this.fogHeight = val; }
         });
 
         style.endGroup();
@@ -1197,6 +1499,25 @@ class InfiniteParallaxBackgroundDayNight extends Module {
             this.currentTime = this.currentTime % 1;
         }
 
+        // Update cloud positions
+        if (this.enableClouds && this.cloudsGenerated) {
+            const viewport = window.engine.viewport;
+            for (const cloud of this.clouds) {
+                cloud.x += deltaTime * this.cloudSpeed * cloud.speed * 20;
+                // Wrap around
+                if (cloud.x > viewport.width * 2) {
+                    cloud.x = -cloud.size * 2;
+                }
+            }
+        }
+
+        // Update fog layers
+        if (this.enableFog && this.fogInitialized) {
+            for (const layer of this.fogLayers) {
+                layer.offset += deltaTime * this.fogSpeed * layer.speed * 10;
+            }
+        }
+
         if (this.enableMoonPhases && this.enableDayNightCycle) {
             const positions = this.getCelestialPosition(
                 window.engine.viewport.width,
@@ -1225,6 +1546,112 @@ class InfiniteParallaxBackgroundDayNight extends Module {
         this.gameObject.position.y = window.engine.viewport.y || 0;
     }
 
+    // Generate clouds based on seed and quality
+    generateClouds(viewWidth, viewHeight) {
+        this.clouds = [];
+        const puffCount = this.cloudQuality === "low" ? 3 : this.cloudQuality === "medium" ? 5 : 8;
+
+        for (let i = 0; i < this.cloudCount; i++) {
+            const size = this.cloudMinSize + this.seededRandom(this.cloudSeed + i * 4) * (this.cloudMaxSize - this.cloudMinSize);
+            const cloud = {
+                x: this.seededRandom(this.cloudSeed + i * 2) * viewWidth * 2, // wider spawn area
+                y: this.seededRandom(this.cloudSeed + i * 2 + 1) * (viewHeight * 0.4), // top 40% of sky
+                size: size,
+                speed: 0.5 + this.seededRandom(this.cloudSeed + i * 3) * 0.5,
+                puffs: []
+            };
+
+            // Generate cloud puffs
+            for (let j = 0; j < puffCount; j++) {
+                cloud.puffs.push({
+                    x: (j / puffCount) * size * 1.5 - size * 0.25,
+                    y: this.seededRandom(this.cloudSeed + i * 10 + j) * size * 0.3 - size * 0.15,
+                    radius: size * (0.3 + this.seededRandom(this.cloudSeed + i * 20 + j) * 0.3)
+                });
+            }
+
+            this.clouds.push(cloud);
+        }
+    }
+
+    // Initialize fog layers
+    initializeFogLayers(viewWidth, viewHeight) {
+        this.fogLayers = [];
+        const pointCount = this.fogQuality === "low" ? 20 : this.fogQuality === "medium" ? 40 : 60;
+
+        for (let i = 0; i < this.fogLayerCount; i++) {
+            const layer = {
+                depth: i / this.fogLayerCount,
+                speed: 0.5 + (i / this.fogLayerCount) * 0.5,
+                offset: 0,
+                points: [],
+                alpha: 0.2 + (i / this.fogLayerCount) * 0.3
+            };
+
+            // Generate wavy fog points
+            for (let j = 0; j <= pointCount; j++) {
+                const x = (j / pointCount) * viewWidth * 2;
+                const waveHeight = 30 + this.seededRandom(this.fogSeed + i * 100 + j) * 40;
+                layer.points.push({ x, waveHeight });
+            }
+
+            this.fogLayers.push(layer);
+        }
+        this.fogInitialized = true;
+    }
+
+    // Draw a single cloud
+    drawCloud(ctx, cloud, baseX, baseY) {
+        const color = this.hexToRgb(this.cloudColor);
+        ctx.globalAlpha = this.cloudOpacity;
+
+        for (const puff of cloud.puffs) {
+            const gradient = ctx.createRadialGradient(
+                baseX + puff.x, baseY + puff.y, 0,
+                baseX + puff.x, baseY + puff.y, puff.radius
+            );
+            gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 0.9)`);
+            gradient.addColorStop(0.7, `rgba(${color.r}, ${color.g}, ${color.b}, 0.6)`);
+            gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(baseX + puff.x, baseY + puff.y, puff.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.globalAlpha = 1;
+    }
+
+    // Draw fog layer with wavy pattern
+    drawFogLayer(ctx, layer, viewWidth, viewHeight, cameraX) {
+        const fogY = viewHeight - this.fogHeight;
+        const color = this.hexToRgb(this.fogColor);
+        const alpha = this.fogDensity * layer.alpha;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 1)`;
+
+        ctx.beginPath();
+        ctx.moveTo(-viewWidth, fogY);
+
+        const offsetX = -(layer.offset - cameraX * layer.speed * 0.3) % (viewWidth * 2);
+
+        for (const point of layer.points) {
+            const x = point.x - offsetX - viewWidth;
+            const y = fogY - point.waveHeight;
+            ctx.lineTo(x, y);
+        }
+
+        ctx.lineTo(viewWidth * 2, fogY);
+        ctx.lineTo(viewWidth * 2, viewHeight);
+        ctx.lineTo(-viewWidth, viewHeight);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.globalAlpha = 1;
+    }
+
     draw(ctx) {
         if (!this.initialized) {
             this.initializeLayers();
@@ -1242,6 +1669,17 @@ class InfiniteParallaxBackgroundDayNight extends Module {
         if (!this.starsGenerated) {
             this.generateStars(viewWidth, viewHeight);
             this.starsGenerated = true;
+        }
+
+        // Generate clouds once on first draw
+        if (!this.cloudsGenerated && this.enableClouds) {
+            this.generateClouds(viewWidth, viewHeight);
+            this.cloudsGenerated = true;
+        }
+
+        // Initialize fog layers once
+        if (!this.fogInitialized && this.enableFog) {
+            this.initializeFogLayers(viewWidth, viewHeight);
         }
 
         // Draw sky gradient
@@ -1269,10 +1707,21 @@ class InfiniteParallaxBackgroundDayNight extends Module {
             this.drawMoon(ctx, positions.moon.x, positions.moon.y);
         }
 
+        if (this.enableClouds && this.cloudsGenerated) {
+            for (const cloud of this.clouds) {
+                this.drawCloud(ctx, cloud, cloud.x, cloud.y);
+            }
+        }
+
         // Draw each layer from back to front
         for (let i = this.layerCount - 1; i >= 0; i--) {
             const layer = this.layers[i];
             this.drawLayer(ctx, layer, cameraX, cameraY, viewWidth, viewHeight);
+
+            // Draw fog layer between hill layers
+            if (this.enableFog && this.fogInitialized && i < this.fogLayers.length) {
+                this.drawFogLayer(ctx, this.fogLayers[i], viewWidth, viewHeight, cameraX);
+            }
         }
 
         // Draw darkness overlay to GUI context
@@ -1421,7 +1870,22 @@ class InfiniteParallaxBackgroundDayNight extends Module {
             moonPhase: this.moonPhase,
             moonPhaseSpeed: this.moonPhaseSpeed,
             moonShadowColor: this.moonShadowColor,
-            moonShadowOpacity: this.moonShadowOpacity
+            moonShadowOpacity: this.moonShadowOpacity,
+            enableClouds: this.enableClouds,
+            cloudCount: this.cloudCount,
+            cloudMinSize: this.cloudMinSize,
+            cloudMaxSize: this.cloudMaxSize,
+            cloudSpeed: this.cloudSpeed,
+            cloudOpacity: this.cloudOpacity,
+            cloudColor: this.cloudColor,
+            cloudQuality: this.cloudQuality,
+            enableFog: this.enableFog,
+            fogDensity: this.fogDensity,
+            fogColor: this.fogColor,
+            fogSpeed: this.fogSpeed,
+            fogLayerCount: this.fogLayerCount,
+            fogQuality: this.fogQuality,
+            fogHeight: this.fogHeight
         };
     }
 
@@ -1473,6 +1937,21 @@ class InfiniteParallaxBackgroundDayNight extends Module {
         this.moonPhaseSpeed = data.moonPhaseSpeed || 0.1;
         this.moonShadowColor = data.moonShadowColor || "#000000";
         this.moonShadowOpacity = data.moonShadowOpacity || 0.85;
+        this.enableClouds = data.enableClouds !== undefined ? data.enableClouds : true;
+        this.cloudCount = data.cloudCount || 15;
+        this.cloudMinSize = data.cloudMinSize || 40;
+        this.cloudMaxSize = data.cloudMaxSize || 120;
+        this.cloudSpeed = data.cloudSpeed || 0.3;
+        this.cloudOpacity = data.cloudOpacity || 0.7;
+        this.cloudColor = data.cloudColor || "#FFFFFF";
+        this.cloudQuality = data.cloudQuality || "medium";
+        this.enableFog = data.enableFog !== undefined ? data.enableFog : true;
+        this.fogDensity = data.fogDensity || 0.3;
+        this.fogColor = data.fogColor || "#E8F4F8";
+        this.fogSpeed = data.fogSpeed || 0.1;
+        this.fogLayerCount = data.fogLayerCount || 3;
+        this.fogQuality = data.fogQuality || "medium";
+        this.fogHeight = data.fogHeight || 200;
 
         this.initialized = false;
     }

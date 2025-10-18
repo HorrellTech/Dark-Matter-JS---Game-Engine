@@ -802,6 +802,10 @@ class GameObject {
         return null;
     }
 
+    getAllModules() {
+        return this.modules;
+    }
+
     /**
      * Reorder modules based on an array of module IDs
      * @param {Array<string>} moduleIds - Ordered array of module IDs

@@ -39,7 +39,7 @@ class MyModule extends Module {
         });
     }
 
-    // Style the exposed properties
+    // Style the exposed properties, no need for onChange here
     style(style) {
         style.startGroup("Movement Settings", false, {
             backgroundColor: 'rgba(100,150,255,0.1)',
