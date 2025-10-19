@@ -1149,14 +1149,14 @@ class ExportManager {
             'SpriteRenderer': 'src/core/Modules/Visual/SpriteRenderer.js',
             //'SpriteRendererBackground': 'src/core/Modules/Visual/SpriteRendererBackground.js',
             //'SpriteSheetRenderer': 'src/core/Modules/Visual/SpriteSheetRenderer.js',
-            'ObjectTiling': 'src/core/Modules/Visual/ObjectTiling.js',
+            //'ObjectTiling': 'src/core/Modules/Visual/ObjectTiling.js',
             // Utility Modules
             //'FollowTarget': 'src/core/Modules/Utility/FollowTarget.js',
             'Spawner': 'src/core/Modules/Utility/Spawner.js',
             //'PostScreenEffects': 'src/core/Modules/Visual/PostScreenEffects.js',
 
             // Controller Modules
-            'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
+            //'SimpleMovementController': 'src/core/Modules/Controllers/SimpleMovementController.js',
             'CameraController': 'src/core/Modules/Controllers/CameraController.js',
 
             /*'Camera3DRasterizer': 'src/core/3D/Camera3DRasterizer.js',
@@ -1220,7 +1220,7 @@ class ExportManager {
             //'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
 
             // Other Modules
-            'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
+            //'SimpleHealth': 'src/core/Modules/SimpleHealth.js',
             //'AudioPlayer': 'src/core/Modules/AudioPlayer.js',
             //'BehaviorTrigger': 'src/core/Modules/BehaviorTrigger.js'
         };

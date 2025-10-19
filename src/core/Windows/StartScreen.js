@@ -1,8 +1,22 @@
 class StartScreen {
-    constructor(version = '0.2.5') {
+    constructor(version = '0.3.0') {
         this.version = version;
         this.container = null;
         this.updates = [
+            {
+                version: 'v0.3.0',
+                date: 'October 19, 2025',
+                changes: [
+                    'Added link to Community Forums',
+                    'Added Asset Manager Window for managing built in assets',
+                    'Added Sprite Sheet Renderer',
+                    'Added Spline Path module for creating spline paths',
+                    'Added PuddleLake module for water effects',
+                    'Improved performance of the editor and runtime',
+                    'Fixed various bugs',
+                    'Updated documentation with new features and modules'
+                ]
+            },
             {
                 version: 'v0.2.5',
                 date: 'August 26, 2025',
