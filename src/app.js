@@ -1240,6 +1240,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.fileBrowser && window.fileBrowser.dbName) {
             indexedDB.deleteDatabase(window.fileBrowser.dbName);
         }
+
+        // Show confirmation dialog to prevent accidental loss of unsaved work
+        event.returnValue = 'Are you sure you want to leave? Your unsaved project changes will be lost.';
+        return event.returnValue; // For older browsers
     });
 
     // Call this after engine initialization
