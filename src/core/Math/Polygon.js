@@ -47,6 +47,14 @@ class Polygon {
     return true;
   }
 
+  collidesWithRectangle(rectangle) {
+    const rectanglePolygon = Polygon.rectangle(
+      new Vector2(rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2),
+      new Vector2(rectangle.width / 2, rectangle.height / 2)
+    );
+    return this.collidesWith(rectanglePolygon);
+  }
+
   // Check if a point is within this polygon
   collisionPoint(x, y) {
     const polygon = this;
@@ -187,7 +195,7 @@ class Polygon {
   }
 
   update(position, rotation) {
-    this.position = position;
+    this.position = position.clone();
     const r = rotation % 360;
     this.rotation = this.math.degtorad(r);
 

@@ -4,27 +4,6 @@ class Vector2 {
         this.y = y;
     }
 
-    add(other) {
-        return new Vector2(this.x + other.x, this.y + other.y);
-    }
-
-    subtract(other) {
-        return new Vector2(this.x - other.x, this.y - other.y);
-    }
-
-    multiply(scalar) {
-        return new Vector2(this.x * scalar, this.y * scalar);
-    }
-
-    magnitude() {
-        return Math.sqrt(this.x * this.x + this.y * this.y);
-    }
-
-    normalize() {
-        const mag = this.magnitude();
-        return mag === 0 ? new Vector2() : new Vector2(this.x / mag, this.y / mag);
-    }
-
     distanceTo(other) {
         return Math.sqrt((this.x - other.x) ** 2 + (this.y - other.y) ** 2);
     }

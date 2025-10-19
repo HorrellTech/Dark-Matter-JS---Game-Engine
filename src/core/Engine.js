@@ -523,19 +523,58 @@ class Engine {
         let nearest = null;
         let nearestDist = maxRange;
 
-        this.gameObjects.forEach(obj => {
-            if (obj.name === name) {
-                const dx = obj.position.x - x;
-                const dy = obj.position.y - y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    nearest = obj;
+        // Recursive helper function to traverse all objects (including children)
+        const traverse = (objects) => {
+            objects.forEach(obj => {
+                if (obj.name === name) {
+                    const dx = obj.position.x - x;
+                    const dy = obj.position.y - y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearest = obj;
+                    }
                 }
-            }
-        });
+                // Recursively check children if they exist
+                if (obj.children && obj.children.length > 0) {
+                    traverse(obj.children);
+                }
+            });
+        };
+
+        // Start traversal from the top-level gameObjects
+        traverse(this.gameObjects);
 
         return nearest;
+    }
+
+    findNearestObjectsByName(x, y, name, maxRange = Infinity) {
+        let nearestObjects = [];
+
+        // Recursive helper function to traverse all objects (including children)
+        const traverse = (objects) => {
+            objects.forEach(obj => {
+                if (obj.name === name) {
+                    const dx = obj.position.x - x;
+                    const dy = obj.position.y - y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < maxRange) {
+                        nearestObjects.push(obj);
+                    }
+                }
+                // Recursively check children if they exist
+                if (obj.children && obj.children.length > 0) {
+                    traverse(obj.children);
+                }
+            });
+        };
+
+        // Start traversal from the top-level gameObjects
+        traverse(this.gameObjects);
+
+        //console.log(`Found ${nearestObjects.length} objects named "${name}" within range ${maxRange}`);
+
+        return nearestObjects;
     }
 
     async preload() {

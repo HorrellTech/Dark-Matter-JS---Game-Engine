@@ -62,12 +62,12 @@ class GameObject {
         const hue = Math.floor(Math.random() * 360);
         const saturation = 70;
         const lightness = 60;
-        
+
         // Convert HSL to hex
         const c = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100;
         const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
         const m = lightness / 100 - c / 2;
-        
+
         let r, g, b;
         if (hue >= 0 && hue < 60) {
             r = c; g = x; b = 0;
@@ -82,11 +82,11 @@ class GameObject {
         } else {
             r = c; g = 0; b = x;
         }
-        
+
         r = Math.round((r + m) * 255);
         g = Math.round((g + m) * 255);
         b = Math.round((b + m) * 255);
-        
+
         return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
     }
 
@@ -154,7 +154,10 @@ class GameObject {
 
         // Update polygon if enabled
         if (this.usePolygonCollision && this.polygon) {
-            this.polygon.update(this.position.clone(), this.angle + this.polygonAngleOffset);
+            // Use getWorldPosition() to get the actual world coordinates
+            const worldPos = this.getWorldPosition();
+            const worldRot = this.getWorldRotation();
+            this.polygon.update(worldPos, worldRot + this.polygonAngleOffset);
         }
 
         this.modules.forEach(module => {
@@ -384,18 +387,28 @@ class GameObject {
         ctx.fill();
 
         if (!this.usePolygonCollision && this.useCollisions) {
+            // Draw an axis-aligned bounding box (ignore GameObject rotation)
+            // Calculate world-aligned size
+            const bboxWidth = this.size.x * worldScale.x;
+            const bboxHeight = this.size.y * worldScale.y;
+            const topLeftX = worldPos.x - bboxWidth / 2;
+            const topLeftY = worldPos.y - bboxHeight / 2;
+
+            // Remove local transform so we can draw in world (unrotated) space
+            ctx.restore();
+
             ctx.beginPath();
-            ctx.rect(
-                -this.size.x / 2,
-                -this.size.y / 2,
-                this.size.x,
-                this.size.y
-            );
             ctx.setLineDash([5, 3]); // Dashed line: 5px dash, 3px gap
             ctx.strokeStyle = "#00ff00";
             ctx.lineWidth = 1 / (this.editor?.camera?.zoom || 1);
-            ctx.stroke();
-            ctx.setLineDash([]); // Reset to solid for future drawing
+            ctx.strokeRect(topLeftX, topLeftY, bboxWidth, bboxHeight);
+            ctx.setLineDash([]); // Reset dashes
+
+            // Reapply the local transform for the rest of the editor drawing
+            ctx.save();
+            ctx.translate(worldPos.x, worldPos.y);
+            ctx.rotate(worldAngle * Math.PI / 180);
+            ctx.scale(worldScale.x, worldScale.y);
         }
 
         if (this.usePolygonCollision && this.polygon) {
@@ -454,11 +467,11 @@ class GameObject {
         const worldAngle = this.getWorldRotation();
 
         // Calculate the effective width and height
-        const effectiveWidth = this.width * worldScale.x;
-        const effectiveHeight = this.height * worldScale.y;
+        const effectiveWidth = this.size.x * worldScale.x;  // Changed from this.width
+        const effectiveHeight = this.size.y * worldScale.y;  // Changed from this.height
 
-        // If there's no rotation, return a simple axis-aligned box
-        if (worldAngle % 360 === 0) {
+        // If there's no rotation, return an axis-aligned box with top-left at center minus half-size
+        /*if (worldAngle % 360 === 0) {
             return {
                 x: worldPos.x - effectiveWidth / 2,
                 y: worldPos.y - effectiveHeight / 2,
@@ -466,15 +479,15 @@ class GameObject {
                 height: effectiveHeight,
                 rotation: 0
             };
-        }
+        }*/
 
-        // For rotated objects, return an oriented bounding box
+        // For rotated objects, return an oriented bounding box (centered)
         return {
             x: worldPos.x,
             y: worldPos.y,
             width: effectiveWidth,
             height: effectiveHeight,
-            rotation: worldAngle
+            rotation: 0
         };
     }
 
@@ -554,9 +567,21 @@ class GameObject {
         }
 
         // Skip collision check if collision layers don't match
-        if ((this.collisionLayer & other.collisionMask) === 0 &&
-            (other.collisionLayer & this.collisionMask) === 0) {
+        if (this.collisionLayer != other.collisionLayer) {
             return false;
+        }
+
+        if (this.usePolygonCollision && other.usePolygonCollision && this.polygon && other.polygon) {
+            return this.collidesWithPolygon(other);
+        }
+
+        // If using polygon collision and the other is using rectangular, check polygon vs rectangle
+        if (this.usePolygonCollision && (!other.usePolygonCollision && other.useCollisions) && this.polygon) {
+            return this.polygon.collidesWithRectangle(other.getBoundingBox());
+        }
+
+        if ((!this.usePolygonCollision && this.useCollisions) && other.usePolygonCollision && other.polygon) {
+            return other.polygon.collidesWithRectangle(this.getBoundingBox());
         }
 
         // Get bounding boxes
@@ -570,6 +595,90 @@ class GameObject {
             thisBox.y < otherBox.y + otherBox.height &&
             thisBox.y + thisBox.height > otherBox.y
         );
+    }
+
+    /**
+     * Check if this GameObject collides with an object at an offset from its position
+     * @param {GameObject} other - The other GameObject to check collision with
+     * @param {number} x - The x-coordinate to check collision at (in world space)
+     * @param {number} y - The y-coordinate to check collision at (in world space)
+     * @returns {boolean} True if colliding
+     */
+    collidesWithPosition(other, x, y) {
+        //console.log(`[Collision Debug] Checking collision for ${this.name} with ${other.name} at position (${x}, y)`);
+
+        // Skip collision check if either object has collisions disabled
+        if (!this.collisionEnabled || !other.collisionEnabled) {
+            //console.log(`[Collision Debug] Collision skipped: ${this.name} enabled=${this.collisionEnabled}, ${other.name} enabled=${other.collisionEnabled}`);
+            return false;
+        }
+
+        // Skip collision check if collision layers don't match
+        if (this.collisionLayer != other.collisionLayer) {
+            //console.log(`[Collision Debug] Collision skipped: Layer mismatch. ${this.name} layer=${this.collisionLayer} mask=${this.collisionMask}, ${other.name} layer=${other.collisionLayer} mask=${other.collisionMask}`);
+            return false;
+        }
+
+        if (this.usePolygonCollision && other.usePolygonCollision && this.polygon && other.polygon) {
+            //console.log(`[Collision Debug] Performing polygon-polygon collision check`);
+            // Create temporary polygon for this at (x, y)
+            const tempPolygon = this.polygon.clone();
+            // Apply the offset to the world position
+            const worldPos = this.getWorldPosition();
+            tempPolygon.update(new Vector2(worldPos.x + x, worldPos.y + y), this.angle + this.polygonAngleOffset);
+            const result = tempPolygon.collidesWith(other.polygon);
+            //console.log(`[Collision Debug] Polygon-polygon result: ${result}`);
+            return result;
+        }
+
+        // If using polygon collision and the other is using rectangular, check polygon vs rectangle
+        if (this.usePolygonCollision && (!other.usePolygonCollision && other.useCollisions) && this.polygon) {
+            //console.log(`[Collision Debug] Performing polygon-rectangle collision check`);
+            const tempPolygon = this.polygon.clone();
+            const worldPos = this.getWorldPosition();
+            tempPolygon.update(new Vector2(worldPos.x + x, worldPos.y + y), this.angle + this.polygonAngleOffset);
+            const result = tempPolygon.collidesWithRectangle(other.getBoundingBox());
+            //console.log(`[Collision Debug] Polygon-rectangle result: ${result}`);
+            return result;
+        }
+
+        if ((!this.usePolygonCollision && this.useCollisions) && other.usePolygonCollision && other.polygon) {
+            //console.log(`[Collision Debug] Performing rectangle-polygon collision check`);
+            // Check other polygon vs this rectangle at (x, y)
+            const worldPos = this.getWorldPosition();  // ✅ Use world position for correct offset
+            const thisBox = {
+                x: worldPos.x + x,  // ✅ Apply offset to world position
+                y: worldPos.y + y,
+                width: this.size.x * this.getWorldScale().x,
+                height: this.size.y * this.getWorldScale().y,
+                rotation: this.getWorldRotation()
+            };
+            const result = other.polygon.collidesWithRectangle(thisBox);
+            //console.log(`[Collision Debug] Rectangle-polygon result: ${result}`);
+            return result;
+        }
+
+        //console.log(`[Collision Debug] Performing AABB collision check`);
+        // Get bounding boxes, offsetting thisBox by (x, y) for the hypothetical position
+        const worldPos = this.getWorldPosition();  // ✅ Use world position for correct offset
+        const thisBox = {
+            x: worldPos.x + x,  // ✅ Apply offset to world position
+            y: worldPos.y + y,
+            width: this.size.x * this.getWorldScale().x,
+            height: this.size.y * this.getWorldScale().y,
+            rotation: this.getWorldRotation()
+        };
+        const otherBox = other.getBoundingBox();
+
+        // AABB collision check (ignoring rotation)
+        const result = (
+            thisBox.x < otherBox.x + otherBox.width &&
+            thisBox.x + thisBox.width > otherBox.x &&
+            thisBox.y < otherBox.y + otherBox.height &&
+            thisBox.y + thisBox.height > otherBox.y
+        );
+        //console.log(`[Collision Debug] AABB result: ${result}. thisBox: ${JSON.stringify(thisBox)}, otherBox: ${JSON.stringify(otherBox)}`);
+        return result;
     }
 
     /*
@@ -604,6 +713,51 @@ class GameObject {
      */
     setCollisionEnabled(enabled) {
         this.collisionEnabled = enabled;
+    }
+
+    /**
+     * Check if a point (x, y) is inside the collider bounds of this GameObject
+     * @param {number} x - The x-coordinate of the point (in world space)
+     * @param {number} y - The y-coordinate of the point (in world space)
+     * @returns {boolean} True if the point is inside the collider bounds and collisions are enabled
+     */
+    pointInside(x, y) {
+        // Return false if collisions are not enabled
+        if (!this.collisionEnabled) {
+            return false;
+        }
+
+        // If using polygon collision, check against the polygon
+        if (this.usePolygonCollision && this.polygon) {
+            return this.polygon.collisionPoint(x, y);
+        }
+
+        // Otherwise, check against rectangular bounds
+        // Get world transform
+        const worldPos = this.getWorldPosition();
+        const worldAngle = this.getWorldRotation();
+        const worldScale = this.getWorldScale();
+
+        // Transform point to local space
+        let dx = x - worldPos.x;
+        let dy = y - worldPos.y;
+
+        // Rotate by negative world angle
+        const cosAngle = Math.cos(-worldAngle * Math.PI / 180);
+        const sinAngle = Math.sin(-worldAngle * Math.PI / 180);
+        let localX = dx * cosAngle - dy * sinAngle;
+        let localY = dx * sinAngle + dy * cosAngle;
+
+        // Scale
+        localX /= worldScale.x;
+        localY /= worldScale.y;
+
+        // Check if within rectangular bounds (centered at origin)
+        const halfWidth = this.size.x / 2;
+        const halfHeight = this.size.y / 2;
+
+        return localX >= -halfWidth && localX <= halfWidth &&
+            localY >= -halfHeight && localY <= halfHeight;
     }
 
     /**
@@ -649,12 +803,12 @@ class GameObject {
         this.polygonPoints = [];
         for (let i = 0; i < count; i++) {
             const angle = (2 * Math.PI * i) / count;
+            // Create points in WORLD space
             const x = this.position.x + Math.cos(angle) * radius;
             const y = this.position.y + Math.sin(angle) * radius;
-            // Points should be relative to (0,0), not this.position
             this.polygonPoints.push(new Vector2(x, y));
         }
-        // Always center polygon at the GameObject's position
+        // Pass position and WORLD points
         this.polygon = new Polygon(this, this.position.clone(), ...this.polygonPoints.map(pt => pt.clone()));
     }
 

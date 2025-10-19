@@ -1217,7 +1217,7 @@ class ExportManager {
             'PlatformControllerMatter': 'src/core/Modules/Matter-js/PlatformControllerMatter.js',*/
 
             'BasicPhysics': 'src/core/Modules/Movement/BasicPhysics.js',
-            //'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
+            'PhysicsKeyboardController': 'src/core/Modules/Movement/PhysicsKeyboardController.js',
 
             // Other Modules
             //'SimpleHealth': 'src/core/Modules/SimpleHealth.js',

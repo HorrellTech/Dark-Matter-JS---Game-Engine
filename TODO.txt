@@ -22,3 +22,5 @@ user will be able to manipulate the spline in the editor, updating its values.
 - Add a property type for code, so people can have custom code run on events within their module
 
 - Make drawing modules start with their game object width and height as size
+
+- object collisions are this.collisionBox is not the correct position

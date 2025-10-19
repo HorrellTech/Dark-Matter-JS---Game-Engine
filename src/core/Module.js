@@ -296,6 +296,76 @@ class Module {
         return null;
     }
 
+    /**
+     * Check if there is a GameObject with the given name colliding at the specified position relative to this object position
+     * @param {string} name - The name of the GameObject
+     * @param {number} x - The x-coordinate to check (default: 0)
+     * @param {number} y - The y-coordinate to check (default: 0)
+     * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
+     * @returns {boolean} True if a collision is detected, false otherwise
+     */
+    objectCollision(name, x = 0, y = 0, rangeFromPoint = Infinity) {
+        const objects = window.engine.findNearestObjectsByName(x, y, name, rangeFromPoint);
+
+        if (objects && objects.length > 0) {
+            for (const obj of objects) {
+                if (obj.name === name) {
+                    if (x === 0 && y === 0) {
+                        if (this.gameObject.collidesWith(obj)) {
+                            return true;
+                        }
+                    } else {
+                        if (this.gameObject.collidesWithPosition(obj, x, y)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Find the nearest instance of a GameObject by name within a certain distance of this object
+     * @param {string} name - The name of the GameObject to find
+     * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
+     * @returns {GameObject|null} The nearest GameObject or null if none found
+     */
+    objectNearest(name, rangeFromPoint = Infinity) {
+        const object = window.engine.findNearestObjectByName(name, this.gameObject.position.x, this.gameObject.position.y, rangeFromPoint);
+
+        if (object) {
+            return object;
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if there is a GameObject with the given name at the specified position
+     * @param {string} name - The name of the GameObject
+     * @param {number} x - The x-coordinate to check
+     * @param {number} y - The y-coordinate to check
+     * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
+     * @returns {Vector2|null} The position of the GameObject or null if not found
+     */
+    objectPosition(name, x, y, rangeFromPoint = Infinity) {
+        const objects = window.engine.findNearestObjectsByName(name, x, y, rangeFromPoint);
+        
+        if (objects && objects.length > 0) {
+            for (const obj of objects) {
+                if (obj.name === name) {
+                    if (obj.pointInside(x, y)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     findGameObject(name) {
         return this.getGameObjectByName(name);
     }
