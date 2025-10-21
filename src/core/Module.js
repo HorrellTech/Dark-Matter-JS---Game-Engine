@@ -83,11 +83,11 @@ class Module {
      */
     async preload() {
         // Override in subclass to implement custom loading behavior
-        if(!this.input) {
+        if (!this.input) {
             this.input = window.input;
         }
 
-        if(!this.engine) {
+        if (!this.engine) {
             this.engine = window.engine;
         }
     }
@@ -282,7 +282,7 @@ class Module {
 
         return window.engine.getAllObjects();
     }
-        
+
     /**
      * Get a GameObject by its name
      * @param {string} name - The name of the GameObject to find
@@ -297,33 +297,62 @@ class Module {
     }
 
     /**
-     * Check if there is a GameObject with the given name colliding at the specified position relative to this object position
-     * @param {string} name - The name of the GameObject
-     * @param {number} x - The x-coordinate to check (default: 0)
-     * @param {number} y - The y-coordinate to check (default: 0)
-     * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
-     * @returns {boolean} True if a collision is detected, false otherwise
-     */
+ * Check for GameObjects with the given name colliding at the specified position relative to this object's position
+ * @param {string} name - The name of the GameObject
+ * @param {number} x - The x-offset from this object's position to check (default: 0)
+ * @param {number} y - The y-offset from this object's position to check (default: 0)
+ * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
+ * @returns {Array<GameObject>|null} Array of collided GameObjects or null if none found
+ */
     objectCollision(name, x = 0, y = 0, rangeFromPoint = Infinity) {
-        const objects = window.engine.findNearestObjectsByName(x, y, name, rangeFromPoint);
+        //console.log(`[DEBUG] objectCollision called for name: ${name}, x: ${x}, y: ${y}, range: ${rangeFromPoint}`);  // Temporary debug
 
-        if (objects && objects.length > 0) {
-            for (const obj of objects) {
-                if (obj.name === name) {
-                    if (x === 0 && y === 0) {
-                        if (this.gameObject.collidesWith(obj)) {
-                            return true;
-                        }
-                    } else {
-                        if (this.gameObject.collidesWithPosition(obj, x, y)) {
-                            return true;
-                        }
-                    }
+        if (!window.engine || !this.gameObject) return null;
+
+        // Adjust x and y to be relative to this object's position (assuming relativity as per docstring)
+        const worldPosition = this.gameObject.getWorldPosition();
+        const absoluteX = x;
+        const absoluteY = y;
+
+        const objects = window.engine.findNearestObjectsByName(absoluteX, absoluteY, name, rangeFromPoint);
+
+        if (!objects || objects.length === 0) return null;
+
+        const collided = [];
+        for (const obj of objects) {
+            // Redundant check removed since findNearestObjectsByName should already filter by name
+            //if (x === 0 && y === 0) {
+            //    if (this.gameObject.collidesWith(obj)) {
+            //        collided.push(obj);
+            //    }
+            //} else {
+                if (this.gameObject.collidesWithPosition(obj, absoluteX, absoluteY)) {
+                    collided.push(obj);
+
+                    //console.log(`[DEBUG] Collision detected with ${obj.name} at (${absoluteX}, ${absoluteY})`);
                 }
-            }
+            //}
         }
 
-        return false;
+        if (collided.length > 0) {
+            // Optional: Make logging conditional or remove for production
+            //console.log("Collided objects:", collided);
+            return collided;
+        }
+
+        //console.log("[DEBUG] No collisions detected.");
+
+        return null;
+    }
+
+    objectCollisionFirst(name, x = 0, y = 0, rangeFromPoint = Infinity) {
+        const collisions = this.objectCollision(name, x, y, rangeFromPoint);
+
+        if (collisions && collisions.length > 0) {
+            return collisions[0];
+        }
+
+        return null;
     }
 
     /**
@@ -333,7 +362,7 @@ class Module {
      * @returns {GameObject|null} The nearest GameObject or null if none found
      */
     objectNearest(name, rangeFromPoint = Infinity) {
-        const object = window.engine.findNearestObjectByName(name, this.gameObject.position.x, this.gameObject.position.y, rangeFromPoint);
+        const object = window.engine.findNearestObjectByName(this.gameObject.position.x, this.gameObject.position.y, name, rangeFromPoint);
 
         if (object) {
             return object;
@@ -352,18 +381,25 @@ class Module {
      */
     objectPosition(name, x, y, rangeFromPoint = Infinity) {
         const objects = window.engine.findNearestObjectsByName(name, x, y, rangeFromPoint);
-        
+
+        const foundObjects = [];
+
         if (objects && objects.length > 0) {
             for (const obj of objects) {
                 if (obj.name === name) {
                     if (obj.pointInside(x, y)) {
-                        return true;
+                        foundObjects.push(obj);
                     }
                 }
             }
         }
 
-        return false;
+        if (foundObjects.length > 0) {
+            // Return the first found object
+            return foundObjects;
+        }
+
+        return null;
     }
 
     findGameObject(name) {
@@ -391,12 +427,12 @@ class Module {
 
             if (obj) {
                 const clone = obj.clone();
-                
+
                 clone.position.x = x;
                 clone.position.y = y;
-                
+
                 if (destroyOriginal) {
-                    
+
                     if (obj.parent) {
                         obj.parent.removeChild(obj);
                     }
@@ -437,7 +473,7 @@ class Module {
         try {
             // Use the engine's instantiatePrefab method
             const instantiated = await window.engine.instantiatePrefab(prefabName, x, y);
-            
+
             if (instantiated) {
                 console.log(`Module ${this.name} created prefab instance '${prefabName}' at (${Math.round(x)}, ${Math.round(y)})`);
                 return instantiated;

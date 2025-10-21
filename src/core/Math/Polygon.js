@@ -42,15 +42,14 @@ class Polygon {
       }
     }
 
-
     // Collision detected
     return true;
   }
 
-  collidesWithRectangle(rectangle) {
+  collidesWithRectangle(rectangle, parent) {
     const rectanglePolygon = Polygon.rectangle(
-      new Vector2(rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2),
-      new Vector2(rectangle.width / 2, rectangle.height / 2)
+      new Vector2(rectangle.x, rectangle.y),
+      rectangle.width, rectangle.height, parent
     );
     return this.collidesWith(rectanglePolygon);
   }

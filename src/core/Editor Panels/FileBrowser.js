@@ -2452,6 +2452,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                 await this.directoryTree.refreshFolder(item.parentPath);
             }
 
+            // After the transaction completes successfully
+            if (window.scriptEditor && window.scriptEditor.currentFilePath === path) {
+                window.scriptEditor.currentFilePath = newPath;
+            }
+
             await this.loadContent(this.currentPath);
         } catch (error) {
             console.error('Failed to rename item:', error);
@@ -4468,6 +4473,11 @@ window.${pascalCaseName} = ${pascalCaseName};
                 request.onsuccess = resolve;
                 request.onerror = (e) => reject(e.target.error);
             });
+
+            // After the transaction completes successfully
+            if (window.scriptEditor && window.scriptEditor.currentFilePath === sourcePath) {
+                window.scriptEditor.currentFilePath = destPath;
+            }
 
             return true;
         } catch (error) {

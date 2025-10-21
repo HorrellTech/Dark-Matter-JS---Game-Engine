@@ -26,6 +26,9 @@ class Engine {
         this.running = false;
         this.preloaded = false;
 
+        this.timeScale = 1.0; // Global time scale for the engine, to be used in physics operations
+        this.paused = false; // Global pause state for the engine
+
         this.decalCanvas = document.createElement('canvas');
         this.decalCanvas.width = 800;
         this.decalCanvas.height = 600;
@@ -572,9 +575,13 @@ class Engine {
         // Start traversal from the top-level gameObjects
         traverse(this.gameObjects);
 
+        if (nearestObjects.length > 0) {
+            return nearestObjects;
+        }
+
         //console.log(`Found ${nearestObjects.length} objects named "${name}" within range ${maxRange}`);
 
-        return nearestObjects;
+        return null;
     }
 
     async preload() {
@@ -1157,10 +1164,13 @@ class Engine {
             this.updateViewport();
         }
 
-        // Update decal chunks for fading
-        this.decalChunks.forEach(chunk => chunk.update(deltaTime));
+        if (!this.paused) {
+            // Update decal chunks for fading
+            this.decalChunks.forEach(chunk => chunk.update(deltaTime));
 
-        this.update(deltaTime);
+            this.update(deltaTime);
+        }
+
         this.draw();
 
         // Update input manager at the end of the frame
@@ -1365,6 +1375,19 @@ class Engine {
         }
 
         this.ctx.restore();
+
+        // If paused, draw a mostly transparent overlay with a screen effect "Paused" text in top left corner
+        if (this.paused) {
+            this.ctx.save();
+            this.ctx.globalAlpha = 0.8;
+            this.ctx.fillStyle = "#000000";
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            this.ctx.globalAlpha = 1.0;
+            this.ctx.fillStyle = "#ffffff";
+            this.ctx.font = "10px Arial";
+            this.ctx.fillText("Paused", 5, 5);
+            this.ctx.restore();
+        }
 
         // Draw GUI canvas AFTER restoring transform (GUI should not be affected by viewport)
         if (this.guiCanvas) {

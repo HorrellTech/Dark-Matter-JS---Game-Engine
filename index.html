@@ -394,9 +394,34 @@
             transform: scale(1.08);
             box-shadow: 0 0 32px 12px #8b5cf6cc, 0 2px 12px #000a;
         }
+        #floating-docs-btn {
+            position: fixed;
+            bottom: 120px;
+            right: 32px;
+            z-index: 1500;
+            background: linear-gradient(135deg, #c5b522 60%, #a3a116 100%);
+            color: #fff;
+            border: none;
+            border-radius: 50px;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 700;
+            box-shadow: 0 0 24px 8px rgba(197, 186, 34, 0.6), 0 2px 8px #0008;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: glowPulse2 1s infinite alternate;
+        }
+        #floating-docs-btn:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 32px 12px rgba(197, 186, 34, 0.8), 0 2px 12px #000a;
+        }
+        @keyframes glowPulse2 {
+            from { box-shadow: 0 0 4px 4px rgba(197, 194, 34, 0.6), 0 2px 4px #0008; }
+            to   { box-shadow: 0 0 8px 8px rgba(163, 142, 22, 0.8), 0 2px 8px #000a; }
+        }
         @keyframes glowPulse {
-            from { box-shadow: 0 0 24px 8px #6366f1a0, 0 2px 8px #0008; }
-            to   { box-shadow: 0 0 40px 16px #8b5cf6cc, 0 2px 16px #000a; }
+            from { box-shadow: 0 0 4px 4px #6366f1a0, 0 2px 2px #0008; }
+            to   { box-shadow: 0 0 8px 8px #5c9af6cc, 0 2px 4px #000a; }
         }
 
         /* Responsive: 1 column on mobile, 2 on tablet */
@@ -411,6 +436,12 @@
             }
         }
     </style>
+    
+    <link rel="stylesheet" href="src/styles/documentation-modal.css">
+
+    <script src="src/core/Keywords.js"></script>
+    <script src="src/core/Windows/Documentation.js"></script>
+    <script src="src/SpriteCodeDocs.js"></script>
 </head>
 
 <body>
@@ -1092,9 +1123,34 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
                 window.open('DarkMatter.html', '_blank');
             };
 
+            document.getElementById('floating-docs-btn').onclick = function () {
+                if (window.docsModal) {
+                        console.log('Documentation button clicked');
+                        //window.docModal.open();
+                        //const docsModal = new Documentation();
+                        //docsModal.show();
+                        window.docsModal.open();
+                } else {
+                    console.warn("Documentation button or modal not found. Creating it!");
+                    window.docsModal = new SpriteCodeDocs();
+                    const documentation = new Documentation();
+                    window.docsModal.loadFromDocumentationClass(documentation);
+                    window.docsModal.open();
+                }
+            };
+
             // Example usage: addNavLink('API', 'api');
         }
     </script>
+
+    <!--div class="mobile-detection-overlay" style="display: none;">
+        <h2>Mobile Device Detected</h2>
+        <p>Dark Matter JS works best on desktop. Would you like to use the mobile-optimized interface?</p>
+        <div>
+            <button id="enableMobileMode">Yes, use mobile mode</button>
+            <button id="disableMobileMode">No, use desktop mode</button>
+        </div>
+    </div-->
 
     <div id="image-modal"
         style="display:none; position:fixed; z-index:2000; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); align-items:center; justify-content:center;">
@@ -1102,6 +1158,9 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
             style="max-width:90vw; max-height:90vh; border-radius:12px; box-shadow:0 0 40px #000;">
     </div>
 
+    <button id="floating-docs-btn" title="Documentation">
+        📚 Docs
+    </button>
     <button id="floating-editor-btn" title="Open Editor">
         🚀 Editor
     </button>

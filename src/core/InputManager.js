@@ -280,6 +280,7 @@ class InputManager {
 
         const key = e.key.toLowerCase();
         this.keys[key] = false;
+        this.keysDown[key] = false;
         this.keysUp[key] = true;
     }
 

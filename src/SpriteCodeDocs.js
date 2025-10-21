@@ -3,14 +3,14 @@ class SpriteCodeDocs {
     // Theme configuration - easy to modify
     this.theme = {
       // Colors
-      primary: options.primaryColor || '#dbe2f1ff',
-      primaryHover: options.primaryHoverColor || '#9d9e9eff',
-      background: options.backgroundColor || '#1b1b1bff',
-      sidebarBg: options.sidebarBackground || '#0e0e0eff',
-      textPrimary: options.textPrimary || '#a3b6d1ff',
-      textSecondary: options.textSecondary || '#808691ff',
-      border: options.borderColor || '#636974ff',
-      hover: options.hoverColor || '#4b5b7eff',
+      primary: options.primaryColor || '#743ea7ff',
+      primaryHover: options.primaryHoverColor || '#3c275fff',
+      background: options.backgroundColor || '#1a1a2e',
+      sidebarBg: options.sidebarBackground || '#0f0f23',
+      textPrimary: options.textPrimary || '#d8b4fe',
+      textSecondary: options.textSecondary || '#a78bfa',
+      border: options.borderColor || '#6b46c1',
+      hover: options.hoverColor || '#8b5cf6',
 
       // Sizes
       modalWidth: options.modalWidth || '90vw',
@@ -132,6 +132,7 @@ class SpriteCodeDocs {
       border-right: 1px solid ${this.theme.border};
       overflow-y: auto;
       padding: 16px 0;
+      -webkit-overflow-scrolling: touch;
     `;
 
     // Create main content
@@ -142,6 +143,7 @@ class SpriteCodeDocs {
       padding: 24px;
       overflow-y: auto;
       background: ${this.theme.background};
+      -webkit-overflow-scrolling: touch;
     `;
 
     const placeholder = document.createElement('div');
@@ -176,6 +178,38 @@ class SpriteCodeDocs {
       }
     `;
     document.head.appendChild(shineStyle);
+
+    // Add custom scrollbar styles
+    const scrollbarStyle = document.createElement('style');
+    scrollbarStyle.textContent = `
+      .docs-sidebar::-webkit-scrollbar {
+        width: 8px;
+      }
+      .docs-sidebar::-webkit-scrollbar-track {
+        background: ${this.theme.sidebarBg};
+      }
+      .docs-sidebar::-webkit-scrollbar-thumb {
+        background: ${this.theme.primary};
+        border-radius: 4px;
+      }
+      .docs-sidebar::-webkit-scrollbar-thumb:hover {
+        background: ${this.theme.primaryHover};
+      }
+      .docs-content::-webkit-scrollbar {
+        width: 8px;
+      }
+      .docs-content::-webkit-scrollbar-track {
+        background: ${this.theme.background};
+      }
+      .docs-content::-webkit-scrollbar-thumb {
+        background: ${this.theme.primary};
+        border-radius: 4px;
+      }
+      .docs-content::-webkit-scrollbar-thumb:hover {
+        background: ${this.theme.primaryHover};
+      }
+    `;
+    document.head.appendChild(scrollbarStyle);
 
     // Assemble modal
     content.appendChild(sidebar);

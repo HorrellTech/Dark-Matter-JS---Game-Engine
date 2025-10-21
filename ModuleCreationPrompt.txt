@@ -73,6 +73,14 @@ class MyModule extends Module {
         // Update logic every frame
         // deltaTime is in seconds
         this.gameObject.position.x += this.speed * deltaTime;
+
+        // BBOX Collision Detection (check collision bottom of the object 1 pixel, and return the game objects if there is a collision)
+        const ground = this.objectPosition("objectName", 0, 1);
+
+
+        if(ground.length > 0) {
+            this.fallSpeed = 0;
+        }
     }
 
     draw(ctx) {

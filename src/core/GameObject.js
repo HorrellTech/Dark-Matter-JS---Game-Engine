@@ -470,25 +470,22 @@ class GameObject {
         const effectiveWidth = this.size.x * worldScale.x;  // Changed from this.width
         const effectiveHeight = this.size.y * worldScale.y;  // Changed from this.height
 
-        // If there's no rotation, return an axis-aligned box with top-left at center minus half-size
-        /*if (worldAngle % 360 === 0) {
-            return {
-                x: worldPos.x - effectiveWidth / 2,
-                y: worldPos.y - effectiveHeight / 2,
-                width: effectiveWidth,
-                height: effectiveHeight,
-                rotation: 0
-            };
-        }*/
-
         // For rotated objects, return an oriented bounding box (centered)
         return {
             x: worldPos.x,
             y: worldPos.y,
             width: effectiveWidth,
             height: effectiveHeight,
+            left: worldPos.x - effectiveWidth / 2,
+            top: worldPos.y - effectiveHeight / 2,
+            right: worldPos.x + effectiveWidth / 2,
+            bottom: worldPos.y + effectiveHeight / 2,
             rotation: 0
         };
+    }
+
+    get bbox() {
+        return this.getBoundingBox();
     }
 
     /**
@@ -571,29 +568,16 @@ class GameObject {
             return false;
         }
 
-        if (this.usePolygonCollision && other.usePolygonCollision && this.polygon && other.polygon) {
-            return this.collidesWithPolygon(other);
-        }
-
-        // If using polygon collision and the other is using rectangular, check polygon vs rectangle
-        if (this.usePolygonCollision && (!other.usePolygonCollision && other.useCollisions) && this.polygon) {
-            return this.polygon.collidesWithRectangle(other.getBoundingBox());
-        }
-
-        if ((!this.usePolygonCollision && this.useCollisions) && other.usePolygonCollision && other.polygon) {
-            return other.polygon.collidesWithRectangle(this.getBoundingBox());
-        }
-
         // Get bounding boxes
         const thisBox = this.getBoundingBox();
         const otherBox = other.getBoundingBox();
 
-        // AABB collision check (ignoring rotation)
+        // AABB collision check using correct edges (left/right/top/bottom)
         return (
-            thisBox.x < otherBox.x + otherBox.width &&
-            thisBox.x + thisBox.width > otherBox.x &&
-            thisBox.y < otherBox.y + otherBox.height &&
-            thisBox.y + thisBox.height > otherBox.y
+            thisBox.left < otherBox.right &&
+            thisBox.right > otherBox.left &&
+            thisBox.top < otherBox.bottom &&
+            thisBox.bottom > otherBox.top
         );
     }
 
@@ -605,80 +589,48 @@ class GameObject {
      * @returns {boolean} True if colliding
      */
     collidesWithPosition(other, x, y) {
-        //console.log(`[Collision Debug] Checking collision for ${this.name} with ${other.name} at position (${x}, y)`);
+        //console.log(`[DEBUG] Checking collidesWithPosition: this=${this.name}, other=${other.name}, x=${x}, y=${y}`);
+        //console.log(`[DEBUG] this.collisionEnabled=${this.collisionEnabled}, other.collisionEnabled=${other.collisionEnabled}`);
+        //console.log(`[DEBUG] this.collisionLayer=${this.collisionLayer}, other.collisionLayer=${other.collisionLayer}`);
 
-        // Skip collision check if either object has collisions disabled
         if (!this.collisionEnabled || !other.collisionEnabled) {
-            //console.log(`[Collision Debug] Collision skipped: ${this.name} enabled=${this.collisionEnabled}, ${other.name} enabled=${other.collisionEnabled}`);
+            //console.log(`[DEBUG] Collision disabled`);
             return false;
         }
-
-        // Skip collision check if collision layers don't match
         if (this.collisionLayer != other.collisionLayer) {
-            //console.log(`[Collision Debug] Collision skipped: Layer mismatch. ${this.name} layer=${this.collisionLayer} mask=${this.collisionMask}, ${other.name} layer=${other.collisionLayer} mask=${other.collisionMask}`);
+            //console.log(`[DEBUG] Layer mismatch`);
             return false;
         }
 
-        if (this.usePolygonCollision && other.usePolygonCollision && this.polygon && other.polygon) {
-            //console.log(`[Collision Debug] Performing polygon-polygon collision check`);
-            // Create temporary polygon for this at (x, y)
-            const tempPolygon = this.polygon.clone();
-            // Apply the offset to the world position
-            const worldPos = this.getWorldPosition();
-            tempPolygon.update(new Vector2(worldPos.x + x, worldPos.y + y), this.angle + this.polygonAngleOffset);
-            const result = tempPolygon.collidesWith(other.polygon);
-            //console.log(`[Collision Debug] Polygon-polygon result: ${result}`);
-            return result;
-        }
+        const worldPos = this.getWorldPosition();
+        const worldScale = this.getWorldScale();
+        const worldAngle = this.getWorldRotation();
 
-        // If using polygon collision and the other is using rectangular, check polygon vs rectangle
-        if (this.usePolygonCollision && (!other.usePolygonCollision && other.useCollisions) && this.polygon) {
-            //console.log(`[Collision Debug] Performing polygon-rectangle collision check`);
-            const tempPolygon = this.polygon.clone();
-            const worldPos = this.getWorldPosition();
-            tempPolygon.update(new Vector2(worldPos.x + x, worldPos.y + y), this.angle + this.polygonAngleOffset);
-            const result = tempPolygon.collidesWithRectangle(other.getBoundingBox());
-            //console.log(`[Collision Debug] Polygon-rectangle result: ${result}`);
-            return result;
-        }
+        // Calculate the effective width and height
+        const effectiveWidth = this.size.x * worldScale.x;  // Changed from this.width
+        const effectiveHeight = this.size.y * worldScale.y;  // Changed from this.height
 
-        if ((!this.usePolygonCollision && this.useCollisions) && other.usePolygonCollision && other.polygon) {
-            //console.log(`[Collision Debug] Performing rectangle-polygon collision check`);
-            // Check other polygon vs this rectangle at (x, y)
-            const worldPos = this.getWorldPosition();  // ✅ Use world position for correct offset
-            const thisBox = {
-                x: worldPos.x + x,  // ✅ Apply offset to world position
-                y: worldPos.y + y,
-                width: this.size.x * this.getWorldScale().x,
-                height: this.size.y * this.getWorldScale().y,
-                rotation: this.getWorldRotation()
-            };
-            const result = other.polygon.collidesWithRectangle(thisBox);
-            //console.log(`[Collision Debug] Rectangle-polygon result: ${result}`);
-            return result;
-        }
-
-        //console.log(`[Collision Debug] Performing AABB collision check`);
-        // Get bounding boxes, offsetting thisBox by (x, y) for the hypothetical position
-        const worldPos = this.getWorldPosition();  // ✅ Use world position for correct offset
+        // For rotated objects, return an oriented bounding box (centered)
         const thisBox = {
-            x: worldPos.x + x,  // ✅ Apply offset to world position
-            y: worldPos.y + y,
-            width: this.size.x * this.getWorldScale().x,
-            height: this.size.y * this.getWorldScale().y,
-            rotation: this.getWorldRotation()
+            x: worldPos.x,
+            y: worldPos.y,
+            width: effectiveWidth,
+            height: effectiveHeight,
+            left: worldPos.x - effectiveWidth / 2,
+            top: worldPos.y - effectiveHeight / 2,
+            right: worldPos.x + effectiveWidth / 2,
+            bottom: worldPos.y + effectiveHeight / 2,
+            rotation: 0
         };
         const otherBox = other.getBoundingBox();
+        //console.log(`[DEBUG] this edges: L=${thisLeft}, R=${thisRight}, T=${thisTop}, B=${thisBottom}`);
 
-        // AABB collision check (ignoring rotation)
-        const result = (
-            thisBox.x < otherBox.x + otherBox.width &&
-            thisBox.x + thisBox.width > otherBox.x &&
-            thisBox.y < otherBox.y + otherBox.height &&
-            thisBox.y + thisBox.height > otherBox.y
+        return (
+            thisBox.left < otherBox.right &&
+            thisBox.right > otherBox.left &&
+            thisBox.top < otherBox.bottom &&
+            thisBox.bottom > otherBox.top
         );
-        //console.log(`[Collision Debug] AABB result: ${result}. thisBox: ${JSON.stringify(thisBox)}, otherBox: ${JSON.stringify(otherBox)}`);
-        return result;
     }
 
     /*
@@ -1730,7 +1682,7 @@ class GameObject {
      * Clone this GameObject, including all modules and children
      * @returns {GameObject} A deep copy of this GameObject
      */
-    clone(addNameCopySuffix = true) {
+    clone(addNameCopySuffix = false) {
         const originalGameObject = this;
 
         // Create new GameObject
