@@ -2557,7 +2557,7 @@ class Inspector {
             case 'number':
                 return `
                 <div class="property-row" style="${rowStyle}">
-                    ${labelHtml}
+                    <label for="${inputId}" title="${tooltip}" style="${prop.options?.textColor ? `color:${prop.options.textColor};` : ''}${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
                     <input type="number" id="${inputId}" class="property-input"
                         data-prop-name="${prop.name}"
                         value="${value}"
@@ -2651,7 +2651,7 @@ class Inspector {
                 const objId = value ? value.id : null;
                 return `
                 <div class="property-row" style="${rowStyle}">
-                    ${labelHtml}
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
                     <div class="gameobject-field" data-prop-name="${prop.name}" data-object-id="${objId || ''}" style="${inputStyle}">
                         <div class="gameobject-preview" 
                             title="Drag a GameObject here or click to select">
@@ -2692,7 +2692,7 @@ class Inspector {
                 const valueStyle = prop.options?.valueStyle || '';
                 return `
                 <div class="property-row" style="${rowStyle}">
-                    ${labelHtml}
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
                     <div class="range-container">
                         <input type="range" id="${inputId}" class="property-range" 
                             data-prop-name="${prop.name}"
@@ -2709,7 +2709,7 @@ class Inspector {
                 const fileTypes = prop.options?.accept || '*';
                 return `
                 <div class="property-row" style="${rowStyle}">
-                    ${labelHtml}
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
                     <div class="file-input-container" data-prop-name="${prop.name}" style="${inputStyle}">
                         <div class="file-preview" title="Drag a file here or click to select">
                             <i class="fas fa-file"></i>
@@ -2745,12 +2745,13 @@ class Inspector {
                 return this.generateCodeUI(prop, module, value);
 
             default:
+                // For text inputs, set title to the current value for full text on hover
                 return `
                 <div class="property-row" style="${rowStyle}">
-                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${this.formatPropertyName(prop.name)}</label>
+                    <label for="${inputId}" title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
                     <input type="text" id="${inputId}" class="property-input" 
                         data-prop-name="${prop.name}" value="${value}"
-                        title="${tooltip}" style="${inputStyle}">
+                        title="${value}" style="${inputStyle}">
                     ${helpHtml}
                 </div>
             `;
@@ -3897,6 +3898,13 @@ console.log("Module name:", this.name);</pre>
                 // IMPORTANT: Update game object for immediate effect
                 updateGameObject();
             });
+
+            // For text inputs, update the title to show full text on hover
+            if (input.type === 'text') {
+                input.addEventListener('input', () => {
+                    input.title = input.value;
+                });
+            }
         });
 
         container.querySelectorAll('.property-button, .property-btn').forEach(button => {

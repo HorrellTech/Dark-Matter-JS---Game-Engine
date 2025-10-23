@@ -74,9 +74,11 @@ class MyModule extends Module {
         // deltaTime is in seconds
         this.gameObject.position.x += this.speed * deltaTime;
 
+        // Get a game object by name
+        const unitManager = this.getGameObjectByName("PlayerManager");
+
         // BBOX Collision Detection (check collision bottom of the object 1 pixel, and return the game objects if there is a collision)
         const ground = this.objectPosition("objectName", 0, 1);
-
 
         if(ground.length > 0) {
             this.fallSpeed = 0;
@@ -85,7 +87,16 @@ class MyModule extends Module {
 
     draw(ctx) {
         // Render to canvas
-        // Note: GameObject transform is automatically applied
+        // Note: GameObject transform is automatically applied if ignoreGameObjectTransform is true(default) 
+
+        // GUI drawing
+        const guiCtx = this.getGUICanvas();
+        const backgroundCTX = this.getBackgroundCanvas();
+        const mainCanvas = this.getMainCanvas();
+
+        if(guiCTX) { // Also for background or main
+            // Draw to the GUI here if needed
+        }
     }
 
     drawGizmos(ctx) {

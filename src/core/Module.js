@@ -241,6 +241,10 @@ class Module {
         return window.engine ? window.engine.getGuiCanvas() : null;
     }
 
+    getGUICanvas() {
+        return window.engine ? window.engine.getGuiCanvas() : null;
+    }
+
     getModule(moduleName) {
         if (!this.gameObject) return null;
         return this.gameObject.getModule(moduleName);

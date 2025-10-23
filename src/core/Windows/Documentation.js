@@ -562,6 +562,198 @@ onSpeedChanged(newSpeed) {
 }</code></pre>
                             </div>
                         `
+                    },
+                    "Utility Scripts": {
+                        content: `
+                            <h2>Utility Scripts</h2>
+                            <p>Utility scripts provide reusable functions that can be called globally across your project. These are simple JavaScript files that expose functions to the global <code>window</code> object, making them accessible from any module or script in your game.</p>
+                            
+                            <div class="doc-section">
+                                <h3>How Utility Scripts Work</h3>
+                                <p>Utility scripts are loaded into the global scope, allowing modules to call their functions directly. This is useful for common operations like debugging, math helpers, or UI utilities that don't need to be tied to a specific GameObject or module.</p>
+                                <ul>
+                                    <li><strong>Global Exposure</strong>: Functions are attached to <code>window</code> for easy access.</li>
+                                    <li><strong>Module Integration</strong>: Any module can call these functions without importing or requiring them.</li>
+                                    <li><strong>Example Usage</strong>: Call <code>showTestPopup();</code> from any module to trigger a test alert.</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Example Utility Script</h3>
+                                <p>Here's a simple utility script that exposes a test popup function:</p>
+                                <pre><code>function showTestPopup() {
+    alert("it's working");
+}
+
+window.showTestPopup = showTestPopup;</code></pre>
+                                <p>To use this in a module:</p>
+                                <pre><code>class MyModule extends Module {
+    start() {
+        // Call the utility function
+        showTestPopup();  // Shows an alert: "it's working"
+    }
+}</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Best Practices</h3>
+                                <ul>
+                                    <li>Keep utility scripts simple and focused on common tasks.</li>
+                                    <li>Avoid complex logic; use modules for game-specific behavior.</li>
+                                    <li>Always expose functions to <code>window</code> to make them globally accessible.</li>
+                                    <li>Test utility functions independently before integrating them into modules.</li>
+                                </ul>
+                            </div>
+                        `
+                    }
+                    // ...existing code... (rest of the "Scripting" topics remain unchanged)
+                }
+            },
+            // NEW: Add a new section for Editor Tools (inserted after "Keywords Reference")
+            "Editor Tools": {
+                icon: "fas fa-tools",
+                description: "Tools for extending the Dark Matter JS editor with custom windows and utilities",
+                topics: {
+                    "EditorWindow Overview": {
+                        content: `
+                            <h2>EditorWindow Overview</h2>
+                            <p>EditorWindow is a base class for creating custom modal or non-modal windows in the Dark Matter JS editor. It provides a foundation for building tools like inspectors, debug panels, or project managers with built-in features like dragging, resizing, and component management.</p>
+                            
+                            <div class="doc-section">
+                                <h3>Key Features</h3>
+                                <ul>
+                                    <li><strong>Modal/Non-Modal</strong>: Create popup dialogs or floating windows.</li>
+                                    <li><strong>Component API</strong>: Easily add buttons, inputs, checkboxes, and more.</li>
+                                    <li><strong>Property Exposure</strong>: Integrate with the Inspector for editable properties.</li>
+                                    <li><strong>Event Handling</strong>: Built-in support for show/hide, resize, and custom events.</li>
+                                    <li><strong>File System Integration</strong>: Save/load window data to/from files.</li>
+                                    <li><strong>Layering & Dragging</strong>: Windows can be dragged, resized, and brought to the front.</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>How to Create an Editor Window</h3>
+                                <p>To create a custom editor window, extend the <code>EditorWindow</code> class and override lifecycle methods as needed:</p>
+                                <ol>
+                                    <li>Define a subclass of <code>EditorWindow</code>.</li>
+                                    <li>Set options like width, height, and modal behavior in the constructor.</li>
+                                    <li>Use the component API (e.g., <code>addButton</code>, <code>addInput</code>) to build the UI.</li>
+                                    <li>Override methods like <code>onShow</code> or <code>onClose</code> for custom logic.</li>
+                                    <li>Call <code>show()</code> to display the window.</li>
+                                </ol>
+                                <p>EditorWindows are automatically registered globally via <code>window.EditorWindow</code>.</p>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Common Options</h3>
+                                <ul>
+                                    <li><code>width</code> / <code>height</code>: Initial window dimensions (default: 600x400).</li>
+                                    <li><code>resizable</code>: Allow resizing (default: true).</li>
+                                    <li><code>modal</code>: Block interaction with other UI (default: false).</li>
+                                    <li><code>closable</code>: Show close button (default: true).</li>
+                                    <li><code>className</code>: Custom CSS class for styling.</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Lifecycle Methods</h3>
+                                <p>Override these methods in your subclass for custom behavior:</p>
+                                <ul>
+                                    <li><code>onShow()</code>: Called when the window is displayed.</li>
+                                    <li><code>onHide()</code>: Called when the window is hidden.</li>
+                                    <li><code>onClose()</code>: Called when the window is closed.</li>
+                                    <li><code>onResize(width, height)</code>: Called when resized.</li>
+                                    <li><code>onDestroy()</code>: Called when the window is destroyed.</li>
+                                </ul>
+                            </div>
+                        `
+                    },
+                    "Basic EditorWindow Example": {
+                        content: `
+                            <h2>Basic EditorWindow Example</h2>
+                            <p>Here's a simple example of creating and using an EditorWindow. This creates a custom tool window with a button and input field.</p>
+                            
+                            <div class="doc-section">
+                                <h3>Example Code</h3>
+                                <pre><code>class MyCustomTool extends EditorWindow {
+    constructor() {
+        super("My Custom Tool", { width: 400, height: 300, modal: false });
+        
+        // Expose a property for the Inspector
+        this.exposeProperty("toolName", "string", "Default Tool", {
+            description: "Name of the tool",
+            onChange: (value) => { this.updateTitle(value); }
+        });
+        
+        this.setupUI();
+    }
+    
+    setupUI() {
+        // Add a text input
+        const nameInput = this.addInput("toolNameInput", "Tool Name", {
+            value: this.toolName,
+            onChange: (value) => { this.toolName = value; }
+        });
+        this.addContent(nameInput.parentNode);
+        
+        // Add a button
+        const testButton = this.addButton("testBtn", "Test Button", {
+            onClick: () => { alert("Button clicked! Tool: " + this.toolName); }
+        });
+        this.addContent(testButton);
+        
+        // Add a checkbox
+        const enableCheckbox = this.addCheckbox("enableFeature", "Enable Feature", {
+            checked: true,
+            onChange: (checked) => { console.log("Feature enabled:", checked); }
+        });
+        this.addContent(enableCheckbox.parentNode);
+    }
+    
+    updateTitle(newName) {
+        this.title = newName;
+        // Update the window header (if needed)
+        if (this.header) {
+            this.header.querySelector('h3').textContent = newName;
+        }
+    }
+    
+    onShow() {
+        console.log("Custom tool window shown");
+    }
+    
+    onClose() {
+        console.log("Custom tool window closed");
+    }
+}
+
+// Register globally and show
+window.MyCustomTool = MyCustomTool;
+const tool = new MyCustomTool();
+tool.show();</code></pre>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>How It Works</h3>
+                                <ul>
+                                    <li>The window extends <code>EditorWindow</code> with custom options.</li>
+                                    <li><code>setupUI()</code> uses the component API to add inputs, buttons, and checkboxes.</li>
+                                    <li>Properties are exposed for Inspector editing, with change handlers.</li>
+                                    <li>Lifecycle methods handle events like showing or closing.</li>
+                                    <li>The window is shown by calling <code>show()</code>.</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="doc-section">
+                                <h3>Tips</h3>
+                                <ul>
+                                    <li>Use <code>addContent()</code> to append custom HTML or elements.</li>
+                                    <li>Handle errors with <code>handleError()</code> for robust tools.</li>
+                                    <li>For complex UIs, consider using <code>addTextArea()</code> or <code>addSelect()</code>.</li>
+                                    <li>Test in both modal and non-modal modes.</li>
+                                </ul>
+                            </div>
+                        `
                     }
                 }
             },
