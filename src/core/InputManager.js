@@ -45,6 +45,8 @@ class InputManager {
         // DOM element to attach listeners to
         this.targetElement = document;
 
+        this.keysPressedLastFrame = {};
+
         // Flag to indicate if input is enabled
         this.enabled = true;
 
@@ -109,8 +111,12 @@ class InputManager {
      * Update input states (called at the beginning of each frame)
      */
     beginFrame() {
+        // Copy keysDown to keysPressed before resetting (for keyPressed checks)
+        //this.keysPressed = Object.assign({}, this.keysDown);
+        this.keysPressedLastFrame = Object.assign({}, this.keysDown);
+        
         // Reset frame-specific states
-        this.keysDown = {};
+        //this.keysDown = {};
         this.keysUp = {};
         this.mouseButtonsDown = { left: false, middle: false, right: false };
         this.mouseButtonsUp = { left: false, middle: false, right: false };
@@ -124,14 +130,12 @@ class InputManager {
      * Update input states (called at the end of each frame)
      */
     endFrame() {
-        // Update pressed keys (held down)
-        this.keysPressed = Object.assign({}, this.keys);
-        // Update pressed mouse buttons (held down)
-        //this.mouseButtonsPressed = Object.assign({}, this.mouseButtons);
-        // Clear ended touches
-        //this.touchesEnded = {};
-        //this.touchesStarted = {};
-
+        // Update pressed keys (pressed this frame) - moved before resets
+        //this.keysPressed = Object.assign({}, this.keysDown);
+        // Update pressed mouse buttons (pressed this frame) - moved before resets
+        //this.mouseButtonsPressed = Object.assign({}, this.mouseButtonsDown);
+        this.keysDown = {};
+        
         // Update world mouse position if engine is available
         if (this.engine && this.engine.ctx) {
             this.updateWorldMousePosition();
@@ -243,7 +247,9 @@ class InputManager {
      * @returns {boolean} True if the key was pressed this frame
      */
     keyPressed(keyCode) {
-        return this.keysDown[keyCode.toLowerCase()] === true;
+        const key = keyCode.toLowerCase();
+        // Check if key was pressed last frame (after events were processed)
+        return this.keysPressedLastFrame[key] === true;
     }
 
     /**

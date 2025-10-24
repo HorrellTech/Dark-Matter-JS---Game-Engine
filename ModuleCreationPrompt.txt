@@ -18,7 +18,7 @@ class MyModule extends Module {
     static description = "Brief description";
     static allowMultiple = false;
     static iconClass = "fas fa-cube";
-    static color = "#4CAF50"; // Optional: Custom color for module in editor
+    static color = "#3b5c3bff"; // Optional: Custom color for module in editor, better dark themed
 
     constructor() {
         super("MyModule");

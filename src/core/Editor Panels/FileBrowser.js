@@ -757,23 +757,19 @@ class FileBrowser {
                 const content = await this.readFile(file.path);
                 if (!content) continue;
 
-                const fileName = file.path.split('/').pop().split('\\').pop();
-                const className = fileName.replace('.js', '');
-                const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
-
                 if (content.includes('extends EditorWindow')) {
-                    editorWindows.push({ file, content, className: pascalClassName });
+                    editorWindows.push({ file, content });
                 } else if (content.includes('extends Module')) {
-                    modules.push({ file, content, className: pascalClassName });
+                    modules.push({ file, content });
                 } else {
-                    utilities.push({ file, content, className: pascalClassName });
+                    utilities.push({ file, content });
                 }
             }
 
             console.log(`Found ${utilities.length} utilities, ${modules.length} modules, and ${editorWindows.length} EditorWindows`);
 
             // Load utilities first (they provide dependencies)
-            for (const { file, content, className } of utilities) {
+            for (const { file, content } of utilities) {
                 try {
                     await this.loadUtilityScript(file.path, content);
                 } catch (error) {
@@ -782,7 +778,7 @@ class FileBrowser {
             }
 
             // Then load and register modules
-            for (const { file, content, className } of modules) {
+            for (const { file, content } of modules) {
                 try {
                     await this.loadAndRegisterModule(file.path, content);
                 } catch (error) {
@@ -791,14 +787,10 @@ class FileBrowser {
             }
 
             // Finally, load and register EditorWindows
-            for (const { file, content, className } of editorWindows) {
+            for (const { file, content } of editorWindows) {
                 try {
-                    // Load the script if not already loaded
-                    if (!window[className]) {
-                        await this.loadModuleScript(file.path);
-                    }
-                    // Register as EditorWindow
-                    const WindowClass = window[className];
+                    // Load the script and find the EditorWindow class
+                    const WindowClass = await this.loadEditorWindowScript(file.path);
                     if (WindowClass && this.isEditorWindowClass(WindowClass)) {
                         this.registerEditorWindow(WindowClass);
                     }
@@ -810,6 +802,96 @@ class FileBrowser {
             console.log(`Script scan complete. Loaded ${utilities.length} utilities, ${modules.length} modules, and registered ${editorWindows.length} EditorWindows.`);
         } catch (error) {
             console.error('Error scanning for scripts:', error);
+        }
+    }
+
+    /**
+     * Load an EditorWindow script and return the EditorWindow class
+     * @param {string} scriptPath - Path to the EditorWindow script
+     * @returns {Promise<Class>} The EditorWindow class
+     */
+    async loadEditorWindowScript(scriptPath) {
+        try {
+            const content = await this.readFile(scriptPath);
+            if (!content) {
+                throw new Error(`Could not read file: ${scriptPath}`);
+            }
+
+            // Basic syntax check
+            try {
+                new Function(content);
+            } catch (syntaxError) {
+                this.showNotification(`Syntax error in EditorWindow: ${syntaxError.message}`, 'error');
+                throw syntaxError;
+            }
+
+            console.log(`Loading EditorWindow script: ${scriptPath}`);
+
+            // Wrap the content to ensure global exposure
+            const wrappedContent = `
+(function() {
+    try {
+        ${content}
+    } catch (e) {
+        console.error("Error executing EditorWindow script " + "${scriptPath}" + ":", e);
+        throw e;
+    }
+})();
+`;
+
+            // Execute script in a controlled environment
+            const editorWindowClass = await new Promise((resolve, reject) => {
+                // Create and execute the script
+                const scriptElement = document.createElement('script');
+                scriptElement.id = `editor-window-script-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                scriptElement.type = 'text/javascript';
+                scriptElement.textContent = wrappedContent;
+
+                // Handle script errors
+                scriptElement.onerror = (e) => {
+                    reject(new Error(`Failed to execute script: ${e.message}`));
+                };
+
+                // Add to DOM to execute
+                document.head.appendChild(scriptElement);
+
+                // Wait a moment for script to execute
+                setTimeout(() => {
+                    // Search for ANY class that extends EditorWindow
+                    const keys = Object.keys(window);
+                    for (const key of keys) {
+                        if (typeof window[key] === 'function' &&
+                            this.isEditorWindowClass(window[key])) {
+                            console.log(`Found EditorWindow class: ${key} (from script ${scriptPath})`);
+                            resolve(window[key]);
+                            return;
+                        }
+                    }
+
+                    // If no EditorWindow-extending class found
+                    console.warn(`No EditorWindow-extending class found in ${scriptPath}`);
+                    resolve(null);
+
+                    // Clean up
+                    if (scriptElement.parentNode) {
+                        scriptElement.parentNode.removeChild(scriptElement);
+                    }
+                }, 200);
+            });
+
+            return editorWindowClass;
+        } catch (error) {
+            console.error('Error in loadEditorWindowScript:', error);
+            this.showNotification(`Error loading EditorWindow: ${error.message}`, 'error');
+            throw error;
+        } finally {
+            // Clean up script elements
+            const scriptElements = document.head.querySelectorAll('script[id^="editor-window-script-"]');
+            scriptElements.forEach(el => {
+                if (el && el.parentNode) {
+                    el.parentNode.removeChild(el);
+                }
+            });
         }
     }
 
