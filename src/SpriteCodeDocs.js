@@ -11,6 +11,7 @@ class SpriteCodeDocs {
       textSecondary: options.textSecondary || '#a78bfa',
       border: options.borderColor || '#6b46c1',
       hover: options.hoverColor || '#8b5cf6',
+      importantCategoryColor: options.importantCategoryColor || '#d8b4fe', // Bright red to stand out against the purple/dark theme
 
       // Sizes
       modalWidth: options.modalWidth || '90vw',
@@ -22,6 +23,8 @@ class SpriteCodeDocs {
       fontFamily: options.fontFamily || 'system-ui, -apple-system, sans-serif',
       fontSize: options.fontSize || '14px'
     };
+
+    this.importantCategories = options.importantCategories || ['modules', 'ai prompting'];
 
     this.isOpen = false;
     this.documentation = {};
@@ -317,10 +320,11 @@ class SpriteCodeDocs {
     Object.keys(this.documentation).forEach(category => {
       // Collapsible category header
       const categoryHeader = document.createElement('div');
+      const isImportant = this.importantCategories.some(cat => cat.toLowerCase() === category.toLowerCase());
       categoryHeader.style.cssText = `
       padding: 8px 20px;
-      font-weight: 600;
-      color: ${this.theme.textPrimary};
+      font-weight: ${isImportant ? '900' : '600'};
+      color: ${isImportant ? this.theme.importantCategoryColor : this.theme.textPrimary};
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -331,7 +335,7 @@ class SpriteCodeDocs {
       align-items: center;
       justify-content: space-between;
     `;
-      categoryHeader.textContent = category;
+      categoryHeader.textContent = isImportant ? `★ ${category}` : category;
 
       // Arrow icon
       const arrow = document.createElement('span');
@@ -451,13 +455,13 @@ class SpriteCodeDocs {
 
     contentArea.appendChild(contentContainer);
 
-    // Style common HTML elements, including code blocks
-    this.styleContentElements(contentContainer);
-
-    // Trigger Prism.js syntax highlighting
+    // Trigger Prism.js syntax highlighting BEFORE styling elements
     if (window.Prism && typeof window.Prism.highlightAll === 'function') {
       window.Prism.highlightAll();
     }
+
+    // Apply styles to common HTML elements, including code blocks
+    this.styleContentElements(contentContainer);
   }
 
   /**
@@ -832,7 +836,7 @@ window.SpriteCodeDocs = SpriteCodeDocs;
 
 // Example usage:
 /*
-const docsModal = new DocumentationModal({
+const docsModal = new SpriteCodeDocs({
   primaryColor: '#3b82f6',
   modalWidth: '85vw',
   modalHeight: '75vh'

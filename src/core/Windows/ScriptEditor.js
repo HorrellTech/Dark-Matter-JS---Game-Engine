@@ -2114,34 +2114,57 @@ class ScriptEditor {
         }
     }
 
+    /**
+     * Load code content directly (for inline editing, not tied to a file)
+     * @param {string} content - The code to load
+     * @param {function} onSaveCallback - Callback to call with updated code on save
+     */
+    loadInlineCode(content, onSaveCallback) {
+        this.currentPath = null; // No file path for inline mode
+        this.originalContent = content;
+        this.onSaveCallback = onSaveCallback;
+
+        // Update UI to indicate inline mode
+        this.modal.querySelector('.se-modal-path').textContent = 'Inline Code Editor';
+
+        // Initialize editor with content
+        this.initCodeMirror(content);
+        this.updateModifiedStatus(false);
+        this.open();
+    }
+
     async save() {
-        if (!this.editor || !this.currentPath) return;
+        if (!this.editor) return;
 
         const content = this.editor.getValue();
 
-        try {
-            // Save the file
-            if (window.fileBrowser) {
-                await window.fileBrowser.createFile(this.currentPath, content, true); // true to overwrite
-                this.originalContent = content;
-                this.updateModifiedStatus(false);
-
-                // Show brief success message
-                this.showStatusMessage('File saved successfully');
-
-                // Check if this is a module file and reload it
-                this.reloadModuleIfNeeded(this.currentPath, content);
-
-                return true;
-            } else {
-                console.error('FileBrowser instance not found');
-                this.showStatusMessage('Error: FileBrowser not found', true);
+        if (this.currentPath) {
+            // Existing file save logic
+            try {
+                if (window.fileBrowser) {
+                    await window.fileBrowser.createFile(this.currentPath, content, true);
+                    this.originalContent = content;
+                    this.updateModifiedStatus(false);
+                    this.showStatusMessage('File saved successfully');
+                    this.reloadModuleIfNeeded(this.currentPath, content);
+                    return true;
+                } else {
+                    console.error('FileBrowser instance not found');
+                    this.showStatusMessage('Error: FileBrowser not found', true);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Failed to save file:', error);
+                this.showStatusMessage('Error saving file', true);
                 return false;
             }
-        } catch (error) {
-            console.error('Failed to save file:', error);
-            this.showStatusMessage('Error saving file', true);
-            return false;
+        } else if (this.onSaveCallback) {
+            // Inline mode: Call the callback with the updated code
+            this.onSaveCallback(content);
+            this.originalContent = content;
+            this.updateModifiedStatus(false);
+            this.showStatusMessage('Code saved');
+            return true;
         }
     }
 
@@ -2256,30 +2279,36 @@ class ScriptEditor {
     }
 
     close() {
-        // If there are unsaved changes and they might be module changes,
-        // still attempt to reload from the last saved version
+        // If there are unsaved changes in inline mode, save automatically via callback
+        if (this.hasUnsavedChanges() && !this.currentPath && this.onSaveCallback) {
+            this.onSaveCallback(this.editor.getValue());
+        }
+
         if (this.hasUnsavedChanges() && this.currentPath) {
-            // Try to reload from the last saved file
-            window.fileBrowser?.readFile(this.currentPath)
-                .then(content => {
-                    this.reloadModuleIfNeeded(this.currentPath, content);
-                })
-                .catch(err => console.error("Couldn't reload module on close:", err));
-        } else if (this.currentPath) {
-            // Even if no unsaved changes, ensure module is registered when closing
-            window.fileBrowser?.readFile(this.currentPath)
-                .then(content => {
-                    if (content && content.includes('extends Module')) {
+            if (window.fileBrowser?.readFile) {
+                window.fileBrowser.readFile(this.currentPath)
+                    .then(content => {
                         this.reloadModuleIfNeeded(this.currentPath, content);
-                    }
-                })
-                .catch(err => console.error("Couldn't check module on close:", err));
+                    })
+                    .catch(err => console.error("Couldn't reload module on close:", err));
+            }
+        } else if (this.currentPath) {
+            if (window.fileBrowser?.readFile) {
+                window.fileBrowser.readFile(this.currentPath)
+                    .then(content => {
+                        if (content && content.includes('extends Module')) {
+                            this.reloadModuleIfNeeded(this.currentPath, content);
+                        }
+                    })
+                    .catch(err => console.error("Couldn't check module on close:", err));
+            }
         }
 
         // Proceed with normal close
         this.modal.style.display = 'none';
         this.isOpen = false;
         this.currentPath = null;
+        this.onSaveCallback = null; // Clear callback
     }
 
     // AI STUFF

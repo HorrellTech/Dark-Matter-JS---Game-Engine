@@ -3,6 +3,17 @@ class StartScreen {
         this.version = version;
         this.container = null;
         this.updates = [
+            
+            {
+                version: 'v0.3.1',
+                date: 'October 19, 2025',
+                changes: [
+                    'Improve AI prompting for module creation',
+                    'Add code property for custom scripts in modules',
+                    'Fix various bugs',
+                    'Update documentation with new features'
+                ]
+            },
             {
                 version: 'v0.3.0',
                 date: 'October 19, 2025',
@@ -249,9 +260,21 @@ class StartScreen {
     }
     
     showDocumentation() {
-        // Documentation modal implementation
-        const docsModal = new Documentation();
-        docsModal.show();
+        if (window.docsModal) {
+            console.log('Documentation button clicked');
+            const documentation = new Documentation();
+            window.docsModal.loadFromDocumentationClass(documentation);
+            //window.docModal.open();
+            //const docsModal = new Documentation();
+            //docsModal.show();
+            //window.docsModal.open();
+        } else {
+            console.warn("Documentation button or modal not found. Creating it!");
+            window.docsModal = new SpriteCodeDocs();
+            const documentation = new Documentation();
+            window.docsModal.loadFromDocumentationClass(documentation);
+            //window.docsModal.open();
+        }
     }
     
     showTutorials() {

@@ -1054,7 +1054,7 @@ stopSound() {
                         <li><code>loop(deltaTime)</code>: Main update logic</li>
                         <li><code>endLoop()</code>: Called at end of each frame</li>
                         <li><code>draw(ctx)</code>: Render module visuals</li>
-                        <li><code>onDestroy()</code>: Cleanup when destroyed</li>
+                        <li><code>destroy()</code>: Cleanup when destroyed</li>
                     </ul>
                 `
                     },
@@ -1898,271 +1898,182 @@ rigidBody.restitution = 0.8; // Bounciness
 
     generateAIPromptContent() {
         try {
-            return `
-            <h2>Using AI to Enhance Gameplay</h2>
-            <p>Dark Matter JS supports AI-generated content to enhance gameplay experiences.</p>
+            return `Copy this prompt to use AI chatbots like ChatGPT, claude etc to get help with Dark Matter JS:
+            \`\`\`You are an AI assistant specialized expert in the Dark Matter JS game engine module system.
 
-            <div class="doc-section">
-                <h3>AI Prompting</h3>
-                <p>Use AI to generate content, behaviors, and more. You can use this prompt with any AI chatbot that supports text input.</p>
-                
-                <h4>PROMPT:</h4>
-                <pre><code># Dark Matter JS Game Engine - Module Creation Guide
+**Module System Basics:**
+- Modules extend GameObject functionality
+- GameObjects have: position (Vector2), scale (Vector2), angle (degrees)
+- All modules extend the Module base class
+- Use this.gameObject to access the GameObject
+- Access other modules: this.gameObject.getModule("ModuleName")
+- Access viewport through 'window.engine.viewport.x', 'window.engine.viewport.y', 'window.engine.viewport.width', 'window.engine.viewport.height'
+- Viewport x and y is viewport top left, and width and height is overall width/height
 
-You are an expert AI assistant for the **Dark Matter JS** browser-based 2D game engine with a component-based architecture similar to Unity.
+*** IMPORTANT: The module automatically translates the gameObject position, angle and scale, 
+no need to implement these in drawing unless this.ignoreGameObjectTransform is true ***
 
-## Core Concepts
-
-### this.gameObject Structure
-- **position**: Vector2 (x, y coordinates)
-- **scale**: Vector2 (scale factors)
-- **angle**: Number (rotation in degrees)
-- **size**: Vector2 (bounding box dimensions)
-- **Parent-child hierarchy**: Use \`addChild()\` for relationships
-- **Tags**: Use \`addTag("tag")\`, \`hasTag("tag")\`
-
-### Module System
-Modules are components that extend GameObject behavior. All modules:
-- Extend the \`Module\` base class
-- Access GameObject via \`this.gameObject\`
-- Can be enabled/disabled independently
-- Support serialization (save/load)
-- Can query other modules: \`this.gameObject.getModule("ModuleName")\`
-
-## Module Template
-
-\`\`\`javascript
+**Module Template:**
+''' javascript
 class MyModule extends Module {
-    static namespace = "Category";  // Optional: Groups modules in editor
-    static description = "Brief description";  // Shown in module list
-    static allowMultiple = false;  // true = multiple instances allowed
-    static icon = "⭐";  // Optional: Emoji/icon in module list
+    static namespace = "Category";
+    static description = "Brief description";
+    static allowMultiple = false;
+    static iconClass = "fas fa-cube";
+    static color = "#3b5c3bff"; // Optional: Custom color for module in editor, better dark themed
 
     constructor() {
         super("MyModule");
 
-        this.ignoreGameObjectTransform = false;  // true = drawing doesnt sync with GameObject transform
+        this.ignoreGameObjectTransform = false; // Whether to draw relative to game object position
 
-        this.require("RigidBody");  // Require another module on the same GameObject, if the module exists, it will be added automatically
-        
-        // Properties with defaults
-        this.speed = 100;
-        this.direction = new Vector2(1, 0);
-        
-        // Expose to inspector (CRITICAL: use onChange to update)
+        this.speed = 100; // Default speed
+
+        // Expose properties for inspector
         this.exposeProperty("speed", "number", 100, {
-            min: 0, max: 500, step: 10,
-            description: "Movement speed in pixels/sec",
-            onChange: (val) => { this.speed = val; }  // REQUIRED for updates
+            description: "Movement speed",
+            min: 0,
+            max: 1000,
+            step: 10,
+            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
+                this.speed = val; // Update speed when property changes
+            }
         });
     }
 
-    // Lifecycle methods (all optional)
-    preload() { /* Load assets before start */ }
-    start() { /* Initialize when game starts */ }
-    beginLoop() { /* Called before loop() each frame */ }
-    loop(deltaTime) { /* Main update (deltaTime in seconds) */ }
-    endLoop() { /* Called after loop() each frame */ }
-    draw(ctx) { /* Render custom graphics */ }
-    drawGizmos(ctx) { /* Debug visualization (editor only) */ }
-    onDestroy() { /* Cleanup on module removal */ }
+    // Style the exposed properties, no need for onChange here
+    style(style) {
+        style.startGroup("Movement Settings", false, {
+            backgroundColor: 'rgba(100,150,255,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
 
-    // Serialization (save/load properties)
-    toJSON() {
-        return { 
-            ...super.toJSON(),  // Include base properties
-            speed: this.speed, 
-            direction: this.direction 
+        style.exposeProperty("speed", "number", this.speed, {
+            description: "Movement speed in pixels per second",
+            min: 0,
+            max: 1000,
+            step: 10,
+            style: {
+                label: "Movement Speed",
+                slider: true
+            }
+        });
+
+        style.endGroup();
+
+        style.addDivider();
+
+        style.addHelpText("This is a helpful hint");
+    }
+
+    start() {
+        // Initialize when game starts
+    }
+
+    loop(deltaTime) {
+        // Update logic every frame
+        // deltaTime is in seconds
+        this.gameObject.position.x += this.speed * deltaTime;
+
+        // Get a game object by name
+        const unitManager = this.getGameObjectByName("PlayerManager");
+
+        // BBOX Collision Detection (check collision bottom of the object 1 pixel, and return the game objects if there is a collision)
+        const ground = this.objectPosition("objectName", 0, 1);
+
+        if(ground.length > 0) {
+            this.fallSpeed = 0;
+        }
+    }
+
+    draw(ctx) {
+        // Render to canvas
+        // Note: GameObject transform is automatically applied if ignoreGameObjectTransform is true(default) 
+
+        // GUI drawing
+        const guiCtx = this.getGUICanvas();
+
+        // Background canvas
+        const backgroundCTX = this.getBackgroundCanvas();
+
+        // Main drawing canvas
+        const mainCtx = this.getMainCanvas();
+
+        if(guiCTX) { // Also for background or main
+            // Draw to the GUI here if needed
+        }
+    }
+
+    drawGizmos(ctx) {
+        // Draw debug gizmos for interactive editing (optional)
+        // This enables visual editing of module properties in the editor
+    }
+
+    handleGizmoInteraction(worldPos, isClick = false) {
+        // Handle interactive gizmo editing (optional)
+        // Return interaction info for editor feedback
+        // Example: return { type: 'select', index: 0 };
+    }
+
+    onDestroy() {
+        // Clean up module
+    }
+
+    toJSON() { // Serialize module state
+        return {
+            ...super.toJSON(),
+            speed: this.speed
         };
     }
-    fromJSON(data) {
-        super.fromJSON(data);  // Load base properties
-        this.speed = data.speed || 100;
-        this.direction = data.direction || new Vector2(1, 0);
+
+    fromJSON(data) { // Deserialize module state
+        super.fromJSON(data);
+
+        if (!data) return;
+
+        this.speed = data.speed || 100; // Default to 100 if not provided
     }
 }
 
-window.MyModule = MyModule;  // REQUIRED: Register globally
-\`\`\`
+window.MyModule = MyModule; // Register globally
 
-## Property Types & Options
 
-### Basic Types
-- \`"number"\`: Numeric values (options: min, max, step)
-- \`"string"\`: Text input
-- \`"boolean"\`: Checkbox
-- \`"color"\`: Color picker (hex string)
-- \`"vector2"\`: Vector2 editor (no static methods - use instance methods)
+**Common Property Types:**
+- "number", "string", "boolean", "color"
+- "enum" (needs options: ["A", "B", "C"])
+- "image" (for loading image assets for use)
+- "vector2" (for Vector2 objects, does NOT have static methods for add/subtract etc)
+- "polygon" (for arrays of Vector2 points)
+- "code" (for custom JavaScript code execution)
 
-### Advanced Types
-- \`"enum"\`: Dropdown (requires \`options: ["A", "B", "C"]\`)
+**Interactive Gizmos:**
+- Implement 'drawGizmos(ctx)' to draw visual editing tools
+- Implement 'handleGizmoInteraction(worldPos, isClick)' for user interaction in the editor
+- Use point arrays/polygons for draggable control points
+- Gizmos enable visual editing of module parameters in the editor
 
-## Common APIs
+**Available Input:**
+- window.input.keyDown("w") - check if key held
+- window.input.keyPressed("") - check if space key just pressed
+- window.input.mouseDown("left") - mouse button states
+- window.input.getMousePosition(worldSpace = true)
+- window.input.didMouseMove() - Mouse moved this frame
+- window.input.isTapped() - for touch interactions
 
-### Input System
-\`\`\`javascript
-// Keyboard
-window.input.keyDown("w")  // Held down
-window.input.keyPressed(" ")  // Just pressed this frame
-window.input.keyReleased("escape")  // Just released
+**Transform Access:**
+- this.gameObject.position (Vector2)
+- this.gameObject.angle (degrees)
+- this.gameObject.scale (Vector2)
+- this.gameObject.getWorldPosition() (Vector2)
+- this.gameObject.children (array)
 
-// Mouse
-window.input.mouseDown("left")  // "left", "right", "middle"
-window.input.mousePressed("left")
-window.input.getMousePosition(true)  // true = world space, false = screen
+*** IMPORTANT: Game Objects can have a parent/child relationship, where the child game objects move relative to the parent game
+objects position and angle ***
 
-// Touch (mobile)
-window.input.isTapped()
-window.input.getTouchCount()
-\`\`\`
+Provide working, complete modules. Keep code concise but functional.
 
-### Transform & Movement
-\`\`\`javascript
-// Position
-this.gameObject.position.x += 10;
-const worldPos = this.gameObject.getWorldPosition();  // With parent hierarchy
-
-// Rotation
-this.gameObject.angle += 90;  // Degrees
-
-// Scale
-this.gameObject.scale.x = 2;
-\`\`\`
-
-### Collision Detection
-\`\`\`javascript
-// Basic collisions (requires useCollisions = true on both objects)
-const collisions = this.gameObject.checkForCollisions();
-collisions.forEach(other => {
-    if (other.gameObject.hasTag("enemy")) {
-        // Handle collision
-    }
-});
-\`\`\`
-
-### Scene & GameObject Management
-\`\`\`javascript
-// Find objects
-const player = this.findGameObject("Player");
-
-// Create a new instance of a game object by name
-const enemy = this.instanceCreate("Enemy", x, y, parent);
-
-// Create objects dynamically
-const obj = new GameObject("NewObject");
-window.engine.gameObjects.push(obj);
-\`\`\`
-
-### Drawing & Canvas
-\`\`\`javascript
-draw(ctx) {
-    // Main canvas (game layer)
-    ctx = this.getMainCanvas();
-    
-    // GUI canvas (UI layer - draws on top of everything)
-    ctx = this.getGuiCanvas();
-    
-    // Background canvas (draws behind everything)
-    ctx = this..getBackgroundCanvas();
-    
-    ctx.save();
-    ctx.fillStyle = "#ff0000";
-    ctx.fillRect(-50, -50, 100, 100);  // Centered on GameObject if ignoreGameObjectTransform = false
-    ctx.restore();
-}
-\`\`\`
-
-### Viewport (Camera)
-\`\`\`javascript
-// Access camera viewport
-const vp = this.viewport; // { x, y, width, height, zoom }
-console.log(vp.x, vp.y);  // Center viewport in world space
-console.log(vp.width, vp.height);  // Viewport dimensions
-\`\`\`
-
-### Math Utilities (matterMath)
-\`\`\`javascript
-// Angles & directions
-window.matterMath.degtorad(90)  // Convert degrees to radians
-window.matterMath.pointDirection(x1, y1, x2, y2)  // Angle between points
-window.matterMath.lengthDirX(length, angle)  // X component of vector
-window.matterMath.lengthDirY(length, angle)  // Y component
-
-// Interpolation
-window.matterMath.lerp(start, end, t)  // Linear interpolation
-window.matterMath.sine(period, amplitude)  // Oscillating value
-
-// Random
-window.matterMath.random(max)  // Float: 1 to max
-window.matterMath.irandom(max)  // Integer: 1 to max
-window.matterMath.randomRange(min, max)
-window.matterMath.choose("a", "b", "c")  // Pick random argument
-
-// Other
-window.matterMath.clamp(value, min, max)
-window.matterMath.pointDistance(x1, y1, x2, y2)
-\`\`\`
-
-### Vector2 Methods
-\`\`\`javascript
-const v = new Vector2(1, 0);
-v.add(other)  // Instance method
-v.subtract(other)
-v.multiply(scalar)
-v.divide(scalar)
-v.normalize()  // Returns normalized vector
-v.magnitude()  // Length
-v.distance(other)  // Distance to another vector
-
-// Static methods
-Vector2.lerp(start, end, t)
-Vector2.distance(v1, v2)
-\`\`\`
-
-## Built-in Modules (Reference)
-
-### Physics
-- **RigidBody**: Matter.js physics (bodyType, density, friction, restitution)
-- **BasicPhysics**: Simple physics without Matter.js
-
-### Rendering
-- **SpriteRenderer**: Display images (imageAsset, width, height, scaleMode)
-
-### Controllers
-- **KeyboardController**: WASD/Arrow key movement
-- **CameraController**: Camera following and zoom
-
-### Logic
-- **Timer**: Execute actions after delay
-
-### UI
-- **Button**: Interactive buttons with click actions
-- **Text**: Display formatted text
-
-### Animation
-- **Tween**: Property animation with easing
-- **ParticleSystem**: Particle effects
-
-### Utility
-- **FollowTarget**: Follow another GameObject
-- **Spawner**: Spawn objects at intervals
-
-## Best Practices
-
-1. **Always use \`onChange\` in \`exposeProperty()\`** to update internal values
-2. **Register modules globally**: \`window.ModuleName = ModuleName;\`
-3. **Use deltaTime** for frame-rate independent movement
-4. **Call \`ctx.save()\` and \`ctx.restore()\`** when drawing
-5. **Check module existence** before accessing: \`if (module) { ... }\`
-6. **Use Vector2 instance methods** (no static add/subtract)
-7. **Implement toJSON/fromJSON** for properties that need persistence
-
-Generate complete, functional modules that follow this architecture.
-
-REQUEST: {USER_PROMPT_HERE}</code></pre>
-                
-                <p>Make sure to handle AI responses properly and validate the data before using it in your game.</p>
-            </div>
+REQUEST: [INSERT USER REQUEST HERE]
         `;
         } catch (e) {
             console.error("Error generating AI prompt content:", e);

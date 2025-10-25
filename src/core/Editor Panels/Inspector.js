@@ -2620,7 +2620,8 @@ class Inspector {
                 </div>
             `;
             case 'keys':
-            case 'keycode': {
+            case 'keycode':
+            case 'key': {
                 let keyOptions = window.input?.keys;
                 // Ensure keyOptions is always an array
                 if (!Array.isArray(keyOptions)) {
@@ -2644,6 +2645,7 @@ class Inspector {
             case 'vector3':
                 return this.generateVectorUI(prop, module, value);
             case 'polygon':
+            case 'pointarray':
                 return this.generatePolygonUI(prop, module);
 
             case 'gameobject':
@@ -2742,7 +2744,26 @@ class Inspector {
                 return this.generateGradientUI(prop, module, value);
 
             case 'code':
-                return this.generateCodeUI(prop, module, value);
+            case 'script':
+            case 'function':
+                // Get tooltip from options if available
+                const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+                const rowStyle = prop.options?.rowStyle || '';
+                const buttonStyle = prop.options?.buttonStyle || '';
+                const labelStyle = prop.options?.labelStyle || '';
+
+                return `
+                    <div class="property-row" style="${rowStyle}">
+                        <label title="${tooltip}" style="${labelStyle}">${prop.options?.label || this.formatPropertyName(prop.name)}</label>
+                        <button class="property-button code-button" 
+                                data-prop-name="${prop.name}" 
+                                title="${tooltip}" 
+                                style="${buttonStyle}">
+                            script
+                        </button>
+                        ${prop.options?.helpText ? `<div class="property-help" style="${prop.options?.helpStyle || ''}">${prop.options.helpText}</div>` : ''}
+                    </div>
+                `;
 
             default:
                 // For text inputs, set title to the current value for full text on hover
@@ -3587,6 +3608,32 @@ console.log("Module name:", this.name);</pre>
 
                 // Save state
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
+            });
+        });
+
+        // Handle code button clicks (new for 'code' property type)
+        container.querySelectorAll('.code-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const propName = button.dataset.propName;
+                let code = this.getModuleProperty(module, propName) || '';
+
+                // Safeguard: If the code appears to contain the module's own class definition,
+                // treat it as unset and use the default code instead
+                const moduleClassName = module.constructor.name;
+                if (code && (code.includes(`class ${moduleClassName}`) || code.includes(`window.${moduleClassName}`))) {
+                    code = prop.options?.defaultCode || '// Enter your JavaScript code here\n// Available variables:\n// - this: the module instance\n// - gameObject: the attached game object\n// - engine: the game engine\n// - input: input manager\n// - deltaTime: time since last frame\n\nconsole.log("Code executed!");';
+                }
+
+                // Open ScriptEditor in inline mode with a save callback
+                if (window.scriptEditor) {
+                    window.scriptEditor.loadInlineCode(code, (updatedCode) => {
+                        this.updateModuleProperty(module, propName, updatedCode);
+                        this.refreshModuleUI(module);
+                        this.editor.refreshCanvas();
+                    });
+                } else {
+                    console.warn('ScriptEditor not available for code editing');
+                }
             });
         });
 
