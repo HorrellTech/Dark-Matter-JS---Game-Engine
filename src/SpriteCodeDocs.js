@@ -25,6 +25,7 @@ class SpriteCodeDocs {
     };
 
     this.importantCategories = options.importantCategories || ['modules', 'ai prompting'];
+    this.parentElement = options.parentElement || document.body; // New option for parent element
 
     this.isOpen = false;
     this.documentation = {};
@@ -220,8 +221,9 @@ class SpriteCodeDocs {
     this.modal.appendChild(header);
     this.modal.appendChild(content);
     this.overlay.appendChild(this.modal);
-
-    document.body.appendChild(this.overlay);
+    
+    // Append to the specified parent element instead of document.body
+    this.parentElement.appendChild(this.overlay);
   }
 
   // Attach event listeners

@@ -301,13 +301,13 @@ class Module {
     }
 
     /**
- * Check for GameObjects with the given name colliding at the specified position relative to this object's position
- * @param {string} name - The name of the GameObject
- * @param {number} x - The x-offset from this object's position to check (default: 0)
- * @param {number} y - The y-offset from this object's position to check (default: 0)
- * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
- * @returns {Array<GameObject>|null} Array of collided GameObjects or null if none found
- */
+     * Check for GameObjects with the given name colliding at the specified position relative to this object's position
+     * @param {string} name - The name of the GameObject
+     * @param {number} x - The x-offset from this object's position to check (default: 0)
+     * @param {number} y - The y-offset from this object's position to check (default: 0)
+     * @param {number} rangeFromPoint - The range from the point to search (default: Infinity)
+     * @returns {Array<GameObject>|null} Array of collided GameObjects or null if none found
+     */
     objectCollision(name, x = 0, y = 0, rangeFromPoint = Infinity) {
         //console.log(`[DEBUG] objectCollision called for name: ${name}, x: ${x}, y: ${y}, range: ${rangeFromPoint}`);  // Temporary debug
 

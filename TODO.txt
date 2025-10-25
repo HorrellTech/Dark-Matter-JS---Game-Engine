@@ -23,4 +23,4 @@ user will be able to manipulate the spline in the editor, updating its values.
 
 - Make drawing modules start with their game object width and height as size
 
-- object collisions are this.collisionBox is not the correct position
+- Fix asset manager window not showing documentation

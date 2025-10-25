@@ -31,7 +31,8 @@ class AssetManagerWindow extends EditorWindow {
             'puddle_lake_generator.dmjs',
             'splines.dmjs',
             'platformer_procedurally_generated.dmjs',
-            'object_visual_effects.dmjs'
+            'object_visual_effects.dmjs',
+            'dialog_system_editor.dmjs'
             // Add more known asset filenames here
         ];
 
@@ -637,22 +638,43 @@ class AssetManagerWindow extends EditorWindow {
         files.forEach(file => {
             const fileItem = document.createElement('div');
             fileItem.style.cssText = `
-            display: flex;
-            align-items: center;
-            padding: 8px 12px;
-            border-bottom: 1px solid #333;
-            font-size: 13px;
-        `;
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid #333;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    `;
 
             const icon = this.getFileIcon(file.path);
             const fileName = file.name || file.path.split('/').pop();
             const filePath = file.path;
+            const isDocFile = fileName.toLowerCase().endsWith('.doc') || fileName.toLowerCase() === 'documentation.doc';
 
             fileItem.innerHTML = `
-            <i class="fas ${icon}" style="margin-right: 8px; color: #4CAF50; width: 16px;"></i>
-            <span style="color: #fff; flex: 1;">${fileName}</span>
-            <span style="color: #666; font-size: 11px;">${filePath}</span>
-        `;
+        <i class="fas ${icon}" style="margin-right: 8px; color: #4CAF50; width: 16px;"></i>
+        <span style="color: #fff; flex: 1;">${fileName}</span>
+        <span style="color: #666; font-size: 11px;">${filePath}</span>
+        ${isDocFile ? '<i class="fas fa-book-open" style="margin-left: 8px; color: #0078d4;" title="Open Documentation"></i>' : ''}
+    `;
+
+            // Add hover effect
+            fileItem.addEventListener('mouseenter', () => {
+                fileItem.style.backgroundColor = '#3a3a3a';
+            });
+
+            fileItem.addEventListener('mouseleave', () => {
+                fileItem.style.backgroundColor = '';
+            });
+
+            // Add click handler for documentation files
+            if (isDocFile) {
+                fileItem.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openDocumentationFile(file);
+                });
+            }
 
             container.appendChild(fileItem);
         });
@@ -1201,6 +1223,110 @@ class AssetManagerWindow extends EditorWindow {
             console.error(`Error importing asset ${assetData.name}:`, error);
             throw error;
         }
+    }
+
+    openDocumentationFile(file) {
+        try {
+            console.log('Opening documentation file:', file.name);
+
+            // Parse the documentation content
+            let docContent = file.content;
+
+            // If content is a string that looks like JSON, parse it
+            if (typeof docContent === 'string' && docContent.trim().startsWith('{')) {
+                try {
+                    docContent = JSON.parse(docContent);
+                } catch (e) {
+                    console.warn('Could not parse documentation as JSON, treating as plain text');
+                }
+            }
+
+            // Check if docsModal exists, create if needed
+            if (!window.docsModal) {
+                console.log('Creating SpriteCodeDocs modal...');
+                if (typeof SpriteCodeDocs !== 'undefined') {
+                    window.docsModal = new SpriteCodeDocs();
+                } else {
+                    this.showError('Documentation viewer not available');
+                    return;
+                }
+            }
+
+            // Create a Documentation-like object from the file content
+            const documentation = this.createDocumentationObject(docContent, file.name);
+
+            // Load and display the documentation
+            if (window.docsModal.loadFromDocumentationClass) {
+                window.docsModal.loadFromDocumentationClass(docContent);
+                console.log('Documentation loaded successfully');
+            } else {
+                this.showError('Documentation viewer missing required method');
+            }
+
+            window.docsModal.open();
+
+        } catch (error) {
+            console.error('Error opening documentation file:', error);
+            this.showError('Failed to open documentation: ' + error.message);
+        }
+    }
+
+    createDocumentationObject(content, filename) {
+        // Create a Documentation-compatible object
+        const doc = {
+            title: 'Documentation',
+            sections: []
+        };
+
+        // If content is already structured
+        if (typeof content === 'object' && content !== null) {
+            doc.title = content.title || content.name || filename.replace('.doc', '');
+            doc.sections = content.sections || [];
+
+            // Handle various documentation formats
+            if (content.description && !doc.sections.length) {
+                doc.sections.push({
+                    title: 'Overview',
+                    content: content.description
+                });
+            }
+
+            if (content.methods && Array.isArray(content.methods)) {
+                doc.sections.push({
+                    title: 'Methods',
+                    content: content.methods.map(m =>
+                        `**${m.name}**${m.params ? `(${m.params})` : ''}\n${m.description || ''}`
+                    ).join('\n\n')
+                });
+            }
+
+            if (content.properties && Array.isArray(content.properties)) {
+                doc.sections.push({
+                    title: 'Properties',
+                    content: content.properties.map(p =>
+                        `**${p.name}** - ${p.description || ''}`
+                    ).join('\n\n')
+                });
+            }
+
+            if (content.examples && Array.isArray(content.examples)) {
+                doc.sections.push({
+                    title: 'Examples',
+                    content: content.examples.map(e =>
+                        `${e.title ? `**${e.title}**\n` : ''}${e.code || e.content || e}`
+                    ).join('\n\n')
+                });
+            }
+        } else if (typeof content === 'string') {
+            // Plain text documentation
+            doc.title = filename.replace('.doc', '');
+            doc.sections = [{
+                title: 'Documentation',
+                content: content
+            }];
+        }
+
+        return doc;
     }
 
     async loadAssetContent(filename) {
