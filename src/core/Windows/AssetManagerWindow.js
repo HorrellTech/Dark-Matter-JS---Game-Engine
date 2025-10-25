@@ -1239,36 +1239,20 @@ class AssetManagerWindow extends EditorWindow {
                 } catch (e) {
                     console.warn('Could not parse documentation as JSON, treating as plain text');
                 }
-            }
+            } 
 
-            // Check if docsModal exists, create if needed
-            if (!window.docsModal) {
-                console.log('Creating SpriteCodeDocs modal...');
-                if (typeof SpriteCodeDocs !== 'undefined') {
-                    window.docsModal = new SpriteCodeDocs();
-                } else {
-                    this.showError('Documentation viewer not available');
-                    return;
-                }
-            }
-
-            // Create a Documentation-like object from the file content
-            const documentation = this.createDocumentationObject(docContent, file.name);
-
-            // Load and display the documentation
-            if (window.docsModal.loadFromDocumentationClass) {
-                window.docsModal.loadFromDocumentationClass(docContent);
-                console.log('Documentation loaded successfully');
+            if (window.SpriteCodeDocs) {
+                const docs = new window.SpriteCodeDocs();
+                docs.loadFromJSONObject(docContent);
+                docs.open();
             } else {
-                this.showError('Documentation viewer missing required method');
+                this.showNotification('SpriteCodeDocs not available', 'error');
             }
 
-            window.docsModal.open();
-
-        } catch (error) {
-            console.error('Error opening documentation file:', error);
-            this.showError('Failed to open documentation: ' + error.message);
-        }
+            } catch (error) {
+                console.error('Error opening documentation file:', error);
+                this.showError('Failed to open documentation: ' + error.message);
+            }
     }
 
     createDocumentationObject(content, filename) {

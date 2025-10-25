@@ -912,7 +912,7 @@ class FileBrowser {
             // Extract class name
             const fileName = filePath.split('/').pop().split('\\').pop();
             const className = fileName.replace('.js', '');
-            const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+            const pascalClassName = className;//.charAt(0).toUpperCase() + className.slice(1);
 
             // Check for EditorWindow
             if (content.includes('extends EditorWindow')) {
@@ -2707,7 +2707,7 @@ window.${pascalCaseName} = ${pascalCaseName};
             // Get the class name from the file name (assuming it defines a class)
             const fileName = scriptPath.split('/').pop().split('\\').pop();
             const className = fileName.replace('.js', '');
-            const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+            const pascalClassName = className;//.charAt(0).toUpperCase() + className.slice(1);
 
             console.log(`Loading utility script: ${scriptPath}, expected class name: ${pascalClassName}`);
 
@@ -2766,115 +2766,129 @@ window.${pascalCaseName} = ${pascalCaseName};
      * @returns {Promise<Class>} The module class
      */
     async loadModuleScript(scriptPath) {
-        try {
-            const content = await this.readFile(scriptPath);
-            if (!content) {
-                throw new Error(`Could not read file: ${scriptPath}`);
-            }
-
-            // Basic syntax check
-            try {
-                new Function(content);
-            } catch (syntaxError) {
-                this.showNotification(`Syntax error in module: ${syntaxError.message}`, 'error');
-                throw syntaxError;
-            }
-
-            // Derive names from file for potential global exposure (but not for detection)
-            const fileName = scriptPath.split('/').pop().split('\\').pop();
-            const className = fileName.replace('.js', '');
-            const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
-
-            console.log(`Loading module: ${scriptPath}, attempting to expose as ${className} or ${pascalClassName}`);
-
-            // Wrap the content to ensure global exposure (attempt based on file name, but don't rely on it)
-            const wrappedContent = `
-(function() {
     try {
-        ${content}
-        // Attempt to expose the class globally if it matches the file name
-        if (typeof ${className} !== 'undefined' && !window.${className}) {
-            window.${className} = ${className};
-            console.log("Module ${className} exposed to window");
+        const content = await this.readFile(scriptPath);
+        if (!content) {
+            throw new Error(`Could not read file: ${scriptPath}`);
         }
-        if (typeof ${pascalClassName} !== 'undefined' && !window.${pascalClassName}) {
-            window.${pascalClassName} = ${pascalClassName};
-            console.log("Module ${pascalClassName} exposed to window");
+
+        // Basic syntax check
+        try {
+            new Function(content);
+        } catch (syntaxError) {
+            this.showNotification(`Syntax error in module: ${syntaxError.message}`, 'error');
+            throw syntaxError;
         }
-    } catch (e) {
-        console.error("Error executing module script " + "${fileName}" + ":", e);
-        throw e;
-    }
-})();
+
+        // Derive names from file for potential global exposure (but not for detection)
+        const fileName = scriptPath.split('/').pop().split('\\').pop();
+        const className = fileName.replace('.js', '');
+        const pascalClassName = className; // className.charAt(0).toUpperCase() + className.slice(1);
+
+        console.log(`Loading module: ${scriptPath}, attempting to expose as ${className} or ${pascalClassName}`);
+
+        const expectedClassName = className; // Already derived from filename
+        if (window[expectedClassName] && typeof window[expectedClassName] === 'function' && window[expectedClassName].prototype instanceof Module) {
+            console.log(`Module class ${expectedClassName} already loaded, registering directly`);
+            // Register directly without re-executing
+            if (window.editor && window.editor.inspector) {
+                window.editor.inspector.registerModuleClass(window[expectedClassName]);
+            }
+            return window[expectedClassName];
+        }
+        
+        // *** NEW: Capture existing module classes BEFORE executing the script ***
+        const existingModuleClasses = Object.keys(window).filter(key =>
+            typeof window[key] === 'function' &&
+            window[key].prototype &&
+            window[key].prototype instanceof Module
+        );
+
+        // *** UPDATED: Execute script directly in global scope (no IIFE wrapper) ***
+        // Assume the script defines classes globally (e.g., 'class DrawDiamond extends Module')
+        const wrappedContent = `
+try {
+    ${content}
+} catch (e) {
+    console.error("Error executing module script " + "${fileName}" + ":", e);
+    throw e;
+}
 `;
 
-            // Execute script in a controlled environment
-            const moduleClass = await new Promise((resolve, reject) => {
-                // Create and execute the script
-                const scriptElement = document.createElement('script');
-                scriptElement.id = `module-script-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                scriptElement.type = 'text/javascript';
-                scriptElement.textContent = wrappedContent;
+        // Execute script in a controlled environment
+        const moduleClass = await new Promise((resolve, reject) => {
+            // Create and execute the script
+            const scriptElement = document.createElement('script');
+            scriptElement.id = `module-script-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            scriptElement.type = 'text/javascript';
+            scriptElement.textContent = wrappedContent;
 
-                // Handle script errors
-                scriptElement.onerror = (e) => {
-                    reject(new Error(`Failed to execute script: ${e.message}`));
-                };
+            // Handle script errors
+            scriptElement.onerror = (e) => {
+                reject(new Error(`Failed to execute script: ${e.message}`));
+            };
 
-                // Add to DOM to execute
-                document.head.appendChild(scriptElement);
+            // Add to DOM to execute
+            document.head.appendChild(scriptElement);
 
-                // Wait a moment for script to execute
-                setTimeout(() => {
-                    // Search for ANY class that extends Module (ignore file name)
-                    const keys = Object.keys(window);
-                    for (const key of keys) {
-                        if (typeof window[key] === 'function' &&
-                            window[key].prototype &&
-                            window[key].prototype instanceof Module) {
-                            console.log(`Found module class: ${key} (from script ${scriptPath})`);
-                            resolve(window[key]);
-                            return;
-                        }
-                    }
+            // Wait a moment for script to execute
+            setTimeout(() => {
+                // *** UPDATED: Find NEWLY loaded module classes (not pre-existing ones) ***
+                const allModuleClasses = Object.keys(window).filter(key =>
+                    typeof window[key] === 'function' &&
+                    window[key].prototype &&
+                    window[key].prototype instanceof Module
+                );
 
-                    // If no Module-extending class found, still resolve (treat as utility script)
-                    console.warn(`No Module-extending class found in ${scriptPath}, but script executed successfully`);
-                    resolve(null); // Resolve with null to indicate no class, but successful load
+                // Find classes that weren't there before (newly loaded)
+                const newModuleClasses = allModuleClasses.filter(key => !existingModuleClasses.includes(key));
 
-                    // Clean up
-                    if (scriptElement.parentNode) {
-                        scriptElement.parentNode.removeChild(scriptElement);
-                    }
-                }, 200);
-            });
-
-            // If a class was found, register with inspector
-            if (moduleClass) {
-                if (window.editor && window.editor.inspector) {
-                    window.editor.inspector.registerModuleClass(moduleClass);
+                if (newModuleClasses.length > 0) {
+                    // Prioritize the first new class (assuming one per script)
+                    const foundClass = window[newModuleClasses[0]];
+                    console.log(`Found NEW module class: ${newModuleClasses[0]} (from script ${scriptPath})`);
+                    resolve(foundClass);
+                    return;
                 }
-                this.showNotification(`Module loaded: ${moduleClass.name}`);
-                return moduleClass;
-            } else {
-                // No class found, but script loaded (e.g., utility)
-                this.showNotification(`Script loaded (no module class found): ${fileName}`);
-                return null;
+
+                // *** REMOVED: Fallback logic that was picking pre-existing classes ***
+                // If no new classes found, treat as utility script or error
+                console.warn(`No new Module-extending class found in ${scriptPath}, but script executed successfully`);
+                resolve(null); // Resolve with null to indicate no class, but successful load
+
+                // Clean up
+                if (scriptElement.parentNode) {
+                    scriptElement.parentNode.removeChild(scriptElement);
+                }
+            }, 200);
+        });
+
+        // If a class was found, register with inspector
+        if (moduleClass) {
+            if (window.editor && window.editor.inspector) {
+                window.editor.inspector.registerModuleClass(moduleClass);
             }
-        } catch (error) {
-            console.error('Error in loadModuleScript:', error);
-            this.showNotification(`Error loading module: ${error.message}`, 'error');
-            throw error;
-        } finally {
-            // Clean up script elements
-            const scriptElements = document.head.querySelectorAll('script[id^="module-script-"]');
-            scriptElements.forEach(el => {
-                if (el && el.parentNode) {
-                    el.parentNode.removeChild(el);
-                }
-            });
+            this.showNotification(`Module loaded: ${moduleClass.name}`);
+            return moduleClass;
+        } else {
+            // No class found, but script loaded (e.g., utility)
+            this.showNotification(`Script loaded (no module class found): ${fileName}`);
+            return null;
         }
+    } catch (error) {
+        console.error('Error in loadModuleScript:', error);
+        this.showNotification(`Error loading module: ${error.message}`, 'error');
+        throw error;
+    } finally {
+        // Clean up script elements
+        const scriptElements = document.head.querySelectorAll('script[id^="module-script-"]');
+        scriptElements.forEach(el => {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        });
     }
+}
 
     /**
      * Ensure a module is registered when dragging or clicking
@@ -3287,7 +3301,7 @@ window.${pascalCaseName} = ${pascalCaseName};
                 if (item.content && item.content.includes('extends Module')) {
                     // Try to get the module class from window
                     const className = item.name.replace('.js', '');
-                    const pascalClassName = className.charAt(0).toUpperCase() + className.slice(1);
+                    const pascalClassName = className;//.charAt(0).toUpperCase() + className.slice(1);
                     let ModuleClass = window[className];
                     if (!ModuleClass) ModuleClass = window[pascalClassName];
 
