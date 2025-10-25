@@ -2120,6 +2120,12 @@ class ScriptEditor {
      * @param {function} onSaveCallback - Callback to call with updated code on save
      */
     loadInlineCode(content, onSaveCallback) {
+        // Dispose of existing editor if it exists (prevents stacking multiple CodeMirror instances)
+        if (this.editor) {
+            this.editor.toTextArea();
+            this.editor = null;
+        }
+
         this.currentPath = null; // No file path for inline mode
         this.originalContent = content;
         this.onSaveCallback = onSaveCallback;

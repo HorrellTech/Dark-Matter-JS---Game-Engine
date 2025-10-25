@@ -2046,6 +2046,10 @@ window.MyModule = MyModule; // Register globally
 - "vector2" (for Vector2 objects, does NOT have static methods for add/subtract etc)
 - "polygon" (for arrays of Vector2 points)
 - "code" (for custom JavaScript code execution)
+    this.exposeProperty("customScript", "code", "", {
+        description: "Custom code to execute",
+        defaultCode: "// Your custom script here"
+    });
 
 **Interactive Gizmos:**
 - Implement 'drawGizmos(ctx)' to draw visual editing tools
