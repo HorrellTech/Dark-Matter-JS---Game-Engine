@@ -2391,6 +2391,11 @@ class Inspector {
      * @returns {string} HTML for the property UI
      */
     generatePropertyUI(prop, module) {
+        // Get custom styles for the property row and input
+        const rowStyle = prop.options?.rowStyle || '';
+        const inputStyle = prop.options?.inputStyle || prop.options?.style || '';
+        const labelStyle = prop.options?.labelStyle || '';
+
         if (prop.type === '_header') {
             // Render header with optional color and custom styles
             const color = prop.options?.color || prop.options?.textColor || '';
@@ -2452,56 +2457,6 @@ class Inspector {
 
         // Get description for tooltip from options if available
         const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-
-        // Get custom styles for the property row and input
-        const rowStyle = prop.options?.rowStyle || '';
-        const inputStyle = prop.options?.inputStyle || prop.options?.style || '';
-        const labelStyle = prop.options?.labelStyle || '';
-
-        // Check if the property is a Vector2 or Vector3
-        if (value instanceof Vector2 || value instanceof Vector3 ||
-            (value && typeof value === 'object' && 'x' in value && 'y' in value)) {
-            // Generate collapsible vector fields
-            return this.generateVectorUI(prop, module, value);
-        }
-
-        // Add slider if requested
-        let sliderHtml = '';
-        if (prop.options?.slider) {
-            const sliderStyle = prop.options?.sliderStyle || '';
-            sliderHtml = `
-            <input type="range" id="${inputId}-slider" class="property-slider"
-                data-prop-name="${prop.name}"
-                min="${prop.options.min ?? 0}" max="${prop.options.max ?? 100}"
-                step="${prop.options.step ?? 0.01}" value="${value}"
-                style="${sliderStyle}">
-            `;
-        }
-
-        let dropdownHtml = '';
-        if (prop.type === 'dropdown' || (prop.type === 'enum' && prop.options?.options)) {
-            const options = prop.options?.options || [];
-            dropdownHtml = `
-            <select id="${inputId}" class="property-input" data-prop-name="${prop.name}" 
-                title="${tooltip}" style="${inputStyle}">
-                ${options.map(option => {
-                // Handle both simple strings and objects with value/label
-                let optionValue, optionLabel;
-                if (typeof option === 'object' && option !== null) {
-                    optionValue = option.value !== undefined ? option.value : option;
-                    optionLabel = option.label || this.formatPropertyName(String(optionValue));
-                } else {
-                    optionValue = option;
-                    optionLabel = this.formatPropertyName(String(option));
-                }
-
-                return `<option value="${optionValue}" ${value == optionValue ? 'selected' : ''}>
-                        ${optionLabel}
-                    </option>`;
-            }).join('')}
-            </select>
-            `;
-        }
 
         // Handle asset properties
         if (prop.type === 'asset') {
@@ -2567,7 +2522,6 @@ class Inspector {
                         ${prop.options?.max !== undefined ? `max="${prop.options.max}"` : ''}
                         ${prop.options?.step !== undefined ? `step="${prop.options.step}"` : 'step="any"'}
                     >
-                    ${sliderHtml}
                     ${helpHtml}
                 </div>
             `;
@@ -2744,13 +2698,11 @@ class Inspector {
                 return this.generateGradientUI(prop, module, value);
 
             case 'code':
-            case 'script':
-            case 'function':
                 // Get tooltip from options if available
-                const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
-                const rowStyle = prop.options?.rowStyle || '';
+                //const tooltip = prop.options?.description || `${this.formatPropertyName(prop.name)}`;
+                //const rowStyle = prop.options?.rowStyle || '';
                 const buttonStyle = prop.options?.buttonStyle || '';
-                const labelStyle = prop.options?.labelStyle || '';
+                //const labelStyle = prop.options?.labelStyle || '';
 
                 return `
                     <div class="property-row" style="${rowStyle}">
@@ -3610,38 +3562,13 @@ console.log("Module name:", this.name);</pre>
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
             });
         });
-
-        // Handle code button clicks (new for 'code' property type)
-        container.querySelectorAll('.code-button').forEach(button => {
-            button.addEventListener('click', () => {
-                const propName = button.dataset.propName;
-                let code = this.getModuleProperty(module, propName) || '';
-
-                // Safeguard: If the code appears to contain the module's own class definition,
-                // treat it as unset and use the default code instead
-                const moduleClassName = module.constructor.name;
-                if (code && (code.includes(`class ${moduleClassName}`) || code.includes(`window.${moduleClassName}`))) {
-                    code = prop.options?.defaultCode || '// Enter your JavaScript code here\n// Available variables:\n// - this: the module instance\n// - gameObject: the attached game object\n// - engine: the game engine\n// - input: input manager\n// - deltaTime: time since last frame\n\nconsole.log("Code executed!");';
-                }
-
-                // Open ScriptEditor in inline mode with a save callback
-                if (window.scriptEditor) {
-                    window.scriptEditor.loadInlineCode(code, (updatedCode) => {
-                        this.updateModuleProperty(module, propName, updatedCode);
-                        this.refreshModuleUI(module);
-                        this.editor.refreshCanvas();
-                    });
-                } else {
-                    console.warn('ScriptEditor not available for code editing');
-                }
-            });
-        });
+        
 
         // Handle button clicks
         container.querySelectorAll('.property-button, .property-btn').forEach(button => {
             button.addEventListener('click', () => {
                 const buttonId = button.id;
-                const propName = button.dataset.propName || buttonId;
+                const propName = button.dataset.propName;
 
                 // Look for the onClick handler in the module's exposed properties
                 if (module.getExposedProperties) {
@@ -3658,6 +3585,20 @@ console.log("Module name:", this.name);</pre>
                         } catch (error) {
                             console.error('Error executing button onClick handler:', error);
                         }
+                    }
+
+                    // Special handling for code properties
+                    if (buttonProp && buttonProp.type === 'code') {
+                        const currentCode = this.getModuleProperty(module, propName) || '';
+                        if (window.scriptEditor) {
+                            window.scriptEditor.loadInlineCode(currentCode, (newCode) => {
+                                this.updateModuleProperty(module, propName, newCode);
+                                this.editor?.refreshCanvas();
+                            });
+                        } else {
+                            console.warn('ScriptEditor not available');
+                        }
+                        return; // Prevent further processing for code buttons
                     }
                 }
 
