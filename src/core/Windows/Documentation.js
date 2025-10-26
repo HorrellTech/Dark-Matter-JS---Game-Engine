@@ -413,14 +413,14 @@ class Documentation {
             },
             "Scripting": {
                 icon: "fas fa-code",
-                description: "Creating custom behaviors",
+                description: "Creating custom modules",
                 topics: {
-                    "Creating Scripts": {
+                    "Creating Module Scripts": {
                         content: `
-                            <h2>Creating Custom Scripts</h2>
+                            <h2>Creating Custom Module Scripts</h2>
                             
                             <div class="doc-section">
-                                <h3>Creating a New Script</h3>
+                                <h3>Creating a New Module</h3>
                                 <ol>
                                     <li>In the Project browser, right-click and select "Create > JavaScript File"</li>
                                     <li>Name your script (use CamelCase, like "PlayerController")</li>
@@ -429,11 +429,11 @@ class Documentation {
                             </div>
                             
                             <div class="doc-section">
-                                <h3>Script Template</h3>
-                                <p>New scripts will use this basic template:</p>
-                                <pre><code>class MyScript extends Module {
+                                <h3>Module Script Template</h3>
+                                <p>New modules will use this basic template:</p>
+                                <pre><code>class MyModule extends Module {
     constructor() {
-        super("MyScript");
+        super("MyModule");
         
         // Expose properties to the inspector
         this.exposeProperty("speed", "number", 5);
@@ -453,9 +453,9 @@ class Documentation {
                             
                             <div class="doc-section">
                                 <h3>Registering Scripts</h3>
-                                <p>For your script to appear in the "Add Module" dropdown:</p>
-                                <pre><code>// Add this at the end of your script file
-ModuleRegistry.registerModule("MyScript", MyScript);</code></pre>
+                                <p>For your module to appear in the "Add Module" dropdown:</p>
+                                <pre><code>// Add this at the end of your module file
+window.MyModule = MyModule;</code></pre>
                             </div>
                         `
                     },

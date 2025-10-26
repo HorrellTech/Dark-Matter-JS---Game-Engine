@@ -933,6 +933,18 @@ class Engine {
         }
     }
 
+    getObjectByID(id, objects = this.gameObjects) {
+        for (const obj of objects) {
+            if (obj.id === id) {
+                return obj;
+            }
+            // Recursively search in children
+            const found = this.getObjectByID(id, obj.children);
+            if (found) return found;
+        }
+        return null;
+    }
+
     /**
      * Find the original object that corresponds to a cloned object
      * @param {GameObject} clonedObject - The cloned object to find the original for

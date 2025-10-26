@@ -8,19 +8,21 @@ class TilemapSystem extends Module {
     constructor() {
         super("TilemapSystem");
 
-        // Chunk-based infinite world
+        // Chunk-based finite world
         this.chunkSize = 32; // tiles per chunk
         this.tileSize = 32; // pixels per tile
         this.chunks = new Map(); // stores generated chunks
-        this.chunkLoadRadius = 3; // how many chunks to keep loaded around viewport
+        this.worldWidthTiles = 100; // finite world width in tiles
+        this.worldHeightTiles = 100; // finite world height in tiles (ignored if infinite)
+        this.infiniteWorld = false;
 
         this.seed = 12345;
 
         // Generation settings
         this.generationType = "terraria"; // terraria, perlin, caverns, islands, flat
-        this.grassHeight = 20;
-        this.dirtDepth = 15;
-        this.stoneDepth = 30;
+        this.grassHeight = 5;
+        this.dirtDepth = 3;
+        this.stoneDepth = 2;
         this.caveFrequency = 0.3;
         this.oreFrequency = 0.05;
 
@@ -28,16 +30,20 @@ class TilemapSystem extends Module {
         this.terrainScale = 0.05;
         this.terrainOctaves = 3;
         this.terrainPersistence = 0.5;
-        this.mountainHeight = 40;
+        this.mountainHeight = 7;
         this.valleyDepth = 10;
 
         // Visual settings
-        this.showGrid = false;
-        this.gridColor = "#444444";
+        this.showGrid = true;
+        this.gridColor = "#e2e2e2ff";
         this.enableBlending = true;
         this.blendStrength = 0.7;
         this.enableShading = true;
         this.shadingStrength = 0.3;
+
+        // Lighting settings
+        this.enableLighting = false;
+        this.lightingGradientSize = 5;
 
         // Editor settings
         this.editMode = "draw"; // draw, erase, fill, eyedropper
@@ -45,18 +51,28 @@ class TilemapSystem extends Module {
         this.brushSize = 1;
         this.showBrushPreview = true;
 
+        this.editTileTypes = false;
+
+        // Texture settings
+        this.enableTexture = true;
+        this.textureScale = 0.02;
+        this.textureContrast = 0.7;
+
+        this.tiles = this.createEmptyTileArray();
+        this.lighting = this.createEmptyTileArray();
+
         // Tile definitions with gradient colors for blending
         this.tileTypes = {
-            0: { name: "Air", color: "transparent", solid: false, blend: [] },
-            1: { name: "Grass", color: "#4CAF50", solid: true, blend: ["#5CB860", "#3D9142", "#6DC974"] },
-            2: { name: "Dirt", color: "#8D6E63", solid: true, blend: ["#9D7E73", "#7D5E53", "#AD8E83"] },
-            3: { name: "Stone", color: "#607D8B", solid: true, blend: ["#708D9B", "#506D7B", "#809DAB"] },
-            4: { name: "Coal", color: "#37474F", solid: true, blend: ["#47575F", "#27373F", "#57676F"] },
-            5: { name: "Iron", color: "#FF7043", solid: true, blend: ["#FF8053", "#EF6033", "#FF9063"] },
-            6: { name: "Gold", color: "#FFD700", solid: true, blend: ["#FFE710", "#EFC700", "#FFF720"] },
-            7: { name: "Sand", color: "#F4E4C1", solid: true, blend: ["#FFF4D1", "#E4D4B1", "#FFFCE1"] },
-            8: { name: "Snow", color: "#ECEFF1", solid: true, blend: ["#FCFFFF", "#DCEEF1", "#FFFFFF"] },
-            9: { name: "Ice", color: "#B3E5FC", solid: true, blend: ["#C3F5FF", "#A3D5EC", "#D3FFFF"] }
+            0: { name: "Air", color: "transparent", solid: false, blend: [], enableTexture: false, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 4, squareSpacing: 8, squareOpacity: 0.6 },
+            1: { name: "Grass", color: "#4CAF50", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: true, squareCount: 3, squareSize: 4, squareSpacing: 8, squareOpacity: 0.2 },
+            2: { name: "Dirt", color: "#8D6E63", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3 },
+            3: { name: "Stone", color: "#607D8B", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.025, textureContrast: 0.4, enableSquares: true, squareCount: 1, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
+            4: { name: "Coal", color: "#37474F", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
+            5: { name: "Iron", color: "#FF7043", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.4, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
+            6: { name: "Gold", color: "#FFD700", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
+            7: { name: "Sand", color: "#F4E4C1", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3 },
+            8: { name: "Snow", color: "#ECEFF1", solid: true, blend: ["#FCFFFF", "#DCEEF1", "#FFFFFF"], enableTexture: true, textureScale: 0.02, textureContrast: 0.2, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
+            9: { name: "Ice", color: "#B3E5FC", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.1 }
         };
 
         // Editor state
@@ -81,7 +97,7 @@ class TilemapSystem extends Module {
             ],
             onChange: (val) => {
                 this.generationType = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -89,14 +105,53 @@ class TilemapSystem extends Module {
             description: "Size of each tile in pixels",
             onChange: (val) => {
                 this.tileSize = val;
+                this.regenerateWorld();
             }
         });
 
-        this.exposeProperty("chunkSize", "number", this.chunkSize, {
+        this.exposeProperty("infiniteWorld", "boolean", this.infiniteWorld, {
+            description: "Enable infinite world generation (chunks generated on demand)",
+            onChange: (val) => {
+                this.infiniteWorld = val;
+                if (this.infiniteWorld) {
+                    // Clear finite tiles and regenerate chunks as needed
+                    this.tiles = null; // Not needed for infinite
+                    this.lighting = null; // Not needed for infinite
+                    this.chunks.clear();
+                } else {
+                    // Reinitialize finite arrays
+                    this.tiles = this.createEmptyTileArray();
+                    this.lighting = this.createEmptyTileArray();
+                    this.regenerateWorld();
+                }
+            }
+        });
+
+        /*this.exposeProperty("chunkSize", "number", this.chunkSize, {
             description: "Tiles per chunk (affects generation performance)",
             onChange: (val) => {
                 this.chunkSize = val;
-                this.clearChunks();
+                this.regenerateWorld();
+            }
+        });*/
+
+        this.exposeProperty("worldWidthTiles", "number", this.worldWidthTiles, {
+            description: "Width of the world in chunks (finite world size)",
+            min: 1,
+            max: 1000,
+            onChange: (val) => {
+                this.worldWidthTiles = val;
+                this.regenerateWorld();
+            }
+        });
+
+        this.exposeProperty("worldHeightTiles", "number", this.worldHeightTiles, {
+            description: "Height of the world in chunks (finite world size)",
+            min: 1,
+            max: 1000,
+            onChange: (val) => {
+                this.worldHeightTiles = val;
+                this.regenerateWorld();
             }
         });
 
@@ -104,7 +159,7 @@ class TilemapSystem extends Module {
             description: "World generation seed",
             onChange: (val) => {
                 this.seed = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -112,7 +167,7 @@ class TilemapSystem extends Module {
             description: "Base surface height",
             onChange: (val) => {
                 this.grassHeight = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -120,7 +175,7 @@ class TilemapSystem extends Module {
             description: "Scale of terrain features",
             onChange: (val) => {
                 this.terrainScale = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -128,7 +183,7 @@ class TilemapSystem extends Module {
             description: "Height of mountains/hills",
             onChange: (val) => {
                 this.mountainHeight = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -136,7 +191,7 @@ class TilemapSystem extends Module {
             description: "Depth of dirt layer",
             onChange: (val) => {
                 this.dirtDepth = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -144,7 +199,7 @@ class TilemapSystem extends Module {
             description: "Depth of stone layer",
             onChange: (val) => {
                 this.stoneDepth = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -152,7 +207,7 @@ class TilemapSystem extends Module {
             description: "Frequency of cave generation",
             onChange: (val) => {
                 this.caveFrequency = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -160,7 +215,7 @@ class TilemapSystem extends Module {
             description: "Frequency of ore generation",
             onChange: (val) => {
                 this.oreFrequency = val;
-                this.clearChunks();
+                this.regenerateWorld();
             }
         });
 
@@ -194,6 +249,54 @@ class TilemapSystem extends Module {
             }
         });
 
+        this.exposeProperty("enableLighting", "boolean", this.enableLighting, {
+            description: "Enable distance-based lighting from air blocks",
+            onChange: (val) => {
+                this.enableLighting = val;
+                if (this.enableLighting) {
+                    this.computeLighting();
+                }
+            }
+        });
+
+        this.exposeProperty("lightingGradientSize", "number", this.lightingGradientSize, {
+            description: "Number of tiles to fade to black from air blocks",
+            min: 1, max: 50, step: 1,
+            onChange: (val) => {
+                this.lightingGradientSize = val;
+                if (this.enableLighting) {
+                    this.computeLighting();
+                }
+            }
+        });
+
+        this.exposeProperty("enableTexture", "boolean", this.enableTexture, {
+            description: "Enable procedural texture generation for tiles",
+            onChange: (val) => {
+                this.enableTexture = val;
+            }
+        });
+
+        this.exposeProperty("textureScale", "number", this.textureScale, {
+            description: "Global scale for texture patterns",
+            min: 0.001,
+            max: 0.1,
+            step: 0.001,
+            onChange: (val) => {
+                this.textureScale = val;
+            }
+        });
+
+        this.exposeProperty("textureContrast", "number", this.textureContrast, {
+            description: "Global contrast for texture patterns",
+            min: 0,
+            max: 1,
+            step: 0.05,
+            onChange: (val) => {
+                this.textureContrast = val;
+            }
+        });
+
         this.exposeProperty("editMode", "select", this.editMode, {
             description: "Editing mode",
             options: [
@@ -206,6 +309,98 @@ class TilemapSystem extends Module {
                 this.editMode = val;
             }
         });
+
+        this.exposeProperty("editTileTypes", "boolean", this.editTileTypes, {
+            description: "Enable tile type editing",
+            onChange: (val) => {
+                this.editTileTypes = val;
+            }
+        });
+
+        for (const [key, tileData] of Object.entries(this.tileTypes)) {
+            this.exposeProperty(`tileColor_${key}`, "color", tileData.color, {
+                description: `Color for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].color = val;
+                }
+            });
+            this.exposeProperty('tileSolid_' + key, "boolean", tileData.solid, {
+                description: `Solid property for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].solid = val;
+                }
+            });
+            this.exposeProperty(`tileTexture_${key}`, "boolean", tileData.enableTexture, {
+                description: `Enable texture for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableTexture = val;
+                }
+            });
+
+            this.exposeProperty(`tileTextureScale_${key}`, "number", tileData.textureScale, {
+                description: `Texture scale for ${tileData.name} tile`,
+                min: 0.001,
+                max: 0.1,
+                step: 0.001,
+                onChange: (val) => {
+                    this.tileTypes[key].textureScale = val;
+                }
+            });
+
+            this.exposeProperty(`tileTextureContrast_${key}`, "number", tileData.textureContrast, {
+                description: `Texture contrast for ${tileData.name} tile`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.tileTypes[key].textureContrast = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquares_${key}`, "boolean", tileData.enableSquares, {
+                description: `Enable decorative squares for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableSquares = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareCount_${key}`, "number", tileData.squareCount, {
+                description: `Number of squares per ${tileData.name} tile`,
+                min: 0,
+                max: 10,
+                onChange: (val) => {
+                    this.tileTypes[key].squareCount = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareSize_${key}`, "number", tileData.squareSize, {
+                description: `Square size for ${tileData.name} tile`,
+                min: 1,
+                max: 20,
+                onChange: (val) => {
+                    this.tileTypes[key].squareSize = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareSpacing_${key}`, "number", tileData.squareSpacing, {
+                description: `Square spacing for ${tileData.name} tile`,
+                min: 2,
+                max: 50,
+                onChange: (val) => {
+                    this.tileTypes[key].squareSpacing = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareOpacity_${key}`, "number", tileData.squareOpacity, {
+                description: `Square opacity for ${tileData.name} tile`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.tileTypes[key].squareOpacity = val;
+                }
+            });
+        }
 
         this.exposeProperty("selectedTileType", "select", this.selectedTileType, {
             description: "Tile type to place",
@@ -266,13 +461,39 @@ class TilemapSystem extends Module {
             style: { label: "Seed" }
         });
 
-        style.exposeProperty("chunkSize", "number", this.chunkSize, {
+        /*style.exposeProperty("chunkSize", "number", this.chunkSize, {
             description: "Tiles per chunk",
             min: 16,
             max: 64,
             step: 8,
             style: { label: "Chunk Size", slider: true }
+        });*/
+
+        style.exposeProperty("tileSize", "number", this.tileSize, {
+            description: "Size of each tile in pixels",
+            min: 8,
+            max: 128,
+            step: 8,
+            style: { label: "Tile Size", slider: true }
         });
+
+        style.exposeProperty("infiniteWorld", "boolean", this.infiniteWorld, {
+            description: "Enable infinite world generation (chunks generated on demand)"
+        });
+
+        if (!this.infiniteWorld) {
+            style.exposeProperty("worldWidthTiles", "number", this.worldWidthTiles, {
+                description: "Width of the world in chunks (finite world size)",
+                min: 1,
+                max: 1000
+            });
+
+            style.exposeProperty("worldHeightTiles", "number", this.worldHeightTiles, {
+                description: "Height of the world in chunks (finite world size)",
+                min: 1,
+                max: 1000
+            });
+        }
 
         style.endGroup();
 
@@ -388,6 +609,34 @@ class TilemapSystem extends Module {
             style: { label: "Shading Strength", slider: true }
         });
 
+        style.exposeProperty("enableLighting", "boolean", this.enableLighting, {
+            description: "Enable distance-based lighting from air blocks",
+            style: { label: "Enable Lighting" }
+        });
+
+        style.exposeProperty("lightingGradientSize", "number", this.lightingGradientSize, {
+            description: "Number of tiles to fade to black from air blocks",
+            min: 1, max: 50, step: 1
+        });
+
+        style.exposeProperty("enableTexture", "boolean", this.enableTexture, {
+            description: "Enable procedural texture generation for tiles"
+        });
+
+        style.exposeProperty("textureScale", "number", this.textureScale, {
+            description: "Global scale for texture patterns",
+            min: 0.001,
+            max: 0.1,
+            step: 0.001
+        });
+
+        style.exposeProperty("textureContrast", "number", this.textureContrast, {
+            description: "Global contrast for texture patterns",
+            min: 0,
+            max: 1,
+            step: 0.05
+        });
+
         style.exposeProperty("showGrid", "boolean", this.showGrid, {
             description: "Show grid lines",
             style: { label: "Show Grid" }
@@ -417,6 +666,88 @@ class TilemapSystem extends Module {
             style: { label: "Edit Mode" }
         });
 
+        style.startGroup("Tile Types", false, {
+            backgroundColor: 'rgba(255,193,7,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("editTileTypes", "boolean", this.editTileTypes, {
+            description: "Enable tile type editing"
+        });
+
+        if (this.editTileTypes) {
+            // Add loop for tile type colors in style
+            for (const [key, tileData] of Object.entries(this.tileTypes)) {
+                if (key == 0) continue; // Skip air tile
+                style.startGroup(`${tileData.name} Tile`, false, {
+                    backgroundColor: 'rgba(255, 235, 59, 0.1)',
+                    borderRadius: '6px',
+                    padding: '8px'
+                });
+
+                style.exposeProperty(`tileColor`, "color", tileData.color, {
+                    description: `Color for ${tileData.name} tile`,
+                    style: { label: tileData.name }
+                });
+                style.exposeProperty(`tileSolid`, "boolean", tileData.solid, {
+                    description: `Solid property for ${tileData.name} tile`,
+                    style: { label: `${tileData.name} Solid` }
+                });
+
+                style.exposeProperty(`tileTexture`, "boolean", tileData.enableTexture, {
+                    description: `Enable texture for ${tileData.name} tile`
+                });
+
+                style.exposeProperty(`tileTextureScale`, "number", tileData.textureScale, {
+                    description: `Texture scale for ${tileData.name} tile`,
+                    min: 0.001,
+                    max: 0.1,
+                    step: 0.001
+                });
+
+                style.exposeProperty(`tileTextureContrast`, "number", tileData.textureContrast, {
+                    description: `Texture contrast for ${tileData.name} tile`,
+                    min: 0,
+                    max: 1,
+                    step: 0.05
+                });
+
+                style.exposeProperty(`tileSquares`, "boolean", tileData.enableSquares, {
+                    description: `Enable decorative squares for ${tileData.name} tile`
+                });
+
+                style.exposeProperty(`tileSquareCount`, "number", tileData.squareCount, {
+                    description: `Number of squares per ${tileData.name} tile`,
+                    min: 0,
+                    max: 10
+                });
+
+                style.exposeProperty(`tileSquareSize`, "number", tileData.squareSize, {
+                    description: `Square size for ${tileData.name} tile`,
+                    min: 1,
+                    max: 20
+                });
+
+                style.exposeProperty(`tileSquareSpacing`, "number", tileData.squareSpacing, {
+                    description: `Square spacing for ${tileData.name} tile`,
+                    min: 2,
+                    max: 50
+                });
+
+                style.exposeProperty(`tileSquareOpacity`, "number", tileData.squareOpacity, {
+                    description: `Square opacity for ${tileData.name} tile`,
+                    min: 0,
+                    max: 1,
+                    step: 0.05
+                });
+
+                style.endGroup();
+            }
+        }
+
+        style.endGroup();
+
         style.exposeProperty("selectedTileType", "select", this.selectedTileType, {
             description: "Tile type to place",
             options: Object.keys(this.tileTypes).map(k => ({
@@ -437,7 +768,7 @@ class TilemapSystem extends Module {
         style.endGroup();
 
         style.addDivider();
-        style.addHelpText("🌍 Infinite procedural terrain! Pan around to explore. Hold Ctrl and click to paint tiles. The world generates infinitely in all directions based on the seed.");
+        style.addHelpText("🌍 TileMap terrain with generation. Hold Ctrl and click to paint tiles. The world generates infinitely in all directions based on the seed.");
     }
 
     // ========================================
@@ -681,7 +1012,7 @@ class TilemapSystem extends Module {
         // Check if any islands should be in this chunk
         // We generate island centers based on a grid with some randomness
         const islandSpacing = 40;
-        const searchRadius = 3;
+        const searchRadius = 5; // Increased from 3 for more coverage
 
         for (let ix = -searchRadius; ix <= searchRadius; ix++) {
             for (let iy = -searchRadius; iy <= searchRadius; iy++) {
@@ -691,12 +1022,12 @@ class TilemapSystem extends Module {
                 const islandSeed = this.seed + islandGridX * 123.456 + islandGridY * 456.789;
 
                 // Random chance for island to exist
-                if (this.seededRandom(islandSeed) < 0.3) continue;
+                if (this.seededRandom(islandSeed) < 0.6) continue; // Increased from 0.3
 
                 const centerX = islandGridX * islandSpacing + this.seededRandom(islandSeed + 1) * 20 - 10;
                 const centerY = islandGridY * islandSpacing + this.seededRandom(islandSeed + 2) * 20 - 10;
-                const islandWidth = Math.floor(this.seededRandom(islandSeed + 3) * 15 + 10);
-                const islandHeight = Math.floor(this.seededRandom(islandSeed + 4) * 8 + 6);
+                const islandWidth = Math.floor(this.seededRandom(islandSeed + 3) * 25 + 15); // Increased min/max size
+                const islandHeight = Math.floor(this.seededRandom(islandSeed + 4) * 12 + 8); // Slightly increased
 
                 // Generate island tiles that overlap this chunk
                 for (let x = 0; x < this.chunkSize; x++) {
@@ -709,7 +1040,7 @@ class TilemapSystem extends Module {
                         const dist = Math.sqrt(dx * dx + dy * dy * 1.5);
 
                         const noiseVal = this.noise(worldX, worldY, 0.15, 2, 0.5);
-                        const threshold = 0.9 + noiseVal * 0.3;
+                        const threshold = 1.0 + noiseVal * 0.4; // Relaxed from 0.9-1.2 to 1.0-1.4 for more coverage
 
                         if (dist < threshold) {
                             const depthInIsland = worldY - (centerY - islandHeight);
@@ -761,9 +1092,9 @@ class TilemapSystem extends Module {
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
 
-            const baseHeight = this.noise(worldX, 0, 0.015, 1, 0.5) * this.mountainHeight * 0.5;
-            const mountainNoise = this.noise(worldX, 100, 0.05, 4, 0.6) * (this.mountainHeight * 1.2);
-            const detailNoise = this.noise(worldX, 200, 0.1, 2, 0.5) * (this.mountainHeight * 0.3);
+            const baseHeight = Math.max(this.noise(worldX, 0, 0.015, 1, 0.5) * this.mountainHeight * 0.5, 10); // Ensure minimum height of 10
+            const mountainNoise = this.noise(worldX, 100, 0.05, 4, 0.6) * (this.mountainHeight * 0.8); // Reduced multiplier for more consistent heights
+            const detailNoise = this.noise(worldX, 200, 0.1, 2, 0.5) * (this.mountainHeight * 0.2); // Reduced multiplier
             const surfaceY = Math.floor(this.grassHeight + baseHeight + mountainNoise + detailNoise);
 
             for (let y = 0; y < this.chunkSize; y++) {
@@ -845,32 +1176,69 @@ class TilemapSystem extends Module {
     }
 
     getTileAt(tileX, tileY) {
-        const chunkX = Math.floor(tileX / this.chunkSize);
-        const chunkY = Math.floor(tileY / this.chunkSize);
-        const localX = tileX - chunkX * this.chunkSize;
-        const localY = tileY - chunkY * this.chunkSize;
+        // Defensive checks
+        if (typeof tileX !== "number" || typeof tileY !== "number") return 0;
 
-        const chunk = this.getChunk(chunkX, chunkY);
-        if (!chunk || localX < 0 || localX >= this.chunkSize || localY < 0 || localY >= this.chunkSize) {
-            return 0;
+        if (!this.infiniteWorld) {
+            // Ensure tile storage exists
+            if (!this.tiles) {
+                this.tiles = this.createEmptyTileArray();
+                if (!this.tiles) return 0;
+            }
+
+            if (tileX < 0 || tileX >= this.worldWidthTiles || tileY < 0 || tileY >= this.worldHeightTiles) {
+                return 0;
+            }
+
+            const col = this.tiles[tileX];
+            if (!col) return 0;
+            return col[tileY] !== undefined ? col[tileY] : 0;
+        } else {
+            // Infinite: Get from chunks (handle negative coords cleanly)
+            const chunkX = Math.floor(tileX / this.chunkSize);
+            const chunkY = Math.floor(tileY / this.chunkSize);
+            const chunk = this.getChunk(chunkX, chunkY);
+            if (!chunk || !chunk.tiles) return 0;
+
+            // positive modulo for local indices
+            const localX = ((tileX % this.chunkSize) + this.chunkSize) % this.chunkSize;
+            const localY = ((tileY % this.chunkSize) + this.chunkSize) % this.chunkSize;
+
+            const col = chunk.tiles[localX];
+            if (!col) return 0;
+            return col[localY] !== undefined ? col[localY] : 0;
         }
-
-        return chunk.tiles[localX][localY];
     }
 
     setTileAt(tileX, tileY, tileType) {
-        const chunkX = Math.floor(tileX / this.chunkSize);
-        const chunkY = Math.floor(tileY / this.chunkSize);
-        const localX = tileX - chunkX * this.chunkSize;
-        const localY = tileY - chunkY * this.chunkSize;
+        if (typeof tileX !== "number" || typeof tileY !== "number") return false;
 
-        const chunk = this.getChunk(chunkX, chunkY);
-        if (!chunk || localX < 0 || localX >= this.chunkSize || localY < 0 || localY >= this.chunkSize) {
-            return false;
+        if (!this.infiniteWorld) {
+            // Ensure tile storage exists
+            if (!this.tiles) this.tiles = this.createEmptyTileArray();
+            if (!this.tiles) return false;
+
+            if (tileX < 0 || tileX >= this.worldWidthTiles || tileY < 0 || tileY >= this.worldHeightTiles) {
+                return false;
+            }
+
+            if (!this.tiles[tileX]) this.tiles[tileX] = new Array(this.worldHeightTiles).fill(0);
+            this.tiles[tileX][tileY] = tileType;
+            return true;
+        } else {
+            // Infinite: Set in chunks (handle negative coords)
+            const chunkX = Math.floor(tileX / this.chunkSize);
+            const chunkY = Math.floor(tileY / this.chunkSize);
+            const chunk = this.getChunk(chunkX, chunkY);
+            if (!chunk) return false;
+
+            const localX = ((tileX % this.chunkSize) + this.chunkSize) % this.chunkSize;
+            const localY = ((tileY % this.chunkSize) + this.chunkSize) % this.chunkSize;
+
+            if (!chunk.tiles[localX]) chunk.tiles[localX] = new Array(this.chunkSize).fill(0);
+            chunk.tiles[localX][localY] = tileType;
+            return true;
         }
-
-        chunk.tiles[localX][localY] = tileType;
-        return true;
     }
 
     // ========================================
@@ -926,58 +1294,206 @@ class TilemapSystem extends Module {
         } : { r: 0, g: 0, b: 0 };
     }
 
-    draw(ctx) {
-        const viewport = window.engine.viewport;
+    getTexturedColor(tileX, tileY) {
+        const tileType = this.getTileAt(tileX, tileY);
+        if (tileType === 0) return null;
 
-        // Disable smoothing so rectangles snap to pixel grid when possible
-        ctx.save();
-        if (ctx.imageSmoothingEnabled !== undefined) ctx.imageSmoothingEnabled = false;
+        const tileData = this.tileTypes[tileType];
+        if (!tileData || !this.enableTexture || !tileData.enableTexture) {
+            return this.getBlendedColor(tileX, tileY);
+        }
 
-        // Calculate viewport center in world coordinates
-        const viewportCenterX = viewport.x + viewport.width / 2;
-        const viewportCenterY = viewport.y + viewport.height / 2;
+        const baseColor = this.getBlendedColor(tileX, tileY);
+        if (!baseColor) return null;
 
-        // Calculate visible tile range
-        const startTileX = Math.floor(viewport.x / this.tileSize);
-        const endTileX = Math.ceil((viewport.x + viewport.width) / this.tileSize);
-        const startTileY = Math.floor(viewport.y / this.tileSize);
-        const endTileY = Math.ceil((viewport.y + viewport.height) / this.tileSize);
+        // Generate texture pattern
+        const textureIntensity = this.generateTexturePattern(tileX * this.tileSize, tileY * this.tileSize, tileData.textureScale, tileData.textureContrast);
 
-        // Calculate which chunks are visible
-        const startChunkX = Math.floor(startTileX / this.chunkSize);
-        const endChunkX = Math.floor(endTileX / this.chunkSize);
-        const startChunkY = Math.floor(startTileY / this.chunkSize);
-        const endChunkY = Math.floor(endTileY / this.chunkSize);
+        // Apply texture as overlay
+        return this.applyTextureOverlay(baseColor, textureIntensity, tileData.textureContrast);
+    }
 
-        // Load visible chunks
-        for (let cx = startChunkX; cx <= endChunkX; cx++) {
-            for (let cy = startChunkY; cy <= endChunkY; cy++) {
-                this.getChunk(cx, cy);
+    generateTexturePattern(x, y, scale, contrast) {
+        // Offset texture noise coordinates to avoid correlation with terrain generation noise
+        const offsetX = 10000; // Arbitrary large offset to shift into a different noise space
+        const offsetY = 10000;
+
+        // Create a tilable noise pattern with offset
+        const noise1 = this.noise(x * scale + offsetX, y * scale + offsetY);
+        const noise2 = this.noise(x * scale * 2.1 + offsetX, y * scale * 1.7 + offsetY);
+        const noise3 = this.noise(x * scale * 4.3 + offsetX, y * scale * 3.9 + offsetY);
+
+        let texture = (noise1 * 0.4 + noise2 * 0.3 + noise3 * 0.3);
+
+        // Apply contrast
+        texture = (texture - 0.5) * contrast * 1.5 + 0.5;
+
+        return Math.max(0, Math.min(1, texture));
+    }
+
+    applyTextureOverlay(baseColor, textureIntensity, contrast) {
+        // Parse baseColor (supports both #RRGGBB and rgb(r,g,b) formats)
+        let r, g, b;
+        if (baseColor.startsWith('#')) {
+            // Hex format
+            const hex = baseColor.replace('#', '');
+            r = parseInt(hex.substr(0, 2), 16);
+            g = parseInt(hex.substr(2, 2), 16);
+            b = parseInt(hex.substr(4, 2), 16);
+        } else if (baseColor.startsWith('rgb(')) {
+            // RGB format
+            const rgbMatch = baseColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            if (rgbMatch) {
+                r = parseInt(rgbMatch[1], 10);
+                g = parseInt(rgbMatch[2], 10);
+                b = parseInt(rgbMatch[3], 10);
+            } else {
+                // Fallback to default if parsing fails
+                r = g = b = 128;
+            }
+        } else {
+            // Fallback for unexpected formats
+            r = g = b = 128;
+        }
+
+        // Mix base color with texture pattern
+        const mixRatio = textureIntensity * 0.3;
+        const texR = Math.floor(r * (1 - mixRatio) + (textureIntensity * 255) * mixRatio);
+        const texG = Math.floor(g * (1 - mixRatio) + (textureIntensity * 255) * mixRatio);
+        const texB = Math.floor(b * (1 - mixRatio) + (textureIntensity * 255) * mixRatio);
+
+        return `rgb(${Math.max(0, Math.min(255, texR))}, ${Math.max(0, Math.min(255, texG))}, ${Math.max(0, Math.min(255, texB))})`;
+    }
+
+    computeLighting() {
+        if (this.infiniteWorld) {
+            // For infinite worlds, lighting is complex; skip or implement per-chunk
+            // For now, disable lighting for infinite worlds to avoid performance issues
+            console.warn("Lighting not supported for infinite worlds.");
+            return;
+        }
+
+        // Initialize lighting to 0 (dark)
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                this.lighting[x][y] = 0;
             }
         }
 
-        // Draw visible tiles
+        // Use BFS to compute distance from air blocks
+        const queue = [];
+        const visited = new Set();
+
+        // Start from all air blocks
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (this.tiles[x][y] === 0) { // Air
+                    queue.push({ x, y, dist: 0 });
+                    visited.add(`${x},${y}`);
+                    this.lighting[x][y] = 1; // Full light at air
+                }
+            }
+        }
+
+        const directions = [
+            { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+        ];
+
+        while (queue.length > 0) {
+            const { x, y, dist } = queue.shift();
+            const light = Math.max(0, 1 - dist / this.lightingGradientSize);
+            this.lighting[x][y] = light;
+
+            if (dist >= this.lightingGradientSize) continue; // No need to propagate further
+
+            for (const dir of directions) {
+                const nx = x + dir.dx;
+                const ny = y + dir.dy;
+                const key = `${nx},${ny}`;
+
+                if (nx >= 0 && nx < this.worldWidthTiles && ny >= 0 && ny < this.worldHeightTiles && !visited.has(key)) {
+                    visited.add(key);
+                    queue.push({ x: nx, y: ny, dist: dist + 1 });
+                }
+            }
+        }
+    }
+
+    applyLighting(color, light) {
+        // Parse color and multiply by light
+        let r, g, b;
+        if (color.startsWith('#')) {
+            const hex = color.replace('#', '');
+            r = parseInt(hex.substr(0, 2), 16);
+            g = parseInt(hex.substr(2, 2), 16);
+            b = parseInt(hex.substr(4, 2), 16);
+        } else if (color.startsWith('rgb(')) {
+            const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            if (rgbMatch) {
+                r = parseInt(rgbMatch[1], 10);
+                g = parseInt(rgbMatch[2], 10);
+                b = parseInt(rgbMatch[3], 10);
+            } else {
+                r = g = b = 128;
+            }
+        } else {
+            r = g = b = 128;
+        }
+
+        r = Math.floor(r * light);
+        g = Math.floor(g * light);
+        b = Math.floor(b * light);
+
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    draw(ctx) {
+        const viewport = window.engine.viewport;
+
+        ctx.save();
+        if (ctx.imageSmoothingEnabled !== undefined) ctx.imageSmoothingEnabled = false;
+
+        // For infinite worlds, expand bounds based on viewport; for finite, use existing limits
+        const maxX = this.infiniteWorld ? Infinity : this.worldWidthTiles;
+        const maxY = this.infiniteWorld ? Infinity : this.worldHeightTiles;
+
+        const startTileX = Math.max(0, Math.floor(viewport.x / this.tileSize));
+        const endTileX = Math.min(maxX, Math.ceil((viewport.x + viewport.width) / this.tileSize));
+        const startTileY = Math.max(0, Math.floor(viewport.y / this.tileSize));
+        const endTileY = Math.min(maxY, Math.ceil((viewport.y + viewport.height) / this.tileSize));
+
         for (let tileX = startTileX; tileX < endTileX; tileX++) {
             for (let tileY = startTileY; tileY < endTileY; tileY++) {
-                const tileType = this.getTileAt(tileX, tileY);
+                const tileType = this.getTileAt(tileX, tileY); // Now uses chunks if infinite
                 if (tileType === 0) continue;
 
-                // compute pixel-aligned coordinates to avoid sub-pixel seams
                 const drawX = tileX * this.tileSize;
                 const drawY = tileY * this.tileSize;
-
-                // round to nearest integer pixel and expand to cover any rounding gaps
                 const px = Math.round(drawX);
                 const py = Math.round(drawY);
                 const pSize = Math.ceil(this.tileSize);
 
-                const color = this.getBlendedColor(tileX, tileY);
+                let color = this.getTexturedColor(tileX, tileY);
                 if (!color) continue;
 
-                ctx.fillStyle = color;
-                ctx.fillRect(px, py, pSize, pSize);
+                // Apply lighting
+                if (this.enableLighting) {
+                    const light = this.lighting[tileX][tileY];
+                    if (light >= 1) {
+                        color = this.applyLighting("#000000", light);
+                        return;
+                    } else {
+                        color = this.applyLighting(color, light);
+                    }
+                }
 
-                // Add shading based on depth
+                ctx.fillStyle = color;
+                ctx.fillRect(px, py, pSize + 1, pSize + 1);
+
+                if (this.enableTexture && this.tileTypes[tileType].enableSquares) {
+                    this.drawDecorativeSquares(ctx, tileX, tileY, px, py, pSize, this.tileTypes[tileType]);
+                }
+
                 if (this.enableShading && tileY > this.grassHeight) {
                     const depth = (tileY - this.grassHeight) / 100;
                     const shadingAlpha = Math.min(depth * this.shadingStrength, this.shadingStrength);
@@ -985,7 +1501,6 @@ class TilemapSystem extends Module {
                     ctx.fillRect(px, py, pSize, pSize);
                 }
 
-                // Add edge highlights
                 if (this.enableShading) {
                     const hasAirAbove = this.getTileAt(tileX, tileY - 1) === 0;
                     const hasAirLeft = this.getTileAt(tileX - 1, tileY) === 0;
@@ -1000,7 +1515,6 @@ class TilemapSystem extends Module {
                     }
                 }
 
-                // Shading/highlights only on exposed faces to avoid seams between adjacent tiles
                 if (this.enableShading) {
                     const up = this.getTileAt(tileX, tileY - 1);
                     const down = this.getTileAt(tileX, tileY + 1);
@@ -1010,28 +1524,20 @@ class TilemapSystem extends Module {
                     const depth = Math.max(0, tileY - this.grassHeight) / 100;
                     const shadingAlpha = Math.min(depth * this.shadingStrength, this.shadingStrength);
 
-                    // strip size drawn inside the tile (prevents overlapping with neighbor drawing)
                     const strip = Math.max(1, Math.floor(this.tileSize * 0.12));
 
-                    // Top highlight when exposed above (air)
                     if (up === 0) {
                         ctx.fillStyle = `rgba(255,255,255,${0.15})`;
                         ctx.fillRect(px, py, pSize, strip);
                     }
-
-                    // Bottom shadow when exposed below (air)
                     if (down === 0) {
                         ctx.fillStyle = `rgba(0,0,0,${shadingAlpha})`;
                         ctx.fillRect(px, py + pSize - strip, pSize, strip);
                     }
-
-                    // Left highlight when exposed left (air)
                     if (left === 0) {
                         ctx.fillStyle = `rgba(255,255,255,${0.12})`;
                         ctx.fillRect(px, py, strip, pSize);
                     }
-
-                    // Right shadow when exposed right (air)
                     if (right === 0) {
                         ctx.fillStyle = `rgba(0,0,0,${shadingAlpha * 0.9})`;
                         ctx.fillRect(px + pSize - strip, py, strip, pSize);
@@ -1040,54 +1546,17 @@ class TilemapSystem extends Module {
             }
         }
 
-        // Draw grid if enabled (use 0.5 offsets for crisp 1px strokes)
-        if (this.showGrid) {
-            ctx.strokeStyle = this.gridColor;
-            ctx.lineWidth = 1;
-
-            for (let x = startTileX; x <= endTileX; x++) {
-                const lineX = Math.round(x * this.tileSize) + 0.5;
-                ctx.beginPath();
-                ctx.moveTo(lineX, Math.round(startTileY * this.tileSize));
-                ctx.lineTo(lineX, Math.round(endTileY * this.tileSize));
-                ctx.stroke();
-            }
-
-            for (let y = startTileY; y <= endTileY; y++) {
-                const lineY = Math.round(y * this.tileSize) + 0.5;
-                ctx.beginPath();
-                ctx.moveTo(Math.round(startTileX * this.tileSize), lineY);
-                ctx.lineTo(Math.round(endTileX * this.tileSize), lineY);
-                ctx.stroke();
-            }
-        }
-
-        // Cleanup distant chunks to save memory
-        this.cleanupDistantChunks(viewportCenterX, viewportCenterY);
-
         ctx.restore();
-    }
-
-    cleanupDistantChunks(centerX, centerY) {
-        const centerChunk = this.worldToChunk(centerX, centerY);
-        const keysToDelete = [];
-
-        for (const [key, chunk] of this.chunks) {
-            const dx = Math.abs(chunk.x - centerChunk.x);
-            const dy = Math.abs(chunk.y - centerChunk.y);
-
-            if (dx > this.chunkLoadRadius * 2 || dy > this.chunkLoadRadius * 2) {
-                keysToDelete.push(key);
-            }
-        }
-
-        keysToDelete.forEach(key => this.chunks.delete(key));
     }
 
     drawGizmos(ctx) {
         if (!this.showGizmos) return;
 
         const viewport = window.engine.viewport;
+        const worldPos = this.gameObject.getWorldPosition();
+        // Calculate offset based on game object's position
+        const offsetX = worldPos.x || 0;
+        const offsetY = worldPos.y || 0;
 
         // Draw hover preview
         if (this.hoveredTile.x !== undefined && this.hoveredTile.y !== undefined) {
@@ -1098,9 +1567,10 @@ class TilemapSystem extends Module {
                         const tx = this.hoveredTile.x + bx;
                         const ty = this.hoveredTile.y + by;
 
-                        const px = Math.round(tx * this.tileSize);
-                        const py = Math.round(ty * this.tileSize);
+                        const px = Math.round(tx * this.tileSize) + offsetX;  // Added offset
+                        const py = Math.round(ty * this.tileSize) + offsetY;  // Added offset
                         const pSize = Math.ceil(this.tileSize);
+
 
                         // Different preview based on mode
                         if (this.editMode === "draw") {
@@ -1127,11 +1597,60 @@ class TilemapSystem extends Module {
             }
 
             // Draw cursor highlight
-            const drawX = Math.round(this.hoveredTile.x * this.tileSize);
-            const drawY = Math.round(this.hoveredTile.y * this.tileSize);
+            const drawX = Math.round(this.hoveredTile.x * this.tileSize) + offsetX;  // Added offset
+            const drawY = Math.round(this.hoveredTile.y * this.tileSize) + offsetY;  // Added offset
             ctx.strokeStyle = "#FFFF00";
             ctx.lineWidth = 2;
             ctx.strokeRect(drawX, drawY, Math.ceil(this.tileSize), Math.ceil(this.tileSize));
+        }
+
+        // Draw grid if enabled (moved from draw() to here for editor-only display)
+        if (this.showGrid) {
+            const startTileX = Math.max(0, Math.floor(viewport.x / this.tileSize));
+            const endTileX = Math.min(this.worldWidthTiles, Math.ceil((viewport.x + viewport.width) / this.tileSize));
+            const startTileY = Math.max(0, Math.floor(viewport.y / this.tileSize));
+            const endTileY = Math.min(this.worldHeightTiles, Math.ceil((viewport.y + viewport.height) / this.tileSize));
+
+            ctx.strokeStyle = this.gridColor;
+            ctx.lineWidth = 1;
+
+            for (let x = startTileX; x <= endTileX; x++) {
+                const lineX = Math.round(x * this.tileSize) + 0.5 + offsetX;  // Added offset
+                ctx.beginPath();
+                ctx.moveTo(lineX, Math.round(startTileY * this.tileSize) + offsetY);  // Added offset
+                ctx.lineTo(lineX, Math.round(endTileY * this.tileSize) + offsetY);  // Added offset
+                ctx.stroke();
+            }
+
+            for (let y = startTileY; y <= endTileY; y++) {
+                const lineY = Math.round(y * this.tileSize) + 0.5 + offsetY;  // Added offset
+                ctx.beginPath();
+                ctx.moveTo(Math.round(startTileX * this.tileSize) + offsetX, lineY);  // Added offset
+                ctx.lineTo(Math.round(endTileX * this.tileSize) + offsetX, lineY);  // Added offset
+                ctx.stroke();
+            }
+        }
+
+        const startTileX = Math.max(0, Math.floor(viewport.x / this.tileSize));
+        const endTileX = Math.min(this.worldWidthTiles, Math.ceil((viewport.x + viewport.width) / this.tileSize));
+        const startTileY = Math.max(0, Math.floor(viewport.y / this.tileSize));
+        const endTileY = Math.min(this.worldHeightTiles, Math.ceil((viewport.y + viewport.height) / this.tileSize));
+
+        for (let tileX = startTileX; tileX < endTileX; tileX++) {
+            for (let tileY = startTileY; tileY < endTileY; tileY++) {
+                const tileType = this.getTileAt(tileX, tileY);
+                if (tileType === 0) continue; // Skip air tiles
+
+                const tileData = this.tileTypes[tileType];
+                if (!tileData) continue;
+
+                const px = Math.round(tileX * this.tileSize) + offsetX;
+                const py = Math.round(tileY * this.tileSize) + offsetY;
+                const pSize = Math.ceil(this.tileSize);
+
+                ctx.fillStyle = tileData.color; // Use base color only
+                ctx.fillRect(px, py, pSize, pSize);
+            }
         }
 
         // Draw edit mode indicator
@@ -1167,6 +1686,88 @@ class TilemapSystem extends Module {
         }
     }
 
+    drawDecorativeSquares(ctx, tileX, tileY, px, py, pSize, tileData) {
+        const squares = this.generateDecorativeSquares(tileX, tileY, this.tileSize, tileData);
+        squares.forEach(square => {
+            ctx.fillStyle = `rgba(0, 0, 0, ${square.opacity})`; // Simple black squares for now
+            ctx.fillRect(px + square.x - square.size / 2, py + square.y - square.size / 2, square.size, square.size);
+        });
+    }
+
+    generateDecorativeSquares(tileX, tileY, tileSize, tileData) {
+        const squares = [];
+        const squareCount = tileData.squareCount;
+        const squareSize = tileData.squareSize;
+        const minSpacing = tileData.squareSpacing;
+
+        // Create seed based on tile position
+        const cellSeed = tileX * 1000000 + tileY * 10000 + this.seed;
+        const random = this.seededRandomGeneral(cellSeed);
+
+        for (let i = 0; i < squareCount; i++) {
+            let attempts = 0;
+            let validPosition = false;
+            let squareX, squareY;
+
+            while (!validPosition && attempts < 50) {
+                squareX = random() * tileSize;
+                squareY = random() * tileSize;
+
+                validPosition = true;
+
+                // Check distance from other squares
+                for (const existingSquare of squares) {
+                    const distance = Math.sqrt(
+                        Math.pow(squareX - existingSquare.x, 2) +
+                        Math.pow(squareY - existingSquare.y, 2)
+                    );
+
+                    if (distance < minSpacing) {
+                        validPosition = false;
+                        break;
+                    }
+                }
+
+                attempts++;
+            }
+
+            if (validPosition) {
+                squares.push({
+                    x: squareX,
+                    y: squareY,
+                    size: squareSize + random() * squareSize * 0.5,
+                    opacity: tileData.squareOpacity * (0.5 + random() * 0.5)
+                });
+            }
+        }
+
+        return squares;
+    }
+
+    seededRandomGeneral(seed) {
+        let x = Math.sin(seed) * 10000;
+        return function () {
+            x = Math.sin(x) * 10000;
+            return x - Math.floor(x);
+        };
+    }
+
+    cleanupDistantChunks(centerX, centerY) {
+        const centerChunk = this.worldToChunk(centerX, centerY);
+        const keysToDelete = [];
+
+        for (const [key, chunk] of this.chunks) {
+            const dx = Math.abs(chunk.x - centerChunk.x);
+            const dy = Math.abs(chunk.y - centerChunk.y);
+
+            if (dx > this.chunkLoadRadius * 2 || dy > this.chunkLoadRadius * 2) {
+                keysToDelete.push(key);
+            }
+        }
+
+        keysToDelete.forEach(key => this.chunks.delete(key));
+    }
+
     // ========================================
     // EDITOR INTERACTION
     // ========================================
@@ -1174,7 +1775,10 @@ class TilemapSystem extends Module {
     onMouseDown(worldPos, button) {
         if (!this.gameObject || !this.gameObject.isEditorSelected) return false;
 
-        const tile = this.worldToTile(worldPos.x, worldPos.y);
+        // Adjust mouse position by subtracting the game object's position to get relative coordinates
+        const adjustedX = worldPos.x - (this.gameObject.position?.x || 0);
+        const adjustedY = worldPos.y - (this.gameObject.position?.y || 0);
+        const tile = this.worldToTile(adjustedX, adjustedY);
 
         this.isEditing = true;
         this.lastEditTile = { x: tile.x, y: tile.y };
@@ -1186,11 +1790,22 @@ class TilemapSystem extends Module {
     onMouseMove(worldPos) {
         if (!this.gameObject || !this.gameObject.isEditorSelected) return false;
 
-        const tile = this.worldToTile(worldPos.x, worldPos.y);
+        // Adjust mouse position by subtracting the game object's position to get relative coordinates
+        const adjustedX = worldPos.x - (this.gameObject.position?.x || 0);
+        const adjustedY = worldPos.y - (this.gameObject.position?.y || 0);
+        const tile = this.worldToTile(adjustedX, adjustedY);
         this.hoveredTile = tile;
 
-        if (this.isEditing && (tile.x !== this.lastEditTile.x || tile.y !== this.lastEditTile.y)) {
-            this.handleEdit(tile.x, tile.y);
+        if (this.isEditing) {
+            // Get all tiles along the line from lastEditTile to current tile
+            const tilesAlongLine = this.getTilesAlongLine(this.lastEditTile.x, this.lastEditTile.y, tile.x, tile.y);
+
+            // Edit each tile along the path (handles brush size automatically in handleEdit)
+            for (const lineTile of tilesAlongLine) {
+                this.handleEdit(lineTile.x, lineTile.y);
+            }
+
+            // Update lastEditTile to current tile
             this.lastEditTile = { x: tile.x, y: tile.y };
         }
 
@@ -1200,6 +1815,37 @@ class TilemapSystem extends Module {
     onMouseUp(worldPos, button) {
         this.isEditing = false;
         return false;
+    }
+
+    // Helper method to get tiles along a line using Bresenham's line algorithm
+    getTilesAlongLine(startX, startY, endX, endY) {
+        const tiles = [];
+        const dx = Math.abs(endX - startX);
+        const dy = Math.abs(endY - startY);
+        const sx = startX < endX ? 1 : -1;
+        const sy = startY < endY ? 1 : -1;
+        let err = dx - dy;
+
+        let x = startX;
+        let y = startY;
+
+        while (true) {
+            tiles.push({ x, y });
+
+            if (x === endX && y === endY) break;
+
+            const e2 = 2 * err;
+            if (e2 > -dy) {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y += sy;
+            }
+        }
+
+        return tiles;
     }
 
     handleEdit(x, y) {
@@ -1233,6 +1879,9 @@ class TilemapSystem extends Module {
                 }
             }
         }
+        if (this.enableLighting) {
+            this.computeLighting();
+        }
     }
 
     eraseAtTile(x, y) {
@@ -1248,6 +1897,9 @@ class TilemapSystem extends Module {
                     this.setTileAt(tx, ty, 0);
                 }
             }
+        }
+        if (this.enableLighting) {
+            this.computeLighting();
         }
     }
 
@@ -1276,6 +1928,9 @@ class TilemapSystem extends Module {
             stack.push([cx - 1, cy]);
             stack.push([cx, cy + 1]);
             stack.push([cx, cy - 1]);
+        }
+        if (this.enableLighting) {
+            this.computeLighting();
         }
     }
 
@@ -1497,7 +2152,214 @@ class TilemapSystem extends Module {
     }
 
     regenerateWorld() {
-        this.clearChunks();
+        if (!this.infiniteWorld) {
+            this.generateWorld();
+        } else {
+            // For infinite, clear chunks and regenerate on demand
+            this.chunks.clear();
+        }
+        if (this.enableLighting && !this.infiniteWorld) {
+            this.computeLighting();
+        }
+    }
+
+    generateWorld() {
+        if (this.infiniteWorld) return;
+
+        // Initialize all to air
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                this.tiles[x][y] = 0;
+            }
+        }
+
+        // Generate based on type
+        switch (this.generationType) {
+            case "terraria":
+                this.generateWorldTerraria();
+                break;
+            case "perlin":
+                this.generateWorldPerlin();
+                break;
+            case "caverns":
+                this.generateWorldCaverns();
+                break;
+            case "islands":
+                this.generateWorldIslands();
+                break;
+            case "flat":
+                this.generateWorldFlat();
+                break;
+            case "mountains":
+                this.generateWorldMountains();
+                break;
+            default:
+                this.generateWorldTerraria();
+        }
+
+        // Add ores
+        if (this.generationType !== "islands") {
+            this.generateWorldOres();
+        }
+    }
+
+    generateWorldOres() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (this.tiles[x][y] !== 3 || y < this.grassHeight + this.dirtDepth) continue;
+                const oreNoise = this.noise(x, y, 0.2, 2, 0.5);
+                if (oreNoise > (1 - this.oreFrequency)) {
+                    const depth = y - (this.grassHeight + this.dirtDepth);
+                    const depthRatio = Math.min(depth / 100, 1);
+                    if (depthRatio < 0.2) {
+                        this.tiles[x][y] = 4;
+                    } else if (depthRatio < 0.5) {
+                        this.tiles[x][y] = 5;
+                    } else if (depthRatio < 0.8) {
+                        this.tiles[x][y] = 6;
+                    } else {
+                        this.tiles[x][y] = this.seededRandom(x * y + this.seed) > 0.5 ? 6 : 5;
+                    }
+                }
+            }
+        }
+    }
+
+    generateWorldTerraria() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            const height = Math.floor(
+                this.grassHeight +
+                this.noise(x, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
+            );
+
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (y < height) {
+                    this.tiles[x][y] = 0; // Air
+                } else if (y === height) {
+                    this.tiles[x][y] = 1; // Grass
+                } else if (y < height + this.dirtDepth) {
+                    this.tiles[x][y] = 2; // Dirt
+                } else {
+                    this.tiles[x][y] = 3; // Stone
+                }
+            }
+        }
+
+        // Caves
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (this.tiles[x][y] === 0 || y < this.grassHeight + 5) continue;
+                const caveNoise = this.noise(x, y, 0.08, 2, 0.5);
+                if (caveNoise > (1 - this.caveFrequency)) {
+                    this.tiles[x][y] = 0;
+                }
+            }
+        }
+    }
+
+    generateWorldCaverns() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                const caveNoise = this.noise(x, y, 0.05, 3, 0.5);
+                if (caveNoise > (1 - this.caveFrequency)) {
+                    this.tiles[x][y] = 0;
+                }
+            }
+        }
+    }
+
+    generateWorldFlat() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (y < this.grassHeight) {
+                    this.tiles[x][y] = 0; // Air
+                } else if (y === this.grassHeight) {
+                    this.tiles[x][y] = 1; // Grass
+                } else if (y < this.grassHeight + this.dirtDepth) {
+                    this.tiles[x][y] = 2; // Dirt
+                } else {
+                    this.tiles[x][y] = 3; // Stone
+                }
+            }
+        }
+    }
+
+    generateWorldIslands() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            const height = Math.floor(
+                this.grassHeight +
+                this.noise(x, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
+            );
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (y < height) {
+                    this.tiles[x][y] = 0; // Air
+                } else if (y === height) {
+                    this.tiles[x][y] = 1; // Grass
+                } else if (y < height + this.dirtDepth) {
+                    this.tiles[x][y] = 2; // Dirt
+                } else {
+                    this.tiles[x][y] = 3; // Stone
+                }
+            }
+        }
+    }
+
+    generateWorldMountains() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            const height = Math.floor(
+                this.grassHeight +
+                this.noise(x, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
+            );
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (y < height) {
+                    this.tiles[x][y] = 0; // Air
+                } else if (y === height) {
+                    this.tiles[x][y] = 1; // Grass
+                } else if (y < height + this.dirtDepth) {
+                    this.tiles[x][y] = 2; // Dirt
+                } else {
+                    this.tiles[x][y] = 3; // Stone
+                }
+            }
+        }
+    }
+
+    generateWorldPerlin() {
+        for (let x = 0; x < this.worldWidthTiles; x++) {
+            const height = Math.floor(
+                this.grassHeight +
+                this.noise(x, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
+            );
+            for (let y = 0; y < this.worldHeightTiles; y++) {
+                if (y < height) {
+                    this.tiles[x][y] = 0; // Air
+                }
+                else if (y === height) {
+                    this.tiles[x][y] = 1; // Grass
+                } else if (y < height + this.dirtDepth) {
+                    this.tiles[x][y] = 2; // Dirt
+                } else {
+                    this.tiles[x][y] = 3; // Stone
+                }
+            }
+        }
+    }
+
+    createEmptyTileArray() {
+        if (this.infiniteWorld) return null;
+
+        // Use safe integer dimensions (fall back to reasonable defaults if something overwrote them)
+        const width = Math.max(1, Math.floor(this.worldWidthTiles || 100));
+        const height = Math.max(1, Math.floor(this.worldHeightTiles || 100));
+
+        const tiles = new Array(width);
+        for (let x = 0; x < width; x++) {
+            tiles[x] = new Array(height);
+            for (let y = 0; y < height; y++) {
+                tiles[x][y] = 0; // Default to air
+            }
+        }
+        return tiles;
     }
 
     // ========================================
@@ -1506,15 +2368,18 @@ class TilemapSystem extends Module {
 
     toJSON() {
         // Convert chunks map to array for serialization
-        const chunksArray = [];
-        for (const [key, chunk] of this.chunks) {
-            chunksArray.push(chunk);
-        }
+        //const chunksArray = [];
+        //for (const [key, chunk] of this.chunks) {
+        //    chunksArray.push(chunk);
+        //}
 
         return {
             ...super.toJSON(),
             chunkSize: this.chunkSize,
             tileSize: this.tileSize,
+            infiniteWorld: this.infiniteWorld,
+            worldWidthTiles: this.worldWidthTiles,
+            worldHeightTiles: this.worldHeightTiles,
             seed: this.seed,
             generationType: this.generationType,
             grassHeight: this.grassHeight,
@@ -1532,7 +2397,15 @@ class TilemapSystem extends Module {
             blendStrength: this.blendStrength,
             enableShading: this.enableShading,
             shadingStrength: this.shadingStrength,
-            chunks: chunksArray
+            enableTexture: this.enableTexture,
+            textureScale: this.textureScale,
+            textureContrast: this.textureContrast,
+            tiles: this.infiniteWorld ? null : this.tiles,
+            lighting: this.infiniteWorld ? null : this.lighting,
+            enableLighting: this.enableLighting,
+            lightingGradientSize: this.lightingGradientSize,            
+            chunks: this.infiniteWorld ? [] : Array.from(this.chunks.values())
+
         };
     }
 
@@ -1542,6 +2415,9 @@ class TilemapSystem extends Module {
 
         this.chunkSize = data.chunkSize || 32;
         this.tileSize = data.tileSize || 32;
+        this.infiniteWorld = data.infiniteWorld || false;
+        this.worldWidthTiles = data.worldWidthTiles || 100;
+        this.worldHeightTiles = data.worldHeightTiles || 100;
         this.seed = data.seed || 12345;
         this.generationType = data.generationType || "terraria";
         this.grassHeight = data.grassHeight || 20;
@@ -1559,9 +2435,16 @@ class TilemapSystem extends Module {
         this.blendStrength = data.blendStrength !== undefined ? data.blendStrength : 0.7;
         this.enableShading = data.enableShading !== undefined ? data.enableShading : true;
         this.shadingStrength = data.shadingStrength !== undefined ? data.shadingStrength : 0.3;
+        this.enableTexture = data.enableTexture !== undefined ? data.enableTexture : true;
+        this.textureScale = data.textureScale || 0.1;
+        this.textureContrast = data.textureContrast || 1.2;
+        this.tiles = this.infiniteWorld ? null : (data.tiles || this.createEmptyTileArray());
+        this.lighting = this.infiniteWorld ? null : (data.lighting || this.createEmptyTileArray());
+        this.enableLighting = data.enableLighting || false;
+        this.lightingGradientSize = data.lightingGradientSize || 5;
 
-        // Restore chunks if they were saved
-        if (data.chunks && Array.isArray(data.chunks)) {
+        // Restore chunks if finite and saved
+        if (!this.infiniteWorld && data.chunks && Array.isArray(data.chunks)) {
             this.chunks.clear();
             for (const chunk of data.chunks) {
                 const key = this.getChunkKey(chunk.x, chunk.y);

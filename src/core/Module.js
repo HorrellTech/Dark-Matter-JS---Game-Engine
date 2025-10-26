@@ -375,6 +375,11 @@ class Module {
         return null;
     }
 
+    getObjectByID(id) {
+        if (!window.engine) return null;
+        return window.engine.getObjectByID(id);
+    }
+
     /**
      * Check if there is a GameObject with the given name at the specified position
      * @param {string} name - The name of the GameObject

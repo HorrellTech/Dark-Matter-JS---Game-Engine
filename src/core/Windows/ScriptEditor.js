@@ -230,54 +230,93 @@ class ScriptEditor {
     checkScriptEval(isAuto = false) {
         if (!this.editor) return;
         const code = this.editor.getValue();
-        let error = null;
+
+        // Clear previous error highlights
+        if (this.editor) {
+            for (let i = 0; i < this.editor.lineCount(); i++) {
+                this.editor.removeLineClass(i, 'background', 'se-error-line');
+            }
+        }
+
         try {
             new Function(code);
+            // Success - clear errors
             if (this.consoleErrors.length > 0) {
                 this.consoleErrors = [];
                 this.consoleErrorSet.clear();
                 this.renderConsoleErrors();
             }
         } catch (e) {
-            // Extract line/column from stack if possible
             let mainError = e.message;
-            let lineInfo = '';
             let lineNum = null;
             let colNum = null;
+
+            // Try multiple methods to extract line/column info
             if (e.stack) {
-                // Chrome/Edge: "at new Function (<anonymous>:3:10)"
-                const match = e.stack.match(/<anonymous>:(\d+):(\d+)/);
-                if (match) {
-                    lineNum = parseInt(match[1], 10);
-                    colNum = parseInt(match[2], 10);
-                    lineInfo = ` (Line ${lineNum}${colNum ? `, Col ${colNum}` : ''})`;
+                // Method 1: Chrome/Edge format - "<anonymous>:3:10"
+                let match = e.stack.match(/<anonymous>:(\d+):(\d+)/);
+
+                // Method 2: Firefox format - "Function:3:10"
+                if (!match) {
+                    match = e.stack.match(/Function:(\d+):(\d+)/);
                 }
-            }
-            mainError += lineInfo;
-            if (!this.consoleErrorSet.has(mainError)) {
-                this.consoleErrors.push(mainError);
-                this.consoleErrorSet.add(mainError);
-                this.renderConsoleErrors();
-                // Optionally highlight the error line in CodeMirror
-                if (lineNum && this.editor) {
-                    this.editor.addLineClass(lineNum - 1, 'background', 'se-error-line');
-                }
-            }
-        }
-        // Remove error if fixed
-        if (!error && this.consoleErrors.length > 0) {
-            try {
-                new Function(code);
-                this.consoleErrors = [];
-                this.consoleErrorSet.clear();
-                this.renderConsoleErrors();
-                // Remove error highlights
-                if (this.editor) {
-                    for (let i = 0; i < this.editor.lineCount(); i++) {
-                        this.editor.removeLineClass(i, 'background', 'se-error-line');
+
+                // Method 3: Try to find any "line X" pattern
+                if (!match) {
+                    match = e.stack.match(/line (\d+)/i);
+                    if (match) {
+                        lineNum = parseInt(match[1], 10);
                     }
                 }
-            } catch { }
+
+                if (match && match.length >= 2) {
+                    lineNum = parseInt(match[1], 10);
+                    if (match.length >= 3) {
+                        colNum = parseInt(match[2], 10);
+                    }
+                }
+            }
+
+            // If we still don't have line info, try to parse from the error message itself
+            if (!lineNum) {
+                const msgMatch = mainError.match(/line (\d+)/i);
+                if (msgMatch) {
+                    lineNum = parseInt(msgMatch[1], 10);
+                }
+            }
+
+            // Format error message with location
+            let locationInfo = '';
+            if (lineNum) {
+                locationInfo = ` (Line ${lineNum}`;
+                if (colNum) {
+                    locationInfo += `, Column ${colNum}`;
+                }
+                locationInfo += ')';
+            }
+
+            const fullError = mainError + locationInfo;
+
+            // Add error if not already present
+            if (!this.consoleErrorSet.has(fullError)) {
+                this.consoleErrors = []; // Replace old errors with new one
+                this.consoleErrorSet.clear();
+                this.consoleErrors.push(fullError);
+                this.consoleErrorSet.add(fullError);
+                this.renderConsoleErrors();
+
+                // Highlight error line in editor
+                if (lineNum && this.editor) {
+                    // Line numbers in error are 1-based, CodeMirror uses 0-based
+                    const editorLine = lineNum - 1;
+                    if (editorLine >= 0 && editorLine < this.editor.lineCount()) {
+                        this.editor.addLineClass(editorLine, 'background', 'se-error-line');
+
+                        // Optional: Scroll to error line
+                        this.editor.scrollIntoView({ line: editorLine, ch: 0 }, 100);
+                    }
+                }
+            }
         }
     }
 
