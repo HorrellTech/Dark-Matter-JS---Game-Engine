@@ -1474,6 +1474,11 @@ class Inspector {
                         </div>
                     `;
                     return styleHelper;
+                },
+                addLabel: (text, options = {}) => {
+                    const customStyle = options.style || '';
+                    styleHelper.html += `<div class="property-label" style="${customStyle}">${text}</div>`;
+                    return styleHelper;
                 }
             };
 

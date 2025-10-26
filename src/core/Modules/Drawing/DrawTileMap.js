@@ -16,10 +16,13 @@ class TilemapSystem extends Module {
         this.worldHeightTiles = 100; // finite world height in tiles (ignored if infinite)
         this.infiniteWorld = false;
 
+        this.chunkLoadRadius = 5;
+
         this.seed = 12345;
 
         // Generation settings
         this.generationType = "terraria"; // terraria, perlin, caverns, islands, flat
+        this.randomizePerChunk = false; // New option for per-chunk randomization
         this.grassHeight = 5;
         this.dirtDepth = 3;
         this.stoneDepth = 2;
@@ -97,6 +100,14 @@ class TilemapSystem extends Module {
             ],
             onChange: (val) => {
                 this.generationType = val;
+                this.regenerateWorld();
+            }
+        });
+
+        this.exposeProperty("randomizePerChunk", "boolean", this.randomizePerChunk, {
+            description: "Randomize generation per chunk for more variety (still seed-based)",
+            onChange: (val) => {
+                this.randomizePerChunk = val;
                 this.regenerateWorld();
             }
         });
@@ -456,6 +467,10 @@ class TilemapSystem extends Module {
             style: { label: "Generation Type" }
         });
 
+        style.exposeProperty("randomizePerChunk", "boolean", this.randomizePerChunk, {
+            description: "Randomize generation per chunk for more variety (still seed-based)"
+        });
+
         style.exposeProperty("seed", "number", this.seed, {
             description: "Random seed for world generation",
             style: { label: "Seed" }
@@ -771,6 +786,13 @@ class TilemapSystem extends Module {
         style.addHelpText("🌍 TileMap terrain with generation. Hold Ctrl and click to paint tiles. The world generates infinitely in all directions based on the seed.");
     }
 
+    start() {
+        if(this.infiniteWorld) {
+            this.gameObject.position.x = 0;
+            this.gameObject.position.y = 0;
+        }
+    }
+
     // ========================================
     // CHUNK MANAGEMENT
     // ========================================
@@ -855,14 +877,14 @@ class TilemapSystem extends Module {
         return x - Math.floor(x);
     }
 
-    noise(x, y, scale = 1, octaves = 1, persistence = 0.5) {
+    noise(x, y, scale = 1, octaves = 1, persistence = 0.5, seed = this.seed) {
         let total = 0;
         let frequency = scale;
         let amplitude = 1;
         let maxValue = 0;
 
         for (let i = 0; i < octaves; i++) {
-            const seedOffset = this.seed * 9999 + i * 1000;
+            const seedOffset = seed * 9999 + i * 1000;
             const scaledX = x * frequency;
             const scaledY = y * frequency;
 
@@ -886,41 +908,51 @@ class TilemapSystem extends Module {
     generateChunkTerraria(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         // Generate surface terrain for this chunk
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
+
+            // Generate surface height with smoother noise
             const height = Math.floor(
                 this.grassHeight +
-                this.noise(worldX, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
+                this.noise(worldX, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence, chunkSeed) * this.mountainHeight
             );
 
             for (let y = 0; y < this.chunkSize; y++) {
                 const worldY = chunkWorldY + y;
 
                 if (worldY < height) {
-                    chunk.tiles[x][y] = 0; // Air
+                    chunk.tiles[x][y] = 0; // Air above surface
                 } else if (worldY === height) {
-                    chunk.tiles[x][y] = 1; // Grass
+                    chunk.tiles[x][y] = 1; // Grass surface layer
                 } else if (worldY < height + this.dirtDepth) {
-                    chunk.tiles[x][y] = 2; // Dirt
+                    chunk.tiles[x][y] = 2; // Dirt layer
                 } else {
-                    chunk.tiles[x][y] = 3; // Stone
+                    chunk.tiles[x][y] = 3; // Stone layer (everything below)
                 }
             }
         }
 
-        // Generate caves
+        // Generate caves by carving through existing terrain
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
             for (let y = 0; y < this.chunkSize; y++) {
                 const worldY = chunkWorldY + y;
 
+                // Only carve caves in solid blocks and below a certain depth
                 if (chunk.tiles[x][y] === 0 || worldY < this.grassHeight + 5) continue;
 
-                const caveNoise = this.noise(worldX, worldY, 0.08, 2, 0.5);
-                if (caveNoise > (1 - this.caveFrequency)) {
-                    chunk.tiles[x][y] = 0; // Air (cave)
+                // Use multiple noise octaves for more interesting cave systems
+                const cave1 = this.noise(worldX, worldY, 0.08, 3, 0.5, chunkSeed);
+                const cave2 = this.noise(worldX + 1000, worldY + 1000, 0.05, 2, 0.6, chunkSeed);
+
+                // Combine noise values for worm-like caves
+                const caveValue = cave1 * 0.6 + cave2 * 0.4;
+
+                if (caveValue > (1 - this.caveFrequency)) {
+                    chunk.tiles[x][y] = 0; // Carve out cave
                 }
             }
         }
@@ -929,13 +961,14 @@ class TilemapSystem extends Module {
     generateChunkPerlin(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
             for (let y = 0; y < this.chunkSize; y++) {
                 const worldY = chunkWorldY + y;
 
-                const noiseValue = this.noise(worldX, worldY, this.terrainScale, this.terrainOctaves, this.terrainPersistence);
+                const noiseValue = this.noise(worldX, worldY, this.terrainScale, this.terrainOctaves, this.terrainPersistence, chunkSeed);
                 const depthFactor = (worldY - this.grassHeight) / 100;
                 const threshold = 0.4 - (depthFactor * 0.3);
 
@@ -956,6 +989,7 @@ class TilemapSystem extends Module {
     generateChunkCaverns(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
@@ -992,9 +1026,9 @@ class TilemapSystem extends Module {
 
                 if (chunk.tiles[x][y] === 0 || worldY < this.grassHeight + this.dirtDepth) continue;
 
-                const cave1 = this.noise(worldX, worldY, 0.04, 3, 0.5);
-                const cave2 = this.noise(worldX + 5000, worldY + 5000, 0.08, 2, 0.5);
-                const cave3 = this.noise(worldX + 10000, worldY + 10000, 0.15, 1, 0.5);
+                const cave1 = this.noise(worldX, worldY, 0.04, 3, 0.5, chunkSeed);
+                const cave2 = this.noise(worldX + 5000, worldY + 5000, 0.08, 2, 0.5, chunkSeed);
+                const cave3 = this.noise(worldX + 10000, worldY + 10000, 0.15, 1, 0.5, chunkSeed);
 
                 const caveThreshold = 0.65 - (this.caveFrequency * 0.2);
 
@@ -1008,6 +1042,7 @@ class TilemapSystem extends Module {
     generateChunkIslands(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         // Check if any islands should be in this chunk
         // We generate island centers based on a grid with some randomness
@@ -1039,7 +1074,7 @@ class TilemapSystem extends Module {
                         const dy = (worldY - centerY) / islandHeight;
                         const dist = Math.sqrt(dx * dx + dy * dy * 1.5);
 
-                        const noiseVal = this.noise(worldX, worldY, 0.15, 2, 0.5);
+                        const noiseVal = this.noise(worldX, worldY, 0.15, 2, 0.5, chunkSeed);
                         const threshold = 1.0 + noiseVal * 0.4; // Relaxed from 0.9-1.2 to 1.0-1.4 for more coverage
 
                         if (dist < threshold) {
@@ -1088,13 +1123,14 @@ class TilemapSystem extends Module {
     generateChunkMountains(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
 
-            const baseHeight = Math.max(this.noise(worldX, 0, 0.015, 1, 0.5) * this.mountainHeight * 0.5, 10); // Ensure minimum height of 10
-            const mountainNoise = this.noise(worldX, 100, 0.05, 4, 0.6) * (this.mountainHeight * 0.8); // Reduced multiplier for more consistent heights
-            const detailNoise = this.noise(worldX, 200, 0.1, 2, 0.5) * (this.mountainHeight * 0.2); // Reduced multiplier
+            const baseHeight = Math.max(this.noise(worldX, 0, 0.015, 1, 0.5, chunkSeed) * this.mountainHeight * 0.5, 10); // Ensure minimum height of 10
+            const mountainNoise = this.noise(worldX, 100, 0.05, 4, 0.6, chunkSeed) * (this.mountainHeight * 0.8); // Reduced multiplier for more consistent heights
+            const detailNoise = this.noise(worldX, 200, 0.1, 2, 0.5, chunkSeed) * (this.mountainHeight * 0.2); // Reduced multiplier
             const surfaceY = Math.floor(this.grassHeight + baseHeight + mountainNoise + detailNoise);
 
             for (let y = 0; y < this.chunkSize; y++) {
@@ -1125,7 +1161,7 @@ class TilemapSystem extends Module {
 
                 if (chunk.tiles[x][y] === 0 || worldY < this.grassHeight) continue;
 
-                const caveNoise = this.noise(worldX, worldY, 0.07, 2, 0.5);
+                const caveNoise = this.noise(worldX, worldY, 0.07, 2, 0.5, chunkSeed);
                 if (caveNoise > (1 - this.caveFrequency * 0.4)) {
                     chunk.tiles[x][y] = 0; // Air
                 }
@@ -1136,6 +1172,7 @@ class TilemapSystem extends Module {
     generateChunkOres(chunk) {
         const chunkWorldX = chunk.x * this.chunkSize;
         const chunkWorldY = chunk.y * this.chunkSize;
+        const chunkSeed = this.randomizePerChunk ? this.seed + chunk.x * 1000000 + chunk.y * 1000000 : this.seed;
 
         for (let x = 0; x < this.chunkSize; x++) {
             const worldX = chunkWorldX + x;
@@ -1145,7 +1182,7 @@ class TilemapSystem extends Module {
                 if (chunk.tiles[x][y] !== 3) continue; // Only in stone
                 if (worldY < this.grassHeight + this.dirtDepth) continue;
 
-                const oreNoise = this.noise(worldX, worldY, 0.2, 2, 0.5);
+                const oreNoise = this.noise(worldX, worldY, 0.2, 2, 0.5, chunkSeed);
                 if (oreNoise > (1 - this.oreFrequency)) {
                     const depth = worldY - (this.grassHeight + this.dirtDepth);
                     const depthRatio = Math.min(depth / 100, 1);
@@ -1157,7 +1194,7 @@ class TilemapSystem extends Module {
                     } else if (depthRatio < 0.8) {
                         chunk.tiles[x][y] = 6; // Gold
                     } else {
-                        chunk.tiles[x][y] = this.seededRandom(worldX * worldY + this.seed) > 0.5 ? 6 : 5;
+                        chunk.tiles[x][y] = this.seededRandom(worldX * worldY + chunkSeed) > 0.5 ? 6 : 5;
                     }
                 }
             }
@@ -1453,13 +1490,21 @@ class TilemapSystem extends Module {
         ctx.save();
         if (ctx.imageSmoothingEnabled !== undefined) ctx.imageSmoothingEnabled = false;
 
+        // Preload chunks around the viewport for infinite worlds to improve performance
+        if (this.infiniteWorld) {
+            const centerX = viewport.x + viewport.width / 2;
+            const centerY = viewport.y + viewport.height / 2;
+            this.preloadChunks(centerX, centerY);
+        }
+
         // For infinite worlds, expand bounds based on viewport; for finite, use existing limits
         const maxX = this.infiniteWorld ? Infinity : this.worldWidthTiles;
         const maxY = this.infiniteWorld ? Infinity : this.worldHeightTiles;
 
-        const startTileX = Math.max(0, Math.floor(viewport.x / this.tileSize));
+        // Updated: Allow negative start coordinates for infinite worlds
+        const startTileX = this.infiniteWorld ? Math.floor(viewport.x / this.tileSize) : Math.max(0, Math.floor(viewport.x / this.tileSize));
         const endTileX = Math.min(maxX, Math.ceil((viewport.x + viewport.width) / this.tileSize));
-        const startTileY = Math.max(0, Math.floor(viewport.y / this.tileSize));
+        const startTileY = this.infiniteWorld ? Math.floor(viewport.y / this.tileSize) : Math.max(0, Math.floor(viewport.y / this.tileSize));
         const endTileY = Math.min(maxY, Math.ceil((viewport.y + viewport.height) / this.tileSize));
 
         for (let tileX = startTileX; tileX < endTileX; tileX++) {
@@ -1477,7 +1522,7 @@ class TilemapSystem extends Module {
                 if (!color) continue;
 
                 // Apply lighting
-                if (this.enableLighting) {
+                if (this.enableLighting && !this.infiniteWorld) {
                     const light = this.lighting[tileX][tileY];
                     if (light >= 1) {
                         color = this.applyLighting("#000000", light);
@@ -1547,6 +1592,19 @@ class TilemapSystem extends Module {
         }
 
         ctx.restore();
+    }
+
+    preloadChunks(centerX, centerY) {
+        const centerChunk = this.worldToChunk(centerX, centerY);
+        for (let dx = -this.chunkLoadRadius; dx <= this.chunkLoadRadius; dx++) {
+            for (let dy = -this.chunkLoadRadius; dy <= this.chunkLoadRadius; dy++) {
+                const chunkX = centerChunk.x + dx;
+                const chunkY = centerChunk.y + dy;
+                this.getChunk(chunkX, chunkY); // Generates if not exists
+            }
+        }
+        // Optionally clean up distant chunks to save memory
+        this.cleanupDistantChunks(centerX, centerY);
     }
 
     drawGizmos(ctx) {
@@ -1975,6 +2033,10 @@ class TilemapSystem extends Module {
     }
 
     isTileSolid(x, y) {
+        // Updated: For infinite worlds, restrict collision to original finite bounds
+        if (this.infiniteWorld && (x < 0 || x >= this.worldWidthTiles || y < 0 || y >= this.worldHeightTiles)) {
+            return false;
+        }
         const tileType = this.getTileAt(x, y);
         const tileData = this.tileTypes[tileType];
         return tileData ? tileData.solid : false;
@@ -2226,7 +2288,9 @@ class TilemapSystem extends Module {
     }
 
     generateWorldTerraria() {
+        // First pass: Generate solid terrain layers
         for (let x = 0; x < this.worldWidthTiles; x++) {
+            // Generate surface height with noise
             const height = Math.floor(
                 this.grassHeight +
                 this.noise(x, 0, this.terrainScale, this.terrainOctaves, this.terrainPersistence) * this.mountainHeight
@@ -2234,24 +2298,32 @@ class TilemapSystem extends Module {
 
             for (let y = 0; y < this.worldHeightTiles; y++) {
                 if (y < height) {
-                    this.tiles[x][y] = 0; // Air
+                    this.tiles[x][y] = 0; // Air above surface
                 } else if (y === height) {
-                    this.tiles[x][y] = 1; // Grass
+                    this.tiles[x][y] = 1; // Grass surface layer
                 } else if (y < height + this.dirtDepth) {
-                    this.tiles[x][y] = 2; // Dirt
+                    this.tiles[x][y] = 2; // Dirt layer
                 } else {
-                    this.tiles[x][y] = 3; // Stone
+                    this.tiles[x][y] = 3; // Stone layer (everything below)
                 }
             }
         }
 
-        // Caves
+        // Second pass: Carve caves through the terrain
         for (let x = 0; x < this.worldWidthTiles; x++) {
             for (let y = 0; y < this.worldHeightTiles; y++) {
+                // Only carve caves in solid blocks and below surface
                 if (this.tiles[x][y] === 0 || y < this.grassHeight + 5) continue;
-                const caveNoise = this.noise(x, y, 0.08, 2, 0.5);
-                if (caveNoise > (1 - this.caveFrequency)) {
-                    this.tiles[x][y] = 0;
+
+                // Use multiple noise layers for cave generation
+                const cave1 = this.noise(x, y, 0.08, 3, 0.5);
+                const cave2 = this.noise(x + 1000, y + 1000, 0.05, 2, 0.6);
+
+                // Combine noise values for worm-like cave patterns
+                const caveValue = cave1 * 0.6 + cave2 * 0.4;
+
+                if (caveValue > (1 - this.caveFrequency)) {
+                    this.tiles[x][y] = 0; // Carve cave
                 }
             }
         }
@@ -2382,6 +2454,7 @@ class TilemapSystem extends Module {
             worldHeightTiles: this.worldHeightTiles,
             seed: this.seed,
             generationType: this.generationType,
+            randomizePerChunk: this.randomizePerChunk,
             grassHeight: this.grassHeight,
             dirtDepth: this.dirtDepth,
             stoneDepth: this.stoneDepth,
@@ -2403,7 +2476,7 @@ class TilemapSystem extends Module {
             tiles: this.infiniteWorld ? null : this.tiles,
             lighting: this.infiniteWorld ? null : this.lighting,
             enableLighting: this.enableLighting,
-            lightingGradientSize: this.lightingGradientSize,            
+            lightingGradientSize: this.lightingGradientSize,
             chunks: this.infiniteWorld ? [] : Array.from(this.chunks.values())
 
         };
@@ -2420,6 +2493,7 @@ class TilemapSystem extends Module {
         this.worldHeightTiles = data.worldHeightTiles || 100;
         this.seed = data.seed || 12345;
         this.generationType = data.generationType || "terraria";
+        this.randomizePerChunk = data.randomizePerChunk !== undefined ? data.randomizePerChunk : false;
         this.grassHeight = data.grassHeight || 20;
         this.dirtDepth = data.dirtDepth || 15;
         this.stoneDepth = data.stoneDepth || 30;

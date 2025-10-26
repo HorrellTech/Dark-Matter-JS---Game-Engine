@@ -3514,6 +3514,19 @@ try {
         });
     }
 
+    async fileExists(path) {
+        if (!this.db) return false;
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+            store.get(path).onsuccess = (e) => {
+                const file = e.target.result;
+                resolve(!!file && file.type === 'file');
+            }
+        });
+    }
+
     async createDirectory(path) {
         if (!this.db) return false;
 

@@ -14,6 +14,12 @@ class ScriptEditor {
         this.codeStats = {};
         this.selectedText = '';
         this.bookmarks = [];
+
+        // Scripts panel references
+        this.scriptsPanel = null;
+        this.scriptsList = null;
+        this.scriptsSearch = null;
+        this.allScripts = [];
     }
 
     loadAISettings() {
@@ -45,11 +51,17 @@ class ScriptEditor {
                     <div class="se-modal-title">Script Editor</div>
                     <div class="se-modal-path"></div>
                     <div class="se-modal-controls">
-                        <button class="se-button se-icon-button" id="se-ai-settings" title="AI Settings">
-                            <i class="fas fa-cog"></i>
+                        <button class="se-button se-icon-button" id="se-methods-toggle" title="Toggle Method List">
+                            <i class="fas fa-list"></i>
+                        </button>
+                        <button class="se-button se-icon-button" id="se-scripts-toggle" title="Toggle Scripts List">
+                            <i class="fas fa-folder-open"></i>
                         </button>
                         <button class="se-button se-icon-button" id="se-ai-toggle" title="Toggle AI Assistant">
                             <i class="fas fa-robot"></i>
+                        </button>
+                        <button class="se-button se-icon-button" id="se-ai-settings" title="AI Settings">
+                            <i class="fas fa-cog"></i>
                         </button>
                         <div class="se-modal-close"><i class="fas fa-times"></i></div>
                     </div>
@@ -121,6 +133,30 @@ class ScriptEditor {
                             </div>
                         </div>
                     </div>
+                    <div class="se-methods-panel" id="se-methods-panel">
+                        <div class="se-methods-header">
+                            <div class="se-methods-title">
+                                <i class="fas fa-list"></i>
+                                Methods & Functions
+                            </div>
+                            <input type="text" id="se-methods-search" placeholder="Filter methods..." class="se-methods-search">
+                        </div>
+                        <div class="se-methods-list" id="se-methods-list">
+                            <div class="se-methods-empty">No methods found</div>
+                        </div>
+                    </div>
+                    <div class="se-scripts-panel" id="se-scripts-panel">
+                        <div class="se-scripts-header">
+                            <div class="se-scripts-title">
+                                <i class="fas fa-file-code"></i>
+                                Files
+                            </div>
+                            <input type="text" id="se-scripts-search" placeholder="Filter files..." class="se-scripts-search">
+                        </div>
+                        <div class="se-scripts-list" id="se-scripts-list">
+                            <div class="se-scripts-empty">No files found</div>
+                        </div>
+                    </div>
                 </div>
                <div class="se-hint-resizer"></div>
                 <div class="se-hint-box">
@@ -154,6 +190,11 @@ class ScriptEditor {
 
         document.body.appendChild(this.modal);
 
+        console.log('Modal appended');
+        console.log('Scripts panel:', this.modal.querySelector('#se-scripts-panel'));
+        console.log('Scripts list:', this.modal.querySelector('#se-scripts-list'));
+        console.log('Scripts search:', this.modal.querySelector('#se-scripts-search'));
+
         // Create AI settings dialog
         this.createAISettingsDialog();
 
@@ -178,10 +219,30 @@ class ScriptEditor {
         this.aiPanel = this.modal.querySelector('#se-ai-panel');
         this.setupAIPanel();
 
-        // Set initial state: AI panel closed, editor takes full width
+        // Initialize panels
+        this.methodsPanel = this.modal.querySelector('#se-methods-panel');
+        this.methodsList = this.modal.querySelector('#se-methods-list');
+        this.methodsSearch = this.modal.querySelector('#se-methods-search');
+
+        // Initialize scripts panel
+        this.scriptsPanel = this.modal.querySelector('#se-scripts-panel');
+        this.scriptsList = this.modal.querySelector('#se-scripts-list');
+        this.scriptsSearch = this.modal.querySelector('#se-scripts-search');
+
+        // Set initial state: All panels closed, editor takes full width
         this.aiPanel.classList.remove('open');
+        this.methodsPanel.classList.remove('open');
+        this.scriptsPanel.classList.remove('open'); // Add this line
         this.modal.querySelector('.se-modal-editor-container').classList.add('fullwidth');
         this.modal.querySelector('#se-ai-toggle').classList.remove('active');
+        this.modal.querySelector('#se-methods-toggle').classList.remove('active');
+        this.modal.querySelector('#se-scripts-toggle').classList.remove('active'); // Add this line
+
+        // Setup methods panel
+        this.setupMethodsPanel();
+
+        // Setup scripts panel
+        this.setupScriptsPanel();
 
         // Setup tabs
         this.setupHintTabs();
@@ -449,6 +510,15 @@ class ScriptEditor {
         document.getElementById('se-docs').addEventListener('click', () => {
             window.scriptDocsModal.open();
         });
+
+        this.modal.querySelector('#se-methods-toggle').addEventListener('click', () => {
+            this.toggleMethodsPanel();
+        });
+
+        this.modal.querySelector('#se-scripts-toggle').addEventListener('click', () => {
+            this.toggleScriptsPanel();
+        });
+
         // AI Toggle button
         this.modal.querySelector('#se-ai-toggle').addEventListener('click', () => {
             this.toggleAIPanel();
@@ -568,6 +638,22 @@ class ScriptEditor {
 
         this.updateModifiedStatus(false);
         this.open();
+
+        if (this.methodsPanel && this.methodsPanel.classList.contains('open')) {
+            this.updateMethodsList();
+        }
+
+        this.reinitializePanelReferences();
+    }
+
+    reinitializePanelReferences() {
+        this.scriptsPanel = this.modal.querySelector('#se-scripts-panel');
+        this.scriptsList = this.modal.querySelector('#se-scripts-list');
+        this.scriptsSearch = this.modal.querySelector('#se-scripts-search');
+        this.methodsPanel = this.modal.querySelector('#se-methods-panel');
+        this.methodsList = this.modal.querySelector('#se-methods-list');
+        this.methodsSearch = this.modal.querySelector('#se-methods-search');
+        this.aiPanel = this.modal.querySelector('#se-ai-panel');
     }
 
     async initCodeMirror(content) {
@@ -2314,6 +2400,9 @@ class ScriptEditor {
     open() {
         this.modal.style.display = 'flex';
         this.isOpen = true;
+        if (this.scriptsPanel && this.scriptsPanel.classList.contains('open')) {
+            this.updateScriptsList();
+        }
         if (this.editor) {
             // Refresh after modal is visible and layout is applied
             setTimeout(() => {
@@ -2368,7 +2457,10 @@ class ScriptEditor {
             editorContainer.classList.remove('fullwidth');
         } else {
             button.classList.remove('active');
-            editorContainer.classList.add('fullwidth');
+            // Only add fullwidth if methods panel is also closed
+            if (!this.methodsPanel.classList.contains('open')) {
+                editorContainer.classList.add('fullwidth');
+            }
         }
 
         // Force immediate layout recalculation and CodeMirror resize
@@ -2464,6 +2556,438 @@ class ScriptEditor {
         const moduleHelp = this.generateModuleSystemContext();
         inputArea.value = moduleHelp + inputArea.value;
         inputArea.focus();
+    }
+
+    setupScriptsPanel() {
+        // Search functionality
+        this.scriptsSearch.addEventListener('input', (e) => {
+            this.filterScripts(e.target.value);
+        });
+
+        // Setup toolbar with create buttons
+        this.setupScriptsToolbar();
+
+        // Load scripts list on panel open
+        this.updateScriptsList();
+    }
+
+    toggleScriptsPanel() {
+        if (!this.scriptsPanel) {
+            console.error('Scripts panel not initialized');
+            return;
+        }
+
+        const isOpening = !this.scriptsPanel.classList.contains('open');
+        this.scriptsPanel.classList.toggle('open');
+        const button = this.modal.querySelector('#se-scripts-toggle');
+        const editorContainer = this.modal.querySelector('.se-modal-editor-container');
+
+        if (isOpening) {
+            button.classList.add('active');
+            editorContainer.classList.remove('fullwidth');
+            this.updateScriptsList();
+        } else {
+            button.classList.remove('active');
+            // Only add fullwidth if other panels are also closed
+            if (!this.aiPanel.classList.contains('open') &&
+                !this.methodsPanel.classList.contains('open')) {
+                editorContainer.classList.add('fullwidth');
+            }
+        }
+
+        // Refresh editor
+        if (this.editor) {
+            const cmWrapper = this.editor.getWrapperElement();
+            void editorContainer.offsetHeight;
+
+            this.editor.setSize(null, null);
+            this.editor.refresh();
+
+            let frameCount = 0;
+            const maxFrames = 24;
+
+            const animationLoop = () => {
+                if (frameCount < maxFrames) {
+                    this.editor.setSize(null, null);
+                    this.editor.refresh();
+                    frameCount++;
+                    requestAnimationFrame(animationLoop);
+                }
+            };
+
+            requestAnimationFrame(animationLoop);
+        }
+    }
+
+    async updateScriptsList() {
+        if (!window.fileBrowser || !window.fileBrowser.db) {
+            this.scriptsList.innerHTML = '<div class="se-scripts-empty">File browser not available</div>';
+            return;
+        }
+
+        try {
+            // Get all editable files from the file browser
+            const transaction = window.fileBrowser.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+
+            const allFiles = await new Promise(resolve => {
+                store.getAll().onsuccess = e => resolve(e.target.result);
+            });
+
+            // Include .js, .md, .txt, .doc, .json files
+            const editableFiles = allFiles.filter(file =>
+                file.type === 'file' &&
+                (file.name.endsWith('.js') ||
+                    file.name.endsWith('.md') ||
+                    file.name.endsWith('.txt') ||
+                    file.name.endsWith('.doc') ||
+                    file.name.endsWith('.json'))
+            );
+
+            if (editableFiles.length === 0) {
+                this.scriptsList.innerHTML = '<div class="se-scripts-empty">No scripts found</div>';
+                return;
+            }
+
+            // Analyze each file to determine its type
+            this.allScripts = await Promise.all(editableFiles.map(async file => {
+                const content = await window.fileBrowser.readFile(file.path);
+                let scriptType = 'utility';
+                let fileType = this.getFileType(file.name);
+                let icon = this.getFileIcon(file.name);
+
+                if (fileType === 'js' && content) {
+                    if (content.includes('extends Module')) {
+                        scriptType = 'module';
+                    } else if (content.includes('extends EditorWindow')) {
+                        scriptType = 'editorwindow';
+                    }
+                } else if (fileType !== 'js') {
+                    // For non-JS files, set type based on file extension
+                    scriptType = fileType;
+                }
+
+                return {
+                    name: file.name,
+                    path: file.path,
+                    type: scriptType,
+                    fileType: fileType,
+                    icon: icon
+                };
+            }));
+
+            // Sort scripts: Module, EditorWindow, JS Utility, then other files
+            this.allScripts.sort((a, b) => {
+                const typeOrder = {
+                    module: 0,
+                    editorwindow: 1,
+                    utility: 2,
+                    js: 2,
+                    json: 3,
+                    md: 4,
+                    txt: 5,
+                    doc: 6
+                };
+                const typeCompare = typeOrder[a.type] - typeOrder[b.type];
+                if (typeCompare !== 0) return typeCompare;
+                return a.name.localeCompare(b.name);
+            });
+
+            this.renderScriptsList(this.allScripts);
+        } catch (error) {
+            console.error('Error loading scripts list:', error);
+            this.scriptsList.innerHTML = '<div class="se-scripts-empty">Error loading scripts</div>';
+        }
+    }
+
+    getFileType(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        return ext;
+    }
+
+    getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const iconMap = {
+            'js': 'fa-file-code',
+            'md': 'fa-file-alt',
+            'txt': 'fa-file-alt',
+            'doc': 'fa-book',
+            'json': 'fa-file-code'
+        };
+        return iconMap[ext] || 'fa-file';
+    }
+
+    renderScriptsList(scripts) {
+        if (scripts.length === 0) {
+            this.scriptsList.innerHTML = '<div class="se-scripts-empty">No scripts found</div>';
+            return;
+        }
+
+        this.scriptsList.innerHTML = scripts.map(script => {
+            const isActive = this.currentPath === script.path;
+            let typeLabel = '';
+            let showTypeBadge = false;
+
+            // Only show type badge for JS files
+            if (script.fileType === 'js') {
+                showTypeBadge = true;
+                typeLabel = script.type === 'module' ? 'Module' :
+                    script.type === 'editorwindow' ? 'EditorWindow' :
+                        'Utility';
+            }
+
+            return `
+            <div class="se-script-item ${isActive ? 'active' : ''}" data-path="${script.path}">
+                <i class="fas ${script.icon}" style="margin-right: 8px; color: #888; font-size: 14px;"></i>
+                <div class="se-script-info">
+                    <div class="se-script-name">${script.name}</div>
+                    <div class="se-script-path">${script.path}</div>
+                </div>
+                ${showTypeBadge ? `<span class="se-script-type ${script.type}">${typeLabel}</span>` : ''}
+            </div>
+        `;
+        }).join('');
+
+        // Add click handlers
+        this.scriptsList.querySelectorAll('.se-script-item').forEach(item => {
+            item.addEventListener('click', async () => {
+                const path = item.dataset.path;
+                await this.switchToScript(path);
+            });
+        });
+    }
+
+    filterScripts(searchTerm) {
+        if (!this.allScripts) return;
+
+        const filtered = this.allScripts.filter(script =>
+            script.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            script.path.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        this.renderScriptsList(filtered);
+    }
+
+    async switchToScript(path) {
+        // Check if current file has unsaved changes
+        if (this.hasUnsavedChanges()) {
+            const result = await this.promptSaveChanges();
+            if (result === 'cancel') return;
+            if (result === 'save') {
+                await this.save();
+            }
+        }
+
+        // Load the new script
+        const content = await window.fileBrowser.readFile(path);
+        if (content) {
+            await this.loadFile(path, content);
+
+            // Update active state in scripts list
+            this.scriptsList.querySelectorAll('.se-script-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.path === path);
+            });
+        }
+    }
+
+    async promptSaveChanges() {
+        return new Promise(resolve => {
+            const dialog = document.createElement('div');
+            dialog.className = 'se-confirm-dialog';
+            dialog.style.display = 'flex';
+            dialog.innerHTML = `
+            <div class="se-confirm-content">
+                <h3>Unsaved Changes</h3>
+                <p>Do you want to save changes before switching scripts?</p>
+                <div class="se-confirm-buttons">
+                    <button class="se-button" id="se-save-switch">Save</button>
+                    <button class="se-button" id="se-discard-switch">Don't Save</button>
+                    <button class="se-button" id="se-cancel-switch">Cancel</button>
+                </div>
+            </div>
+        `;
+            document.body.appendChild(dialog);
+
+            const cleanup = () => dialog.remove();
+
+            dialog.querySelector('#se-save-switch').onclick = () => {
+                cleanup();
+                resolve('save');
+            };
+
+            dialog.querySelector('#se-discard-switch').onclick = () => {
+                cleanup();
+                resolve('discard');
+            };
+
+            dialog.querySelector('#se-cancel-switch').onclick = () => {
+                cleanup();
+                resolve('cancel');
+            };
+        });
+    }
+
+    setupMethodsPanel() {
+        // Search functionality
+        this.methodsSearch.addEventListener('input', (e) => {
+            this.filterMethods(e.target.value);
+        });
+
+        // Update methods list when code changes
+        if (this.editor) {
+            this.editor.on('change', () => {
+                clearTimeout(this.methodsUpdateTimeout);
+                this.methodsUpdateTimeout = setTimeout(() => {
+                    this.updateMethodsList();
+                }, 500); // Debounce updates
+            });
+        }
+    }
+
+    toggleMethodsPanel() {
+        const isOpening = !this.methodsPanel.classList.contains('open');
+        this.methodsPanel.classList.toggle('open');
+        const button = this.modal.querySelector('#se-methods-toggle');
+        const editorContainer = this.modal.querySelector('.se-modal-editor-container');
+
+        if (isOpening) {
+            button.classList.add('active');
+            editorContainer.classList.remove('fullwidth');
+            this.updateMethodsList();
+        } else {
+            button.classList.remove('active');
+            // Only add fullwidth if AI panel is also closed
+            if (!this.aiPanel.classList.contains('open')) {
+                editorContainer.classList.add('fullwidth');
+            }
+        }
+
+        // Refresh editor
+        if (this.editor) {
+            setTimeout(() => {
+                this.editor.refresh();
+            }, 300);
+        }
+    }
+
+    updateMethodsList() {
+        if (!this.editor) return;
+
+        const code = this.editor.getValue();
+        const methods = this.parseMethodsFromCode(code);
+
+        if (methods.length === 0) {
+            this.methodsList.innerHTML = '<div class="se-methods-empty">No methods found</div>';
+            return;
+        }
+
+        this.allMethods = methods; // Store for filtering
+        this.renderMethodsList(methods);
+    }
+
+    parseMethodsFromCode(code) {
+        const methods = [];
+        const lines = code.split('\n');
+
+        lines.forEach((line, index) => {
+            // Match class methods - Updated regex to capture parameters
+            const methodMatch = line.match(/^\s*(async\s+)?(\w+)\s*\(([^)]*)\)\s*{?/);
+            if (methodMatch && !line.trim().startsWith('//')) {
+                const isAsync = !!methodMatch[1];
+                const name = methodMatch[2];
+                const params = methodMatch[3] || ''; // Capture parameters inside parentheses
+
+                // Skip common non-method keywords
+                if (['if', 'for', 'while', 'switch', 'catch'].includes(name)) {
+                    return;
+                }
+
+                methods.push({
+                    name: name,
+                    params: params, // New: Store parameters
+                    line: index,
+                    isAsync: isAsync,
+                    type: 'method'
+                });
+            }
+
+            // Match function declarations - Updated regex to capture parameters
+            const funcMatch = line.match(/^\s*(async\s+)?function\s+(\w+)\s*\(([^)]*)\)/);
+            if (funcMatch && !line.trim().startsWith('//')) {
+                methods.push({
+                    name: funcMatch[2],
+                    params: funcMatch[3] || '', // New: Store parameters
+                    line: index,
+                    isAsync: !!funcMatch[1],
+                    type: 'function'
+                });
+            }
+
+            // Match arrow functions assigned to variables - Updated regex to capture parameters
+            const arrowMatch = line.match(/^\s*(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>/);
+            if (arrowMatch && !line.trim().startsWith('//')) {
+                methods.push({
+                    name: arrowMatch[1],
+                    params: arrowMatch[2] || '', // New: Store parameters
+                    line: index,
+                    isAsync: line.includes('async'),
+                    type: 'arrow'
+                });
+            }
+        });
+
+        return methods;
+    }
+
+    renderMethodsList(methods) {
+        this.methodsList.innerHTML = methods.map(method => {
+            const icon = method.type === 'method' ? 'fa-cube' :
+                method.type === 'function' ? 'fa-function' : 'fa-arrow-right';
+            const asyncBadge = method.isAsync ? '<span class="se-method-async">async</span>' : '';
+            // Updated: Append parameters to the method name for display
+            const displayName = `${method.name}(${method.params || ''})`;
+
+            return `
+        <div class="se-method-item" data-line="${method.line}">
+            <i class="fas ${icon}"></i>
+            <span class="se-method-name">${displayName}</span>
+            ${asyncBadge}
+            <span class="se-method-line">:${method.line + 1}</span>
+        </div>
+    `;
+        }).join('');
+
+        // Add click handlers
+        this.methodsList.querySelectorAll('.se-method-item').forEach(item => {
+            item.addEventListener('dblclick', () => {
+                const line = parseInt(item.dataset.line);
+                this.jumpToLine(line);
+            });
+        });
+    }
+
+    filterMethods(searchTerm) {
+        if (!this.allMethods) return;
+
+        const filtered = this.allMethods.filter(method =>
+            method.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        this.renderMethodsList(filtered);
+    }
+
+    jumpToLine(lineNumber) {
+        if (!this.editor) return;
+
+        this.editor.setCursor({ line: lineNumber, ch: 0 });
+        this.editor.scrollIntoView({ line: lineNumber, ch: 0 }, 100);
+        this.editor.focus();
+
+        // Highlight the line briefly
+        this.editor.addLineClass(lineNumber, 'background', 'se-highlight-line');
+        setTimeout(() => {
+            this.editor.removeLineClass(lineNumber, 'background', 'se-highlight-line');
+        }, 1000);
     }
 
     generateModuleSystemContext() {
@@ -2956,6 +3480,607 @@ Generate complete, functional modules that follow this architecture.`;
                 messageEl.appendChild(actionsDiv);
             }
         }
+    }
+
+    setupScriptsToolbar() {
+        if (!this.scriptsPanel) return;
+
+        // Create toolbar container
+        const toolbar = document.createElement('div');
+        toolbar.className = 'se-scripts-toolbar';
+        toolbar.style.cssText = `
+        display: flex;
+        gap: 4px;
+        padding: 8px;
+        background: #2d2d2d;
+        border-bottom: 1px solid #555;
+        flex-wrap: wrap;
+    `;
+
+        // Helper function to create toolbar button
+        const createToolbarButton = (icon, title, onClick) => {
+            const button = document.createElement('button');
+            button.className = 'se-toolbar-button';
+            button.title = title;
+            button.innerHTML = `<i class="fas ${icon}"></i>`;
+            button.style.cssText = `
+            padding: 6px 10px;
+            background: #3d3d3d;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        `;
+
+            button.addEventListener('mouseenter', () => {
+                button.style.background = '#4d4d4d';
+            });
+
+            button.addEventListener('mouseleave', () => {
+                button.style.background = '#3d3d3d';
+            });
+
+            button.addEventListener('click', onClick);
+            return button;
+        };
+
+        // Add buttons for each script type
+        const buttons = [
+            {
+                icon: 'fa-cube',
+                title: 'New Module Script',
+                onClick: () => this.createNewScript('module')
+            },
+            {
+                icon: 'fa-window-maximize',
+                title: 'New Editor Window Script',
+                onClick: () => this.createNewScript('editorwindow')
+            },
+            {
+                icon: 'fa-code',
+                title: 'New Utility Script',
+                onClick: () => this.createNewScript('utility')
+            },
+            {
+                icon: 'fa-file-alt',
+                title: 'New Text File',
+                onClick: () => this.createNewScript('txt')
+            },
+            {
+                icon: 'fa-book',
+                title: 'New Documentation',
+                onClick: () => this.createNewScript('doc')
+            }
+        ];
+
+        buttons.forEach(btn => {
+            toolbar.appendChild(createToolbarButton(btn.icon, btn.title, btn.onClick));
+        });
+
+        // Insert toolbar before the header
+        const header = this.scriptsPanel.querySelector('.se-scripts-header');
+        this.scriptsPanel.insertBefore(toolbar, header);
+    }
+
+    async createNewScript(type) {
+        // Prompt for filename
+        const filename = await this.promptForFilename(type);
+        if (!filename) return;
+
+        // Validate filename
+        const extension = this.getExtensionForType(type);
+        const fullFilename = filename.endsWith(extension) ? filename : `${filename}${extension}`;
+
+        // Check if file already exists
+        const scriptsDir = `scripts/${type}s`;
+        const fullPath = `${scriptsDir}/${fullFilename}`;
+
+        if (window.fileBrowser) {
+            const exists = await window.fileBrowser.fileExists(fullPath);
+            if (exists) {
+                alert(`File "${fullFilename}" already exists!`);
+                return;
+            }
+
+            // Generate template content
+            const content = this.generateTemplate(type, filename);
+
+            // Create the file
+            try {
+                await window.fileBrowser.createFile(fullPath, content);
+                this.showStatusMessage(`Created ${fullFilename}`);
+
+                // Refresh the scripts list
+                await this.updateScriptsList();
+
+                // Open the new file
+                await this.switchToScript(fullPath);
+            } catch (error) {
+                console.error('Error creating file:', error);
+                alert(`Failed to create file: ${error.message}`);
+            }
+        }
+    }
+
+    promptForFilename(type) {
+        return new Promise((resolve) => {
+            const dialog = document.createElement('div');
+            dialog.className = 'se-confirm-dialog';
+            dialog.style.display = 'flex';
+            dialog.innerHTML = `
+            <div class="se-confirm-content">
+                <h3>Create New ${this.getTypeDisplayName(type)}</h3>
+                <input type="text" id="se-new-filename" placeholder="Enter filename" style="
+                    width: 100%;
+                    padding: 8px;
+                    margin: 12px 0;
+                    background: #3d3d3d;
+                    border: 1px solid #555;
+                    border-radius: 4px;
+                    color: #fff;
+                    font-size: 14px;
+                ">
+                <div class="se-confirm-buttons">
+                    <button class="se-button" id="se-create-file">Create</button>
+                    <button class="se-button" id="se-cancel-create">Cancel</button>
+                </div>
+            </div>
+        `;
+            document.body.appendChild(dialog);
+
+            const input = dialog.querySelector('#se-new-filename');
+            input.focus();
+
+            const cleanup = () => dialog.remove();
+
+            dialog.querySelector('#se-create-file').onclick = () => {
+                const filename = input.value.trim();
+                cleanup();
+                resolve(filename || null);
+            };
+
+            dialog.querySelector('#se-cancel-create').onclick = () => {
+                cleanup();
+                resolve(null);
+            };
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const filename = input.value.trim();
+                    cleanup();
+                    resolve(filename || null);
+                } else if (e.key === 'Escape') {
+                    cleanup();
+                    resolve(null);
+                }
+            });
+        });
+    }
+
+    getExtensionForType(type) {
+        const extensions = {
+            'module': '.js',
+            'editorwindow': '.js',
+            'utility': '.js',
+            'txt': '.txt',
+            'doc': '.doc'
+        };
+        return extensions[type] || '.js';
+    }
+
+    getTypeDisplayName(type) {
+        const names = {
+            'module': 'Module Script',
+            'editorwindow': 'Editor Window Script',
+            'utility': 'Utility Script',
+            'txt': 'Text File',
+            'doc': 'Documentation File'
+        };
+        return names[type] || 'File';
+    }
+
+    generateTemplate(type, filename) {
+        // Remove extension from filename for class names
+        const baseName = filename.replace(/\.[^/.]+$/, "");
+        const className = baseName;
+
+        switch (type) {
+            case 'module':
+                return this.generateModuleTemplate(className);
+            case 'editorwindow':
+                return this.generateEditorWindowTemplate(className);
+            case 'utility':
+                return this.generateUtilityTemplate(className);
+            case 'txt':
+                return 'Jot down notes here...'; // Empty text file
+            case 'doc':
+                return this.generateDocTemplate(className);
+            default:
+                return '';
+        }
+    }
+
+    generateModuleTemplate(className) {
+        return `/**
+ * ${className} Module
+ * 
+ * Description: Add a description of what this module does
+ */
+class ${className} extends Module {
+    static namespace = "Custom"; // Category in the Add Module menu
+    static description = "Description of this module"; // Shown in module list
+    static allowMultiple = false; // Allow multiple instances on same GameObject
+    static icon = "⭐"; // Optional: Emoji/icon in module list
+
+    constructor() {
+        super("${className}");
+
+        // If true, drawing won't be affected by GameObject transform
+        this.ignoreGameObjectTransform = false;
+
+        // Require other modules (optional)
+        // this.require("RigidBody");
+
+        // Initialize properties
+        this.speed = 100;
+        this.enabled = true;
+
+        // Expose properties to Inspector
+        this.exposeProperty("speed", "number", 100, {
+            min: 0,
+            max: 500,
+            step: 10,
+            description: "Movement speed",
+            onChange: (val) => {
+                this.speed = val;
+            }
+        });
+
+        this.exposeProperty("enabled", "boolean", true, {
+            description: "Enable/disable this module",
+            onChange: (val) => {
+                this.enabled = val;
+            }
+        });
+    }
+
+    /**
+     * Called before the game starts - load assets here
+     */
+    async preload() {
+        await super.preload();
+        
+        // Load assets here
+        // Example:
+        // this.sprite = await this.gameObject.loadAsset('path/to/sprite.png');
+    }
+
+    /**
+     * Called once when the module is first activated
+     */
+    start() {
+        super.start();
+        
+        // Initialize module here
+    }
+
+    /**
+     * Called at the start of each frame
+     */
+    beginLoop() {
+        // Pre-update logic
+    }
+
+    /**
+     * Called every frame - main update logic
+     * @param {number} deltaTime - Time in seconds since last frame
+     */
+    loop(deltaTime) {
+        if (!this.enabled) return;
+
+        // Main game logic here
+        // Example: Move the object
+        // this.gameObject.position.x += this.speed * deltaTime;
+    }
+
+    /**
+     * Called at the end of each frame
+     */
+    endLoop() {
+        // Post-update logic
+    }
+
+    /**
+     * Called when the module should render
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     */
+    draw(ctx) {
+        if (!this.enabled) return;
+
+        // Custom rendering here
+        // Note: If ignoreGameObjectTransform is false, 
+        // drawing is relative to GameObject position
+    }
+
+    /**
+     * Called when GameObject is selected in editor (editor only)
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     */
+    drawGizmos(ctx) {
+        // Debug visualization here
+        // Example: Draw a circle around the object
+        // ctx.strokeStyle = "#00ff00";
+        // ctx.beginPath();
+        // ctx.arc(0, 0, 50, 0, Math.PI * 2);
+        // ctx.stroke();
+    }
+
+    /**
+     * Called when the module is destroyed
+     */
+    onDestroy() {
+        // Cleanup resources here
+    }
+
+    /**
+     * Serialize module data for saving
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+            speed: this.speed
+        };
+    }
+
+    /**
+     * Deserialize module data when loading
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+        if (data.speed !== undefined) this.speed = data.speed;
+        return this;
+    }
+}
+
+// Register the module globally
+window.${className} = ${className};
+`;
+    }
+
+    generateEditorWindowTemplate(className) {
+        return `/**
+ * ${className} - Custom Editor Window App
+ * 
+ * Description: Add a description of what this window does
+ */
+class ${className}Window extends EditorWindow {
+    constructor() {
+        super("${className}Window", {
+            width: 600,
+            height: 400,
+            resizable: true,
+            modal: false,
+            closable: true
+        });
+
+        // Initialize properties
+        this.setupUI();
+    }
+
+    /**
+     * Setup the UI components
+     */
+    setupUI() {
+        // Clear any existing content
+        this.clearContent();
+
+        // Add a title
+        const title = document.createElement('h2');
+        title.textContent = '${className}';
+        title.style.cssText = \`
+            margin: 0 0 16px 0;
+            color: #ffffff;
+            font-size: 18px;
+        \`;
+        this.addContent(title);
+
+        // Add a description
+        const description = document.createElement('p');
+        description.textContent = 'Add a description of what this window does here.';
+        description.style.cssText = \`
+            margin: 0 0 16px 0;
+            color: #cccccc;
+        \`;
+        this.addContent(description);
+
+        // Example: Add an input field
+        const input = this.addInput('myInput', 'Input Label:', {
+            type: 'text',
+            placeholder: 'Enter text here',
+            onChange: (value) => {
+                console.log('Input changed:', value);
+            }
+        });
+        this.addContent(input.parentElement);
+
+        // Example: Add a button
+        const button = this.addButton('myButton', 'Click Me', {
+            onClick: () => {
+                alert('Button clicked!');
+            }
+        });
+        this.addContent(button);
+
+        // Expose properties for inspector integration
+        this.exposeProperty('myProperty', 'string', 'default value', {
+            description: 'A custom property',
+            onChange: (value) => {
+                console.log('Property changed:', value);
+            }
+        });
+    }
+
+    /**
+     * Called when the window is shown
+     */
+    onShow() {
+        console.log(\`\${this.title} window shown\`);
+    }
+
+    /**
+     * Called when the window is hidden
+     */
+    onHide() {
+        console.log(\`\${this.title} window hidden\`);
+    }
+
+    /**
+     * Called before the window is closed (return false to cancel)
+     */
+    onBeforeClose() {
+        // Add any confirmation logic here
+        return true;
+    }
+
+    /**
+     * Called when the window is closed
+     */
+    onClose() {
+        console.log(\`\${this.title} window closed\`);
+    }
+
+    /**
+     * Called when the window is resized
+     */
+    onResize(width, height) {
+        console.log(\`Window resized to \${width}x\${height}\`);
+    }
+
+    /**
+     * Serialize window data
+     */
+    serialize() {
+        return {
+            ...super.serialize(),
+            // Add custom data here
+            myProperty: this.myProperty
+        };
+    }
+
+    /**
+     * Deserialize window data
+     */
+    deserialize(data) {
+        super.deserialize(data);
+        // Restore custom data here
+        if (data.myProperty) {
+            this.myProperty = data.myProperty;
+        }
+    }
+}
+
+// Register the window globally
+window.${className}Window = ${className}Window;
+
+// Optional: Create a global instance
+// window.global${className} = new ${className}();
+`;
+    }
+
+    generateUtilityTemplate(className) {
+        return `/**
+ * ${className} Utility
+ * 
+ * Description: Add a description of what this utility does
+ */
+
+// Option 1: Standalone functions
+function f${className}() {
+    // Add your utility function logic here
+    console.log('f${className} function called');
+}
+
+// Export function globally (the f is how we can separate it from modules)
+window.f${className} = f${className};
+
+// Option 2: Utility class with static methods
+//class ${className} {
+    /**
+     * Example static method
+     */
+    /*static exampleMethod(param) {
+        console.log('Example method called with:', param);
+        return param;
+    }*/
+
+    /**
+     * Another utility method
+     */
+    /*static processData(data) {
+        // Process data here
+        return data;
+    }*/
+
+    /**
+     * Helper function
+     */
+    /*static helperFunction() {
+        // Add helper logic
+    }*/
+//}
+
+// Export class globally
+/*window.${className} = ${className};
+
+// Option 3: Object with utility methods
+const ${className}Utils = {
+    method1: function() {
+        // Method 1 logic
+    },
+
+    method2: function(param) {
+        // Method 2 logic
+        return param;
+    },
+
+    helperMethod: function() {
+        // Helper logic
+    }
+};
+
+// Export utilities object globally
+window.${className}Utils = ${className}Utils;*/
+
+// Example usage:
+// ${className.toLowerCase()}Function();
+// ${className}.exampleMethod('test');
+// ${className}Utils.method1();
+`;
+    }
+
+    generateDocTemplate(className) {
+        return JSON.stringify({
+            "Overview": {
+                "Introduction": `# ${className} Documentation\n\nAdd introduction here.`,
+                "Quick Start": `## Quick Start\n\nAdd quick start guide here.`
+            },
+            "Properties": {
+                "Basic Properties": "## Basic Properties\n\nList and describe properties here."
+            },
+            "API Reference": {
+                "Methods": "## Methods\n\nDocument methods here."
+            },
+            "Usage Examples": {
+                "Basic Usage": "## Basic Usage\n\nAdd usage examples here."
+            },
+            "Technical Information": {
+                "Implementation Details": "## Implementation Details\n\nAdd technical details here."
+            }
+        }, null, 2);
     }
 
     formatMessage(content) {
