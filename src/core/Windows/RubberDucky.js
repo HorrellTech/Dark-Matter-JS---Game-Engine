@@ -42,6 +42,14 @@ class RubberDucky {
         this.errorBubbleTimeout = null; // For auto-hiding the bubble
         this.errorWarningQueue = []; // Array of { type: 'error'|'warning', message: string }
 
+        // Touch-specific properties for mobile controls
+        this.touchStartTime = 0;
+        this.touchStartPos = { x: 0, y: 0 };
+        this.isPotentialLongPress = false;
+        this.longPressThreshold = 500; // ms for long press to open settings
+        this.moveThreshold = 10; // px movement to consider it a drag instead of tap
+        this.longPressTimer = null;
+
         this.rubberDuckList = [
             'RubberDucks/Quackers.png',
             'RubberDucks/OG Quackers.png',
@@ -67,9 +75,9 @@ class RubberDucky {
 
         // Initialize duckList with a safe default to prevent undefined errors
         this.duckList = this.rubberDuckList;
-        
+
         this.lastMoveTime = Date.now();
-        
+
         // Load speech data
         this.loadSpeechData();
 
@@ -404,6 +412,7 @@ class RubberDucky {
             overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
             font-family: Arial, sans-serif;
+            touch-action: none; /* Prevent zoom/scroll interference */
         `;
 
         modal.innerHTML = `
@@ -1273,6 +1282,110 @@ class RubberDucky {
                 this.playSqueezeSound(false);
             }
         });
+
+        // Touch start on ducky (new for mobile)
+        this.ducky.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling/zooming
+            if (e.touches.length !== 1) return; // Only single touch
+
+            const touch = e.touches[0];
+            this.touchStartTime = Date.now();
+            this.touchStartPos = { x: touch.clientX, y: touch.clientY };
+            this.isPotentialLongPress = true;
+
+            // Start a timer for long press (to open settings)
+            this.longPressTimer = setTimeout(() => {
+                if (this.isPotentialLongPress) {
+                    this.settingsModal.style.display = 'block'; // Open settings
+                    this.isPotentialLongPress = false;
+                }
+            }, this.longPressThreshold);
+
+            // Prepare for potential drag (similar to mousedown)
+            this.isDragging = false; // Will set to true on move
+            this.isSqueezing = false; // Will set on move if dragging
+            this.lastMousePos = { x: touch.clientX, y: touch.clientY }; // Reuse for consistency
+            this.lastTime = Date.now();
+            this.lastMoveTime = Date.now();
+            this.velocity = { x: 0, y: 0 };
+        }, { passive: false });
+
+        // Touch move (new for mobile dragging)
+        this.ducky.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Prevent scrolling
+            if (e.touches.length !== 1) return;
+
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.touchStartPos.x;
+            const deltaY = touch.clientY - this.touchStartPos.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            // If moved beyond threshold, treat as drag (cancel long press)
+            if (distance > this.moveThreshold && this.isPotentialLongPress) {
+                clearTimeout(this.longPressTimer);
+                this.isPotentialLongPress = false;
+                this.isDragging = true;
+                this.isSqueezing = true;
+                this.targetSqueezeAmount = 1;
+                this.ducky.style.cursor = 'grabbing'; // Visual feedback (though not always visible on mobile)
+
+                // Play squeeze-out sound
+                this.playSqueezeSound(true);
+            }
+
+            // If dragging, update position (similar to mousemove)
+            if (this.isDragging) {
+                const currentTime = Date.now();
+                const dt = (currentTime - this.lastTime) / 1000;
+
+                if (dt > 0) {
+                    this.velocity.x = (touch.clientX - this.lastMousePos.x) / dt;
+                    this.velocity.y = (touch.clientY - this.lastMousePos.y) / dt;
+                }
+
+                this.position.x = touch.clientX - this.settings.size / 2;
+                this.position.y = touch.clientY - this.settings.size / 2;
+
+                this.lastMousePos = { x: touch.clientX, y: touch.clientY };
+                this.lastTime = currentTime;
+                this.lastMoveTime = currentTime;
+
+                this.updateDuckyPosition();
+            }
+        }, { passive: false });
+
+        // Touch end (new for mobile)
+        this.ducky.addEventListener('touchend', (e) => {
+            e.preventDefault();
+
+            // Cancel long press if still pending
+            if (this.longPressTimer) {
+                clearTimeout(this.longPressTimer);
+                this.longPressTimer = null;
+            }
+
+            // If we were dragging, handle release (similar to mouseup)
+            if (this.isDragging) {
+                this.isDragging = false;
+                this.isSqueezing = false;
+                this.ducky.style.cursor = 'grab';
+
+                // Apply velocity if recent movement
+                const timeSinceLastMove = Date.now() - this.lastMoveTime;
+                if (timeSinceLastMove < 100) {
+                    this.velocity.x *= this.settings.accelerationMultiplier;
+                    this.velocity.y *= this.settings.accelerationMultiplier;
+                } else {
+                    this.velocity = { x: 0, y: 0 };
+                }
+
+                // Play squeeze-in sound
+                this.playSqueezeSound(false);
+            }
+
+            // Reset touch state
+            this.isPotentialLongPress = false;
+        }, { passive: false });
 
         // Mouse enter (hover effect)
         this.ducky.addEventListener('mouseenter', () => {
