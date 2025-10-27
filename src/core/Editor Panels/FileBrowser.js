@@ -3054,7 +3054,7 @@ try {
                     }
                 }, 500);
             }
-        }, 3000);
+        }, 700);
 
         // Clear the auto-remove timer if manually closed
         closeBtn.addEventListener('click', () => {

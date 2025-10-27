@@ -459,7 +459,10 @@ class SceneManager {
                     <p style="font-size: 0.9em; font-style: italic;">
                         (Note, if you have just opened DarkMatter, just click "Don't save",<br>
                         as this is needed to discard the initial empty scene. But if you have <br>
-                        made changes, please save them.)
+                        made changes, please save them.)<br>
+                        <br>
+                        ⭐DISCLAIMER: DarkMatter JS saves settings to local storage and may not prompt<br>
+                        you to do so. Things like Script Editor state.⭐
                     </p>
                     <div class="dialog-buttons">
                         <button class="save-btn">Save</button>

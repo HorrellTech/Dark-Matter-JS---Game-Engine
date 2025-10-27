@@ -3,10 +3,23 @@ class StartScreen {
         this.version = version;
         this.container = null;
         this.updates = [
-            
+            {
+                version: 'v0.3.2',
+                date: 'October 27, 2025',
+                changes: [
+                    `Improved Script Editor:
+                        - Added Method list panel for easy navigation.
+                        - Added File List panel for quick access to open scripts.
+                        - Added drag friction for fun throwing window effects with bounce against webpage edges.
+                        - Saving and restoring window state (size, position, panels) between sessions.
+                        - Saving and restoring cursor position within scripts to easily get back to what you were doing.
+                    `,
+                    'Added Rubber Ducky helper window for when you hit a stumbling block in coding. Good for stress relief too!',
+                ]
+            },
             {
                 version: 'v0.3.1',
-                date: 'October 19, 2025',
+                date: 'October 21, 2025',
                 changes: [
                     'Improve AI prompting for module creation',
                     'Add code property for custom scripts in modules',

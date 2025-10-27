@@ -5,9 +5,8 @@ class ScriptEditor {
         this.originalContent = '';
         this.editor = null;
         this.aiPanel = null;
+
         this.aiSettings = this.loadAISettings();
-        this.createModal();
-        this.setupEventListeners();
 
         this.minimap = null;
         this.breadcrumbs = [];
@@ -20,6 +19,23 @@ class ScriptEditor {
         this.scriptsList = null;
         this.scriptsSearch = null;
         this.allScripts = [];
+
+        // Window Properties
+        const savedState = this.loadWindowState();
+        this.isMinimized = false;
+        this.isMaximized = savedState.isMaximized;
+        this.lastPosition = savedState.position;
+        this.lastSize = savedState.size;
+        this.dragFriction = savedState.dragFriction;
+    
+        this.minWidth = Math.max(400, window.innerWidth * 0.3);
+        this.minHeight = Math.max(300, window.innerHeight * 0.3);
+        this.savedPanelStates = savedState.panels;
+        this.hasRestoredPanels = false;
+
+        this.createModal();
+        this.setupEventListeners();
+        this.setupWindowControls();
     }
 
     loadAISettings() {
@@ -50,6 +66,10 @@ class ScriptEditor {
                 <div class="se-modal-header">
                     <div class="se-modal-title">Script Editor</div>
                     <div class="se-modal-path"></div>
+                    <div class="se-modal-friction">
+                        <label for="se-drag-friction" class="se-drag-friction-label">Friction:</label>
+                        <input type="number" id="se-drag-friction" class="se-drag-friction-input" min="0.0" max="0.98" step="0.02" value="${this.dragFriction}">
+                    </div>
                     <div class="se-modal-controls">
                         <button class="se-button se-icon-button" id="se-methods-toggle" title="Toggle Method List">
                             <i class="fas fa-list"></i>
@@ -554,16 +574,16 @@ class ScriptEditor {
 
             // Close: Escape
             if (e.key === 'Escape') {
-                this.promptCloseIfModified();
+                //this.promptCloseIfModified();
             }
         });
 
         // Handle clicks outside the modal content to close
-        this.modal.addEventListener('click', (e) => {
+        /*this.modal.addEventListener('click', (e) => {
             if (e.target === this.modal) {
                 this.promptCloseIfModified();
             }
-        });
+        });*/
 
         // Set up confirmation dialog buttons
         document.getElementById('se-save-close').addEventListener('click', async () => {
@@ -621,6 +641,18 @@ class ScriptEditor {
     async loadFile(path, content) {
         if (!path) return;
 
+        // Save scroll position of current file before switching
+        if (this.currentPath && this.editor) {
+            const scrollInfo = this.editor.getScrollInfo();
+            const cursor = this.editor.getCursor();
+            this.saveFileScrollPosition(this.currentPath, {
+                left: scrollInfo.left,
+                top: scrollInfo.top,
+                line: cursor.line,
+                ch: cursor.ch
+            });
+        }
+
         this.currentPath = path;
         this.originalContent = content;
 
@@ -638,6 +670,23 @@ class ScriptEditor {
 
         this.updateModifiedStatus(false);
         this.open();
+
+        // Restore scroll position for this file
+        const savedScroll = this.loadFileScrollPosition(path);
+        if (savedScroll && this.editor) {
+            setTimeout(() => {
+                // Restore cursor position
+                this.editor.setCursor({ line: savedScroll.line || 0, ch: savedScroll.ch || 0 });
+
+                // Restore scroll position
+                this.editor.scrollTo(savedScroll.left || 0, savedScroll.top || 0);
+
+                // Focus editor
+                this.editor.focus();
+            }, 50);
+        }
+
+        this.loadWindowState();
 
         if (this.methodsPanel && this.methodsPanel.classList.contains('open')) {
             this.updateMethodsList();
@@ -2362,13 +2411,13 @@ class ScriptEditor {
         messageEl.classList.toggle('error', isError);
 
         // Show message
-        messageEl.style.opacity = '1';
+        messageEl.style.opacity = '0.9';
 
         // Hide after delay
         clearTimeout(this.messageTimeout);
         this.messageTimeout = setTimeout(() => {
             messageEl.style.opacity = '0';
-        }, 2000);
+        }, 700);
     }
 
     hasUnsavedChanges() {
@@ -2397,14 +2446,553 @@ class ScriptEditor {
         }
     }
 
+    setupWindowControls() {
+        const header = this.modal.querySelector('.se-modal-header');
+        const modalContent = this.modal.querySelector('.se-modal-content');
+
+        // Add window control buttons to header controls
+        const controls = this.modal.querySelector('.se-modal-controls');
+        const closeButton = controls.querySelector('.se-modal-close');
+
+        // Minimize button
+        const minimizeBtn = document.createElement('button');
+        minimizeBtn.className = 'se-button se-icon-button';
+        minimizeBtn.title = 'Minimize';
+        minimizeBtn.innerHTML = '<i class="fas fa-minus"></i>';
+        minimizeBtn.addEventListener('click', () => this.toggleMinimize());
+
+        // Maximize button
+        const maximizeBtn = document.createElement('button');
+        maximizeBtn.className = 'se-button se-icon-button';
+        maximizeBtn.id = 'se-maximize-btn';
+        maximizeBtn.title = 'Maximize';
+        maximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+        maximizeBtn.addEventListener('click', () => this.toggleMaximize());
+
+        controls.insertBefore(maximizeBtn, closeButton);
+        controls.insertBefore(minimizeBtn, maximizeBtn);
+
+        // Setup drag friction input
+        const frictionInput = this.modal.querySelector('#se-drag-friction');
+
+        // Ensure a sane default when nothing was loaded
+        let initialFriction = this.dragFriction;
+        if (typeof initialFriction !== 'number' || isNaN(initialFriction)) {
+            initialFriction = 0.90; // sensible default
+        }
+        // Clamp to allowed range
+        initialFriction = Math.max(0.0, Math.min(0.98, initialFriction));
+        this.dragFriction = initialFriction;
+        frictionInput.value = initialFriction;
+
+        frictionInput.addEventListener('input', (e) => {
+            let value = parseFloat(e.target.value);
+            if (isNaN(value)) return;
+            // Clamp and enforce max
+            value = Math.max(0.0, Math.min(0.98, value));
+            this.dragFriction = value;
+            // reflect clamped value back to UI
+            frictionInput.value = value.toFixed(2);
+            this.saveWindowState();
+            // ensure label visibility recalculated
+            this.updateFrictionLabelVisibility();
+        });
+
+        // Make header draggable
+        this.setupDragging(header, modalContent);
+
+        // Make modal resizable
+        this.setupResizing(modalContent);
+
+        // Handle clicks on minimized bubble
+        modalContent.addEventListener('click', (e) => {
+            if (this.isMinimized && !e.target.closest('.se-modal-close')) {
+                e.stopPropagation();
+                this.toggleMinimize();
+            }
+        });
+
+        // Set initial position and size
+        this.centerModal();
+
+        // Update friction label visibility on open and on window resize
+        this.updateFrictionLabelVisibility();
+        window.addEventListener('resize', this._frictionLabelResizeHandler = () => this.updateFrictionLabelVisibility());
+    }
+
+    updateFrictionLabelVisibility() {
+        try {
+            const header = this.modal.querySelector('.se-modal-header');
+            const frag = header.querySelector('.se-modal-friction');
+            const label = frag.querySelector('.se-drag-friction-label');
+            const input = frag.querySelector('.se-drag-friction-input');
+            const controls = header.querySelector('.se-modal-controls');
+            const pathEl = header.querySelector('.se-modal-path');
+
+            if (!label || !input || !controls || !pathEl) return;
+
+            // space available between path and controls
+            const headerWidth = header.clientWidth;
+            const controlsWidth = controls.offsetWidth;
+            const pathWidth = pathEl.offsetWidth;
+            const available = headerWidth - (controlsWidth + pathWidth + 40); // padding cushion
+
+            const needed = input.offsetWidth + label.offsetWidth + 8;
+
+            if (available < needed || available < input.offsetWidth + 12) {
+                // hide label to prevent wrapping under input
+                label.style.display = 'none';
+            } else {
+                label.style.display = '';
+            }
+        } catch (err) {
+            // Silent fail if elements not ready yet
+        }
+    }
+
+    setupDragging(header, modalContent) {
+        let isDragging = false;
+        let startX, startY, initialX, initialY;
+        let lastMoveTime = 0;
+        let lastX = 0, lastY = 0;
+        let velocityX = 0, velocityY = 0;
+
+        // Physics properties
+        const friction = 0.99; // Friction coefficient (0.98 = 2% speed loss per frame)
+        const bounceDamping = 0.8; // Energy retained after bounce (80%)
+        const minVelocity = 3.5; // Stop physics when velocity is below this threshold
+
+        header.style.cursor = 'move';
+
+        header.addEventListener('mousedown', (e) => {
+            // Don't drag if clicking on buttons
+            if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+                return;
+            }
+
+            if (this.isMaximized || this.isMinimized) return;
+
+            // Stop any ongoing physics animation
+            if (this.physicsAnimationId) {
+                cancelAnimationFrame(this.physicsAnimationId);
+                this.physicsAnimationId = null;
+            }
+
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = modalContent.getBoundingClientRect();
+            initialX = rect.left;
+            initialY = rect.top;
+
+            lastX = e.clientX;
+            lastY = e.clientY;
+            lastMoveTime = performance.now();
+            velocityX = 0;
+            velocityY = 0;
+
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastMoveTime;
+
+            if (deltaTime > 0) {
+                // Calculate velocity based on mouse movement
+                velocityX = (e.clientX - lastX) / deltaTime * 16; // Normalize to 60fps
+                velocityY = (e.clientY - lastY) / deltaTime * 16;
+            }
+
+            lastX = e.clientX;
+            lastY = e.clientY;
+            lastMoveTime = currentTime;
+
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+
+            const newX = initialX + deltaX;
+            const newY = initialY + deltaY;
+
+            // Keep window within viewport
+            const maxX = window.innerWidth - modalContent.offsetWidth;
+            const maxY = window.innerHeight - modalContent.offsetHeight;
+
+            modalContent.style.left = `${Math.max(0, Math.min(newX, maxX))}px`;
+            modalContent.style.top = `${Math.max(0, Math.min(newY, maxY))}px`;
+            modalContent.style.right = 'auto';
+            modalContent.style.bottom = 'auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                this.lastPosition = {
+                    x: parseInt(modalContent.style.left),
+                    y: parseInt(modalContent.style.top)
+                };
+
+                // Start physics animation if there's significant velocity
+                const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+                if (speed > minVelocity) {
+                    this.startPhysicsAnimation(modalContent, velocityX, velocityY, friction, bounceDamping, minVelocity);
+                }
+            }
+            isDragging = false;
+        });
+    }
+
+    startPhysicsAnimation(modalContent, vx, vy, friction, bounceDamping, minVelocity) {
+        let velocityX = vx;
+        let velocityY = vy;
+
+        const animate = () => {
+            // Get current position
+            let x = parseInt(modalContent.style.left);
+            let y = parseInt(modalContent.style.top);
+
+            // Apply velocity
+            x += velocityX;
+            y += velocityY;
+
+            // Apply friction
+            velocityX *= this.dragFriction; // Use configurable friction
+            velocityY *= this.dragFriction;
+
+            // Get boundaries
+            const maxX = window.innerWidth - modalContent.offsetWidth;
+            const maxY = window.innerHeight - modalContent.offsetHeight;
+
+            // Bounce off edges
+            if (x <= 0) {
+                x = 0;
+                velocityX = Math.abs(velocityX) * bounceDamping;
+            } else if (x >= maxX) {
+                x = maxX;
+                velocityX = -Math.abs(velocityX) * bounceDamping;
+            }
+
+            if (y <= 0) {
+                y = 0;
+                velocityY = Math.abs(velocityY) * bounceDamping;
+            } else if (y >= maxY) {
+                y = maxY;
+                velocityY = -Math.abs(velocityY) * bounceDamping;
+            }
+
+            // Update position
+            modalContent.style.left = `${x}px`;
+            modalContent.style.top = `${y}px`;
+
+            // Store position
+            this.lastPosition = { x, y };
+
+            // Check if we should continue animating
+            const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+            if (speed > minVelocity) {
+                this.physicsAnimationId = requestAnimationFrame(animate);
+            } else {
+                this.physicsAnimationId = null;
+            }
+        };
+
+        this.physicsAnimationId = requestAnimationFrame(animate);
+    }
+
+    setupResizing(modalContent) {
+        // Create resize handles
+        const handles = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+
+        handles.forEach(handle => {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = `se-resize-handle se-resize-${handle}`;
+            modalContent.appendChild(resizeHandle);
+
+            let isResizing = false;
+            let startX, startY, startWidth, startHeight, startLeft, startTop;
+
+            resizeHandle.addEventListener('mousedown', (e) => {
+                if (this.isMaximized || this.isMinimized) return;
+
+                isResizing = true;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                const rect = modalContent.getBoundingClientRect();
+                startWidth = rect.width;
+                startHeight = rect.height;
+                startLeft = rect.left;
+                startTop = rect.top;
+
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+
+                let newWidth = startWidth;
+                let newHeight = startHeight;
+                let newLeft = startLeft;
+                let newTop = startTop;
+
+                // Handle horizontal resizing
+                if (handle.includes('e')) {
+                    newWidth = Math.max(this.minWidth, startWidth + deltaX);
+                } else if (handle.includes('w')) {
+                    newWidth = Math.max(this.minWidth, startWidth - deltaX);
+                    newLeft = startLeft + (startWidth - newWidth);
+                }
+
+                // Handle vertical resizing
+                if (handle.includes('s')) {
+                    newHeight = Math.max(this.minHeight, startHeight + deltaY);
+                } else if (handle.includes('n')) {
+                    newHeight = Math.max(this.minHeight, startHeight - deltaY);
+                    newTop = startTop + (startHeight - newHeight);
+                }
+
+                modalContent.style.width = `${newWidth}px`;
+                modalContent.style.height = `${newHeight}px`;
+                modalContent.style.left = `${newLeft}px`;
+                modalContent.style.top = `${newTop}px`;
+                modalContent.style.right = 'auto';
+                modalContent.style.bottom = 'auto';
+
+                if (this.editor) {
+                    this.editor.refresh();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    this.lastSize = {
+                        width: parseInt(modalContent.style.width),
+                        height: parseInt(modalContent.style.height)
+                    };
+                    this.lastPosition = {
+                        x: parseInt(modalContent.style.left),
+                        y: parseInt(modalContent.style.top)
+                    };
+                }
+                isResizing = false;
+
+                // Save state after toggling
+                this.saveWindowState();
+            });
+        });
+    }
+
+    centerModal() {
+        const modalContent = this.modal.querySelector('.se-modal-content');
+        const width = this.lastSize.width;
+        const height = this.lastSize.height;
+
+        modalContent.style.width = `${width}px`;
+        modalContent.style.height = `${height}px`;
+        modalContent.style.left = `${(window.innerWidth - width) / 2}px`;
+        modalContent.style.top = `${(window.innerHeight - height) / 2}px`;
+        modalContent.style.right = 'auto';
+        modalContent.style.bottom = 'auto';
+        modalContent.style.transform = 'none';
+
+        this.lastPosition = {
+            x: parseInt(modalContent.style.left),
+            y: parseInt(modalContent.style.top)
+        };
+    }
+
+    toggleMinimize() {
+        const modalContent = this.modal.querySelector('.se-modal-content');
+
+        if (this.isMinimized) {
+            // Restore from minimized bubble
+            this.isMinimized = false;
+            modalContent.classList.remove('minimized');
+
+            // Restore size and position
+            modalContent.style.width = `${this.lastSize.width}px`;
+            modalContent.style.height = `${this.lastSize.height}px`;
+            modalContent.style.left = `${this.lastPosition.x}px`;
+            modalContent.style.top = `${this.lastPosition.y}px`;
+
+            if (this.editor) {
+                this.editor.refresh();
+            }
+        } else {
+            // Minimize to bubble
+            if (this.isMaximized) {
+                this.toggleMaximize(); // Un-maximize first
+            }
+
+            this.isMinimized = true;
+            modalContent.classList.add('minimized');
+
+            // Store current position and size before minimizing
+            this.lastPosition = {
+                x: parseInt(modalContent.style.left) || this.lastPosition.x,
+                y: parseInt(modalContent.style.top) || this.lastPosition.y
+            };
+            this.lastSize = {
+                width: parseInt(modalContent.style.width) || this.lastSize.width,
+                height: parseInt(modalContent.style.height) || this.lastSize.height
+            };
+
+            // Move to bottom-right corner as a small bubble
+            modalContent.style.width = '200px';
+            modalContent.style.height = '60px';
+            modalContent.style.left = `${window.innerWidth - 220}px`;
+            modalContent.style.top = `${window.innerHeight - 80}px`;
+            modalContent.style.right = 'auto';
+            modalContent.style.bottom = 'auto';
+        }
+    }
+
+    toggleMaximize() {
+        const modalContent = this.modal.querySelector('.se-modal-content');
+        const maximizeBtn = this.modal.querySelector('#se-maximize-btn');
+
+        if (this.isMaximized) {
+            // Restore
+            this.isMaximized = false;
+            modalContent.classList.remove('maximized');
+            maximizeBtn.innerHTML = '<i class="fas fa-expand"></i>';
+            maximizeBtn.title = 'Maximize';
+
+            modalContent.style.width = `${this.lastSize.width}px`;
+            modalContent.style.height = `${this.lastSize.height}px`;
+            modalContent.style.left = `${this.lastPosition.x}px`;
+            modalContent.style.top = `${this.lastPosition.y}px`;
+            modalContent.style.right = 'auto';
+            modalContent.style.bottom = 'auto';
+        } else {
+            // Maximize
+            if (this.isMinimized) {
+                this.toggleMinimize(); // Un-minimize first
+            }
+
+            this.isMaximized = true;
+            modalContent.classList.add('maximized');
+            maximizeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+            maximizeBtn.title = 'Restore';
+
+            // Store current position and size
+            this.lastPosition = {
+                x: parseInt(modalContent.style.left) || 0,
+                y: parseInt(modalContent.style.top) || 0
+            };
+            this.lastSize = {
+                width: parseInt(modalContent.style.width) || 800,
+                height: parseInt(modalContent.style.height) || 600
+            };
+
+            modalContent.style.width = '100vw';
+            modalContent.style.height = '100vh';
+            modalContent.style.left = '0';
+            modalContent.style.top = '0';
+            modalContent.style.right = '0';
+            modalContent.style.bottom = '0';
+        }
+
+        if (this.editor) {
+            setTimeout(() => this.editor.refresh(), 50);
+        }
+
+        // Save state after toggling
+        this.saveWindowState();
+    }
+
+    loadWindowState() {
+        const saved = localStorage.getItem('dmscriptEditorWindowState');
+        return saved ? JSON.parse(saved) : {
+            size: { width: 800, height: 600 },
+            position: { x: 0, y: 0 },
+            isMaximized: false,
+            panels: {
+                ai: false,
+                methods: false,
+                scripts: true
+            },
+            dragFriction: 0.94
+        };
+    }
+
+    saveWindowState() {
+        const state = {
+            size: this.lastSize,
+            //position: this.lastPosition,
+            isMaximized: this.isMaximized,
+            panels: {
+                ai: this.aiPanel?.classList.contains('open') || false,
+                methods: this.methodsPanel?.classList.contains('open') || false,
+                scripts: this.scriptsPanel?.classList.contains('open') || true
+            },
+            dragFriction: this.dragFriction || 0.94
+        };
+        localStorage.setItem('dmscriptEditorWindowState', JSON.stringify(state));
+    }
+
+    saveFileScrollPosition(filePath, scrollInfo) {
+        if (!filePath) return;
+
+        const scrollPositions = JSON.parse(localStorage.getItem('scriptEditorScrollPositions') || '{}');
+        scrollPositions[filePath] = scrollInfo;
+        localStorage.setItem('scriptEditorScrollPositions', JSON.stringify(scrollPositions));
+    }
+
+    loadFileScrollPosition(filePath) {
+        if (!filePath) return null;
+
+        const scrollPositions = JSON.parse(localStorage.getItem('scriptEditorScrollPositions') || '{}');
+        return scrollPositions[filePath] || null;
+    }
+
     open() {
         this.modal.style.display = 'flex';
         this.isOpen = true;
+
+        // Restore saved state ONLY if panels haven't been opened yet
+        const modalContent = this.modal.querySelector('.se-modal-content');
+        
+        if (this.isMaximized) {
+            modalContent.classList.add('maximized');
+            const maximizeBtn = this.modal.querySelector('#se-maximize-btn');
+            if (maximizeBtn) {
+                maximizeBtn.innerHTML = '<i class="fas fa-compress"></i>';
+                maximizeBtn.title = 'Restore';
+            }
+            modalContent.style.width = '100vw';
+            modalContent.style.height = '100vh';
+            modalContent.style.left = '0';
+            modalContent.style.top = '0';
+        } else {
+            this.centerModal();
+        }
+
+        // Only restore panel states on first open (not when switching files)
+        if (this.savedPanelStates && !this.hasRestoredPanels) {
+            if (this.savedPanelStates.ai && this.aiPanel && !this.aiPanel.classList.contains('open')) {
+                this.toggleAIPanel();
+            }
+            if (this.savedPanelStates.methods && this.methodsPanel && !this.methodsPanel.classList.contains('open')) {
+                this.toggleMethodsPanel();
+            }
+            if (this.savedPanelStates.scripts && this.scriptsPanel && !this.scriptsPanel.classList.contains('open')) {
+                this.toggleScriptsPanel();
+            }
+            this.hasRestoredPanels = true;
+        }
+
         if (this.scriptsPanel && this.scriptsPanel.classList.contains('open')) {
             this.updateScriptsList();
         }
+
         if (this.editor) {
-            // Refresh after modal is visible and layout is applied
             setTimeout(() => {
                 this.editor.refresh();
                 this.editor.focus();
@@ -2413,6 +3001,21 @@ class ScriptEditor {
     }
 
     close() {
+        // Save scroll position before closing
+        if (this.currentPath && this.editor) {
+            const scrollInfo = this.editor.getScrollInfo();
+            const cursor = this.editor.getCursor();
+            this.saveFileScrollPosition(this.currentPath, {
+                left: scrollInfo.left,
+                top: scrollInfo.top,
+                line: cursor.line,
+                ch: cursor.ch
+            });
+        }
+
+        // Save window state before closing
+        this.saveWindowState();
+
         // If there are unsaved changes in inline mode, save automatically via callback
         if (this.hasUnsavedChanges() && !this.currentPath && this.onSaveCallback) {
             this.onSaveCallback(this.editor.getValue());
@@ -2443,6 +3046,7 @@ class ScriptEditor {
         this.isOpen = false;
         this.currentPath = null;
         this.onSaveCallback = null; // Clear callback
+        this.hasRestoredPanels = false;
     }
 
     // AI STUFF
@@ -2769,6 +3373,20 @@ class ScriptEditor {
     }
 
     async switchToScript(path) {
+        // Save scroll position of current file
+        if (this.currentPath && this.editor) {
+            const scrollInfo = this.editor.getScrollInfo();
+            const cursor = this.editor.getCursor();
+            this.saveFileScrollPosition(this.currentPath, {
+                left: scrollInfo.left,
+                top: scrollInfo.top,
+                line: cursor.line,
+                ch: cursor.ch
+            });
+        }
+
+        this.saveWindowState();
+
         // Check if current file has unsaved changes
         if (this.hasUnsavedChanges()) {
             const result = await this.promptSaveChanges();
@@ -2787,6 +3405,8 @@ class ScriptEditor {
             this.scriptsList.querySelectorAll('.se-script-item').forEach(item => {
                 item.classList.toggle('active', item.dataset.path === path);
             });
+
+            this.loadWindowState();
         }
     }
 
@@ -3554,6 +4174,12 @@ Generate complete, functional modules that follow this architecture.`;
                 icon: 'fa-book',
                 title: 'New Documentation',
                 onClick: () => this.createNewScript('doc')
+            },
+            // New: Add Clear Cache button
+            {
+                icon: 'fa-trash',
+                title: 'Clear Cache (Delete All Local Files)',
+                onClick: () => this.clearCache()
             }
         ];
 
@@ -3564,6 +4190,57 @@ Generate complete, functional modules that follow this architecture.`;
         // Insert toolbar before the header
         const header = this.scriptsPanel.querySelector('.se-scripts-header');
         this.scriptsPanel.insertBefore(toolbar, header);
+    }
+
+    // New method: Clear cache with confirmation
+    async clearCache() {
+        const confirmed = await this.promptClearCacheConfirmation();
+        if (!confirmed) return;
+
+        try {
+            // Clear only Script Editor-specific localStorage keys
+            localStorage.removeItem('scriptEditorAISettings');
+            localStorage.removeItem('dmscriptEditorWindowState');
+            localStorage.removeItem('scriptEditorScrollPositions');
+
+            this.showStatusMessage('Cache cleared successfully');
+        } catch (error) {
+            console.error('Error clearing cache:', error);
+            this.showStatusMessage('Error clearing cache', true);
+        }
+    }
+
+    // New helper method: Prompt for cache clear confirmation
+    promptClearCacheConfirmation() {
+        return new Promise((resolve) => {
+            const dialog = document.createElement('div');
+            dialog.className = 'se-confirm-dialog';
+            dialog.style.display = 'flex';
+            dialog.innerHTML = `
+                <div class="se-confirm-content">
+                    <h3>Clear Cache</h3>
+                    <p>This will permanently delete local settings created by the editor. This action cannot be undone.</p>
+                    <p>Are you sure you want to continue?</p>
+                    <div class="se-confirm-buttons">
+                        <button class="se-button" id="se-confirm-clear">Yes, Clear Cache</button>
+                        <button class="se-button" id="se-cancel-clear">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(dialog);
+
+            const cleanup = () => dialog.remove();
+
+            dialog.querySelector('#se-confirm-clear').onclick = () => {
+                cleanup();
+                resolve(true);
+            };
+
+            dialog.querySelector('#se-cancel-clear').onclick = () => {
+                cleanup();
+                resolve(false);
+            };
+        });
     }
 
     async createNewScript(type) {
