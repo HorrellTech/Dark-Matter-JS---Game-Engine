@@ -22,6 +22,13 @@ class RubberDucky {
         this.bounceDamping = 0.7;
         this.minVelocity = 0.1;
 
+        // New squash state for directional bouncing
+        this.targetSquashX = 1;
+        this.currentSquashX = 1;
+        this.targetSquashY = 1;
+        this.currentSquashY = 1;
+        this.squashDecaySpeed = 0.1; // How fast squash returns to normal
+
         // Speech bubble state
         this.speechBubble = null;
         this.isSpeaking = false;
@@ -60,6 +67,8 @@ class RubberDucky {
 
         // Initialize duckList with a safe default to prevent undefined errors
         this.duckList = this.rubberDuckList;
+        
+        this.lastMoveTime = Date.now();
         
         // Load speech data
         this.loadSpeechData();
@@ -143,7 +152,11 @@ class RubberDucky {
             colorEnabled: false,
 
             // Duck image selection (filename or path)
-            selectedDuck: 'rubber-ducky.png'
+            selectedDuck: 'rubber-ducky.png',
+
+            // New physics settings
+            accelerationMultiplier: 1.0,
+            friction: 0.95
         };
 
         try {
@@ -444,6 +457,24 @@ class RubberDucky {
                     </label>
                     <input type="range" id="duckyBounciness" min="0.1" max="1" step="0.1" value="${this.settings.bounciness}" 
                         style="width: 100%;">
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Acceleration Multiplier: <span id="accelerationMultiplierValue">${this.settings.accelerationMultiplier.toFixed(1)}</span>x
+                    </label>
+                    <input type="range" id="accelerationMultiplier" min="1" max="5" step="0.1" value="${this.settings.accelerationMultiplier}" 
+                        style="width: 100%;">
+                    <small style="color: #888;">How fast the duck accelerates (1-5)</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Friction: <span id="frictionValue">${this.settings.friction.toFixed(2)}</span>
+                    </label>
+                    <input type="range" id="friction" min="0" max="0.99" step="0.01" value="${this.settings.friction}" 
+                        style="width: 100%;">
+                    <small style="color: #888;">How quickly the duck slows down (0-0.99)</small>
                 </div>
                 
                 <div style="margin-bottom: 15px;">
@@ -789,6 +820,25 @@ class RubberDucky {
             this.settings.bounciness = parseFloat(e.target.value);
             bouncinessValue.textContent = Math.round(this.settings.bounciness * 100);
             this.bounceDamping = this.settings.bounciness;
+            this.saveSettings();
+        });
+
+        // Acceleration Multiplier
+        const accelerationSlider = document.getElementById('accelerationMultiplier');
+        const accelerationValue = document.getElementById('accelerationMultiplierValue');
+        accelerationSlider.addEventListener('input', (e) => {
+            this.settings.accelerationMultiplier = parseFloat(e.target.value);
+            accelerationValue.textContent = this.settings.accelerationMultiplier.toFixed(1);
+            this.saveSettings();
+        });
+
+        // Friction
+        const frictionSlider = document.getElementById('friction');
+        const frictionValue = document.getElementById('frictionValue');
+        frictionSlider.addEventListener('input', (e) => {
+            this.settings.friction = parseFloat(e.target.value);
+            frictionValue.textContent = this.settings.friction.toFixed(2);
+            this.friction = this.settings.friction;
             this.saveSettings();
         });
 
@@ -1172,6 +1222,7 @@ class RubberDucky {
 
             this.lastMousePos = { x: e.clientX, y: e.clientY };
             this.lastTime = Date.now();
+            this.lastMoveTime = Date.now(); // Reset on start of drag
             this.velocity = { x: 0, y: 0 };
 
             // Play squeeze-out sound
@@ -1194,6 +1245,7 @@ class RubberDucky {
 
                 this.lastMousePos = { x: e.clientX, y: e.clientY };
                 this.lastTime = currentTime;
+                this.lastMoveTime = currentTime; // Update last move time
 
                 this.updateDuckyPosition();
             }
@@ -1205,6 +1257,17 @@ class RubberDucky {
                 this.isDragging = false;
                 this.isSqueezing = false;
                 this.ducky.style.cursor = 'grab';
+
+                // Only apply velocity if mouse was moving recently (within 100ms)
+                const timeSinceLastMove = Date.now() - this.lastMoveTime;
+                if (timeSinceLastMove < 100) {
+                    // Apply acceleration multiplier to velocity on release
+                    this.velocity.x *= this.settings.accelerationMultiplier;
+                    this.velocity.y *= this.settings.accelerationMultiplier;
+                } else {
+                    // Reset velocity if no recent movement
+                    this.velocity = { x: 0, y: 0 };
+                }
 
                 // Play squeeze-in sound (slower, longer)
                 this.playSqueezeSound(false);
@@ -1332,6 +1395,14 @@ class RubberDucky {
             this.updateSpeechBubblePosition();
         }
 
+        // Smooth squash interpolation
+        this.currentSquashX += (this.targetSquashX - this.currentSquashX) * this.squashDecaySpeed;
+        this.currentSquashY += (this.targetSquashY - this.currentSquashY) * this.squashDecaySpeed;
+
+        // Gradually return squash to normal
+        this.targetSquashX += (1 - this.targetSquashX) * this.squashDecaySpeed;
+        this.targetSquashY += (1 - this.targetSquashY) * this.squashDecaySpeed;
+
         // Apply physics when not dragging
         if (!this.isDragging) {
             // Apply friction
@@ -1346,22 +1417,27 @@ class RubberDucky {
             this.position.x += this.velocity.x * 0.016; // Assuming 60fps
             this.position.y += this.velocity.y * 0.016;
 
-            // Bounce off walls
+            // Bounce off walls with directional squash
             const halfSize = this.settings.size / 2;
 
             if (this.position.x < -halfSize) {
                 this.position.x = -halfSize;
                 this.velocity.x *= -this.bounceDamping;
+                // Squash horizontally (wider), stretch vertically (taller)
+                this.targetSquashX = 1.3;
+                this.targetSquashY = 0.7;
                 const velocityMagnitude = Math.abs(this.velocity.x);
                 if (velocityMagnitude > 0) {
-                    // Amplify volume for low velocities to make soft bounces audible
-                    const volumeMultiplier = Math.min(Math.max(velocityMagnitude / 5, 3), 10.0);  // Min 0.5 for audibility
+                    const volumeMultiplier = Math.min(Math.max(velocityMagnitude / 5, 3), 10.0);
                     this.playBounceSound(volumeMultiplier);
                 }
             }
             if (this.position.x > window.innerWidth - halfSize) {
                 this.position.x = window.innerWidth - halfSize;
                 this.velocity.x *= -this.bounceDamping;
+                // Squash horizontally (wider), stretch vertically (taller)
+                this.targetSquashX = 1.3;
+                this.targetSquashY = 0.7;
                 const velocityMagnitude = Math.abs(this.velocity.x);
                 if (velocityMagnitude > 0) {
                     const volumeMultiplier = Math.min(Math.max(velocityMagnitude / 5, 3), 10.0);
@@ -1371,6 +1447,9 @@ class RubberDucky {
             if (this.position.y < -halfSize) {
                 this.position.y = -halfSize;
                 this.velocity.y *= -this.bounceDamping;
+                // Squash vertically (taller), stretch horizontally (wider)
+                this.targetSquashX = 0.7;
+                this.targetSquashY = 1.3;
                 const velocityMagnitude = Math.abs(this.velocity.y);
                 if (velocityMagnitude > 0) {
                     const volumeMultiplier = Math.min(Math.max(velocityMagnitude / 5, 3), 10.0);
@@ -1380,6 +1459,9 @@ class RubberDucky {
             if (this.position.y > window.innerHeight - halfSize) {
                 this.position.y = window.innerHeight - halfSize;
                 this.velocity.y *= -this.bounceDamping;
+                // Squash vertically (taller), stretch horizontally (wider)
+                this.targetSquashX = 0.7;
+                this.targetSquashY = 1.3;
                 const velocityMagnitude = Math.abs(this.velocity.y);
                 if (velocityMagnitude > 0) {
                     const volumeMultiplier = Math.min(Math.max(velocityMagnitude / 5, 3), 10.0);
@@ -1396,13 +1478,13 @@ class RubberDucky {
             wobbleRotation = Math.sin(Date.now() * 0.002) * 3;
         }
 
-        // Apply transforms - use custom squeeze amount from settings
+        // Apply transforms - include squash scales
         const squeezeScaleX = 1 - this.squeezeAmount * this.settings.squeezeAmount;
         const squeezeScaleY = 1 + this.squeezeAmount * (this.settings.squeezeAmount * 1.3);
 
         this.ducky.style.transform = `
             translate(-50%, -50%) 
-            scale(${this.currentScale * squeezeScaleX}, ${this.currentScale * squeezeScaleY})
+            scale(${this.currentScale * squeezeScaleX * this.currentSquashX}, ${this.currentScale * squeezeScaleY * this.currentSquashY})
             rotate(${wobbleRotation}deg)
         `;
     }
