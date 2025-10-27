@@ -1,6 +1,8 @@
 // RubberDucky.js - A fun rubber ducky widget for Dark Matter JS
 class RubberDucky {
-    constructor() {
+    constructor(rubberDuckySettingsName = 'rubberDuckySettings') {
+        this.rubberDuckySettingsName = rubberDuckySettingsName;
+        this.id = rubberDuckySettingsName; // Use settings name as ID for uniqueness
         this.isOpen = false;
         this.settings = this.loadSettings();
         this.ducky = null;
@@ -49,6 +51,21 @@ class RubberDucky {
         this.longPressThreshold = 500; // ms for long press to open settings
         this.moveThreshold = 10; // px movement to consider it a drag instead of tap
         this.longPressTimer = null;
+        this.lastTap = null;
+
+        // New auto-walk properties
+        this.isWalking = false;
+        this.walkTarget = null; // { x, y }
+        this.walkWaitTimeout = null;
+        this.walkRotation = 0; // For left-right oscillation during walk
+        this.walkSquashPhase = 0; // Alternates squash direction
+
+        this.isFlipped = false; // Tracks if duck is facing right (true) or left (false)
+        this.targetScaleX = 1; // Target horizontal scale for flip animation
+        this.currentScaleX = 1; // Current horizontal scale for smooth interpolation
+        this.flipSpeed = 0.08; // Speed of flip animation (higher = faster; 0.08 gives ~0.5s total)
+
+        this.personalities = null; // Add this to store loaded personalities
 
         this.rubberDuckList = [
             'RubberDucks/Quackers.png',
@@ -77,6 +94,7 @@ class RubberDucky {
         this.duckList = this.rubberDuckList;
 
         this.lastMoveTime = Date.now();
+        this.lastDragTime = 0;
 
         // Load speech data
         this.loadSpeechData();
@@ -102,6 +120,7 @@ class RubberDucky {
 
         // Load duck list early and update image after it completes
         await this.loadDuckList();
+        await this.loadPersonalities();
         this.updateDuckyImage();
 
         // Load speech data (already async, but not awaited before)
@@ -162,13 +181,21 @@ class RubberDucky {
             // Duck image selection (filename or path)
             selectedDuck: 'rubber-ducky.png',
 
-            // New physics settings
+            enablePersonalityChat: false,
+
+            // Physics settings
             accelerationMultiplier: 1.0,
-            friction: 0.95
+            friction: 0.95,
+
+            // Auto-walk settings
+            autoWalkEnabled: false,
+            autoWalkSpeed: 1.0, // Multiplier for movement speed (0.1-2.0)
+            autoWalkWaitMin: 2, // Min wait time in seconds
+            autoWalkWaitMax: 5, // Max wait time in seconds
         };
 
         try {
-            const saved = localStorage.getItem('rubberDuckySettings');
+            const saved = localStorage.getItem(this.rubberDuckySettingsName);
             return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
         } catch (e) {
             console.warn('Failed to load rubber ducky settings:', e);
@@ -180,7 +207,7 @@ class RubberDucky {
         try {
             this.settings.position = this.position;
             this.settings.isOpen = this.isOpen;
-            localStorage.setItem('rubberDuckySettings', JSON.stringify(this.settings));
+            localStorage.setItem(this.rubberDuckySettingsName, JSON.stringify(this.settings));
         } catch (e) {
             console.warn('Failed to save rubber ducky settings:', e);
         }
@@ -202,8 +229,8 @@ class RubberDucky {
         }
 
         const button = document.createElement('button');
-        button.className = 'launch-btn';
-        button.id = 'launchRubberDuckyBtn';
+        button.className = `launch-btn${this.id}`;
+        button.id = `launchRubberDuckyBtn${this.id}`;
         button.title = 'Toggle Rubber Ducky';
         button.style.cssText = `
             background: transparent;
@@ -262,7 +289,7 @@ class RubberDucky {
 
     createDuckyElement() {
         this.ducky = document.createElement('div');
-        this.ducky.className = 'rubber-ducky';
+        this.ducky.className = `rubber-ducky${this.id}`;
         this.ducky.style.cssText = `
         position: fixed;
         width: ${this.settings.size}px;
@@ -394,388 +421,538 @@ class RubberDucky {
 
     createSettingsModal() {
         const modal = document.createElement('div');
-        modal.className = 'rubber-ducky-settings-modal';
+        modal.className = `rubber-ducky-settings-modal${this.id}`;
         modal.style.cssText = `
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #2a2a2a;
-            border: 2px solid #444;
-            border-radius: 8px;
-            padding: 20px;
-            z-index: 10001;
-            min-width: 400px;
-            max-width: 500px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            font-family: Arial, sans-serif;
-            touch-action: none; /* Prevent zoom/scroll interference */
-        `;
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #2a2a2a;
+        border: 2px solid #444;
+        border-radius: 8px;
+        padding: 0; /* Remove padding to allow header */
+        min-width: 400px;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        font-family: Arial, sans-serif;
+        touch-action: none; /* Prevent zoom/scroll interference */
+        z-index: 10001;
+        cursor: default;
+    `;
 
-        modal.innerHTML = `
-            <h3 style="margin-top: 0; color: #FFD700; font-family: Arial, sans-serif;">
-                🦆 Rubber Ducky Settings
-            </h3>
-            
-            <!-- Tabs -->
-            <div style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #444; flex-wrap: wrap;">
-                <button class="ducky-tab" data-tab="general" style="flex: 1; min-width: 80px; padding: 10px; background: #FFD700; color: #000; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold;">
-                    General
-                </button>
-                <button class="ducky-tab" data-tab="squeeze" style="flex: 1; min-width: 80px; padding: 10px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
-                    Squeeze
-                </button>
-                <button class="ducky-tab" data-tab="sound" style="flex: 1; min-width: 80px; padding: 10px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
-                    Sound
-                </button>
-                <button class="ducky-tab" data-tab="speech" style="flex: 1; min-width: 80px; padding: 10px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
-                    Speech
-                </button>
-                <button class="ducky-tab" data-tab="color" style="flex: 1; min-width: 80px; padding: 10px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
-                    Color
-                </button>
-                <button class="ducky-tab" data-tab="duck" style="flex: 1; min-width: 80px; padding: 10px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
-                    Duck
-                </button>
+        // Create header for dragging and close button
+        const header = document.createElement('div');
+        header.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        background: #333;
+        border-bottom: 1px solid #444;
+        cursor: move;
+        user-select: none;
+    `;
+
+        const title = document.createElement('h3');
+        title.style.cssText = `
+        margin: 0;
+        color: #FFD700;
+        font-family: Arial, sans-serif;
+        font-size: 18px;
+    `;
+        title.textContent = '🦆 Rubber Ducky Settings';
+
+        const closeButton = document.createElement('button');
+        closeButton.textContent = '✕';
+        closeButton.style.cssText = `
+        background: none;
+        border: none;
+        color: #FFD700;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    `;
+        closeButton.addEventListener('click', () => {
+            this.settingsModal.style.display = 'none';
+        });
+
+        header.appendChild(title);
+        header.appendChild(closeButton);
+        modal.appendChild(header);
+
+        // Content container
+        const content = document.createElement('div');
+        content.style.cssText = `
+        padding: 20px;
+    `;
+        content.innerHTML = `
+        
+        <!-- Tabs -->
+        <div style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #444; flex-wrap: wrap;">
+            <button class="ducky-tab${this.id}" data-tab="general" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #FFD700; color: #000; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold;">
+                General
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="squeeze" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Squeeze
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="sound" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Sound
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="speech" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Speech
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="color" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Color
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="walk" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Walk
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="duck" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Duck
+            </button>
+        </div>
+        
+        <!-- General Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="general" style="display: block;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Size: <span id="duckySizeValue${this.id}">${this.settings.size}</span>px
+                </label>
+                <input type="range" id="duckySize${this.id}" min="50" max="200" value="${this.settings.size}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
             </div>
             
-            <!-- General Tab -->
-            <div class="ducky-tab-content" data-tab="general" style="display: block;">
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Size: <span id="duckySizeValue">${this.settings.size}</span>px
-                    </label>
-                    <input type="range" id="duckySize" min="50" max="200" value="${this.settings.size}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Opacity: <span id="duckyOpacityValue">${Math.round(this.settings.opacity * 100)}</span>%
-                    </label>
-                    <input type="range" id="duckyOpacity" min="0.1" max="1" step="0.1" value="${this.settings.opacity}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Bounciness: <span id="duckyBouncinessValue">${Math.round(this.settings.bounciness * 100)}</span>%
-                    </label>
-                    <input type="range" id="duckyBounciness" min="0.1" max="1" step="0.1" value="${this.settings.bounciness}" 
-                        style="width: 100%;">
-                </div>
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Opacity: <span id="duckyOpacityValue${this.id}">${Math.round(this.settings.opacity * 100)}</span>%
+                </label>
+                <input type="range" id="duckyOpacity${this.id}" min="0.1" max="1" step="0.1" value="${this.settings.opacity}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Bounciness: <span id="duckyBouncinessValue${this.id}">${Math.round(this.settings.bounciness * 100)}</span>%
+                </label>
+                <input type="range" id="duckyBounciness${this.id}" min="0.1" max="1" step="0.1" value="${this.settings.bounciness}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
 
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Acceleration Multiplier: <span id="accelerationMultiplierValue${this.id}">${this.settings.accelerationMultiplier.toFixed(1)}</span>x
+                </label>
+                <input type="range" id="accelerationMultiplier${this.id}" min="1" max="5" step="0.1" value="${this.settings.accelerationMultiplier}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                <small style="color: #888;">How fast the duck accelerates (1-5)</small>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Friction: <span id="frictionValue${this.id}">${this.settings.friction.toFixed(2)}</span>
+                </label>
+                <input type="range" id="friction${this.id}" min="0" max="0.99" step="0.01" value="${this.settings.friction}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                <small style="color: #888;">How quickly the duck slows down (0-0.99)</small>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckyWobble${this.id}" ${this.settings.wobbleEnabled ? 'checked' : ''}>
+                    Enable Idle Wobble
+                </label>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckySound${this.id}" ${this.settings.soundEnabled ? 'checked' : ''}>
+                    Enable Quack Sound
+                </label>
+            </div>
+            
+            <button id="duckyResetPosition${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
+                Reset Position
+            </button>
+        </div>
+        
+        <!-- Squeeze Tab -->
+        <div class="ducky-tab-content" data-tab="squeeze" style="display: none;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Squeeze Out Speed: <span id="squeezeOutSpeedValue${this.id}">${this.settings.squeezeOutSpeed.toFixed(2)}</span>
+                </label>
+                <input type="range" id="squeezeOutSpeed${this.id}" min="0.1" max="1" step="0.05" value="${this.settings.squeezeOutSpeed}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                <small style="color: #888;">How fast the ducky squeezes when grabbed</small>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Squeeze In Speed: <span id="squeezeInSpeedValue${this.id}">${this.settings.squeezeInSpeed.toFixed(2)}</span>
+                </label>
+                <input type="range" id="squeezeInSpeed${this.id}" min="0.01" max="0.3" step="0.01" value="${this.settings.squeezeInSpeed}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                <small style="color: #888;">How fast the ducky returns to normal shape</small>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Squeeze Amount: <span id="squeezeAmountValue${this.id}">${this.settings.squeezeAmount.toFixed(2)}</span>
+                </label>
+                <input type="range" id="squeezeAmount${this.id}" min="0.1" max="0.8" step="0.05" value="${this.settings.squeezeAmount}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                <small style="color: #888;">How much the ducky deforms when squeezed</small>
+            </div>
+            
+            <button id="resetSqueezeSettings${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                Reset Squeeze Settings to Default
+            </button>
+        </div>
+
+        <!-- Speech Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="speech" style="display: none;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckySpeechEnabled${this.id}" ${this.settings.speechEnabled ? 'checked' : ''}>
+                    Enable Speech Bubbles
+                </label>
+            </div>
+            
+            <div id="speechControls${this.id}" style="${this.settings.speechEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
                 <div style="margin-bottom: 15px;">
                     <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Acceleration Multiplier: <span id="accelerationMultiplierValue">${this.settings.accelerationMultiplier.toFixed(1)}</span>x
+                        Min Delay: <span id="speechMinDelayValue${this.id}">${this.settings.speechMinDelay}</span>s
                     </label>
-                    <input type="range" id="accelerationMultiplier" min="1" max="5" step="0.1" value="${this.settings.accelerationMultiplier}" 
-                        style="width: 100%;">
-                    <small style="color: #888;">How fast the duck accelerates (1-5)</small>
+                    <input type="range" id="speechMinDelay${this.id}" min="10" max="60" value="${this.settings.speechMinDelay}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Minimum time between speeches</small>
                 </div>
                 
                 <div style="margin-bottom: 15px;">
                     <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Friction: <span id="frictionValue">${this.settings.friction.toFixed(2)}</span>
+                        Max Delay: <span id="speechMaxDelayValue${this.id}">${this.settings.speechMaxDelay}</span>s
                     </label>
-                    <input type="range" id="friction" min="0" max="0.99" step="0.01" value="${this.settings.friction}" 
-                        style="width: 100%;">
-                    <small style="color: #888;">How quickly the duck slows down (0-0.99)</small>
+                    <input type="range" id="speechMaxDelay${this.id}" min="30" max="180" value="${this.settings.speechMaxDelay}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Maximum time between speeches</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Typing Speed: <span id="speechTypeSpeedValue${this.id}">${this.settings.speechTypeSpeed}</span>ms
+                    </label>
+                    <input type="range" id="speechTypeSpeed${this.id}" min="30" max="200" step="10" value="${this.settings.speechTypeSpeed}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Delay between each word</small>
                 </div>
                 
                 <div style="margin-bottom: 15px;">
                     <label style="color: #ccc; cursor: pointer;">
-                        <input type="checkbox" id="duckyWobble" ${this.settings.wobbleEnabled ? 'checked' : ''}>
-                        Enable Idle Wobble
+                        <input type="checkbox" id="duckySpeechSound${this.id}" ${this.settings.speechSoundEnabled ? 'checked' : ''}>
+                        Enable Word Quacks
                     </label>
+                    <small style="display: block; color: #888; margin-left: 20px; margin-top: 5px;">
+                        Play a small quack for each word typed
+                    </small>
                 </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; cursor: pointer;">
-                        <input type="checkbox" id="duckySound" ${this.settings.soundEnabled ? 'checked' : ''}>
-                        Enable Quack Sound
-                    </label>
-                </div>
-                
-                <button id="duckyResetPosition" style="width: 100%; padding: 8px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer;">
-                    Reset Position
+            </div>
+            
+            <button id="resetSpeechSettings${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                Reset Speech Settings to Default
+            </button>
+        </div>
+        
+        <!-- Sound Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="sound" style="display: none;">
+            <h4 style="color: #FFD700; margin-top: 0;">Squeeze Out Sound</h4>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Duration: <span id="squeezeOutDurationValue${this.id}">${this.settings.squeezeOutDuration.toFixed(2)}</span>s
+                </label>
+                <input type="range" id="squeezeOutDuration${this.id}" min="0.05" max="0.5" step="0.01" value="${this.settings.squeezeOutDuration}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Base Pitch: <span id="squeezeOutBasePitchValue${this.id}">${this.settings.squeezeOutBasePitch}</span>Hz
+                </label>
+                <input type="range" id="squeezeOutBasePitch${this.id}" min="200" max="1000" step="10" value="${this.settings.squeezeOutBasePitch}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Pitch Variation: <span id="squeezeOutPitchVariationValue${this.id}">${this.settings.squeezeOutPitchVariation}</span>Hz
+                </label>
+                <input type="range" id="squeezeOutPitchVariation${this.id}" min="0" max="300" step="10" value="${this.settings.squeezeOutPitchVariation}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Volume: <span id="squeezeOutVolumeValue${this.id}">${this.settings.squeezeOutVolume.toFixed(2)}</span>
+                </label>
+                <input type="range" id="squeezeOutVolume${this.id}" min="0.01" max="0.3" step="0.01" value="${this.settings.squeezeOutVolume}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <hr style="border: 1px solid #444; margin: 20px 0;">
+            
+            <h4 style="color: #FFD700;">Squeeze In Sound</h4>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Duration: <span id="squeezeInDurationValue${this.id}">${this.settings.squeezeInDuration.toFixed(2)}</span>s
+                </label>
+                <input type="range" id="squeezeInDuration${this.id}" min="0.1" max="1" step="0.05" value="${this.settings.squeezeInDuration}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Base Pitch: <span id="squeezeInBasePitchValue${this.id}">${this.settings.squeezeInBasePitch}</span>Hz
+                </label>
+                <input type="range" id="squeezeInBasePitch${this.id}" min="100" max="800" step="10" value="${this.settings.squeezeInBasePitch}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Pitch Variation: <span id="squeezeInPitchVariationValue${this.id}">${this.settings.squeezeInPitchVariation}</span>Hz
+                </label>
+                <input type="range" id="squeezeInPitchVariation${this.id}" min="0" max="200" step="10" value="${this.settings.squeezeInPitchVariation}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                    Volume: <span id="squeezeInVolumeValue${this.id}">${this.settings.squeezeInVolume.toFixed(2)}</span>
+                </label>
+                <input type="range" id="squeezeInVolume${this.id}" min="0.01" max="0.2" step="0.01" value="${this.settings.squeezeInVolume}" 
+                    style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button id="testSqueezeOutSound${this.id}" style="flex: 1; padding: 12px; min-height: 44px; background: #555; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
+                    Test Squeeze Out
+                </button>
+                <button id="testSqueezeInSound${this.id}" style="flex: 1; padding: 12px; min-height: 44px; background: #555; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
+                    Test Squeeze In
                 </button>
             </div>
             
-            <!-- Squeeze Tab -->
-            <div class="ducky-tab-content" data-tab="squeeze" style="display: none;">
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Squeeze Out Speed: <span id="squeezeOutSpeedValue">${this.settings.squeezeOutSpeed.toFixed(2)}</span>
-                    </label>
-                    <input type="range" id="squeezeOutSpeed" min="0.1" max="1" step="0.05" value="${this.settings.squeezeOutSpeed}" 
-                        style="width: 100%;">
-                    <small style="color: #888;">How fast the ducky squeezes when grabbed</small>
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Squeeze In Speed: <span id="squeezeInSpeedValue">${this.settings.squeezeInSpeed.toFixed(2)}</span>
-                    </label>
-                    <input type="range" id="squeezeInSpeed" min="0.01" max="0.3" step="0.01" value="${this.settings.squeezeInSpeed}" 
-                        style="width: 100%;">
-                    <small style="color: #888;">How fast the ducky returns to normal shape</small>
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Squeeze Amount: <span id="squeezeAmountValue">${this.settings.squeezeAmount.toFixed(2)}</span>
-                    </label>
-                    <input type="range" id="squeezeAmount" min="0.1" max="0.8" step="0.05" value="${this.settings.squeezeAmount}" 
-                        style="width: 100%;">
-                    <small style="color: #888;">How much the ducky deforms when squeezed</small>
-                </div>
-                
-                <button id="resetSqueezeSettings" style="width: 100%; padding: 8px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-                    Reset Squeeze Settings to Default
-                </button>
+            <button id="resetSoundSettings${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                Reset Sound Settings to Default
+            </button>
+        </div>
+        
+        <!-- Color Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="color" style="display: none;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckyColorEnabled${this.id}" ${this.settings.colorEnabled ? 'checked' : ''}>
+                    Enable Color Customization
+                </label>
             </div>
+            
+            <div id="colorControls${this.id}" style="${this.settings.colorEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Hue: <span id="duckyHueValue${this.id}">${this.settings.hue}</span>°
+                    </label>
+                    <input type="range" id="duckyHue${this.id}" min="0" max="360" value="${this.settings.hue}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Rotate through the color spectrum</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Saturation: <span id="duckySaturationValue${this.id}">${this.settings.saturation}</span>%
+                    </label>
+                    <input type="range" id="duckySaturation${this.id}" min="0" max="200" value="${this.settings.saturation}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Color intensity (0 = grayscale, 100 = normal)</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Brightness: <span id="duckyLightnessValue${this.id}">${this.settings.lightness}</span>%
+                    </label>
+                    <input type="range" id="duckyLightness${this.id}" min="20" max="150" value="${this.settings.lightness}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Overall brightness</small>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 4px;">
+                    <div style="color: #888; margin-bottom: 10px; font-size: 12px;">Quick Presets:</div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                        <button class="color-preset${this.id}" data-preset="default" style="padding: 12px; min-height: 44px; background: #FFD700; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Default
+                        </button>
+                        <button class="color-preset${this.id}" data-preset="pink" style="padding: 12px; min-height: 44px; background: #FF69B4; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Pink
+                        </button>
+                        <button class="color-preset${this.id}" data-preset="blue" style="padding: 12px; min-height: 44px; background: #00BFFF; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Blue
+                        </button>
+                        <button class="color-preset${this.id}" data-preset="green" style="padding: 12px; min-height: 44px; background: #32CD32; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Green
+                        </button>
+                        <button class="color-preset${this.id}" data-preset="purple" style="padding: 12px; min-height: 44px; background: #9370DB; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Purple
+                        </button>
+                        <button class="color-preset${this.id}" data-preset="orange" style="padding: 12px; min-height: 44px; background: #FF8C00; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                            Orange
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="resetColorSettings${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 15px;">
+                Reset Color to Default
+            </button>
+        </div>
 
-            <!-- Speech Tab -->
-            <div class="ducky-tab-content" data-tab="speech" style="display: none;">
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; cursor: pointer;">
-                        <input type="checkbox" id="duckySpeechEnabled" ${this.settings.speechEnabled ? 'checked' : ''}>
-                        Enable Speech Bubbles
-                    </label>
-                </div>
-                
-                <div id="speechControls" style="${this.settings.speechEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Min Delay: <span id="speechMinDelayValue">${this.settings.speechMinDelay}</span>s
-                        </label>
-                        <input type="range" id="speechMinDelay" min="10" max="60" value="${this.settings.speechMinDelay}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Minimum time between speeches</small>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Max Delay: <span id="speechMaxDelayValue">${this.settings.speechMaxDelay}</span>s
-                        </label>
-                        <input type="range" id="speechMaxDelay" min="30" max="180" value="${this.settings.speechMaxDelay}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Maximum time between speeches</small>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Typing Speed: <span id="speechTypeSpeedValue">${this.settings.speechTypeSpeed}</span>ms
-                        </label>
-                        <input type="range" id="speechTypeSpeed" min="30" max="200" step="10" value="${this.settings.speechTypeSpeed}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Delay between each word</small>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; cursor: pointer;">
-                            <input type="checkbox" id="duckySpeechSound" ${this.settings.speechSoundEnabled ? 'checked' : ''}>
-                            Enable Word Quacks
-                        </label>
-                        <small style="display: block; color: #888; margin-left: 20px; margin-top: 5px;">
-                            Play a small quack for each word typed
-                        </small>
-                    </div>
-                </div>
-                
-                <button id="resetSpeechSettings" style="width: 100%; padding: 8px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-                    Reset Speech Settings to Default
-                </button>
+        <!-- Duck Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="duck" style="display: none;">
+            <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckyPersonalityChat${this.id}" ${this.settings.enablePersonalityChat ? 'checked' : ''}>
+                    Enable Personality Chat
+                </label>
+                <small style="display: block; color: #888; margin-left: 20px; margin-top: 5px;">
+                    Each duck will speak with their unique personality!
+                </small>
             </div>
-            
-            <!-- Sound Tab -->
-            <div class="ducky-tab-content" data-tab="sound" style="display: none;">
-                <h4 style="color: #FFD700; margin-top: 0;">Squeeze Out Sound</h4>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Duration: <span id="squeezeOutDurationValue">${this.settings.squeezeOutDuration.toFixed(2)}</span>s
-                    </label>
-                    <input type="range" id="squeezeOutDuration" min="0.05" max="0.5" step="0.01" value="${this.settings.squeezeOutDuration}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Base Pitch: <span id="squeezeOutBasePitchValue">${this.settings.squeezeOutBasePitch}</span>Hz
-                    </label>
-                    <input type="range" id="squeezeOutBasePitch" min="200" max="1000" step="10" value="${this.settings.squeezeOutBasePitch}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Pitch Variation: <span id="squeezeOutPitchVariationValue">${this.settings.squeezeOutPitchVariation}</span>Hz
-                    </label>
-                    <input type="range" id="squeezeOutPitchVariation" min="0" max="300" step="10" value="${this.settings.squeezeOutPitchVariation}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Volume: <span id="squeezeOutVolumeValue">${this.settings.squeezeOutVolume.toFixed(2)}</span>
-                    </label>
-                    <input type="range" id="squeezeOutVolume" min="0.01" max="0.3" step="0.01" value="${this.settings.squeezeOutVolume}" 
-                        style="width: 100%;">
-                </div>
-                
-                <hr style="border: 1px solid #444; margin: 20px 0;">
-                
-                <h4 style="color: #FFD700;">Squeeze In Sound</h4>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Duration: <span id="squeezeInDurationValue">${this.settings.squeezeInDuration.toFixed(2)}</span>s
-                    </label>
-                    <input type="range" id="squeezeInDuration" min="0.1" max="1" step="0.05" value="${this.settings.squeezeInDuration}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Base Pitch: <span id="squeezeInBasePitchValue">${this.settings.squeezeInBasePitch}</span>Hz
-                    </label>
-                    <input type="range" id="squeezeInBasePitch" min="100" max="800" step="10" value="${this.settings.squeezeInBasePitch}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Pitch Variation: <span id="squeezeInPitchVariationValue">${this.settings.squeezeInPitchVariation}</span>Hz
-                    </label>
-                    <input type="range" id="squeezeInPitchVariation" min="0" max="200" step="10" value="${this.settings.squeezeInPitchVariation}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                        Volume: <span id="squeezeInVolumeValue">${this.settings.squeezeInVolume.toFixed(2)}</span>
-                    </label>
-                    <input type="range" id="squeezeInVolume" min="0.01" max="0.2" step="0.01" value="${this.settings.squeezeInVolume}" 
-                        style="width: 100%;">
-                </div>
-                
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <button id="testSqueezeOutSound" style="flex: 1; padding: 8px; background: #555; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
-                        Test Squeeze Out
-                    </button>
-                    <button id="testSqueezeInSound" style="flex: 1; padding: 8px; background: #555; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
-                        Test Squeeze In
-                    </button>
-                </div>
-                
-                <button id="resetSoundSettings" style="width: 100%; padding: 8px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-                    Reset Sound Settings to Default
-                </button>
+            <div style="color: #ccc; margin-bottom: 10px;">
+                Choose your perfect rubber ducky companion! 🦆✨ 
+                Each one has its own unique style. 
+                Click on a duck below to select it and bring some quacky fun to your coding sessions!
             </div>
-            
-            <!-- Color Tab -->
-            <div class="ducky-tab-content" data-tab="color" style="display: none;">
-                <div style="margin-bottom: 15px;">
-                    <label style="color: #ccc; cursor: pointer;">
-                        <input type="checkbox" id="duckyColorEnabled" ${this.settings.colorEnabled ? 'checked' : ''}>
-                        Enable Color Customization
-                    </label>
-                </div>
-                
-                <div id="colorControls" style="${this.settings.colorEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Hue: <span id="duckyHueValue">${this.settings.hue}</span>°
-                        </label>
-                        <input type="range" id="duckyHue" min="0" max="360" value="${this.settings.hue}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Rotate through the color spectrum</small>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Saturation: <span id="duckySaturationValue">${this.settings.saturation}</span>%
-                        </label>
-                        <input type="range" id="duckySaturation" min="0" max="200" value="${this.settings.saturation}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Color intensity (0 = grayscale, 100 = normal)</small>
-                    </div>
-                    
-                    <div style="margin-bottom: 15px;">
-                        <label style="color: #ccc; display: block; margin-bottom: 5px;">
-                            Brightness: <span id="duckyLightnessValue">${this.settings.lightness}</span>%
-                        </label>
-                        <input type="range" id="duckyLightness" min="20" max="150" value="${this.settings.lightness}" 
-                            style="width: 100%;">
-                        <small style="color: #888;">Overall brightness</small>
-                    </div>
-                    
-                    <div style="margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 4px;">
-                        <div style="color: #888; margin-bottom: 10px; font-size: 12px;">Quick Presets:</div>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                            <button class="color-preset" data-preset="default" style="padding: 8px; background: #FFD700; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Default
-                            </button>
-                            <button class="color-preset" data-preset="pink" style="padding: 8px; background: #FF69B4; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Pink
-                            </button>
-                            <button class="color-preset" data-preset="blue" style="padding: 8px; background: #00BFFF; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Blue
-                            </button>
-                            <button class="color-preset" data-preset="green" style="padding: 8px; background: #32CD32; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Green
-                            </button>
-                            <button class="color-preset" data-preset="purple" style="padding: 8px; background: #9370DB; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Purple
-                            </button>
-                            <button class="color-preset" data-preset="orange" style="padding: 8px; background: #FF8C00; border: 2px solid #444; border-radius: 4px; cursor: pointer; font-size: 11px;">
-                                Orange
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <button id="resetColorSettings" style="width: 100%; padding: 8px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 15px;">
-                    Reset Color to Default
-                </button>
+            <div id="duckSelectionGrid${this.id}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px;">
+                <!-- thumbnails inserted here -->
             </div>
+            <div id="duckPersonalityLabel${this.id}" style="color: #FFD700; margin-top: 10px; font-size: 14px; font-weight: bold;">
+                Personality: ${this.getDuckPersonality() ? this.getDuckPersonality().personality : 'Select a duck to see personality'}
+            </div>
+        </div>
 
-            <!-- Duck Tab -->
-            <div class="ducky-tab-content" data-tab="duck" style="display: none;">
-                <div style="color: #ccc; margin-bottom: 10px;">
-                    Choose your duck image. Add new images to the RubberDucks folder. If you want automatic detection, create a RubberDucks/list.json array of filenames.
-                </div>
-                <div id="duckSelectionGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px;">
-                    <!-- thumbnails inserted here -->
-                </div>
-
-                <div style="margin-top: 12px; color: #888; font-size: 12px;">
-                    Tip: you can drop images into RubberDucks and add them to list.json for precise control.
-                </div>
+        <div class="ducky-tab-content${this.id}" data-tab="walk" style="display: none;">
+        <div style="margin-bottom: 15px;">
+                <label style="color: #ccc; cursor: pointer;">
+                    <input type="checkbox" id="duckyAutoWalk${this.id}" ${this.settings.autoWalkEnabled ? 'checked' : ''}>
+                    Enable Auto Walk
+                </label>
+                <small style="display: block; color: #888; margin-left: 20px; margin-top: 5px;">
+                    Duck moves around the page autonomously with walking animations.
+                </small>
             </div>
             
-            <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 2px solid #444;">
-                <button id="duckyCloseSettings" style="flex: 1; padding: 10px; background: #FFD700; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                    Close
-                </button>
+            <div id="autoWalkControls${this.id}" style="${this.settings.autoWalkEnabled ? '' : 'opacity: 0.5; pointer-events: none;'}">
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Auto Walk Speed: <span id="autoWalkSpeedValue${this.id}">${this.settings.autoWalkSpeed.toFixed(1)}</span>x
+                    </label>
+                    <input type="range" id="autoWalkSpeed${this.id}" min="0.1" max="2.0" step="0.1" value="${this.settings.autoWalkSpeed}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">How fast the duck walks (0.1-2.0)</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Min Wait Time: <span id="autoWalkWaitMinValue${this.id}">${this.settings.autoWalkWaitMin}</span>s
+                    </label>
+                    <input type="range" id="autoWalkWaitMin${this.id}" min="1" max="10" value="${this.settings.autoWalkWaitMin}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Minimum wait at each point</small>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="color: #ccc; display: block; margin-bottom: 5px;">
+                        Max Wait Time: <span id="autoWalkWaitMaxValue${this.id}">${this.settings.autoWalkWaitMax}</span>s
+                    </label>
+                    <input type="range" id="autoWalkWaitMax${this.id}" min="5" max="30" value="${this.settings.autoWalkWaitMax}" 
+                        style="width: 100%; -webkit-appearance: none; appearance: none; height: 6px; cursor: pointer; touch-action: none;">
+                    <small style="color: #888;">Maximum wait at each point</small>
+                </div>
             </div>
-        `;
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 2px solid #444;">
+            <button id="duckyCloseSettings${this.id}" style="flex: 1; padding: 12px; min-height: 44px; background: #FFD700; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Close
+            </button>
+        </div>
+    `;
+        modal.appendChild(content);
 
         document.body.appendChild(modal);
         this.settingsModal = modal;
+
+        // Add event listener for clicking outside to send to back
+        document.addEventListener('mousedown', (e) => {
+            if (!this.settingsModal.contains(e.target)) {
+                this.settingsModal.style.zIndex = '10000'; // Send to back
+            }
+        });
+
+        // Add drag functionality
+        this.isDraggingModal = false;
+        this.modalOffset = { x: 0, y: 0 };
+
+        header.addEventListener('mousedown', (e) => {
+            this.isDraggingModal = true;
+            // Use getBoundingClientRect for accurate position, accounting for transform
+            const rect = modal.getBoundingClientRect();
+            this.modalOffset.x = e.clientX - rect.left;
+            this.modalOffset.y = e.clientY - rect.top;
+            modal.style.transform = 'none'; // Remove centering transform
+            modal.style.left = `${rect.left}px`;
+            modal.style.top = `${rect.top}px`;
+            // Bring to front
+            this.bringModalToFront();
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (this.isDraggingModal) {
+                modal.style.left = `${e.clientX - this.modalOffset.x}px`;
+                modal.style.top = `${e.clientY - this.modalOffset.y}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            this.isDraggingModal = false;
+        });
+
+        // Bring to front on click
+        modal.addEventListener('mousedown', () => {
+            this.bringModalToFront();
+        });
 
         this.setupSettingsListeners();
         this.setupTabListeners();
     }
 
+    bringModalToFront() {
+        // Simple way: set to a high z-index
+        this.settingsModal.style.zIndex = '100001';
+        // Optionally, lower others, but since we don't have references, this works for now
+    }
+
     setupTabListeners() {
-        const tabs = this.settingsModal.querySelectorAll('.ducky-tab');
-        const contents = this.settingsModal.querySelectorAll('.ducky-tab-content');
+        const tabs = this.settingsModal.querySelectorAll(`.ducky-tab${this.id}`);
+        const contents = this.settingsModal.querySelectorAll(`.ducky-tab-content${this.id}`);
 
         tabs.forEach(tab => {
             tab.addEventListener('click', () => {
@@ -804,8 +981,8 @@ class RubberDucky {
 
     setupSettingsListeners() {
         // General Tab
-        const sizeSlider = document.getElementById('duckySize');
-        const sizeValue = document.getElementById('duckySizeValue');
+        const sizeSlider = document.getElementById(`duckySize${this.id}`);
+        const sizeValue = document.getElementById(`duckySizeValue${this.id}`);
         sizeSlider.addEventListener('input', (e) => {
             this.settings.size = parseInt(e.target.value);
             sizeValue.textContent = this.settings.size;
@@ -814,8 +991,8 @@ class RubberDucky {
             this.saveSettings();
         });
 
-        const opacitySlider = document.getElementById('duckyOpacity');
-        const opacityValue = document.getElementById('duckyOpacityValue');
+        const opacitySlider = document.getElementById(`duckyOpacity${this.id}`);
+        const opacityValue = document.getElementById(`duckyOpacityValue${this.id}`);
         opacitySlider.addEventListener('input', (e) => {
             this.settings.opacity = parseFloat(e.target.value);
             opacityValue.textContent = Math.round(this.settings.opacity * 100);
@@ -823,8 +1000,8 @@ class RubberDucky {
             this.saveSettings();
         });
 
-        const bouncinessSlider = document.getElementById('duckyBounciness');
-        const bouncinessValue = document.getElementById('duckyBouncinessValue');
+        const bouncinessSlider = document.getElementById(`duckyBounciness${this.id}`);
+        const bouncinessValue = document.getElementById(`duckyBouncinessValue${this.id}`);
         bouncinessSlider.addEventListener('input', (e) => {
             this.settings.bounciness = parseFloat(e.target.value);
             bouncinessValue.textContent = Math.round(this.settings.bounciness * 100);
@@ -833,8 +1010,8 @@ class RubberDucky {
         });
 
         // Acceleration Multiplier
-        const accelerationSlider = document.getElementById('accelerationMultiplier');
-        const accelerationValue = document.getElementById('accelerationMultiplierValue');
+        const accelerationSlider = document.getElementById(`accelerationMultiplier${this.id}`);
+        const accelerationValue = document.getElementById(`accelerationMultiplierValue${this.id}`);
         accelerationSlider.addEventListener('input', (e) => {
             this.settings.accelerationMultiplier = parseFloat(e.target.value);
             accelerationValue.textContent = this.settings.accelerationMultiplier.toFixed(1);
@@ -842,8 +1019,8 @@ class RubberDucky {
         });
 
         // Friction
-        const frictionSlider = document.getElementById('friction');
-        const frictionValue = document.getElementById('frictionValue');
+        const frictionSlider = document.getElementById(`friction${this.id}`);
+        const frictionValue = document.getElementById(`frictionValue${this.id}`);
         frictionSlider.addEventListener('input', (e) => {
             this.settings.friction = parseFloat(e.target.value);
             frictionValue.textContent = this.settings.friction.toFixed(2);
@@ -851,19 +1028,19 @@ class RubberDucky {
             this.saveSettings();
         });
 
-        const wobbleCheckbox = document.getElementById('duckyWobble');
+        const wobbleCheckbox = document.getElementById(`duckyWobble${this.id}`);
         wobbleCheckbox.addEventListener('change', (e) => {
             this.settings.wobbleEnabled = e.target.checked;
             this.saveSettings();
         });
 
-        const soundCheckbox = document.getElementById('duckySound');
+        const soundCheckbox = document.getElementById(`duckySound${this.id}`);
         soundCheckbox.addEventListener('change', (e) => {
             this.settings.soundEnabled = e.target.checked;
             this.saveSettings();
         });
 
-        const resetButton = document.getElementById('duckyResetPosition');
+        const resetButton = document.getElementById(`duckyResetPosition${this.id}`);
         resetButton.addEventListener('click', () => {
             this.position = { x: window.innerWidth - 150, y: window.innerHeight - 150 };
             this.velocity = { x: 0, y: 0 };
@@ -871,23 +1048,54 @@ class RubberDucky {
             this.saveSettings();
         });
 
+        // Auto Walk (this is the CORRECT and only block - keep this one)
+        const autoWalkCheckbox = document.getElementById(`duckyAutoWalk${this.id}`);
+        const autoWalkControls = document.getElementById(`autoWalkControls${this.id}`);
+
+        autoWalkCheckbox.addEventListener('change', (e) => {
+            this.settings.autoWalkEnabled = e.target.checked;
+            autoWalkControls.style.opacity = e.target.checked ? '1' : '0.5';
+            autoWalkControls.style.pointerEvents = e.target.checked ? 'auto' : 'none';
+            if (e.target.checked) {
+                this.startAutoWalk();
+            } else {
+                this.stopAutoWalk();
+            }
+            this.saveSettings();
+        });
+
+        this.setupSlider(`autoWalkSpeed${this.id}`, `autoWalkSpeedValue${this.id}`, (val) => {
+            this.settings.autoWalkSpeed = parseFloat(val);
+            return val;
+        }, 1);
+
+        this.setupSlider(`autoWalkWaitMin${this.id}`, `autoWalkWaitMinValue${this.id}`, (val) => {
+            this.settings.autoWalkWaitMin = parseInt(val);
+            return val;
+        }, 0);
+
+        this.setupSlider(`autoWalkWaitMax${this.id}`, `autoWalkWaitMaxValue${this.id}`, (val) => {
+            this.settings.autoWalkWaitMax = parseInt(val);
+            return val;
+        }, 0);
+
         // Squeeze Tab
-        this.setupSlider('squeezeOutSpeed', 'squeezeOutSpeedValue', (val) => {
+        this.setupSlider(`squeezeOutSpeed${this.id}`, `squeezeOutSpeedValue${this.id}`, (val) => {
             this.settings.squeezeOutSpeed = parseFloat(val);
             return val;
         }, 2);
 
-        this.setupSlider('squeezeInSpeed', 'squeezeInSpeedValue', (val) => {
+        this.setupSlider(`squeezeInSpeed${this.id}`, `squeezeInSpeedValue${this.id}`, (val) => {
             this.settings.squeezeInSpeed = parseFloat(val);
             return val;
         }, 2);
 
-        this.setupSlider('squeezeAmount', 'squeezeAmountValue', (val) => {
+        this.setupSlider(`squeezeAmount${this.id}`, `squeezeAmountValue${this.id}`, (val) => {
             this.settings.squeezeAmount = parseFloat(val);
             return val;
         }, 2);
 
-        document.getElementById('resetSqueezeSettings').addEventListener('click', () => {
+        document.getElementById(`resetSqueezeSettings${this.id}`).addEventListener('click', () => {
             this.settings.squeezeOutSpeed = 0.3;
             this.settings.squeezeInSpeed = 0.08;
             this.settings.squeezeAmount = 0.3;
@@ -896,55 +1104,55 @@ class RubberDucky {
         });
 
         // Sound Tab
-        this.setupSlider('squeezeOutDuration', 'squeezeOutDurationValue', (val) => {
+        this.setupSlider(`squeezeOutDuration${this.id}`, `squeezeOutDurationValue${this.id}`, (val) => {
             this.settings.squeezeOutDuration = parseFloat(val);
             return val;
         }, 2);
 
-        this.setupSlider('squeezeOutBasePitch', 'squeezeOutBasePitchValue', (val) => {
+        this.setupSlider(`squeezeOutBasePitch${this.id}`, `squeezeOutBasePitchValue${this.id}`, (val) => {
             this.settings.squeezeOutBasePitch = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('squeezeOutPitchVariation', 'squeezeOutPitchVariationValue', (val) => {
+        this.setupSlider(`squeezeOutPitchVariation${this.id}`, `squeezeOutPitchVariationValue${this.id}`, (val) => {
             this.settings.squeezeOutPitchVariation = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('squeezeOutVolume', 'squeezeOutVolumeValue', (val) => {
+        this.setupSlider(`squeezeOutVolume${this.id}`, `squeezeOutVolumeValue${this.id}`, (val) => {
             this.settings.squeezeOutVolume = parseFloat(val);
             return val;
         }, 2);
 
-        this.setupSlider('squeezeInDuration', 'squeezeInDurationValue', (val) => {
+        this.setupSlider(`squeezeInDuration${this.id}`, `squeezeInDurationValue${this.id}`, (val) => {
             this.settings.squeezeInDuration = parseFloat(val);
             return val;
         }, 2);
 
-        this.setupSlider('squeezeInBasePitch', 'squeezeInBasePitchValue', (val) => {
+        this.setupSlider(`squeezeInBasePitch${this.id}`, `squeezeInBasePitchValue${this.id}`, (val) => {
             this.settings.squeezeInBasePitch = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('squeezeInPitchVariation', 'squeezeInPitchVariationValue', (val) => {
+        this.setupSlider(`squeezeInPitchVariation${this.id}`, `squeezeInPitchVariationValue${this.id}`, (val) => {
             this.settings.squeezeInPitchVariation = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('squeezeInVolume', 'squeezeInVolumeValue', (val) => {
+        this.setupSlider(`squeezeInVolume${this.id}`, `squeezeInVolumeValue${this.id}`, (val) => {
             this.settings.squeezeInVolume = parseFloat(val);
             return val;
         }, 2);
 
-        document.getElementById('testSqueezeOutSound').addEventListener('click', () => {
+        document.getElementById(`testSqueezeOutSound${this.id}`).addEventListener('click', () => {
             this.playSqueezeSound(true);
         });
 
-        document.getElementById('testSqueezeInSound').addEventListener('click', () => {
+        document.getElementById(`testSqueezeInSound${this.id}`).addEventListener('click', () => {
             this.playSqueezeSound(false);
         });
 
-        document.getElementById('resetSoundSettings').addEventListener('click', () => {
+        document.getElementById(`resetSoundSettings${this.id}`).addEventListener('click', () => {
             this.settings.squeezeOutDuration = 0.18;
             this.settings.squeezeOutBasePitch = 650;
             this.settings.squeezeOutPitchVariation = 100;
@@ -958,8 +1166,8 @@ class RubberDucky {
         });
 
         // Color Tab
-        const colorEnabledCheckbox = document.getElementById('duckyColorEnabled');
-        const colorControls = document.getElementById('colorControls');
+        const colorEnabledCheckbox = document.getElementById(`duckyColorEnabled${this.id}`);
+        const colorControls = document.getElementById(`colorControls${this.id}`);
 
         colorEnabledCheckbox.addEventListener('change', (e) => {
             this.settings.colorEnabled = e.target.checked;
@@ -969,23 +1177,32 @@ class RubberDucky {
             this.saveSettings();
         });
 
-        this.setupSlider('duckyHue', 'duckyHueValue', (val) => {
+        this.setupSlider(`duckyHue${this.id}`, `duckyHueValue${this.id}`, (val) => {
             this.settings.hue = parseInt(val);
             this.updateDuckyColor();
             return val;
         }, 0);
 
-        this.setupSlider('duckySaturation', 'duckySaturationValue', (val) => {
+        this.setupSlider(`duckySaturation${this.id}`, `duckySaturationValue${this.id}`, (val) => {
             this.settings.saturation = parseInt(val);
             this.updateDuckyColor();
             return val;
         }, 0);
 
-        this.setupSlider('duckyLightness', 'duckyLightnessValue', (val) => {
+        this.setupSlider(`duckyLightness${this.id}`, `duckyLightnessValue${this.id}`, (val) => {
             this.settings.lightness = parseInt(val);
             this.updateDuckyColor();
             return val;
         }, 0);
+
+        // Duck Tab
+        const personalityChatCheckbox = document.getElementById(`duckyPersonalityChat${this.id}`);
+        personalityChatCheckbox.addEventListener('change', (e) => {
+            this.settings.enablePersonalityChat = e.target.checked;
+            this.saveSettings();
+            // Reload speech data with new setting
+            this.loadSpeechData();
+        });
 
         this.updateDuckSelectionGrid();
 
@@ -999,7 +1216,7 @@ class RubberDucky {
             orange: { hue: 30, saturation: 140, lightness: 70 }
         };
 
-        document.querySelectorAll('.color-preset').forEach(btn => {
+        document.querySelectorAll(`.color-preset${this.id}`).forEach(btn => {
             btn.addEventListener('click', () => {
                 const preset = presets[btn.dataset.preset];
                 this.settings.hue = preset.hue;
@@ -1011,7 +1228,7 @@ class RubberDucky {
             });
         });
 
-        document.getElementById('resetColorSettings').addEventListener('click', () => {
+        document.getElementById(`resetColorSettings${this.id}`).addEventListener('click', () => {
             this.settings.hue = 50;
             this.settings.saturation = 100;
             this.settings.lightness = 65;
@@ -1025,7 +1242,7 @@ class RubberDucky {
         });
 
         // Close button
-        const closeButton = document.getElementById('duckyCloseSettings');
+        const closeButton = document.getElementById(`duckyCloseSettings${this.id}`);
         closeButton.addEventListener('click', () => {
             this.settingsModal.style.display = 'none';
         });
@@ -1108,36 +1325,62 @@ class RubberDucky {
     }
 
     updateDuckSelectionGrid() {
-        const grid = document.getElementById('duckSelectionGrid');
+        const grid = document.getElementById(`duckSelectionGrid${this.id}`);
         if (!grid) return;
         grid.innerHTML = '';
 
-        const selectedNormalized = this.settings.selectedDuck && !this.settings.selectedDuck.startsWith('RubberDucks/') ? 'RubberDucks/' + this.settings.selectedDuck : this.settings.selectedDuck;
+        const selectedNormalized = this.settings.selectedDuck && !this.settings.selectedDuck.startsWith('RubberDucks/')
+            ? 'RubberDucks/' + this.settings.selectedDuck : this.settings.selectedDuck;
 
         this.duckList.forEach(src => {
             const thumb = document.createElement('div');
             thumb.style.cssText = `
-                width: 64px;
-                height: 64px;
-                border-radius: 6px;
-                overflow: hidden;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: #222;
-                cursor: pointer;
-                transition: transform 0.08s ease, box-shadow 0.08s ease;
-                border: 2px solid transparent;
-            `;
+            width: 64px;
+            height: 64px;
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #222;
+            cursor: pointer;
+            transition: transform 0.08s ease, box-shadow 0.08s ease;
+            border: 2px solid transparent;
+            position: relative;  // Added for absolute positioning of label
+        `;
             const img = document.createElement('img');
             img.src = src;
             img.style.cssText = `
-                max-width: 100%;
-                max-height: 100%;
-                display: block;
-                pointer-events: none;
-            `;
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+            pointer-events: none;
+        `;
             thumb.appendChild(img);
+
+            // NEW: Add semi-transparent label bar at the bottom with the duck's name
+            const label = document.createElement('div');
+            label.style.cssText = `
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            text-align: center;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 4px;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow: hidden;
+            text-overflow: ellipsis;  // Truncate very long names if needed
+        `;
+            // Extract name from file path: e.g., "RubberDucks/Quack Sparrow.png" -> "Quack Sparrow"
+            const filename = src.split('/').pop() || 'Unknown.png';  // Fallback if path is malformed
+            const name = filename.split('.')[0].replace(/_/g, ' ');  // Remove extension and handle underscores
+            label.textContent = name;
+            thumb.appendChild(label);
 
             // highlight if selected
             const isSelected = (src === selectedNormalized) || (src === this.settings.selectedDuck) || (src.endsWith('/' + this.settings.selectedDuck));
@@ -1150,6 +1393,8 @@ class RubberDucky {
                 this.selectDuck(src);
                 // update highlight
                 this.updateDuckSelectionGrid();
+                // Update personality label
+                this.updatePersonalityLabel();
             });
 
             thumb.addEventListener('mouseenter', () => thumb.style.transform = 'scale(1.03)');
@@ -1167,7 +1412,19 @@ class RubberDucky {
         if (this.duckyImage) {
             this.duckyImage.src = this.getDuckSrc();
         }
+
         this.saveSettings();
+
+        if (this.settings.enablePersonalityChat) {
+            this.loadSpeechData();
+        }
+    }
+
+    updatePersonalityLabel() {
+        const label = document.getElementById(`duckPersonalityLabel${this.id}`);
+        if (!label) return;
+        const personality = this.getDuckPersonality();
+        label.textContent = personality ? `Personality: ${personality.personality}` : 'Personality: Select a duck to see personality';
     }
 
     setupSlider(sliderId, valueId, callback, decimals) {
@@ -1182,41 +1439,41 @@ class RubberDucky {
     }
 
     updateSqueezeSliders() {
-        document.getElementById('squeezeOutSpeed').value = this.settings.squeezeOutSpeed;
-        document.getElementById('squeezeOutSpeedValue').textContent = this.settings.squeezeOutSpeed.toFixed(2);
-        document.getElementById('squeezeInSpeed').value = this.settings.squeezeInSpeed;
-        document.getElementById('squeezeInSpeedValue').textContent = this.settings.squeezeInSpeed.toFixed(2);
-        document.getElementById('squeezeAmount').value = this.settings.squeezeAmount;
-        document.getElementById('squeezeAmountValue').textContent = this.settings.squeezeAmount.toFixed(2);
+        document.getElementById(`squeezeOutSpeed${this.id}`).value = this.settings.squeezeOutSpeed;
+        document.getElementById(`squeezeOutSpeedValue${this.id}`).textContent = this.settings.squeezeOutSpeed.toFixed(2);
+        document.getElementById(`squeezeInSpeed${this.id}`).value = this.settings.squeezeInSpeed;
+        document.getElementById(`squeezeInSpeedValue${this.id}`).textContent = this.settings.squeezeInSpeed.toFixed(2);
+        document.getElementById(`squeezeAmount${this.id}`).value = this.settings.squeezeAmount;
+        document.getElementById(`squeezeAmountValue${this.id}`).textContent = this.settings.squeezeAmount.toFixed(2);
     }
 
     updateSoundSliders() {
-        document.getElementById('squeezeOutDuration').value = this.settings.squeezeOutDuration;
-        document.getElementById('squeezeOutDurationValue').textContent = this.settings.squeezeOutDuration.toFixed(2);
-        document.getElementById('squeezeOutBasePitch').value = this.settings.squeezeOutBasePitch;
-        document.getElementById('squeezeOutBasePitchValue').textContent = this.settings.squeezeOutBasePitch;
-        document.getElementById('squeezeOutPitchVariation').value = this.settings.squeezeOutPitchVariation;
-        document.getElementById('squeezeOutPitchVariationValue').textContent = this.settings.squeezeOutPitchVariation;
-        document.getElementById('squeezeOutVolume').value = this.settings.squeezeOutVolume;
-        document.getElementById('squeezeOutVolumeValue').textContent = this.settings.squeezeOutVolume.toFixed(2);
+        document.getElementById(`squeezeOutDuration${this.id}`).value = this.settings.squeezeOutDuration;
+        document.getElementById(`squeezeOutDurationValue${this.id}`).textContent = this.settings.squeezeOutDuration.toFixed(2);
+        document.getElementById(`squeezeOutBasePitch${this.id}`).value = this.settings.squeezeOutBasePitch;
+        document.getElementById(`squeezeOutBasePitchValue${this.id}`).textContent = this.settings.squeezeOutBasePitch;
+        document.getElementById(`squeezeOutPitchVariation${this.id}`).value = this.settings.squeezeOutPitchVariation;
+        document.getElementById(`squeezeOutPitchVariationValue${this.id}`).textContent = this.settings.squeezeOutPitchVariation;
+        document.getElementById(`squeezeOutVolume${this.id}`).value = this.settings.squeezeOutVolume;
+        document.getElementById(`squeezeOutVolumeValue${this.id}`).textContent = this.settings.squeezeOutVolume.toFixed(2);
 
-        document.getElementById('squeezeInDuration').value = this.settings.squeezeInDuration;
-        document.getElementById('squeezeInDurationValue').textContent = this.settings.squeezeInDuration.toFixed(2);
-        document.getElementById('squeezeInBasePitch').value = this.settings.squeezeInBasePitch;
-        document.getElementById('squeezeInBasePitchValue').textContent = this.settings.squeezeInBasePitch;
-        document.getElementById('squeezeInPitchVariation').value = this.settings.squeezeInPitchVariation;
-        document.getElementById('squeezeInPitchVariationValue').textContent = this.settings.squeezeInPitchVariation;
-        document.getElementById('squeezeInVolume').value = this.settings.squeezeInVolume;
-        document.getElementById('squeezeInVolumeValue').textContent = this.settings.squeezeInVolume.toFixed(2);
+        document.getElementById(`squeezeInDuration${this.id}`).value = this.settings.squeezeInDuration;
+        document.getElementById(`squeezeInDurationValue${this.id}`).textContent = this.settings.squeezeInDuration.toFixed(2);
+        document.getElementById(`squeezeInBasePitch${this.id}`).value = this.settings.squeezeInBasePitch;
+        document.getElementById(`squeezeInBasePitchValue${this.id}`).textContent = this.settings.squeezeInBasePitch;
+        document.getElementById(`squeezeInPitchVariation${this.id}`).value = this.settings.squeezeInPitchVariation;
+        document.getElementById(`squeezeInPitchVariationValue${this.id}`).textContent = this.settings.squeezeInPitchVariation;
+        document.getElementById(`squeezeInVolume${this.id}`).value = this.settings.squeezeInVolume;
+        document.getElementById(`squeezeInVolumeValue${this.id}`).textContent = this.settings.squeezeInVolume.toFixed(2);
     }
 
     updateColorSliders() {
-        document.getElementById('duckyHue').value = this.settings.hue;
-        document.getElementById('duckyHueValue').textContent = this.settings.hue;
-        document.getElementById('duckySaturation').value = this.settings.saturation;
-        document.getElementById('duckySaturationValue').textContent = this.settings.saturation;
-        document.getElementById('duckyLightness').value = this.settings.lightness;
-        document.getElementById('duckyLightnessValue').textContent = this.settings.lightness;
+        document.getElementById(`duckyHue${this.id}`).value = this.settings.hue;
+        document.getElementById(`duckyHueValue${this.id}`).textContent = this.settings.hue;
+        document.getElementById(`duckySaturation${this.id}`).value = this.settings.saturation;
+        document.getElementById(`duckySaturationValue${this.id}`).textContent = this.settings.saturation;
+        document.getElementById(`duckyLightness${this.id}`).value = this.settings.lightness;
+        document.getElementById(`duckyLightnessValue${this.id}`).textContent = this.settings.lightness;
     }
 
     setupEventListeners() {
@@ -1278,9 +1535,16 @@ class RubberDucky {
                     this.velocity = { x: 0, y: 0 };
                 }
 
+                this.lastDragTime = Date.now(); // Track drag release time
+                this.saveSettings();
+
                 // Play squeeze-in sound (slower, longer)
                 this.playSqueezeSound(false);
             }
+        });
+
+        this.ducky.addEventListener('dblclick', () => {
+            this.showSpeech();
         });
 
         // Touch start on ducky (new for mobile)
@@ -1308,6 +1572,8 @@ class RubberDucky {
             this.lastTime = Date.now();
             this.lastMoveTime = Date.now();
             this.velocity = { x: 0, y: 0 };
+
+            this.wasDragged = false;
         }, { passive: false });
 
         // Touch move (new for mobile dragging)
@@ -1331,6 +1597,8 @@ class RubberDucky {
 
                 // Play squeeze-out sound
                 this.playSqueezeSound(true);
+
+                this.lastTap = null; // Cancel pending double-tap
             }
 
             // If dragging, update position (similar to mousemove)
@@ -1379,8 +1647,20 @@ class RubberDucky {
                     this.velocity = { x: 0, y: 0 };
                 }
 
+                this.lastDragTime = Date.now(); // Track drag release time
+
                 // Play squeeze-in sound
                 this.playSqueezeSound(false);
+
+                this.saveSettings();
+
+                // Check for double-tap
+                if (this.lastTap && Date.now() - this.lastTap < 300) {
+                    this.showSpeech();
+                    this.lastTap = null;
+                } else {
+                    this.lastTap = Date.now();
+                }
             }
 
             // Reset touch state
@@ -1402,8 +1682,8 @@ class RubberDucky {
         });
 
         // Speech Tab
-        const speechEnabledCheckbox = document.getElementById('duckySpeechEnabled');
-        const speechControls = document.getElementById('speechControls');
+        const speechEnabledCheckbox = document.getElementById(`duckySpeechEnabled${this.id}`);
+        const speechControls = document.getElementById(`speechControls${this.id}`);
 
         speechEnabledCheckbox.addEventListener('change', (e) => {
             this.settings.speechEnabled = e.target.checked;
@@ -1423,28 +1703,28 @@ class RubberDucky {
             this.saveSettings();
         });
 
-        this.setupSlider('speechMinDelay', 'speechMinDelayValue', (val) => {
+        this.setupSlider(`speechMinDelay${this.id}`, `speechMinDelayValue${this.id}`, (val) => {
             this.settings.speechMinDelay = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('speechMaxDelay', 'speechMaxDelayValue', (val) => {
+        this.setupSlider(`speechMaxDelay${this.id}`, `speechMaxDelayValue${this.id}`, (val) => {
             this.settings.speechMaxDelay = parseInt(val);
             return val;
         }, 0);
 
-        this.setupSlider('speechTypeSpeed', 'speechTypeSpeedValue', (val) => {
+        this.setupSlider(`speechTypeSpeed${this.id}`, `speechTypeSpeedValue${this.id}`, (val) => {
             this.settings.speechTypeSpeed = parseInt(val);
             return val;
         }, 0);
 
-        const speechSoundCheckbox = document.getElementById('duckySpeechSound');
+        const speechSoundCheckbox = document.getElementById(`duckySpeechSound${this.id}`);
         speechSoundCheckbox.addEventListener('change', (e) => {
             this.settings.speechSoundEnabled = e.target.checked;
             this.saveSettings();
         });
 
-        document.getElementById('resetSpeechSettings').addEventListener('click', () => {
+        document.getElementById(`resetSpeechSettings${this.id}`).addEventListener('click', () => {
             this.settings.speechEnabled = true;
             this.settings.speechMinDelay = 30;
             this.settings.speechMaxDelay = 90;
@@ -1455,12 +1735,12 @@ class RubberDucky {
             speechControls.style.opacity = '1';
             speechControls.style.pointerEvents = 'auto';
 
-            document.getElementById('speechMinDelay').value = 30;
-            document.getElementById('speechMinDelayValue').textContent = 30;
-            document.getElementById('speechMaxDelay').value = 90;
-            document.getElementById('speechMaxDelayValue').textContent = 90;
-            document.getElementById('speechTypeSpeed').value = 100;
-            document.getElementById('speechTypeSpeedValue').textContent = 100;
+            document.getElementById(`speechMinDelay${this.id}`).value = 30;
+            document.getElementById(`speechMinDelayValue${this.id}`).textContent = 30;
+            document.getElementById(`speechMaxDelay${this.id}`).value = 90;
+            document.getElementById(`speechMaxDelayValue${this.id}`).textContent = 90;
+            document.getElementById(`speechTypeSpeed${this.id}`).value = 100;
+            document.getElementById(`speechTypeSpeedValue${this.id}`).textContent = 100;
             speechSoundCheckbox.checked = true;
 
             this.saveSettings();
@@ -1515,6 +1795,48 @@ class RubberDucky {
         // Gradually return squash to normal
         this.targetSquashX += (1 - this.targetSquashX) * this.squashDecaySpeed;
         this.targetSquashY += (1 - this.targetSquashY) * this.squashDecaySpeed;
+
+        // Handle auto-walk if enabled and not dragging/squeezing, and only when standing still (low velocity)
+        if (this.settings.autoWalkEnabled && !this.isDragging && !this.isSqueezing && Math.abs(this.velocity.x) < this.minVelocity && Math.abs(this.velocity.y) < this.minVelocity && (Date.now() - this.lastDragTime > 500)) { // Delay auto-walk 500ms after drag
+            if (!this.walkTarget) {
+                this.pickNewTarget();
+            } else if (this.isAtTarget()) {
+                this.stopWalking();
+                this.scheduleNextWalk();
+            } else {
+                this.walkTowardsTarget();
+            }
+        } else {
+            this.stopWalking();
+        }
+
+        // Update walk rotation and squash if walking
+        if (this.isWalking) {
+            this.walkRotation = Math.sin(Date.now() * 0.01) * 5; // Oscillate ±5 degrees
+            //this.walkSquashPhase += 0.1;
+            //this.targetSquashX = 1 + Math.sin(this.walkSquashPhase) * 0.2; // Alternate horizontal squash
+            //this.targetSquashY = 1 + Math.cos(this.walkSquashPhase) * 0.2; // Alternate vertical squash
+        }
+
+        // Override flip logic for walking: face target instead of screen center
+        if (this.settings.autoWalkEnabled && this.walkTarget) {
+            const shouldFlip = this.walkTarget.x < this.position.x + this.settings.size / 2;
+            if (shouldFlip === this.isFlipped) {
+                this.isFlipped = !shouldFlip;
+                this.startFlip();
+            }
+        } else {
+            // Original flip logic
+            const centerX = this.position.x + this.settings.size / 2;
+            const shouldFlip = centerX < window.innerWidth / 2;
+            if (shouldFlip !== this.isFlipped) {
+                this.isFlipped = shouldFlip;
+                this.startFlip();
+            }
+        }
+
+        // Smooth interpolation for flip scaleX
+        this.currentScaleX += (this.targetScaleX - this.currentScaleX) * this.flipSpeed;
 
         // Apply physics when not dragging
         if (!this.isDragging) {
@@ -1585,19 +1907,23 @@ class RubberDucky {
             this.updateDuckyPosition();
         }
 
-        // Apply wobble animation if enabled
-        let wobbleRotation = 0;
+        // Apply walk rotation to wobbleRotation
+        let wobbleRotation = this.walkRotation;
         if (this.settings.wobbleEnabled && !this.isDragging) {
-            wobbleRotation = Math.sin(Date.now() * 0.002) * 3;
+            // Make wobble amplitude relative to move speed (velocity magnitude)
+            const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
+            const baseWobble = Math.sin(Date.now() * 0.002) * 3;
+            const speedFactor = 1 + speed / 50; // Adjust 50 as a scaling factor for sensitivity
+            wobbleRotation += baseWobble * speedFactor;
         }
 
-        // Apply transforms - include squash scales
+        // Apply transforms - include flip scaleX
         const squeezeScaleX = 1 - this.squeezeAmount * this.settings.squeezeAmount;
         const squeezeScaleY = 1 + this.squeezeAmount * (this.settings.squeezeAmount * 1.3);
 
         this.ducky.style.transform = `
             translate(-50%, -50%) 
-            scale(${this.currentScale * squeezeScaleX * this.currentSquashX}, ${this.currentScale * squeezeScaleY * this.currentSquashY})
+            scale(${this.currentScaleX * squeezeScaleX * this.currentSquashX}, ${this.currentScale * squeezeScaleY * this.currentSquashY})
             rotate(${wobbleRotation}deg)
         `;
     }
@@ -1611,6 +1937,17 @@ class RubberDucky {
         const halfSize = this.settings.size / 2;
         this.position.x = Math.max(-halfSize, Math.min(window.innerWidth - halfSize, this.position.x));
         this.position.y = Math.max(-halfSize, Math.min(window.innerHeight - halfSize, this.position.y));
+    }
+
+    startFlip() {
+        // Step 1: Scale to 0 (creates the "fold" effect)
+        this.targetScaleX = 0;
+
+        // Step 2: After reaching 0, flip the sign and scale back to target
+        setTimeout(() => {
+            this.currentScaleX = this.isFlipped ? -1 : 1; // Instantly flip at scale 0
+            this.targetScaleX = this.isFlipped ? -1 : 1; // Target the final scale
+        }, 250); // Delay matches half the animation time for symmetry
     }
 
     playSqueezeSound(isSqueezeOut) {
@@ -1771,11 +2108,40 @@ class RubberDucky {
         osc.stop(now + duration);
     }
 
+    async loadPersonalities() {
+        try {
+            const response = await fetch('duck-personalities.json');
+            this.personalities = await response.json();
+        } catch (e) {
+            console.warn('Failed to load duck personalities:', e);
+            this.personalities = {}; // Fallback to empty object
+        }
+    }
+
+    getDuckPersonalityKey() {
+        if (!this.settings.selectedDuck) return null;
+        // Extract name from path: e.g., "RubberDucks/OG Quackers.png" -> "OG Quackers"
+        const filename = this.settings.selectedDuck.split('/').pop() || '';
+        const name = filename.split('.')[0].replace(/_/g, ' '); // Remove extension and replace underscores
+        // Convert back to key format: "OG Quackers" -> "OG_Quackers"
+        return name.replace(/ /g, '_');
+    }
+
+    getDuckPersonality() {
+        const key = this.getDuckPersonalityKey();
+        return this.personalities && this.personalities[key] ? this.personalities[key] : null;
+    }
+
     async loadSpeechData() {
         try {
-            const response = await fetch('duck-speeches.json');
-            this.speechTexts = await response.json();
-
+            if (this.settings.enablePersonalityChat && this.personalities) {
+                // Use personalities data directly
+                this.speechTexts = this.personalities;
+            } else {
+                // Fallback to old speeches if personality chat disabled or failed
+                const response = await fetch('duck-speeches.json');
+                this.speechTexts = await response.json();
+            }
             // Start the speech cycle if enabled
             if (this.settings.speechEnabled) {
                 this.scheduleSpeech();
@@ -1936,7 +2302,7 @@ class RubberDucky {
         if (this.isOpen === false) return;
 
         this.speechBubble = document.createElement('div');
-        this.speechBubble.className = 'duck-speech-bubble';
+        this.speechBubble.className = `duck-speech-bubble${this.id}`;
         this.speechBubble.style.cssText = `
             position: fixed;
             background: white; /* Default; will be overridden for errors/warnings */
@@ -2049,12 +2415,28 @@ class RubberDucky {
         this.speechBubble.style.borderColor = '#333';
 
         // Get random topic and speech
-        const topics = Object.keys(this.speechTexts);
-        const randomTopic = topics[Math.floor(Math.random() * topics.length)];
-        const speeches = this.speechTexts[randomTopic].speeches;
+        let randomTopic, speeches;
+        if (this.settings.enablePersonalityChat && this.personalities) {
+            // Use selected duck's personality
+            const personality = this.getDuckPersonality();
+            if (personality) {
+                randomTopic = this.getDuckPersonalityKey(); // Use the key as topic
+                speeches = personality.speeches;
+            } else {
+                // Fallback to random if no personality
+                const topics = Object.keys(this.speechTexts);
+                randomTopic = topics[Math.floor(Math.random() * topics.length)];
+                speeches = this.speechTexts[randomTopic].speeches;
+            }
+        } else {
+            // Original random topic logic
+            const topics = Object.keys(this.speechTexts);
+            randomTopic = topics[Math.floor(Math.random() * topics.length)];
+            speeches = this.speechTexts[randomTopic].speeches;
+        }
+
         const randomSpeech = speeches[Math.floor(Math.random() * speeches.length)];
 
-        // Set title to category name with spaces
         // Set title to category name with spaces
         this.speechBubbleTitle.textContent = randomTopic.replace(/_/g, ' ');
 
@@ -2214,11 +2596,93 @@ class RubberDucky {
         this.speechBubble.style.top = `${this.position.y - bubbleHeight - spacing}px`;
     }
 
+    startAutoWalk() {
+        if (!this.settings.autoWalkEnabled || this.isDragging) return;
+        this.pickNewTarget();
+    }
+
+    stopAutoWalk() {
+        this.walkTarget = null;
+        this.isWalking = false;
+        if (this.walkWaitTimeout) {
+            clearTimeout(this.walkWaitTimeout);
+            this.walkWaitTimeout = null;
+        }
+        // Reset squash and rotation
+        this.targetSquashX = 1;
+        this.targetSquashY = 1;
+        this.walkRotation = 0;
+    }
+
+    pickNewTarget() {
+        const margin = this.settings.size / 2;
+        const currentCenterX = this.position.x + margin;
+        const currentCenterY = this.position.y + margin;
+        let distance = 0;
+        let attempts = 0;
+        let target;
+        do {
+            target = {
+                x: margin + Math.random() * (window.innerWidth - this.settings.size),
+                y: margin + Math.random() * (window.innerHeight - this.settings.size)
+            };
+            const dx = target.x - currentCenterX;
+            const dy = target.y - currentCenterY;
+            distance = Math.sqrt(dx * dx + dy * dy);
+            attempts++;
+        } while (distance < 300 && attempts < 300); // Ensure minimum 300px distance, prevent infinite loop
+        this.walkTarget = target;
+        this.isWalking = true;
+    }
+
+    walkTowardsTarget() {
+        if (!this.walkTarget) return;
+
+        const dx = this.walkTarget.x - (this.position.x + this.settings.size / 2);
+        const dy = this.walkTarget.y - (this.position.y + this.settings.size / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > 0) {
+            // Set velocity towards target, scaled by speed
+            const speed = 50 * this.settings.autoWalkSpeed; // Base speed, adjustable
+            this.velocity.x = (dx / distance) * speed;
+            this.velocity.y = (dy / distance) * speed;
+        }
+    }
+
+    isAtTarget() {
+        if (!this.walkTarget) return false;
+        const threshold = 10; // Close enough
+        const dx = this.walkTarget.x - (this.position.x + this.settings.size / 2);
+        const dy = this.walkTarget.y - (this.position.y + this.settings.size / 2);
+        return Math.sqrt(dx * dx + dy * dy) < threshold;
+    }
+
+    stopWalking() {
+        this.isWalking = false;
+        this.velocity.x = 0;
+        this.velocity.y = 0;
+        this.walkRotation = 0;
+        this.targetSquashX = 1;
+        this.targetSquashY = 1;
+    }
+
+    scheduleNextWalk() {
+        const waitTime = this.settings.autoWalkWaitMin + Math.random() * (this.settings.autoWalkWaitMax - this.settings.autoWalkWaitMin);
+        this.walkWaitTimeout = setTimeout(() => {
+            this.pickNewTarget();
+        }, waitTime * 1000);
+    }
+
     toggle() {
         if (this.isOpen) {
             this.hide();
+            this.stopAutoWalk();
         } else {
             this.show();
+            if (this.settings.autoWalkEnabled) {
+                this.startAutoWalk();
+            }
         }
     }
 
@@ -2233,6 +2697,10 @@ class RubberDucky {
         if (this.settings.speechEnabled) {
             this.scheduleSpeech();
         }
+
+        //if (this.settings.autoWalkEnabled) {
+        //    this.startAutoWalk();
+        //}
     }
 
     hide() {
@@ -2249,10 +2717,12 @@ class RubberDucky {
         if (this.isSpeaking) {
             this.hideSpeech();
         }
+
+        this.stopAutoWalk();
     }
 }
 
 // Initialize immediately - don't wait for DOMContentLoaded since we're already in app.js
-if (!window.rubberDucky) {
-    window.rubberDucky = new RubberDucky();
-}
+//if (!window.rubberDucky) {
+//window.rubberDucky = new RubberDucky();
+//}

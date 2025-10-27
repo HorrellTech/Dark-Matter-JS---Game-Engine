@@ -20,6 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Failed to initialize documentation:', error);
     }
 
+    if (!window.rubberDucky) {
+        window.rubberDucky = new RubberDucky();
+    }
+
     // Initialize the registry and module system first
     if (!window.moduleRegistry) {
         window.moduleRegistry = new ModuleRegistry();

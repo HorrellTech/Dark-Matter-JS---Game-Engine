@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rubber Ducky Playground - Dark Matter JS</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .playground-container {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2rem;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        p {
+            font-size: 1.1rem;
+            color: #b0b0b0;
+            margin-bottom: 2rem;
+        }
+
+        .instructions {
+            background: rgba(99, 102, 241, 0.1);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+
+        .instructions h3 {
+            color: #6366f1;
+            margin-bottom: 1rem;
+        }
+
+        .instructions ul {
+            list-style: none;
+            padding-left: 1rem;
+        }
+
+        .instructions li {
+            margin-bottom: 0.5rem;
+            color: #e0e0e0;
+        }
+
+        .instructions li:before {
+            content: "🦆 ";
+            font-size: 1.2rem;
+        }
+
+        .create-ducky-btn {
+            display: inline-block;
+            margin: 1rem 0;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .create-ducky-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .delete-save-btn {
+            display: inline-block;
+            margin: 1rem 0;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #f16363, #f6a85c);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .delete-save-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 2rem;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: transform 0.3s ease;
+        }
+
+        .back-link:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Ensure the ducky widget has space */
+        .ducky-space {
+            min-height: 400px;
+            position: relative;
+            margin: 2rem 0;
+        }
+    </style>
+
+    <!-- Load required scripts -->
+    <script src="src/core/Keywords.js"></script>
+    <script src="src/core/Windows/Documentation.js"></script>
+    <script src="src/core/Windows/RubberDucky.js"></script>
+</head>
+<body>
+    <div class="playground-container">
+        <h1>Rubber Ducky Playground</h1>
+        <p>Interact with your very own rubber ducky! Drag, squeeze, and watch it bounce around. Customize it via right-click (or long-press on mobile) to open settings.</p>
+
+        <div class="instructions">
+            <h3>How to Play:</h3>
+            <ul>
+                <li><strong>Drag:</strong> Click and hold to drag the ducky around.</li>
+                <li><strong>Squeeze:</strong> Drag quickly to make it squeak and deform.</li>
+                <li><strong>Bounce:</strong> Throw it against the edges for physics fun.</li>
+                <li><strong>Customize:</strong> Right-click (or long-press) to open settings for size, sound, color, and more.</li>
+                <li><strong>Speech:</strong> Double-tap or wait for random quacks and tips.</li>
+            </ul>
+        </div>
+
+        <button class="create-ducky-btn" id="createDuckyBtn">Create New Ducky</button>
+        <button class="delete-save-btn" id="deleteSaveBtn">Delete Saved Duckies</button>
+
+        <!-- Space for the ducky widget -->
+        <div class="ducky-space">
+            <!-- The Rubber Duckies will initialize here -->
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Dark Matter JS</a>
+    </div>
+
+    <script>
+        // Map to hold multiple ducky instances, keyed by ID
+        let duckies = new Map();
+
+        // Local storage key for this page
+        const STORAGE_KEY = 'rubberDuckyPlaygroundIDs';
+
+        // Function to generate a string ID
+        function generateStringID(length = 8) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // Function to save ducky IDs to localStorage
+        function saveDuckyIDs() {
+            const ids = Array.from(duckies.keys());
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+        }
+
+        // Function to load ducky IDs from localStorage and create duckies
+        function loadDuckyIDs() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) {
+                const ids = JSON.parse(stored);
+                ids.forEach(id => createNewDucky(id));
+            } else {
+                // If no saved IDs, create one initial ducky
+                createNewDucky();
+            }
+        }
+
+        // Function to create a new ducky with optional ID
+        function createNewDucky(existingID = null) {
+            const id = existingID || generateStringID();
+            const newDucky = new RubberDucky(id);
+            // Override to start open and without toolbar integration
+            newDucky.createToolbarButton = () => {}; // Disable toolbar button
+            newDucky.show(); // Force it to be visible immediately
+            duckies.set(id, newDucky);
+            if (!existingID) {
+                saveDuckyIDs(); // Save only when creating new, not loading existing
+            }
+        }
+
+        // Function to delete saved duckies
+        function deleteSavedDuckies() {
+            if (confirm('Are you sure you want to delete all saved duckies? This will refresh the page.')) {
+                localStorage.removeItem(STORAGE_KEY);
+                location.reload();
+            }
+        }
+
+        // Initialize the Rubber Ducky in playground mode
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDuckyIDs();
+        });
+
+        // Event listener for the create button
+        document.getElementById('createDuckyBtn').addEventListener('click', () => createNewDucky());
+
+        // Event listener for the delete button
+        document.getElementById('deleteSaveBtn').addEventListener('click', deleteSavedDuckies);
+    </script>
+</body>
+</html>
