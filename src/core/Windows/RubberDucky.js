@@ -44,6 +44,9 @@ class RubberDucky {
         this.errorBubbleTimeout = null; // For auto-hiding the bubble
         this.errorWarningQueue = []; // Array of { type: 'error'|'warning', message: string }
 
+        // Console errors for tab
+        this.consoleErrors = [];
+
         // Touch-specific properties for mobile controls
         this.touchStartTime = 0;
         this.touchStartPos = { x: 0, y: 0 };
@@ -59,6 +62,7 @@ class RubberDucky {
         this.walkWaitTimeout = null;
         this.walkRotation = 0; // For left-right oscillation during walk
         this.walkSquashPhase = 0; // Alternates squash direction
+        this.walkBounceOffset = 0; // Vertical bounce offset during walk
 
         this.isFlipped = false; // Tracks if duck is facing right (true) or left (false)
         this.targetScaleX = 1; // Target horizontal scale for flip animation
@@ -423,25 +427,48 @@ class RubberDucky {
         const modal = document.createElement('div');
         modal.className = `rubber-ducky-settings-modal${this.id}`;
         modal.style.cssText = `
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: #2a2a2a;
-        border: 2px solid #444;
-        border-radius: 8px;
-        padding: 0; /* Remove padding to allow header */
-        min-width: 400px;
-        max-width: 500px;
-        max-height: 80vh;
-        overflow-y: auto;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        font-family: Arial, sans-serif;
-        touch-action: none; /* Prevent zoom/scroll interference */
-        z-index: 10001;
-        cursor: default;
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #2a2a2a;
+    border: 2px solid #444;
+    border-radius: 8px;
+    padding: 0; /* Remove padding to allow header */
+    width: 450px; /* Fixed width for consistent size */
+    height: 600px; /* Fixed height for consistent size */
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    font-family: Arial, sans-serif;
+    touch-action: none; /* Prevent zoom/scroll interference */
+    z-index: 10001;
+    cursor: default;
+    /* Yellow scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: #FFD700 #444;
     `;
+
+        // Add webkit scrollbar styles for broader browser support
+        const scrollbarStyle = document.createElement('style');
+        scrollbarStyle.textContent = `
+    .rubber-ducky-settings-modal${this.id}::-webkit-scrollbar {
+        width: 12px;
+    }
+    .rubber-ducky-settings-modal${this.id}::-webkit-scrollbar-track {
+        background: #444;
+        border-radius: 6px;
+    }
+    .rubber-ducky-settings-modal${this.id}::-webkit-scrollbar-thumb {
+        background: #FFD700;
+        border-radius: 6px;
+        border: 2px solid #444;
+    }
+    .rubber-ducky-settings-modal${this.id}::-webkit-scrollbar-thumb:hover {
+        background: #FFE55C;
+    }
+    `;
+        document.head.appendChild(scrollbarStyle);
 
         // Create header for dragging and close button
         const header = document.createElement('div');
@@ -496,27 +523,31 @@ class RubberDucky {
         content.innerHTML = `
         
         <!-- Tabs -->
+        
         <div style="display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #444; flex-wrap: wrap;">
             <button class="ducky-tab${this.id}" data-tab="general" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #FFD700; color: #000; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold;">
                 General
             </button>
-            <button class="ducky-tab${this.id}" data-tab="squeeze" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="squeeze" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #7f1d1d; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Squeeze
             </button>
-            <button class="ducky-tab${this.id}" data-tab="sound" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="sound" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #581c87; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Sound
             </button>
-            <button class="ducky-tab${this.id}" data-tab="speech" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="speech" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #14532d; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Speech
             </button>
-            <button class="ducky-tab${this.id}" data-tab="color" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="color" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #134e4a; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Color
             </button>
-            <button class="ducky-tab${this.id}" data-tab="walk" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="walk" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #7c2d12; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Walk
             </button>
-            <button class="ducky-tab${this.id}" data-tab="duck" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+            <button class="ducky-tab${this.id}" data-tab="duck" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #312e81; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
                 Duck
+            </button>
+            <button class="ducky-tab${this.id}" data-tab="console" style="flex: 1; min-width: 80px; padding: 12px; min-height: 44px; background: #374151; color: #fff; border: none; border-radius: 4px 4px 0 0; cursor: pointer;">
+                Browser Console
             </button>
         </div>
         
@@ -584,7 +615,7 @@ class RubberDucky {
         </div>
         
         <!-- Squeeze Tab -->
-        <div class="ducky-tab-content" data-tab="squeeze" style="display: none;">
+        <div class="ducky-tab-content${this.id}" data-tab="squeeze" style="display: none;">
             <div style="margin-bottom: 15px;">
                 <label style="color: #ccc; display: block; margin-bottom: 5px;">
                     Squeeze Out Speed: <span id="squeezeOutSpeedValue${this.id}">${this.settings.squeezeOutSpeed.toFixed(2)}</span>
@@ -888,6 +919,15 @@ class RubberDucky {
             </div>
         </div>
         
+        <!-- Console Tab -->
+        <div class="ducky-tab-content${this.id}" data-tab="console" style="display: none;">
+            <h4 style="color: #FFD700;">Console Errors & Warnings</h4>
+            <div id="consoleErrorList${this.id}" style="max-height: 300px; overflow-y: auto; background: #1a1a1a; padding: 10px; border-radius: 4px; color: #ccc;">No errors yet.</div>
+            <button id="clearConsoleErrors${this.id}" style="width: 100%; padding: 12px; min-height: 44px; background: #444; color: #ccc; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+                Clear All
+            </button>
+        </div>
+        
         <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 2px solid #444;">
             <button id="duckyCloseSettings${this.id}" style="flex: 1; padding: 12px; min-height: 44px; background: #FFD700; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                 Close
@@ -960,13 +1000,25 @@ class RubberDucky {
 
                 // Update tab buttons
                 tabs.forEach(t => {
-                    if (t.dataset.tab === targetTab) {
+                    const tabName = t.dataset.tab;
+                    if (tabName === targetTab) {
                         t.style.background = '#FFD700';
                         t.style.color = '#000';
                         t.style.fontWeight = 'bold';
                     } else {
-                        t.style.background = '#444';
-                        t.style.color = '#ccc';
+                        // Set unique dark colors for inactive tabs
+                        const colorMap = {
+                            general: '#4c4e53ff',
+                            squeeze: '#ad7c7cff',
+                            sound: '#c8c98bff',
+                            speech: '#5f8a62ff',
+                            color: '#9b6993ff',
+                            walk: '#639996ff',
+                            duck: '#a39e6bff',
+                            console: '#996363ff'
+                        };
+                        t.style.background = colorMap[tabName] || '#444';
+                        t.style.color = '#fff';
                         t.style.fontWeight = 'normal';
                     }
                 });
@@ -975,6 +1027,11 @@ class RubberDucky {
                 contents.forEach(content => {
                     content.style.display = content.dataset.tab === targetTab ? 'block' : 'none';
                 });
+
+                // Populate console errors if console tab is selected
+                if (targetTab === 'console') {
+                    this.populateConsoleErrorList();
+                }
             });
         });
     }
@@ -1245,6 +1302,40 @@ class RubberDucky {
         const closeButton = document.getElementById(`duckyCloseSettings${this.id}`);
         closeButton.addEventListener('click', () => {
             this.settingsModal.style.display = 'none';
+        });
+
+        // Clear console errors
+        document.getElementById(`clearConsoleErrors${this.id}`).addEventListener('click', () => {
+            this.consoleErrors = [];
+            this.populateConsoleErrorList();
+        });
+    }
+
+    populateConsoleErrorList() {
+        const listDiv = document.getElementById(`consoleErrorList${this.id}`);
+        if (!listDiv) return;
+        listDiv.innerHTML = '';
+
+        if (this.consoleErrors.length === 0) {
+            listDiv.textContent = 'No errors yet.';
+            return;
+        }
+
+        this.consoleErrors.forEach(error => {
+            const item = document.createElement('div');
+            item.style.cssText = `
+                padding: 5px;
+                margin-bottom: 5px;
+                border-radius: 4px;
+                cursor: pointer;
+                color: ${error.type === 'error' ? '#ff6666' : '#ffff66'};
+                background: #333;
+            `;
+            item.textContent = `[${new Date(error.timestamp).toLocaleTimeString()}] ${error.message}`;
+            item.addEventListener('click', () => {
+                window.open(`https://www.google.com/search?q=javascript+${encodeURIComponent(error.message)}`);
+            });
+            listDiv.appendChild(item);
         });
     }
 
@@ -1797,7 +1888,11 @@ class RubberDucky {
         this.targetSquashY += (1 - this.targetSquashY) * this.squashDecaySpeed;
 
         // Handle auto-walk if enabled and not dragging/squeezing, and only when standing still (low velocity)
-        if (this.settings.autoWalkEnabled && !this.isDragging && !this.isSqueezing && Math.abs(this.velocity.x) < this.minVelocity && Math.abs(this.velocity.y) < this.minVelocity && (Date.now() - this.lastDragTime > 500)) { // Delay auto-walk 500ms after drag
+        // Extended delay after drag (2 seconds) to allow throw physics to complete
+        const timeSinceDrag = Date.now() - this.lastDragTime;
+        const isStandingStill = Math.abs(this.velocity.x) < this.minVelocity && Math.abs(this.velocity.y) < this.minVelocity;
+
+        if (this.settings.autoWalkEnabled && !this.isDragging && !this.isSqueezing && isStandingStill && timeSinceDrag > 2000) {
             if (!this.walkTarget) {
                 this.pickNewTarget();
             } else if (this.isAtTarget()) {
@@ -1806,16 +1901,20 @@ class RubberDucky {
             } else {
                 this.walkTowardsTarget();
             }
-        } else {
-            this.stopWalking();
+        } else if (!this.isDragging && !this.isSqueezing && !isStandingStill) {
+            // Duck is moving from physics (thrown), cancel auto-walk but DON'T zero velocity
+            this.walkTarget = null;
+            this.isWalking = false;
+            if (this.walkWaitTimeout) {
+                clearTimeout(this.walkWaitTimeout);
+                this.walkWaitTimeout = null;
+            }
         }
 
-        // Update walk rotation and squash if walking
+        // Update walk bounce (sine wave on y-axis) if walking - replaces rotation
         if (this.isWalking) {
-            this.walkRotation = Math.sin(Date.now() * 0.01) * 5; // Oscillate ±5 degrees
-            //this.walkSquashPhase += 0.1;
-            //this.targetSquashX = 1 + Math.sin(this.walkSquashPhase) * 0.2; // Alternate horizontal squash
-            //this.targetSquashY = 1 + Math.cos(this.walkSquashPhase) * 0.2; // Alternate vertical squash
+            // No rotation; instead, we'll apply y-bounce in updateDuckyPosition
+            this.walkBounceOffset = Math.sin(Date.now() * 0.01) * 5; // 5px bounce
         }
 
         // Override flip logic for walking: face target instead of screen center
@@ -1907,23 +2006,26 @@ class RubberDucky {
             this.updateDuckyPosition();
         }
 
-        // Apply walk rotation to wobbleRotation
-        let wobbleRotation = this.walkRotation;
-        if (this.settings.wobbleEnabled && !this.isDragging) {
+        // Apply walk rotation to wobbleRotation - removed since we're not rotating during walk
+        let wobbleRotation = 0; // Set to 0 to disable rotation during walk
+        if (this.settings.wobbleEnabled && !this.isDragging && !this.isWalking) {
             // Make wobble amplitude relative to move speed (velocity magnitude)
             const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
-            const baseWobble = Math.sin(Date.now() * 0.002) * 3;
+            const baseWobble = Math.sin(Date.now() * 0.01) * 3;
             const speedFactor = 1 + speed / 50; // Adjust 50 as a scaling factor for sensitivity
             wobbleRotation += baseWobble * speedFactor;
         }
 
-        // Apply transforms - include flip scaleX
+        // Apply transforms - include flip scaleX, bounce, and rotation
         const squeezeScaleX = 1 - this.squeezeAmount * this.settings.squeezeAmount;
         const squeezeScaleY = 1 + this.squeezeAmount * (this.settings.squeezeAmount * 1.3);
 
+        // Add bounce offset to transform instead of position
+        const bounceOffset = this.isWalking ? Math.sin(Date.now() * 0.01) * 10 : 0;
+
         this.ducky.style.transform = `
-            translate(-50%, -50%) 
-            scale(${this.currentScaleX * squeezeScaleX * this.currentSquashX}, ${this.currentScale * squeezeScaleY * this.currentSquashY})
+            translate(-50%, calc(-50% + ${bounceOffset}px))
+            scale(${this.currentScale * squeezeScaleX * this.currentSquashX * this.currentScaleX}, ${this.currentScale * squeezeScaleY * this.currentSquashY})
             rotate(${wobbleRotation}deg)
         `;
     }
@@ -2162,6 +2264,7 @@ class RubberDucky {
             const fullMessage = args.map(arg => String(arg)).join(' '); // Convert to string
             const truncatedMessage = fullMessage.length > 256 ? fullMessage.substring(0, 2056) + '...' : fullMessage;
             this.showErrorWarningBubble('error', truncatedMessage);
+            this.consoleErrors.push({ type: 'error', message: truncatedMessage, timestamp: Date.now() });
             this.originalConsoleError.apply(console, args); // Still log the full message to original console
         };
 
@@ -2169,6 +2272,7 @@ class RubberDucky {
             const fullMessage = args.map(arg => String(arg)).join(' '); // Convert to string
             const truncatedMessage = fullMessage.length > 256 ? fullMessage.substring(0, 256) + '...' : fullMessage;
             this.showErrorWarningBubble('warning', truncatedMessage);
+            this.consoleErrors.push({ type: 'warning', message: truncatedMessage, timestamp: Date.now() });
             this.originalConsoleWarn.apply(console, args); // Still log the full message to original console
         };
     }
@@ -2644,9 +2748,14 @@ class RubberDucky {
 
         if (distance > 0) {
             // Set velocity towards target, scaled by speed
-            const speed = 50 * this.settings.autoWalkSpeed; // Base speed, adjustable
-            this.velocity.x = (dx / distance) * speed;
-            this.velocity.y = (dy / distance) * speed;
+            // Use higher base speed and apply less friction during walking
+            const speed = 200 * this.settings.autoWalkSpeed; // Increased from 50 to 200
+            const targetVelocityX = (dx / distance) * speed;
+            const targetVelocityY = (dy / distance) * speed;
+            
+            // Smoothly interpolate towards target velocity for natural acceleration
+            this.velocity.x += (targetVelocityX - this.velocity.x) * 0.1;
+            this.velocity.y += (targetVelocityY - this.velocity.y) * 0.1;
         }
     }
 

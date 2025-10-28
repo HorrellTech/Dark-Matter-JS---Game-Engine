@@ -652,11 +652,11 @@ class ProjectManager {
             }
         }
 
-        console.warn(`Missing core classes in global scope: ${missingClasses.join(', ')}`);
+        /*console.warn(`Missing core classes in global scope: ${missingClasses.join(', ')}`);
         this.editor.fileBrowser.showNotification(
             `Making core classes globally available: ${missingClasses.join(', ')}...`,
             "info"
-        );
+        );*/
 
         try {
             // Try to find classes that might be loaded but not on window object

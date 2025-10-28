@@ -24,3 +24,7 @@ user will be able to manipulate the spline in the editor, updating its values.
 - Make drawing modules start with their game object width and height as size
 
 - Fix asset manager window not showing documentation
+
+- Have to fix the rotation speed when walking and fix the throwing velocity not working
+
+- Release rubber ducky as its own open source javascript project

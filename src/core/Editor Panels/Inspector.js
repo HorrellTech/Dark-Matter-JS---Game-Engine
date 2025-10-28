@@ -1318,7 +1318,7 @@ class Inspector {
             // Save back to localStorage
             localStorage.setItem('moduleCollapseStates', JSON.stringify(collapseStates));
         } catch (e) {
-            console.warn('Failed to save module collapse state:', e);
+            // console.warn('Failed to save module collapse state:', e);
         }
     }
 
@@ -1337,7 +1337,7 @@ class Inspector {
                 return collapseStates[moduleId] || false;
             }
         } catch (e) {
-            console.warn('Failed to get module collapse state:', e);
+            // console.warn('Failed to get module collapse state:', e);
         }
         return false; // Default to not collapsed
     }
@@ -1565,7 +1565,7 @@ class Inspector {
                         }
                     }
                 } catch (error) {
-                    console.warn('Failed to load image preview:', path, error);
+                    // console.warn('Failed to load image preview:', path, error);
                     // Show fallback
                     img.style.display = 'none';
                     const fallback = img.nextElementSibling;
@@ -2123,7 +2123,7 @@ class Inspector {
         try {
             const fileBrowser = this.editor?.fileBrowser;
             if (!fileBrowser) {
-                console.warn('FileBrowser not available for image upload');
+                // console.warn('FileBrowser not available for image upload');
                 return;
             }
 
@@ -2270,7 +2270,7 @@ class Inspector {
                 imgElement.src = content;
             }
         } catch (error) {
-            console.warn('Failed to load image preview:', path, error);
+            // console.warn('Failed to load image preview:', path, error);
             imgElement.style.display = 'none';
         }
     }
@@ -2364,7 +2364,7 @@ class Inspector {
      */
     registerModuleClass(moduleClass) {
         if (moduleClass.prototype instanceof EditorWindow) {
-            //console.warn('EditorWindow classes should not be registered as modules:', moduleClass.name);
+            //// console.warn('EditorWindow classes should not be registered as modules:', moduleClass.name);
             return;
         }
         if (!moduleClass || typeof moduleClass !== 'function') {
@@ -3238,7 +3238,7 @@ console.log("Module name:", this.name);</pre>
             states[folderPath] = isCollapsed;
             localStorage.setItem('moduleFolderCollapseStates', JSON.stringify(states));
         } catch (e) {
-            console.warn('Failed to save folder collapse state:', e);
+            // console.warn('Failed to save folder collapse state:', e);
         }
     }
 
@@ -3247,7 +3247,7 @@ console.log("Module name:", this.name);</pre>
             const states = JSON.parse(localStorage.getItem('moduleFolderCollapseStates') || '{}');
             return states[folderPath] === undefined ? true : states[folderPath]; // Default to collapsed
         } catch (e) {
-            console.warn('Failed to get folder collapse state:', e);
+            // console.warn('Failed to get folder collapse state:', e);
             return true; // Default to collapsed on error
         }
     }
@@ -3364,7 +3364,7 @@ console.log("Module name:", this.name);</pre>
             // Save back to localStorage
             localStorage.setItem('vectorCollapseStates', JSON.stringify(collapseStates));
         } catch (e) {
-            console.warn('Failed to save vector collapse state:', e);
+            // console.warn('Failed to save vector collapse state:', e);
         }
     }
 
@@ -3383,7 +3383,7 @@ console.log("Module name:", this.name);</pre>
                 return collapseStates[vectorId] ?? true;
             }
         } catch (e) {
-            console.warn('Failed to get vector collapse state:', e);
+            // console.warn('Failed to get vector collapse state:', e);
         }
         return true; // Default to collapsed
     }
@@ -3601,7 +3601,7 @@ console.log("Module name:", this.name);</pre>
                                 this.editor?.refreshCanvas();
                             });
                         } else {
-                            console.warn('ScriptEditor not available');
+                            // console.warn('ScriptEditor not available');
                         }
                         return; // Prevent further processing for code buttons
                     }
@@ -3684,7 +3684,7 @@ console.log("Module name:", this.name);</pre>
                 const polygon = module[propName];
 
                 if (polygon.length <= 3) {
-                    console.warn('Cannot remove vertex: polygon must have at least 3 vertices');
+                    // console.warn('Cannot remove vertex: polygon must have at least 3 vertices');
                     return;
                 }
 
@@ -3719,7 +3719,7 @@ console.log("Module name:", this.name);</pre>
 
                 // Ensure we have a valid object to modify
                 if (!current) {
-                    console.warn(`Property ${propName} is undefined on module`, module);
+                    // console.warn(`Property ${propName} is undefined on module`, module);
                     return;
                 }
 
@@ -4166,7 +4166,7 @@ console.log("Module name:", this.name);</pre>
                     return data.metadata.name;
                 }
             } catch (e) {
-                console.warn('Error parsing dropped JSON data:', e);
+                // console.warn('Error parsing dropped JSON data:', e);
             }
         }
 
@@ -4418,14 +4418,14 @@ console.log("Module name:", this.name);</pre>
 
             // Validate it's an image
             if (!file.type.startsWith('image/')) {
-                console.warn('Dropped file is not an image:', file.type);
+                // console.warn('Dropped file is not an image:', file.type);
                 return null;
             }
 
             // Get the FileBrowser instance
             const fileBrowser = this.editor?.fileBrowser || window.fileBrowser;
             if (!fileBrowser) {
-                console.warn('FileBrowser not available for image upload');
+                // console.warn('FileBrowser not available for image upload');
                 return null;
             }
 
@@ -5563,7 +5563,7 @@ console.log("Module name:", this.name);</pre>
 
             // Validate it's the correct asset type
             if (!this.isValidAssetFile(file, assetType)) {
-                console.warn(`Dropped file is not a valid ${assetType}:`, file.type);
+                // console.warn(`Dropped file is not a valid ${assetType}:`, file.type);
                 return null;
             }
 
@@ -5595,7 +5595,7 @@ console.log("Module name:", this.name);</pre>
                 }
             }
 
-            console.warn('No asset manager or file browser available for file upload');
+            // console.warn('No asset manager or file browser available for file upload');
             return null;
         }
 
@@ -5628,7 +5628,7 @@ console.log("Module name:", this.name);</pre>
                     return data.path;
                 }
             } catch (e) {
-                console.warn('Error parsing dropped JSON data:', e);
+                // console.warn('Error parsing dropped JSON data:', e);
             }
         }
 
@@ -6224,10 +6224,10 @@ console.log("Module name:", this.name);</pre>
                 path: assetPath,
                 originalPath: assetPath
             }).catch(error => {
-                console.warn(`Failed to register ${assetType} asset for export:`, error);
+                // console.warn(`Failed to register ${assetType} asset for export:`, error);
             });
         } else {
-            console.warn(`Could not find ${assetType} element on module for export registration`);
+            // console.warn(`Could not find ${assetType} element on module for export registration`);
         }
     }
 
@@ -6347,7 +6347,7 @@ console.log("Module name:", this.name);</pre>
                         try {
                             newModule[key] = originalData[key];
                         } catch (e) {
-                            console.warn(`Could not copy property ${key} to new module`);
+                            // console.warn(`Could not copy property ${key} to new module`);
                         }
                     }
                 }
@@ -6417,7 +6417,7 @@ console.log("Module name:", this.name);</pre>
                         this.replacePlaceholderModule(module, ModuleClass);
                     }
                 } catch (e) {
-                    console.warn("Could not automatically load the new module:", e);
+                    // console.warn("Could not automatically load the new module:", e);
                 }
             } else {
                 // No file browser, just show the template
@@ -6639,7 +6639,7 @@ console.log("Module name:", this.name);</pre>
                     });
                 }
             } catch (error) {
-                console.warn('Could not load image preview:', path, error);
+                // console.warn('Could not load image preview:', path, error);
             }
         }, 0);
 
@@ -6656,7 +6656,7 @@ console.log("Module name:", this.name);</pre>
                 return content;
             }
         } catch (error) {
-            console.warn('Could not load image preview from FileBrowser:', path, error);
+            // console.warn('Could not load image preview from FileBrowser:', path, error);
         }
         return '';
     }

@@ -521,7 +521,34 @@ class ScriptEditor {
 
         // Replace button
         document.getElementById('se-replace').addEventListener('click', () => {
-            if (this.editor) this.editor.execCommand('replace');
+            if (this.editor) {
+                const selection = this.editor.getSelection();
+                if (selection) {
+                    // If there's selected text, prompt for find and replace within selection
+                    const findText = prompt('Find text within selection:');
+                    if (findText) {
+                        const replaceText = prompt('Replace with:');
+                        if (replaceText !== null) {
+                            // Get selection range
+                            const from = this.editor.getCursor('from');
+                            const to = this.editor.getCursor('to');
+                            
+                            // Use search cursor to find and replace within selection
+                            const cursor = this.editor.getSearchCursor(findText, from);
+                            while (cursor.findNext()) {
+                                // Check if the match is within the selection
+                                if (cursor.to().line > to.line || (cursor.to().line === to.line && cursor.to().ch > to.ch)) {
+                                    break;
+                                }
+                                cursor.replace(replaceText);
+                            }
+                        }
+                    }
+                } else {
+                    // No selection, open the find-and-replace dialog
+                    this.editor.execCommand('replace');
+                }
+            }
         });
 
         // Format button
