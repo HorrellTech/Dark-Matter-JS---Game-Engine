@@ -91,7 +91,12 @@ class RubberDucky {
             'RubberDucks/Mr Clip.png',
             'RubberDucks/Mr Pigsly.png',
             'RubberDucks/Rosie.png',
-            'RubberDucks/Dilly The Dino.png'
+            'RubberDucks/Dilly The Dino.png',
+            'RubberDucks/Batman.png',
+            'RubberDucks/Oscar.png',
+            'RubberDucks/Superduck.png',
+            'RubberDucks/Sammie Duckli.png',
+            'RubberDucks/Oscar.png',
         ];
 
         // Initialize duckList with a safe default to prevent undefined errors
@@ -2634,7 +2639,7 @@ class RubberDucky {
                     } else {
                         this.hideSpeech();
                     }
-                }, 2000);
+                }, 4000);
             }
         };
 

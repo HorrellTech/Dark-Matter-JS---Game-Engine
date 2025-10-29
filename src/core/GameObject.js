@@ -1171,6 +1171,10 @@ class GameObject {
         return rotation;
     }
 
+    getWorldAngle() {
+        return this.getWorldRotation();
+    }
+
     getWorldScale() {
         let scale = this.scale.clone();
         let currentParent = this.parent;

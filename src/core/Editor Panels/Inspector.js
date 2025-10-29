@@ -1410,15 +1410,12 @@ class Inspector {
                     styleHelper.html += `<div class="property-header" style="${color ? `color:${color};` : ''}">${text}</div>`;
                     return styleHelper;
                 },
-                addButton: (label, onClick, options = {}) => {
+                addButton: (label, onChange, options = {}) => {
                     const buttonId = `btn-${module.id}-${Date.now()}`;
                     const customStyle = options.style || '';
 
-                    // Store the button handler for later use
-                    if (!module._styleButtonHandlers) {
-                        module._styleButtonHandlers = {};
-                    }
-                    module._styleButtonHandlers[buttonId] = onClick;
+                    if (!styleHelper._buttons) styleHelper._buttons = [];
+                    styleHelper._buttons.push({ btnId: buttonId, onChange });
 
                     styleHelper.html += `<button id="${buttonId}" class="property-btn" style="margin: 4px 0; padding: 6px 12px; ${customStyle}">${label}</button>`;
                 },
