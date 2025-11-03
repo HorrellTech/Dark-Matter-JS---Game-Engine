@@ -2,6 +2,18 @@ class Editor {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+        
+        // Disable image smoothing for pixel-perfect rendering in editor
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.mozImageSmoothingEnabled = false;
+        this.ctx.webkitImageSmoothingEnabled = false;
+        this.ctx.msImageSmoothingEnabled = false;
+        
+        // Set CSS for crisp edges
+        this.canvas.style.imageRendering = 'pixelated';
+        this.canvas.style.imageRendering = '-moz-crisp-edges';
+        this.canvas.style.imageRendering = 'crisp-edges';
+        
         this.fps = 0;
         this.lastFrameTime = performance.now();
         this.frameCount = 0;
@@ -559,6 +571,12 @@ class Editor {
         // This helps with mobile panel state changes
         this.canvas.width = containerRect.width;
         this.canvas.height = containerRect.height;
+        
+        // Re-disable image smoothing after canvas resize (resize resets context)
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.mozImageSmoothingEnabled = false;
+        this.ctx.webkitImageSmoothingEnabled = false;
+        this.ctx.msImageSmoothingEnabled = false;
 
         // Update camera position if this is the first time setting up or after significant size changes
         if (!this.initialSizeSet) {
@@ -2022,6 +2040,11 @@ class Editor {
                         <label>Y Position:</label>
                         <input type="number" id="viewport-y" value="${settings.viewportY || 0}" step="1">
                     </div>
+                    <div class="form-row">
+                        <label>Pixel Scale:</label>
+                        <input type="number" id="viewport-pixel-scale" value="${settings.pixelScale || 1}" min="1" max="8" step="1" title="Pixel scale for retro/pixel art (1=native, 2=2x pixels, etc.)">
+                        <span class="help-text">For pixel art games: higher values create larger pixels</span>
+                    </div>
                     <div class="form-row checkbox-row">
                         <label>Snap to Grid:</label>
                         <input type="checkbox" id="viewport-snap" ${this.grid.snapToGrid ? 'checked' : ''}>
@@ -2060,6 +2083,7 @@ class Editor {
             const height = parseInt(modal.querySelector('#viewport-height').value) || 600;
             const x = parseInt(modal.querySelector('#viewport-x').value) || 0;
             const y = parseInt(modal.querySelector('#viewport-y').value) || 0;
+            const pixelScale = Math.max(1, Math.min(8, parseInt(modal.querySelector('#viewport-pixel-scale').value) || 1));
             const snapToGrid = modal.querySelector('#viewport-snap').checked;
             const bgColor = modal.querySelector('#viewport-bg-color').value;
 
@@ -2068,10 +2092,20 @@ class Editor {
             settings.viewportHeight = height;
             settings.viewportX = x;
             settings.viewportY = y;
+            settings.pixelScale = pixelScale;
             settings.backgroundColor = bgColor;
 
             // Update grid snapping
             this.grid.snapToGrid = snapToGrid;
+
+            // Update engine viewport if available
+            if (window.engine) {
+                window.engine.viewport.width = width;
+                window.engine.viewport.height = height;
+                window.engine.viewport.x = x;
+                window.engine.viewport.y = y;
+                window.engine.setPixelScale(pixelScale);
+            }
 
             // Mark scene as modified
             this.activeScene.dirty = true;

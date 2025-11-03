@@ -601,6 +601,10 @@ class Inspector {
                 this.addModuleUI(module);
             });
         }
+
+        requestAnimationFrame(() => {
+            this.forceRefreshModuleValues();
+        });
     }
 
     /**
@@ -779,9 +783,15 @@ class Inspector {
             this.editor.refreshCanvas();
         });
 
-        posXInput.addEventListener('change', () => {
+        posXInput.addEventListener('input', () => {
             if (!this.inspectedObject) return;
             this.inspectedObject.position.x = parseFloat(posXInput.value);
+            this.editor.refreshCanvas();
+        });
+
+        posYInput.addEventListener('input', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.position.y = parseFloat(posYInput.value);
             this.editor.refreshCanvas();
         });
 
@@ -1658,6 +1668,11 @@ class Inspector {
                 <input type="number" class="property-input" data-prop-name="sliceBorder.bottom" value="${module.sliceBorder.bottom}" min="0" max="100" step="1">
             </div>
             ` : ''}
+
+            <div class="property-row">
+                <label title="Show grid gizmos for alignment">Show Grid</label>
+                <input type="checkbox" class="property-input" data-prop-name="drawGrid" ${module.drawGrid ? 'checked' : ''}>
+            </div>
             
             <!-- Color Tint -->
             <div class="property-row">
@@ -3564,7 +3579,7 @@ console.log("Module name:", this.name);</pre>
                 this.saveVectorCollapseState(btn.dataset.vectorId, !collapsed);
             });
         });
-        
+
 
         // Handle button clicks
         container.querySelectorAll('.property-button, .property-btn').forEach(button => {
@@ -4354,15 +4369,122 @@ console.log("Module name:", this.name);</pre>
     }
 
     /**
+ * Force update of all module property values from the actual game object
+ */
+    forceRefreshModuleValues() {
+        if (!this.inspectedObject) return;
+
+        // Get fresh module references from the game object
+        const freshModules = this.inspectedObject.modules || [];
+
+        // Update each module's UI with the actual current values
+        freshModules.forEach(module => {
+            const moduleContainer = this.modulesList.querySelector(`.module-container[data-module-id="${module.id}"]`);
+            if (!moduleContainer) return;
+
+            // Update all property inputs with current values
+            moduleContainer.querySelectorAll('.property-input').forEach(input => {
+                const propName = input.dataset.propName;
+                if (!propName) return;
+
+                // Get the ACTUAL current value from the module
+                let currentValue;
+                const privatePropName = `_${propName}`;
+
+                if (module.hasOwnProperty(privatePropName)) {
+                    currentValue = module[privatePropName];
+                } else {
+                    currentValue = module[propName];
+                }
+
+                // Update the input with the current value
+                if (input.type === 'checkbox') {
+                    input.checked = !!currentValue;
+                } else if (input.type === 'number') {
+                    input.value = currentValue || 0;
+                } else if (input.type === 'color') {
+                    input.value = currentValue || '#ffffff';
+                } else {
+                    input.value = currentValue || '';
+                }
+            });
+
+            // Update vector components
+            moduleContainer.querySelectorAll('.component-input').forEach(input => {
+                const propName = input.dataset.propName;
+                const component = input.dataset.component;
+
+                let current = module[propName];
+                if (!current) return;
+
+                if (Array.isArray(current)) {
+                    const [i, key] = component.split(':');
+                    input.value = current[+i]?.[key] ?? 0;
+                } else {
+                    input.value = current[component] ?? 0;
+                }
+            });
+        });
+    }
+
+    /**
      * Helper to update module property
      */
     updateModuleProperty(module, propName, value) {
-        if (typeof module.setProperty === 'function') {
-            module.setProperty(propName, value);
-        } else {
-            module[propName] = value;
+        if (!module || !this.inspectedObject) return;
+
+        // CRITICAL: Find the actual module instance attached to the game object
+        const actualModule = this.inspectedObject.modules?.find(m => m.id === module.id);
+
+        if (!actualModule) {
+            console.warn(`Could not find module ${module.type} in game object's module list`);
+            return;
+        }
+
+        // Update both the public and private property on the ACTUAL module
+        const privatePropName = `_${propName}`;
+
+        // Method 1: Try setProperty if available
+        if (typeof actualModule.setProperty === 'function') {
+            actualModule.setProperty(propName, value);
+        }
+        // Method 2: Use property setter if defined
+        else if (Object.getOwnPropertyDescriptor(actualModule, propName)?.set) {
+            actualModule[propName] = value;
+        }
+        // Method 3: Direct assignment
+        else {
+            actualModule[propName] = value;
+            // Also update private property if it exists
+            if (actualModule.hasOwnProperty(privatePropName)) {
+                actualModule[privatePropName] = value;
+            }
+        }
+
+        // If the module reference we have is different from the actual module,
+        // update it too to keep UI in sync
+        if (module !== actualModule) {
+            if (typeof module.setProperty === 'function') {
+                module.setProperty(propName, value);
+            } else {
+                module[propName] = value;
+                if (module.hasOwnProperty(privatePropName)) {
+                    module[privatePropName] = value;
+                }
+            }
+        }
+
+        // Mark the scene as dirty
+        if (window.editor && window.editor.activeScene) {
+            window.editor.activeScene.markDirty();
+        }
+
+        // Refresh canvas immediately
+        if (this.editor && this.editor.refreshCanvas) {
+            this.editor.refreshCanvas();
         }
     }
+
 
     /**
      * Helper to get module property
@@ -6183,7 +6305,7 @@ console.log("Module name:", this.name);</pre>
      */
     registerAssetForExport(module, propName, assetPath) {
         if (!assetPath || !window.assetManager) return;
-        
+
         // Determine asset type from property name or module properties
         let assetType = 'generic';
         if (propName.includes('image') || propName.includes('Image')) {
@@ -6195,27 +6317,27 @@ console.log("Module name:", this.name);</pre>
         } else if (module[propName] && module[propName].type) {
             assetType = module[propName].type;
         }
-        
+
         // Generate asset ID
         const assetId = assetPath.replace(/^[\/\\]+/, '').replace(/[\/\\]/g, '_');
-        
+
         console.log(`Registering ${assetType} asset for export: ${assetPath} (ID: ${assetId})`);
-        
+
         // Check if already registered
         if (window.assetManager.hasAsset(assetId)) {
             console.log(`Asset already registered: ${assetId}`);
             return;
         }
-        
+
         // Get the actual asset element from the module
         let assetElement = null;
-        
+
         if (assetType === 'image' && module._image) {
             assetElement = module._image;
         } else if (assetType === 'audio' && module._audio) {
             assetElement = module._audio;
         }
-        
+
         if (assetElement) {
             window.assetManager.addAsset(assetId, assetElement, assetType, {
                 path: assetPath,

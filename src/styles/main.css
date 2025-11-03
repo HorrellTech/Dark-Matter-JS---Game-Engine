@@ -502,4 +502,15 @@ html, body {
     left: 0 !important;
   }
 
+  .modal .help-text {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.modal .form-row input[type="number"]#viewport-pixel-scale {
+    width: 80px;
+}
   

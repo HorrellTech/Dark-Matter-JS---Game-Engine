@@ -1,7 +1,64 @@
+/**
+     * ============================================================================
+     * PIXEL-PERFECT RENDERING SYSTEM
+     * ============================================================================
+     * 
+     * This system ensures that all rendered graphics snap to exact canvas pixels,
+     * preventing size inconsistencies, blurriness, and gaps between sprites.
+     * 
+     * KEY CONCEPTS:
+     * 
+     * 1. Effective Pixel Scale = (Canvas Resolution / Viewport Size) × Zoom
+     *    - This is the multiplier from world coordinates to canvas pixels
+     *    - Example: 400px canvas / 800px viewport × 2 zoom = 1.0 scale
+     *    - At scale 1.0, one world unit = one canvas pixel
+     * 
+     * 2. Pixel Rounding Strategy:
+     *    - POSITIONS: Round to nearest pixel (Math.round) to snap to grid
+     *    - SIZES: Round up (Math.ceil) to ensure full pixel coverage, no gaps
+     *    - RECTANGLES: Round start position, then round end position, calculate size
+     * 
+     * 3. Why This Matters:
+     *    - Without rounding: A 16px sprite at fractional position (10.3, 5.7) 
+     *      renders blurry and can vary in size (15-17px) depending on position
+     *    - With rounding: Same sprite always renders as exactly 16px, sharp edges
+     * 
+     * USAGE IN MODULES:
+     * 
+     * Instead of:
+     *   ctx.drawImage(image, x, y, width, height);
+     *   ctx.fillRect(x, y, width, height);
+     * 
+     * Use:
+     *   window.engine.drawImagePixelPerfect(ctx, image, x, y, width, height);
+     *   window.engine.fillRectPixelPerfect(ctx, x, y, width, height);
+     * 
+     * Or manually round:
+     *   const pos = window.engine.roundPositionToPixel(x, y);
+     *   const size = window.engine.roundSizeToPixel(width);
+     *   ctx.drawImage(image, pos.x, pos.y, size, size);
+     * 
+     * PERFORMANCE:
+     * - Rounding operations are very fast (just multiply + Math.round + divide)
+     * - The scale factor is cached per frame in getEffectivePixelScale()
+     * - Consider caching results if drawing the same object many times per frame
+     * 
+     * ============================================================================
+*/
 class Engine {
-    constructor(canvas, options = {}) {
+    constructor(canvas, options = { useOffscreenRendering: true }) {
         this.canvas = canvas;
         this.useWebGL = options.useWebGL || false; // New option to enable WebGLCanvas
+
+        // Create offscreen rendering canvas for pixel-perfect rendering
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = 800;
+        this.offscreenCanvas.height = 600;
+        this.offscreenCanvas.style.imageRendering = "pixelated";
+        this.offscreenCtx = this.offscreenCanvas.getContext('2d', {
+            willReadFrequently: true,
+            alpha: false  // Opaque canvas for better performance
+        });
 
         this.guiCanvas = document.createElement('canvas');
         this.guiCanvas.width = 800;
@@ -18,6 +75,8 @@ class Engine {
         this.backgroundCanvas.style.left = '0px';
         this.backgroundCanvas.style.top = '0px';
         this.backgroundCanvas.style.pointerEvents = 'none';
+
+        this.useOffscreenRendering = options.useOffscreenRendering !== false; // Enable by default
 
         //this.ctx = canvas.getContext('2d');
         this.scene = null;
@@ -49,7 +108,23 @@ class Engine {
         this.usePixi = false; // Set to true to enable Pixi.js
         this.pixiRenderer = null;
 
-        if (this.useWebGL && window.WebGLCanvas) {
+        if (!this.useWebGL) {
+            this.displayCtx = this.canvas.getContext('2d', {
+                willReadFrequently: false,
+                alpha: false
+            });
+            // When offscreen rendering is enabled, rendering operations use offscreenCtx
+            // Otherwise use the display context directly
+            this.ctx = this.useOffscreenRendering ? this.offscreenCtx : this.displayCtx;
+
+            // CRITICAL: Disable all image smoothing variants on offscreen context
+            if (this.useOffscreenRendering) {
+                this.offscreenCtx.imageSmoothingEnabled = false;
+                this.offscreenCtx.mozImageSmoothingEnabled = false;
+                this.offscreenCtx.webkitImageSmoothingEnabled = false;
+                this.offscreenCtx.msImageSmoothingEnabled = false;
+            }
+        } else if (this.useWebGL && window.WebGLCanvas) {
             try {
                 console.log("Attempting to initialize WebGLCanvas...");
 
@@ -116,7 +191,8 @@ class Engine {
             // Track if viewport is dirty and needs updates
             dirty: true,
             // Add viewport shake for effects
-            shake: { x: 0, y: 0, intensity: 0, duration: 0 }
+            shake: { x: 0, y: 0, intensity: 0, duration: 0 },
+            pixelScale: 1  // 1 = no scaling, 2 = 2x pixels, 3 = 3x pixels, etc.
         };
 
         this.viewportOriginalPosition = {
@@ -125,7 +201,8 @@ class Engine {
             x: 0,
             y: 0,
             zoom: 1,
-            angle: 0 // Camera angle in degrees
+            angle: 0, // Camera angle in degrees
+            pixelScale: 1
         };
 
         this.renderConfig = {
@@ -135,8 +212,12 @@ class Engine {
             pixelPerfect: false,
             smoothing: false,
             // Add DPI awareness
-            pixelRatio: window.devicePixelRatio || 1
+            pixelRatio: window.devicePixelRatio || 1,
+            // Add pixel scale option - this scales down the internal resolution
+            usePixelScaling: true  // Enable to use pixelScale for retro rendering
         };
+
+        this.contextPatch = patchContextForPixelPerfect(this.ctx, { pixelScale: this.viewport.pixelScale });
 
         // Add reference to the editor
         this.editor = null;
@@ -1294,17 +1375,21 @@ class Engine {
             return;
         }
 
-        // Clear canvas
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Determine which context to render to
+        const renderCtx = this.useOffscreenRendering ? this.offscreenCtx : this.ctx;
+        const renderCanvas = this.useOffscreenRendering ? this.offscreenCanvas : this.canvas;
 
-        // Always fill with a solid color to prevent transparency issues
-        // Use scene background color if available, otherwise default to black
+        // Clear the render canvas
+        renderCtx.clearRect(0, 0, renderCanvas.width, renderCanvas.height);
+
+        // Fill with background color
         const fillColor = (this.scene && this.scene.settings && this.scene.settings.backgroundColor)
             ? this.scene.settings.backgroundColor
-            : '#000000'; // Default fallback
-        this.ctx.fillStyle = fillColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            : '#000000';
+        renderCtx.fillStyle = fillColor;
+        renderCtx.fillRect(0, 0, renderCanvas.width, renderCanvas.height);
 
+        // Clear auxiliary canvases
         if (this.backgroundCanvas) {
             const bgCtx = this.backgroundCanvas.getContext('2d');
             bgCtx.clearRect(0, 0, this.backgroundCanvas.width, this.backgroundCanvas.height);
@@ -1318,125 +1403,127 @@ class Engine {
             decalCtx.clearRect(0, 0, this.decalCanvas.width, this.decalCanvas.height);
         }
 
-        // Fill with scene background color
-        if (this.scene && this.scene.settings && this.scene.settings.backgroundColor) {
-            this.ctx.fillStyle = this.scene.settings.backgroundColor;
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-
         // Apply viewport transformation
-        this.ctx.save();
+        renderCtx.save();
 
-        // Apply any camera transformations
-        this.applyViewportTransform();
+        // Apply camera transformations - but use renderCtx instead of this.ctx
+        this.applyViewportTransformToContext(renderCtx);
 
-        // Draw background canvas if available
+        // Draw background canvas
         if (this.backgroundCanvas) {
-            this.ctx.save();
-            this.ctx.globalAlpha = 1.0;
-            // Apply proper background positioning
-            this.ctx.drawImage(this.backgroundCanvas, 0, 0);
-            this.ctx.restore();
+            renderCtx.save();
+            renderCtx.globalAlpha = 1.0;
+            renderCtx.drawImage(this.backgroundCanvas, 0, 0);
+            renderCtx.restore();
         }
 
-        // Draw decal canvas (in world space, before objects)
+        // Draw decal chunks
         if (this.decalCanvas) {
-            this.ctx.save();
-            this.ctx.globalAlpha = 1.0;
-            // Render only visible chunks
+            renderCtx.save();
+            renderCtx.globalAlpha = 1.0;
             this.decalChunks.forEach(chunk => {
                 if (chunk.isVisible(this.viewport)) {
-                    this.ctx.save();
-                    this.ctx.translate(chunk.x, chunk.y); // Position chunk in world space
-                    chunk.draw(this.ctx, this.viewport, this.debugDecals); // Pass debug flag
-                    this.ctx.restore();
+                    renderCtx.save();
+                    renderCtx.translate(chunk.x, chunk.y);
+                    chunk.draw(renderCtx, this.viewport, this.debugDecals);
+                    renderCtx.restore();
                 }
             });
-            this.ctx.restore();
+            renderCtx.restore();
         }
 
-        // Draw 3D cameras first (they render to textures)
-        this.draw3DCameras();
+        // Draw 3D cameras first
+        this.draw3DCamerasToContext(renderCtx);
 
-        // Draw all game objects, sorted by depth
+        // Draw all game objects
         const allObjects = this.getAllObjects(this.gameObjects);
 
-        // Make sure we actually have objects to draw
         if (allObjects.length === 0) {
-            // If no objects, draw a placeholder message
-            this.ctx.fillStyle = "#ffffff";
-            this.ctx.font = "20px Arial";
-            this.ctx.textAlign = "center";
-            this.ctx.fillText("No objects in scene... What is a game without objects?", this.canvas.width / 2, this.canvas.height / 2);
+            renderCtx.fillStyle = "#ffffff";
+            renderCtx.font = "20px Arial";
+            renderCtx.textAlign = "center";
+            renderCtx.fillText("No objects in scene... What is a game without objects?",
+                renderCanvas.width / 2, renderCanvas.height / 2);
         } else {
-            // Draw each active and visible object
             allObjects
                 .filter(obj => obj.active && obj.visible !== false)
                 .sort((a, b) => b.depth - a.depth)
                 .forEach(obj => {
                     try {
-                        obj.draw(this.ctx);
+                        obj.draw(renderCtx);
                     } catch (error) {
                         console.error(`Error drawing object ${obj.name}:`, error);
                     }
                 });
         }
 
+        // Draw physics debug
         if (window.physicsManager && window.physicsManager.debugDraw) {
-            window.physicsManager.drawDebug(this.ctx);
+            window.physicsManager.drawDebug(renderCtx);
         }
 
-        this.ctx.restore();
+        renderCtx.restore();
 
-        // If paused, draw a mostly transparent overlay with a screen effect "Paused" text in top left corner
+        // Draw paused overlay
         if (this.paused) {
-            this.ctx.save();
-            this.ctx.globalAlpha = 0.8;
-            this.ctx.fillStyle = "#000000";
-            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-            this.ctx.globalAlpha = 1.0;
-            this.ctx.fillStyle = "#ffffff";
-            this.ctx.font = "10px Arial";
-            this.ctx.fillText("Paused", 5, 5);
-            this.ctx.restore();
+            renderCtx.save();
+            renderCtx.globalAlpha = 0.8;
+            renderCtx.fillStyle = "#000000";
+            renderCtx.fillRect(0, 0, renderCanvas.width, renderCanvas.height);
+            renderCtx.globalAlpha = 1.0;
+            renderCtx.fillStyle = "#ffffff";
+            renderCtx.font = "10px Arial";
+            renderCtx.fillText("Paused", 5, 15);
+            renderCtx.restore();
         }
 
-        // Draw GUI canvas AFTER restoring transform (GUI should not be affected by viewport)
+        // Draw GUI canvas (not affected by viewport)
         if (this.guiCanvas) {
-            this.ctx.save();
-            this.ctx.globalAlpha = 1.0;
-            this.ctx.drawImage(this.guiCanvas, 0, 0);
-            this.ctx.restore();
+            renderCtx.save();
+            renderCtx.globalAlpha = 1.0;
+            renderCtx.drawImage(this.guiCanvas, 0, 0);
+            renderCtx.restore();
         }
 
-        if (this.ctx.flush) this.ctx.flush(); // Ensure all drawing commands are executed
+        // If using offscreen rendering, now draw the offscreen canvas to the display canvas
+        if (this.useOffscreenRendering) {
+            this.displayCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+            // Disable image smoothing for pixel-perfect rendering
+            this.displayCtx.imageSmoothingEnabled = false;
+            this.displayCtx.mozImageSmoothingEnabled = false;
+            this.displayCtx.webkitImageSmoothingEnabled = false;
+            this.displayCtx.msImageSmoothingEnabled = false;
+
+            // Draw the offscreen canvas scaled to the display canvas
+            this.displayCtx.drawImage(
+                this.offscreenCanvas,
+                0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height,
+                0, 0, this.canvas.width, this.canvas.height
+            );
+        }
+
+        if (this.ctx.flush) this.ctx.flush();
     }
 
-    /**
-     * Draw all active 3D cameras and their render textures
-     */
-    draw3DCameras() {
+    draw3DCamerasToContext(renderCtx) {
         if (!this.gameObjects) return;
 
-        // Find all active 3D cameras
         const activeCameras = [];
 
         const findActiveCameras = (objects) => {
             objects.forEach(obj => {
                 if (obj.active !== false) {
-                    // Check for 3D cameras
                     const camera3D = obj.getModule("Camera3DRasterizer") || obj.getModule("Camera3D");
                     if (camera3D && camera3D.isActive && camera3D.getRenderedTexture) {
                         activeCameras.push(camera3D);
                     }
 
-                    // Check for Wolf3D cameras
                     const wolfCamera = obj.getModule("Wolf3DCamera");
                     if (wolfCamera && wolfCamera.isActive && wolfCamera.getRenderedTexture) {
                         activeCameras.push(wolfCamera);
                     }
 
-                    // Search in children
                     if (obj.children && obj.children.length > 0) {
                         findActiveCameras(obj.children);
                     }
@@ -1446,133 +1533,41 @@ class Engine {
 
         findActiveCameras(this.gameObjects);
 
-        // Draw each active camera's render texture
+        const targetCanvas = this.useOffscreenRendering ? this.offscreenCanvas : this.canvas;
+
         activeCameras.forEach(camera => {
             try {
                 if (!camera._isActive) return;
 
-                // Get the 2D canvas from the camera - this is the source
                 const renderCanvas = camera.getRenderedTexture(false);
                 if (!renderCanvas || renderCanvas.width === 0 || renderCanvas.height === 0) {
                     console.warn('3D camera render texture is not valid');
                     return;
                 }
 
-                // Calculate the position and size to draw the 3D render texture
                 const viewportWidth = camera.viewportWidth || 800;
                 const viewportHeight = camera.viewportHeight || 600;
 
-                // Calculate scaling to fit the viewport while maintaining aspect ratio
-                const scaleX = this.canvas.width / viewportWidth;
-                const scaleY = this.canvas.height / viewportHeight;
+                const scaleX = targetCanvas.width / viewportWidth;
+                const scaleY = targetCanvas.height / viewportHeight;
                 const scale = Math.min(scaleX, scaleY);
 
                 const drawWidth = viewportWidth * scale;
                 const drawHeight = viewportHeight * scale;
-                const drawX = (this.canvas.width - drawWidth) / 2;
-                const drawY = (this.canvas.height - drawHeight) / 2;
+                const drawX = (targetCanvas.width - drawWidth) / 2;
+                const drawY = (targetCanvas.height - drawHeight) / 2;
 
-                if (this.useWebGL && this.ctx.gl) {
-                    // WebGL rendering path - write directly to GL
-                    try {
-                        const gl = this.ctx.gl;
-
-                        // Get or create WebGL texture for this camera
-                        if (!camera._webglTextureCache || camera._textureNeedsUpdate) {
-                            // Create a new texture if needed
-                            if (!camera._webglTextureCache) {
-                                camera._webglTextureCache = gl.createTexture();
-                            }
-
-                            gl.bindTexture(gl.TEXTURE_2D, camera._webglTextureCache);
-
-                            // Upload the canvas as a texture
-                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, renderCanvas);
-
-                            // Set texture parameters
-                            const smoothing = camera._renderTextureSmoothing !== false;
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, smoothing ? gl.LINEAR : gl.NEAREST);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, smoothing ? gl.LINEAR : gl.NEAREST);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-                            camera._textureNeedsUpdate = false;
-                        } else {
-                            // Update existing texture with new canvas data
-                            gl.bindTexture(gl.TEXTURE_2D, camera._webglTextureCache);
-                            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, renderCanvas);
-                        }
-
-                        // Create vertex data for a textured quad
-                        // Position vertices (clip space coordinates -1 to 1)
-                        const x1 = (drawX / this.canvas.width) * 2 - 1;
-                        const y1 = 1 - (drawY / this.canvas.height) * 2;
-                        const x2 = ((drawX + drawWidth) / this.canvas.width) * 2 - 1;
-                        const y2 = 1 - ((drawY + drawHeight) / this.canvas.height) * 2;
-
-                        const vertices = new Float32Array([
-                            // Position (x, y)  // TexCoord (u, v)
-                            x1, y1,             0, 0,  // Top-left
-                            x2, y1,             1, 0,  // Top-right
-                            x1, y2,             0, 1,  // Bottom-left
-                            x2, y2,             1, 1   // Bottom-right
-                        ]);
-
-                        // Create or use existing shader program for textured quads
-                        if (!this._camera3DShaderProgram) {
-                            this._camera3DShaderProgram = this.createTexturedQuadShader(gl);
-                        }
-
-                        const program = this._camera3DShaderProgram;
-                        gl.useProgram(program);
-
-                        // Create or use existing vertex buffer
-                        if (!this._camera3DVertexBuffer) {
-                            this._camera3DVertexBuffer = gl.createBuffer();
-                        }
-
-                        gl.bindBuffer(gl.ARRAY_BUFFER, this._camera3DVertexBuffer);
-                        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
-                        // Set up attributes
-                        const positionLoc = gl.getAttribLocation(program, 'a_position');
-                        const texCoordLoc = gl.getAttribLocation(program, 'a_texCoord');
-
-                        gl.enableVertexAttribArray(positionLoc);
-                        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 16, 0);
-
-                        gl.enableVertexAttribArray(texCoordLoc);
-                        gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 16, 8);
-
-                        // Set texture uniform
-                        const textureLoc = gl.getUniformLocation(program, 'u_texture');
-                        gl.activeTexture(gl.TEXTURE0);
-                        gl.bindTexture(gl.TEXTURE_2D, camera._webglTextureCache);
-                        gl.uniform1i(textureLoc, 0);
-
-                        // Draw the quad
-                        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-                        // Clean up
-                        gl.bindTexture(gl.TEXTURE_2D, null);
-                        gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-                    } catch (error) {
-                        console.error('Error in WebGL 3D camera rendering:', error);
-                        // Fallback to 2D rendering
-                        this.ctx.imageSmoothingEnabled = camera._renderTextureSmoothing !== false;
-                        const ctx2d = this.canvas.getContext('2d');
-                        ctx2d.drawImage(renderCanvas, drawX, drawY, drawWidth, drawHeight);
-                    }
-                } else {
-                    // 2D Canvas rendering path (standard fallback)
-                    this.ctx.imageSmoothingEnabled = camera._renderTextureSmoothing !== false;
-                    this.ctx.drawImage(renderCanvas, drawX, drawY, drawWidth, drawHeight);
-                }
+                renderCtx.imageSmoothingEnabled = camera._renderTextureSmoothing !== false;
+                renderCtx.drawImage(renderCanvas, drawX, drawY, drawWidth, drawHeight);
             } catch (error) {
                 console.error('Error drawing 3D camera:', error);
             }
         });
+    }
+
+    // Update the old method to use the new one
+    draw3DCameras() {
+        this.draw3DCamerasToContext(this.ctx);
     }
 
     // Helper method to create shader program for textured quads
@@ -1673,43 +1668,282 @@ class Engine {
         }
     }
 
-    applyViewportTransform() {
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
+    /**
+     * Calculate the current canvas scale (ratio of canvas pixels to viewport units)
+     * This accounts for both the viewport dimensions and pixel scale
+     * @returns {number} - The scale factor
+     */
+    getCanvasScale() {
+        // Get the internal resolution (accounting for pixel scale)
+        const internalResolution = this.getInternalResolution();
+        const internalWidth = internalResolution.width;
+        const internalHeight = internalResolution.height;
 
-        /*if (this.useWebGL && this.ctx.setTransform && typeof this.ctx.setTransform === 'function') {
-            // For WebGLCanvas, use the matrix-based transform
-            const radians = this.viewport.angle * Math.PI / 180;
-            const cos = Math.cos(radians);
-            const sin = Math.sin(radians);
+        // Calculate scale as ratio of internal resolution to viewport dimensions
+        const scaleX = internalWidth / this.viewport.width;
+        const scaleY = internalHeight / this.viewport.height;
 
-            // Create transformation matrix
-            const a = this.viewport.zoom * cos;
-            const b = -this.viewport.zoom * sin;
-            const c = this.viewport.zoom * sin;
-            const d = this.viewport.zoom * cos;
-            const e = centerX - this.viewport.x + this.viewport.shake.x;
-            const f = centerY - this.viewport.y + this.viewport.shake.y;
+        // Return the average scale (both should be equal if aspect ratio is maintained)
+        return (scaleX + scaleY) / 2;
+    }
 
-            this.ctx.setTransform(a, b, c, d, e, f);
-        } else {*/
-        // Standard 2D canvas transforms
-        this.ctx.translate(centerX, centerY);
+    /**
+     * Get the pixel scale factor that includes zoom
+     * This is the actual multiplier from world space to canvas pixels
+     * @returns {number} - The effective pixel scale
+     */
+    getEffectivePixelScale() {
+        // Only return pixelScale if usePixelScaling is enabled
+        // This quantizes transforms without scaling the viewport resolution
+        if (this.renderConfig.usePixelScaling) {
+            return this.viewport.pixelScale || 1;
+        }
+        return 1;
+    }
 
+    /**
+     * Round a value to the nearest pixel at the current scale
+     * This ensures values align to actual canvas pixels
+     * @param {number} value - The value to round (in world space)
+     * @returns {number} - The pixel-aligned value (in world space)
+     */
+    roundToPixel(value) {
+        const scale = this.getEffectivePixelScale();
+        const zoom = this.viewport.zoom || 1;
+        if (scale === 0) return value;
+        // IMPROVED: Account for zoom when rounding
+        const effectiveScale = scale * zoom;
+        return Math.round(value * effectiveScale) / effectiveScale;
+    }
+
+    /**
+     * Round X and Y coordinates to pixel boundaries
+     * @param {number} x - X coordinate in world space
+     * @param {number} y - Y coordinate in world space
+     * @returns {{x: number, y: number}} - Pixel-aligned coordinates
+     */
+    roundPositionToPixel(x, y) {
+        const scale = this.getEffectivePixelScale();
+        const zoom = this.viewport.zoom || 1;
+        if (scale === 0) return { x, y };
+        // IMPROVED: Account for zoom and use smoother rounding
+        const effectiveScale = scale * zoom;
+        return {
+            x: Math.round(x * effectiveScale) / effectiveScale,
+            y: Math.round(y * effectiveScale) / effectiveScale
+        };
+    }
+
+    /**
+     * Round a size value to ensure it covers full pixels (no fractional pixels)
+     * @param {number} size - The size value in world space
+     * @returns {number} - The pixel-aligned size
+     */
+    roundSizeToPixel(size) {
+        const scale = this.getEffectivePixelScale();
+        const zoom = this.viewport.zoom || 1;
+        if (scale === 0 || size === 0) return size;
+        // IMPROVED: Account for zoom when rounding sizes
+        const effectiveScale = scale * zoom;
+        // Use ceil to ensure full pixel coverage (prevents gaps)
+        return Math.ceil(Math.abs(size) * effectiveScale) / effectiveScale * Math.sign(size);
+    }
+
+    /**
+     * Get pixel-perfect position for drawing, considering zoom and canvas scale
+     * This ensures no gaps between tiles at any zoom level or pixel scale
+     * @param {number} worldX - World X coordinate
+     * @param {number} worldY - World Y coordinate  
+     * @returns {{x: number, y: number}} - Pixel-perfect screen coordinates
+     */
+    getPixelPerfectPosition(worldX, worldY) {
+        return this.roundPositionToPixel(worldX, worldY);
+    }
+
+    /**
+     * Get pixel-perfect size for drawing
+     * @param {number} size - The size value
+     * @returns {number} - Pixel-perfect size
+     */
+    getPixelPerfectSize(size) {
+        return this.roundSizeToPixel(size);
+    }
+
+    /**
+     * Round a rectangle to pixel boundaries
+     * Ensures the rectangle starts and ends on pixel boundaries
+     * @param {number} x - X position
+     * @param {number} y - Y position
+     * @param {number} width - Width
+     * @param {number} height - Height
+     * @returns {{x: number, y: number, width: number, height: number}}
+     */
+    roundRectToPixel(x, y, width, height) {
+        const scale = this.getEffectivePixelScale();
+        if (scale === 0) return { x, y, width, height };
+
+        // Round position to pixel boundary
+        const x1 = Math.round(x * scale) / scale;
+        const y1 = Math.round(y * scale) / scale;
+
+        // Calculate end position and round it
+        const x2 = Math.round((x + width) * scale) / scale;
+        const y2 = Math.round((y + height) * scale) / scale;
+
+        // Width and height are the difference (ensures exact pixel coverage)
+        return {
+            x: x1,
+            y: y1,
+            width: x2 - x1,
+            height: y2 - y1
+        };
+    }
+
+    /**
+     * Draw an image with pixel-perfect positioning
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {Image|Canvas} image - Image to draw
+     * @param {number} x - X position in world space
+     * @param {number} y - Y position in world space
+     * @param {number} width - Width in world space
+     * @param {number} height - Height in world space
+     */
+    drawImagePixelPerfect(ctx, image, x, y, width, height) {
+        const rect = this.roundRectToPixel(x, y, width, height);
+        ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    /**
+     * Draw a filled rectangle with pixel-perfect positioning
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X position in world space
+     * @param {number} y - Y position in world space
+     * @param {number} width - Width in world space
+     * @param {number} height - Height in world space
+     */
+    fillRectPixelPerfect(ctx, x, y, width, height) {
+        const rect = this.roundRectToPixel(x, y, width, height);
+        ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    }
+
+    /**
+     * Draw a stroked rectangle with pixel-perfect positioning
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X position in world space
+     * @param {number} y - Y position in world space
+     * @param {number} width - Width in world space
+     * @param {number} height - Height in world space
+     */
+    strokeRectPixelPerfect(ctx, x, y, width, height) {
+        const rect = this.roundRectToPixel(x, y, width, height);
+        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    }
+
+    /**
+     * Begin a path at a pixel-perfect position
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X position in world space
+     * @param {number} y - Y position in world space
+     */
+    moveToPixelPerfect(ctx, x, y) {
+        const pos = this.roundPositionToPixel(x, y);
+        ctx.moveTo(pos.x, pos.y);
+    }
+
+    /**
+     * Draw a line to a pixel-perfect position
+     * @param {CanvasRenderingContext2D} ctx - Canvas context
+     * @param {number} x - X position in world space
+     * @param {number} y - Y position in world space
+     */
+    lineToPixelPerfect(ctx, x, y) {
+        const pos = this.roundPositionToPixel(x, y);
+        ctx.lineTo(pos.x, pos.y);
+    }
+
+    applyViewportTransformToContext(ctx) {
+        // Use viewport dimensions directly (no internal resolution scaling)
+        const centerX = this.viewport.width / 2;
+        const centerY = this.viewport.height / 2;
+        const zoom = this.viewport.zoom || 1;
+        const pixelScale = this.getEffectivePixelScale();
+
+        // Calculate world-space offset
+        const viewportX = this.viewport.x;
+        const viewportY = this.viewport.y;
+        const shakeX = this.viewport.shake ? this.viewport.shake.x : 0;
+        const shakeY = this.viewport.shake ? this.viewport.shake.y : 0;
+
+        // Step 1: Translate to center
+        // FIXED: Don't round center - keep it precise for proper viewport centering
+        ctx.translate(centerX, centerY);
+
+        // Step 2: Apply rotation if needed
         if (this.viewport.angle && this.viewport.angle !== 0) {
             const radians = this.viewport.angle * Math.PI / 180;
-            this.ctx.rotate(radians);
+            ctx.rotate(radians);
         }
 
-        if (this.viewport.zoom && this.viewport.zoom !== 1) {
-            this.ctx.scale(this.viewport.zoom, this.viewport.zoom);
+        // Step 3: Apply zoom
+        // FIXED: Don't quantize zoom - apply it directly for smooth scaling
+        if (zoom !== 1) {
+            ctx.scale(zoom, zoom);
         }
 
-        this.ctx.translate(
-            -centerX - this.viewport.x + this.viewport.shake.x,
-            -centerY - this.viewport.y + this.viewport.shake.y
-        );
-        //}
+        // Step 4: Calculate offset in world space
+        const offsetX = -centerX - viewportX + shakeX;
+        const offsetY = -centerY - viewportY + shakeY;
+
+        // FIXED: Pixel snapping should happen at the final draw call, not here
+        // This allows smooth camera movement without jitter
+        if (pixelScale > 1 && this.renderConfig.usePixelScaling) {
+            // For pixel art: snap to world-space grid that aligns with screen pixels
+            // after zoom is applied
+            const worldPixelSize = 1 / (pixelScale * zoom);
+            const snappedX = Math.round(offsetX / worldPixelSize) * worldPixelSize;
+            const snappedY = Math.round(offsetY / worldPixelSize) * worldPixelSize;
+            ctx.translate(snappedX, snappedY);
+        } else {
+            // For smooth rendering: use exact sub-pixel positioning
+            ctx.translate(offsetX, offsetY);
+        }
+    }
+
+    /*applyViewportTransformToContext(ctx) {
+        const centerX = this.viewport.width / 2;
+        const centerY = this.viewport.height / 2;
+        const zoom = this.viewport.zoom || 1;
+
+        // Calculate world-space offset
+        const viewportX = this.viewport.x;
+        const viewportY = this.viewport.y;
+        const shakeX = this.viewport.shake ? this.viewport.shake.x : 0;
+        const shakeY = this.viewport.shake ? this.viewport.shake.y : 0;
+
+        // Step 1: Translate to center
+        ctx.translate(centerX, centerY);
+
+        // Step 2: Apply rotation if needed
+        if (this.viewport.angle && this.viewport.angle !== 0) {
+            const radians = this.viewport.angle * Math.PI / 180;
+            ctx.rotate(radians);
+        }
+
+        // Step 3: Apply zoom
+        if (zoom !== 1) {
+            ctx.scale(zoom, zoom);
+        }
+
+        // Step 4: Calculate and apply offset
+        // Round to integers for pixel-perfect positioning
+        const offsetX = Math.floor(-centerX - viewportX + shakeX);
+        const offsetY = Math.floor(-centerY - viewportY + shakeY);
+
+        ctx.translate(offsetX, offsetY);
+    }*/
+
+    applyViewportTransform() {
+        this.applyViewportTransformToContext(this.ctx);
     }
 
     loadScene(scene) {
@@ -1736,6 +1970,12 @@ class Engine {
             this.viewport.y = scene.settings.viewportY || 0;
             this.viewport.zoom = Math.max(0.1, scene.settings.viewportZoom || 1);
             this.viewport.angle = scene.settings.viewportAngle || 0;
+            this.viewport.pixelScale = Math.max(1, Math.floor(scene.settings.pixelScale || 1));
+
+            // Enable pixel scaling if scale > 1
+            if (this.viewport.pixelScale > 1) {
+                this.renderConfig.usePixelScaling = true;
+            }
         }
 
         // Load chunk settings from scene if available
@@ -2285,53 +2525,82 @@ class Engine {
         }, { passive: false });
     }
 
+    /**
+     * Set the pixel scale for retro/pixel art rendering
+     * @param {number} scale - Pixel scale (1 = no scaling, 2 = 2x pixels, etc.)
+     */
+    setPixelScale(scale) {
+        scale = Math.max(1, Math.floor(scale)); // Ensure integer >= 1
+        if (this.viewport.pixelScale !== scale) {
+            this.viewport.pixelScale = scale;
+            this.renderConfig.usePixelScaling = scale > 1;
+            this.viewport.dirty = true;
+
+            // Update the context patch with the new pixel scale
+            if (this.contextPatch && this.contextPatch.updatePixelScale) {
+                this.contextPatch.updatePixelScale(scale);
+            }
+
+            this.resizeCanvas();
+            console.log(`Pixel scale set to ${scale}x`);
+        }
+    }
+
+    /**
+     * Get the current pixel scale
+     * @returns {number} Current pixel scale
+     */
+    getPixelScale() {
+        return this.viewport.pixelScale || 1;
+    }
+
+    /**
+     * Get the effective rendering resolution (accounting for pixel scale)
+     * @returns {{width: number, height: number}}
+     */
+    getInternalResolution() {
+        return {
+            width: this.viewport.width,
+            height: this.viewport.height
+        };
+    }
+
     resizeCanvas() {
         if (!this.canvas) return;
 
         const container = this.canvas.parentElement;
         if (!container) return;
 
-        // Get container dimensions - force a reflow to get the latest size
-        container.offsetHeight; // Trigger reflow
+        container.offsetHeight;
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
 
-        // Ensure we have positive dimensions to work with
         if (containerWidth <= 0 || containerHeight <= 0) {
             return;
         }
 
-        // Get the desired viewport dimensions from scene settings
         const viewportWidth = this.viewport.width || 800;
         const viewportHeight = this.viewport.height || 600;
         const aspectRatio = viewportWidth / viewportHeight;
 
-        const pixelRatio = this.renderConfig.pixelRatio;
-
-        // Set physical dimensions based on scaling mode
         let physicalWidth, physicalHeight;
 
         if (this.renderConfig.fullscreen) {
             if (this.renderConfig.maintainAspectRatio) {
-                // Calculate dimensions to maintain aspect ratio within the container
                 const containerRatio = containerWidth / containerHeight;
 
                 if (containerRatio > aspectRatio) {
-                    // Container is wider than needed - height is the limiting factor
                     physicalHeight = containerHeight;
                     physicalWidth = containerHeight * aspectRatio;
                 } else {
-                    // Container is taller than needed - width is the limiting factor
                     physicalWidth = containerWidth;
                     physicalHeight = containerWidth / aspectRatio;
                 }
             } else {
-                // Stretch to fill container without maintaining aspect ratio
                 physicalWidth = containerWidth;
                 physicalHeight = containerHeight;
             }
         } else {
-            // Fixed size mode - calculate scale to fit in container
             const scale = Math.min(
                 containerWidth / viewportWidth,
                 containerHeight / viewportHeight
@@ -2341,90 +2610,100 @@ class Engine {
             physicalHeight = viewportHeight * scale;
         }
 
-        // Ensure we don't have zero dimensions
         physicalWidth = Math.max(1, Math.floor(physicalWidth));
         physicalHeight = Math.max(1, Math.floor(physicalHeight));
 
-        // Calculate centering position
         const left = Math.floor((containerWidth - physicalWidth) / 2);
         const top = Math.floor((containerHeight - physicalHeight) / 2);
 
-        // Set canvas styles for proper display
+        // Set display canvas styles - this is the CSS size that will be scaled up
         this.canvas.style.width = `${physicalWidth}px`;
         this.canvas.style.height = `${physicalHeight}px`;
         this.canvas.style.position = 'absolute';
         this.canvas.style.left = `${left}px`;
         this.canvas.style.top = `${top}px`;
-
-        // Remove size constraints that might prevent proper scaling
         this.canvas.style.minWidth = '0';
         this.canvas.style.minHeight = '0';
         this.canvas.style.maxWidth = 'none';
         this.canvas.style.maxHeight = 'none';
 
-        // Set the drawing surface size (use viewport dimensions)
-        this.canvas.width = viewportWidth * pixelRatio;
-        this.canvas.height = viewportHeight * pixelRatio;
+        // CHANGED: Canvas resolution always matches viewport dimensions
+        // Pixel scale only affects transform snapping, not viewport resolution
+        const canvasWidth = viewportWidth;
+        const canvasHeight = viewportHeight;
 
-        // Reset transform before scaling
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        if (pixelRatio !== 1) {
-            this.ctx.scale(pixelRatio, pixelRatio);
+        // CRITICAL: For pixel-perfect rendering, disable smoothing
+        if (this.useOffscreenRendering) {
+            // Set offscreen canvas to viewport resolution
+            this.offscreenCanvas.width = canvasWidth;
+            this.offscreenCanvas.height = canvasHeight;
+
+            // CRITICAL: Re-disable smoothing after canvas resize (resize resets context)
+            this.offscreenCtx.imageSmoothingEnabled = false;
+            this.offscreenCtx.mozImageSmoothingEnabled = false;
+            this.offscreenCtx.webkitImageSmoothingEnabled = false;
+            this.offscreenCtx.msImageSmoothingEnabled = false;
+
+            // Set display canvas to match viewport dimensions
+            this.canvas.width = canvasWidth;
+            this.canvas.height = canvasHeight;
+
+            // Configure display canvas for pixel-perfect scaling
+            this.displayCtx.imageSmoothingEnabled = false;
+            this.displayCtx.mozImageSmoothingEnabled = false;
+            this.displayCtx.webkitImageSmoothingEnabled = false;
+            this.displayCtx.msImageSmoothingEnabled = false;
+
+            // Force pixel-perfect CSS rendering if pixel scaling is enabled
+            if (this.renderConfig.usePixelScaling) {
+                this.canvas.style.imageRendering = 'pixelated';
+                this.canvas.style.imageRendering = '-moz-crisp-edges';
+                this.canvas.style.imageRendering = 'crisp-edges';
+            }
+        } else {
+            // For direct rendering: canvas resolution = viewport resolution
+            this.canvas.width = canvasWidth;
+            this.canvas.height = canvasHeight;
+
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // Disable smoothing for pixel-perfect rendering
+            this.ctx.imageSmoothingEnabled = false;
+            this.ctx.mozImageSmoothingEnabled = false;
+            this.ctx.webkitImageSmoothingEnabled = false;
+            this.ctx.msImageSmoothingEnabled = false;
+
+            // Force pixel-perfect CSS rendering if pixel scaling is enabled
+            if (this.renderConfig.usePixelScaling) {
+                this.canvas.style.imageRendering = 'pixelated';
+                this.canvas.style.imageRendering = '-moz-crisp-edges';
+                this.canvas.style.imageRendering = 'crisp-edges';
+            }
         }
 
-        // Update GUI and background canvas sizes to match main canvas
+        // Update auxiliary canvas sizes to match internal resolution
         if (this.guiCanvas) {
-            this.guiCanvas.width = this.canvas.width;
-            this.guiCanvas.height = this.canvas.height;
-            const guiCtx = this.guiCanvas.getContext('2d');
-            if (pixelRatio !== 1) {
-                guiCtx.scale(pixelRatio, pixelRatio);
-            }
+            this.guiCanvas.width = canvasWidth;
+            this.guiCanvas.height = canvasHeight;
         }
         if (this.backgroundCanvas) {
-            this.backgroundCanvas.width = this.canvas.width;
-            this.backgroundCanvas.height = this.canvas.height;
-            const bgCtx = this.backgroundCanvas.getContext('2d');
-            if (pixelRatio !== 1) {
-                bgCtx.scale(pixelRatio, pixelRatio);
-            }
+            this.backgroundCanvas.width = canvasWidth;
+            this.backgroundCanvas.height = canvasHeight;
         }
-
-        // Update decal canvas size to match main canvas
         if (this.decalCanvas) {
-            this.decalCanvas.width = this.canvas.width;
-            this.decalCanvas.height = this.canvas.height;
-            const decalCtx = this.decalCanvas.getContext('2d');
-            if (pixelRatio !== 1) {
-                decalCtx.scale(pixelRatio, pixelRatio);
-            }
+            this.decalCanvas.width = canvasWidth;
+            this.decalCanvas.height = canvasHeight;
         }
 
-        // Remove transform scaling which can cause positioning issues
         this.canvas.style.transform = 'none';
 
-        // Configure image smoothing
-        this.ctx.imageSmoothingEnabled = this.renderConfig.smoothing;
-
-        // Apply appropriate CSS image rendering mode based on scale mode
-        if (this.renderConfig.scaleMode === 'nearest-neighbor') {
-            this.canvas.style.imageRendering = 'pixelated';
-        } else {
-            this.canvas.style.imageRendering = this.renderConfig.smoothing ? 'auto' : 'crisp-edges';
-        }
-
-        // If using WebGLCanvas, call its resize method
         if (this.useWebGL && this.ctx.resize) {
-            this.ctx.resize(viewportWidth * pixelRatio, viewportHeight * pixelRatio);
-
-            if (pixelRatio !== 1) {
-                this.ctx.scale(pixelRatio, pixelRatio); // Ensure scaling is applied
-            }
+            this.ctx.resize(canvasWidth, canvasHeight);
             return;
         }
 
         this.canvasResized = true;
-        this.viewport.dirty = true; // Mark viewport as dirty after resize
+        this.viewport.dirty = true;
     }
 
     cleanup() {
@@ -2440,6 +2719,197 @@ class Engine {
         // Clear viewport callbacks
         this.viewportCallbacks = [];
     }
+}
+
+/**
+ * Patch a CanvasRenderingContext2D so drawing commands snap to the nearest canvas pixel.
+ * This is canvas-resolution-aware (uses canvas.width/height, not devicePixelRatio).
+ *
+ * Returns an object with a `restore()` method and `updatePixelScale(newScale)` method.
+ *
+ * Options:
+ *  - pixelScale: number (multiplier for rounding granularity, e.g., engine's pixelScale)
+ *  - methods: array of method names to patch (optional)
+ */
+function patchContextForPixelPerfect(ctx, options = {}) {
+    if (!ctx || !ctx.canvas) {
+        console.warn('patchContextForPixelPerfect: invalid context');
+        return { restore: () => { }, updatePixelScale: () => { } };
+    }
+
+    // Prevent double-patching
+    if (ctx.__pixelPerfectPatched) return ctx.__pixelPerfectRestore;
+
+    const canvas = ctx.canvas;
+    let pixelScale = options.pixelScale ?? 1;
+    const epsilon = 1e-10; // Add epsilon for floating point precision
+
+    // Save originals
+    const orig = {};
+    const methodsToPatch = options.methods ?? [
+        'fillRect', 'strokeRect', 'clearRect',
+        'drawImage',
+        'fillText', 'strokeText',
+        'rect',
+        'moveTo', 'lineTo',
+        'bezierCurveTo', 'quadraticCurveTo',
+    ];
+
+    methodsToPatch.forEach((name) => {
+        if (typeof ctx[name] === 'function') orig[name] = ctx[name].bind(ctx);
+    });
+
+    // Helper: transform point to canvas bitmap space, round with pixelScale, then back to user space
+    function snapPoint(x, y) {
+        const m = ctx.getTransform();
+
+        // Transform to canvas bitmap coordinates
+        const cx = m.a * x + m.c * y + m.e;
+        const cy = m.b * x + m.d * y + m.f;
+
+        // Round to nearest canvas pixel, accounting for pixelScale
+        // FIXED: Add epsilon to prevent floating point errors
+        const rcx = Math.round(cx / pixelScale + epsilon) * pixelScale;
+        const rcy = Math.round(cy / pixelScale + epsilon) * pixelScale;
+
+        // Transform back to user space
+        const inv = m.inverse();
+        const nx = inv.a * rcx + inv.c * rcy + inv.e;
+        const ny = inv.b * rcx + inv.d * rcy + inv.f;
+        return { x: nx, y: ny };
+    }
+
+    // Snap rectangle corners independently to preserve pixel alignment
+    function snapRect(x, y, w, h) {
+        const p1 = snapPoint(x, y);
+        const p2 = snapPoint(x + w, y + h);
+        return { x: p1.x, y: p1.y, w: p2.x - p1.x, h: p2.y - p1.y };
+    }
+
+    // Wrap rect operations
+    if (orig.fillRect) {
+        ctx.fillRect = function (x, y, w, h) {
+            const r = snapRect(x, y, w, h);
+            return orig.fillRect(r.x, r.y, r.w, r.h);
+        };
+    }
+    if (orig.strokeRect) {
+        ctx.strokeRect = function (x, y, w, h) {
+            const r = snapRect(x, y, w, h);
+            return orig.strokeRect(r.x, r.y, r.w, r.h);
+        };
+    }
+    if (orig.clearRect) {
+        ctx.clearRect = function (x, y, w, h) {
+            const r = snapRect(x, y, w, h);
+            return orig.clearRect(r.x, r.y, r.w, r.h);
+        };
+    }
+
+    // Wrap text
+    if (orig.fillText) {
+        ctx.fillText = function (text, x, y, maxWidth) {
+            const p = snapPoint(x, y);
+            if (arguments.length === 3) return orig.fillText(text, p.x, p.y);
+            return orig.fillText(text, p.x, p.y, maxWidth);
+        };
+    }
+    if (orig.strokeText) {
+        ctx.strokeText = function (text, x, y, maxWidth) {
+            const p = snapPoint(x, y);
+            if (arguments.length === 3) return orig.strokeText(text, p.x, p.y);
+            return orig.strokeText(text, p.x, p.y, maxWidth);
+        };
+    }
+
+    // Wrap drawImage (common overloads)
+    if (orig.drawImage) {
+        ctx.drawImage = function (...args) {
+            if (args.length === 3) {
+                // (image, dx, dy)
+                const p = snapPoint(args[1], args[2]);
+                return orig.drawImage(args[0], p.x, p.y);
+            } else if (args.length === 5) {
+                // (image, dx, dy, dw, dh)
+                const { x, y, w, h } = snapRect(args[1], args[2], args[3], args[4]);
+                return orig.drawImage(args[0], x, y, w, h);
+            } else if (args.length === 9) {
+                // (image, sx, sy, sw, sh, dx, dy, dw, dh)
+                const { x: dx, y: dy, w: dw, h: dh } = snapRect(args[5], args[6], args[7], args[8]);
+                return orig.drawImage(args[0], args[1], args[2], args[3], args[4], dx, dy, dw, dh);
+            } else {
+                return orig.drawImage.apply(ctx, args);
+            }
+        };
+    }
+
+    // Wrap path commands
+    if (orig.rect) {
+        ctx.rect = function (x, y, w, h) {
+            const r = snapRect(x, y, w, h);
+            return orig.rect(r.x, r.y, r.w, r.h);
+        };
+    }
+    if (orig.moveTo) {
+        ctx.moveTo = function (x, y) {
+            const p = snapPoint(x, y);
+            return orig.moveTo(p.x, p.y);
+        };
+    }
+    if (orig.lineTo) {
+        ctx.lineTo = function (x, y) {
+            const p = snapPoint(x, y);
+            return orig.lineTo(p.x, p.y);
+        };
+    }
+    if (orig.bezierCurveTo) {
+        ctx.bezierCurveTo = function (cp1x, cp1y, cp2x, cp2y, x, y) {
+            const p1 = snapPoint(cp1x, cp1y);
+            const p2 = snapPoint(cp2x, cp2y);
+            const p3 = snapPoint(x, y);
+            return orig.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+        };
+    }
+    if (orig.quadraticCurveTo) {
+        ctx.quadraticCurveTo = function (cpx, cpy, x, y) {
+            const p1 = snapPoint(cpx, cpy);
+            const p2 = snapPoint(x, y);
+            return orig.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+        };
+    }
+
+    // Store restore function
+    function restore() {
+        Object.keys(orig).forEach((name) => {
+            ctx[name] = orig[name];
+        });
+        delete ctx.__pixelPerfectPatched;
+        delete ctx.__pixelPerfectRestore;
+    }
+
+    // Update pixelScale dynamically
+    function updatePixelScale(newScale) {
+        pixelScale = newScale ?? 1;
+    }
+
+    ctx.__pixelPerfectPatched = true;
+    ctx.__pixelPerfectRestore = { restore, updatePixelScale };
+
+    return { restore, updatePixelScale };
+}
+
+/**
+ * Restore a patched context to its original methods.
+ */
+function restoreContext(ctx) {
+    if (ctx && ctx.__pixelPerfectRestore) ctx.__pixelPerfectRestore.restore();
+}
+
+/**
+ * Update the pixelScale on an already-patched context.
+ */
+function updateContextPixelScale(ctx, newScale) {
+    if (ctx && ctx.__pixelPerfectRestore) ctx.__pixelPerfectRestore.updatePixelScale(newScale);
 }
 
 window.Engine = Engine; // Make available globally

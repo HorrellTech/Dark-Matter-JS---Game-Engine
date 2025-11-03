@@ -118,6 +118,41 @@ class Vector2 {
         return new Vector2(-this.y, this.x);
     }
 
+    /**
+     * Return a new Vector2 with rounded coordinates
+     * Useful for pixel-perfect rendering positions
+     * @returns {Vector2} - New vector with rounded values
+     */
+    round() {
+        return new Vector2(Math.round(this.x), Math.round(this.y));
+    }
+
+    /**
+     * Round this vector in place (mutates)
+     * @returns {Vector2} - Returns this for chaining
+     */
+    roundInPlace() {
+        this.x = Math.round(this.x);
+        this.y = Math.round(this.y);
+        return this;
+    }
+
+    /**
+     * Return a new Vector2 with floored coordinates
+     * @returns {Vector2} - New vector with floored values
+     */
+    floor() {
+        return new Vector2(Math.floor(this.x), Math.floor(this.y));
+    }
+
+    /**
+     * Return a new Vector2 with ceiling coordinates
+     * @returns {Vector2} - New vector with ceiling values
+     */
+    ceil() {
+        return new Vector2(Math.ceil(this.x), Math.ceil(this.y));
+    }
+
     // Comparison methods
     equals(other, epsilon = 0.000001) {
         return Math.abs(this.x - other.x) < epsilon && 

@@ -45,6 +45,8 @@ class SpriteRenderer extends Module {
         // New scaling property
         this.scaleMode = "stretch"; // Options: stretch, fit, fill, tile
 
+        this.drawGrid = false;
+
         // Animation properties
         this.frameX = 0;
         this.frameY = 0;
@@ -167,6 +169,13 @@ class SpriteRenderer extends Module {
                 window.editor?.refreshCanvas();
             },
             cssClass: "scale-mode-dropdown" // Add custom CSS class for styling
+        });
+
+        this.exposeProperty("drawGrid", "boolean", this.drawGrid, {
+            description: "Show grid gizmos for alignment",
+            onChange: (value) => {
+                this.drawGrid = value;
+            }
         });
 
         // Register remaining properties
@@ -929,6 +938,32 @@ class SpriteRenderer extends Module {
         this.drawWithScaleMode(ctx, -pivotX, -pivotY);
         //}
 
+        if (this.drawGrid) {
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 1;
+
+            const startX = -this.width;
+            const startY = -this.height;
+            const endX = 2 * this.width;
+            const endY = 2 * this.height;
+
+            // Vertical lines
+            for (let x = startX; x <= endX; x += this.width) {
+                ctx.beginPath();
+                ctx.moveTo(x, startY);
+                ctx.lineTo(x, endY);
+                ctx.stroke();
+            }
+
+            // Horizontal lines
+            for (let y = startY; y <= endY; y += this.height) {
+                ctx.beginPath();
+                ctx.moveTo(startX, y);
+                ctx.lineTo(endX, y);
+                ctx.stroke();
+            }
+        }
+
         // Apply color tint if not white (after drawing the image)
         if (this.color !== "#ffffff") {
             ctx.globalCompositeOperation = 'multiply';
@@ -1413,26 +1448,31 @@ class SpriteRenderer extends Module {
      * Draw the image using the selected scale mode
      */
     drawWithScaleMode(ctx, x, y) {
-        // Add some debugging
-        //console.log(`Drawing with scale mode: ${this.scaleMode}`);
+        // Round positions to whole pixels for pixel-perfect rendering
+        x = Math.round(x);
+        y = Math.round(y);
+
+        // Round dimensions to whole pixels
+        const width = Math.round(this.width);
+        const height = Math.round(this.height);
 
         switch (this.scaleMode) {
             case "fit":
-                this.drawFit(ctx, x, y);
+                this.drawFit(ctx, x, y, width, height);
                 break;
             case "fill":
-                this.drawFill(ctx, x, y);
+                this.drawFill(ctx, x, y, width, height);
                 break;
             case "tile":
-                this.drawTile(ctx, x, y);
+                this.drawTile(ctx, x, y, width, height);
                 break;
             case "9-slice":
-                this.drawNineSlice(ctx, x, y);
+                this.drawNineSlice(ctx, x, y, width, height);
                 break;
             case "stretch":
             default:
-                // Default to stretch (simple drawImage)
-                ctx.drawImage(this._image, x, y, this.width, this.height);
+                // Default to stretch (simple drawImage) with rounded dimensions
+                ctx.drawImage(this._image, x, y, width, height);
                 break;
         }
     }
@@ -1440,26 +1480,36 @@ class SpriteRenderer extends Module {
     /**
      * Draw the image preserving aspect ratio and fitting inside dimensions
      */
-    drawFit(ctx, x, y) {
+    drawFit(ctx, x, y, width, height) {
+        // Use provided width/height or fall back to this.width/height
+        width = width || Math.round(this.width);
+        height = height || Math.round(this.height);
+
         // Calculate aspect ratios
         const imageRatio = this._imageWidth / this._imageHeight;
-        const targetRatio = this.width / this.height;
+        const targetRatio = width / height;
 
         let drawWidth, drawHeight, offsetX, offsetY;
 
         if (imageRatio > targetRatio) {
             // Image is wider than the target area relative to height
-            drawWidth = this.width;
-            drawHeight = this.width / imageRatio;
+            drawWidth = width;
+            drawHeight = width / imageRatio;
             offsetX = 0;
-            offsetY = (this.height - drawHeight) / 2;
+            offsetY = (height - drawHeight) / 2;
         } else {
             // Image is taller than the target area relative to width
-            drawHeight = this.height;
-            drawWidth = this.height * imageRatio;
-            offsetX = (this.width - drawWidth) / 2;
+            drawHeight = height;
+            drawWidth = height * imageRatio;
+            offsetX = (width - drawWidth) / 2;
             offsetY = 0;
         }
+
+        // Round all values to whole pixels
+        drawWidth = Math.round(drawWidth);
+        drawHeight = Math.round(drawHeight);
+        offsetX = Math.round(offsetX);
+        offsetY = Math.round(offsetY);
 
         // Draw the image centered
         ctx.drawImage(this._image, 0, 0, this._imageWidth, this._imageHeight,
@@ -1469,10 +1519,14 @@ class SpriteRenderer extends Module {
     /**
      * Draw the image preserving aspect ratio and filling the entire area (may crop)
      */
-    drawFill(ctx, x, y) {
+    drawFill(ctx, x, y, width, height) {
+        // Use provided width/height or fall back to this.width/height
+        width = width || Math.round(this.width);
+        height = height || Math.round(this.height);
+
         // Calculate aspect ratios
         const imageRatio = this._imageWidth / this._imageHeight;
-        const targetRatio = this.width / this.height;
+        const targetRatio = width / height;
 
         let sourceX, sourceY, sourceWidth, sourceHeight;
 
@@ -1490,37 +1544,47 @@ class SpriteRenderer extends Module {
             sourceY = (this._imageHeight - sourceHeight) / 2;
         }
 
+        // Round source coordinates
+        sourceX = Math.round(sourceX);
+        sourceY = Math.round(sourceY);
+        sourceWidth = Math.round(sourceWidth);
+        sourceHeight = Math.round(sourceHeight);
+
         // Draw the image cropped to fill the entire target area
         ctx.drawImage(
             this._image,
             sourceX, sourceY, sourceWidth, sourceHeight,
-            x, y, this.width, this.height
+            x, y, width, height
         );
     }
 
     /**
      * Draw the image tiled to fill the entire area
      */
-    drawTile(ctx, x, y) {
+    drawTile(ctx, x, y, width, height) {
+        // Use provided width/height or fall back to this.width/height
+        width = width || Math.round(this.width);
+        height = height || Math.round(this.height);
+
         // Create a pattern and fill the area
         const pattern = ctx.createPattern(this._image, 'repeat');
         if (!pattern) {
             // Fallback if pattern creation fails
-            ctx.drawImage(this._image, x, y, this.width, this.height);
+            ctx.drawImage(this._image, x, y, width, height);
             return;
         }
 
         // Save context to isolate the pattern drawing
         ctx.save();
 
-        // Clip to the target rectangle
+        // Clip to the target rectangle with rounded values
         ctx.beginPath();
-        ctx.rect(x, y, this.width, this.height);
+        ctx.rect(x, y, width, height);
         ctx.clip();
 
         // Fill with the pattern
         ctx.fillStyle = pattern;
-        ctx.fillRect(x, y, this.width, this.height);
+        ctx.fillRect(x, y, width, height);
 
         // Restore context
         ctx.restore();
@@ -1577,6 +1641,41 @@ class SpriteRenderer extends Module {
                     ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
                 }
             }
+        }
+    }
+
+    drawGizmos(ctx) {
+        if (!this.drawGrid) return;
+
+        const worldPos = this.gameObject.getWorldPosition();
+
+        // Calculate pivot
+        const pivotX = this.width * this.pivot.x;
+        const pivotY = this.height * this.pivot.y;
+
+        // Draw grid lines around the world position
+        const startX = worldPos.x - pivotX - this.width;
+        const startY = worldPos.y - pivotY - this.height;
+        const endX = worldPos.x - pivotX + 2 * this.width;
+        const endY = worldPos.y - pivotY + 2 * this.height;
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1;
+
+        // Vertical lines
+        for (let x = startX; x <= endX; x += this.width) {
+            ctx.beginPath();
+            ctx.moveTo(x, startY);
+            ctx.lineTo(x, endY);
+            ctx.stroke();
+        }
+
+        // Horizontal lines
+        for (let y = startY; y <= endY; y += this.height) {
+            ctx.beginPath();
+            ctx.moveTo(startX, y);
+            ctx.lineTo(endX, y);
+            ctx.stroke();
         }
     }
 
@@ -1739,6 +1838,7 @@ class SpriteRenderer extends Module {
         // 9-slice properties
         json.sliceMode = this.sliceMode;
         json.sliceBorder = { ...this.sliceBorder };
+        json.drawGrid = this.drawGrid;
 
         // DON'T store image data here - let AssetManager handle it
         return json;
@@ -1762,6 +1862,7 @@ class SpriteRenderer extends Module {
         if (json.scaleMode !== undefined) this.scaleMode = json.scaleMode;
         if (json.sliceMode !== undefined) this.sliceMode = json.sliceMode;
         if (json.sliceBorder !== undefined) this.sliceBorder = json.sliceBorder;
+        if (json.drawGrid !== undefined) this.drawGrid = json.drawGrid;
 
         // Restore asset reference and load from AssetManager
         if (json.imageAsset && json.imageAsset.path) {

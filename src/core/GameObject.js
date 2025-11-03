@@ -227,15 +227,17 @@ class GameObject {
         const worldAngle = this.getWorldRotation();
         const worldScale = this.getWorldScale();
 
-        ctx.translate(worldPos.x, worldPos.y);
+        // CRITICAL FIX: Round position to whole pixels for pixel-perfect rendering
+        // This prevents sub-pixel positioning which causes anti-aliasing and size inconsistencies
+        const pixelPerfectX = Math.round(worldPos.x);
+        const pixelPerfectY = Math.round(worldPos.y);
+
+        ctx.translate(pixelPerfectX, pixelPerfectY);
         ctx.rotate(worldAngle * Math.PI / 180);
         ctx.scale(worldScale.x, worldScale.y);
 
         // Track if any module actually drew something
         let moduleDidDraw = false;
-
-        // Always draw the fallback shape first to ensure object visibility
-        //this.drawFallbackShape(ctx);
 
         // Draw modules
         for (const module of this.modules) {
@@ -245,7 +247,7 @@ class GameObject {
                         ctx.restore(); // Remove transform
                         module.draw(ctx); // Draw in world space
                         ctx.save();
-                        ctx.translate(worldPos.x, worldPos.y);
+                        ctx.translate(pixelPerfectX, pixelPerfectY);
                         ctx.rotate(worldAngle * Math.PI / 180);
                         ctx.scale(worldScale.x, worldScale.y);
                     } else {

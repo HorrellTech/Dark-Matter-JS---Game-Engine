@@ -47,6 +47,8 @@ class TilemapSystem extends Module {
         // Lighting settings
         this.enableLighting = false;
         this.lightingGradientSize = 5;
+        this.smoothLighting = true;
+        this.darknessSubdivisions = 2; // Number of subdivisions per tile for smooth lighting
 
         // Editor settings
         this.editMode = "draw"; // draw, erase, fill, eyedropper
@@ -61,21 +63,28 @@ class TilemapSystem extends Module {
         this.textureScale = 0.02;
         this.textureContrast = 0.7;
 
+        // Texture map settings (add after enableTexture properties)
+        this.useTextureMap = false;
+        this.tilesHor = 4; // Number of tiles horizontally in texture
+        this.tilesVert = 4; // Number of tiles vertically in texture
+        this.spriteRendererReference = null;
+        this.enableAutotile = false;
+
         this.tiles = this.createEmptyTileArray();
         this.lighting = this.createEmptyTileArray();
 
         // Tile definitions with gradient colors for blending
         this.tileTypes = {
-            0: { name: "Air", color: "transparent", solid: false, blend: [], enableTexture: false, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 4, squareSpacing: 8, squareOpacity: 0.6 },
-            1: { name: "Grass", color: "#4CAF50", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: true, squareCount: 3, squareSize: 4, squareSpacing: 8, squareOpacity: 0.2 },
-            2: { name: "Dirt", color: "#8D6E63", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3 },
-            3: { name: "Stone", color: "#607D8B", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.025, textureContrast: 0.4, enableSquares: true, squareCount: 1, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
-            4: { name: "Coal", color: "#37474F", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
-            5: { name: "Iron", color: "#FF7043", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.4, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
-            6: { name: "Gold", color: "#FFD700", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
-            7: { name: "Sand", color: "#F4E4C1", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3 },
-            8: { name: "Snow", color: "#ECEFF1", solid: true, blend: ["#FCFFFF", "#DCEEF1", "#FFFFFF"], enableTexture: true, textureScale: 0.02, textureContrast: 0.2, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2 },
-            9: { name: "Ice", color: "#B3E5FC", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.1 }
+            0: { name: "Air", color: "transparent", solid: false, blend: [], enableTexture: false, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 4, squareSpacing: 8, squareOpacity: 0.6, tileMapX: 0, tileMapY: 0, enableAutotile: false },
+            1: { name: "Grass", color: "#4CAF50", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: true, squareCount: 3, squareSize: 4, squareSpacing: 8, squareOpacity: 0.2, tileMapX: 0, tileMapY: 0, enableAutotile: true },
+            2: { name: "Dirt", color: "#8D6E63", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3, tileMapX: 1, tileMapY: 0, enableAutotile: true },
+            3: { name: "Stone", color: "#607D8B", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.025, textureContrast: 0.4, enableSquares: true, squareCount: 1, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 2, tileMapY: 0, enableAutotile: true },
+            4: { name: "Coal", color: "#37474F", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 3, tileMapY: 0, enableAutotile: false },
+            5: { name: "Iron", color: "#FF7043", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.4, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 0, tileMapY: 1, enableAutotile: false },
+            6: { name: "Gold", color: "#FFD700", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 1, tileMapY: 1, enableAutotile: false },
+            7: { name: "Sand", color: "#F4E4C1", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3, tileMapX: 2, tileMapY: 1, enableAutotile: false },
+            8: { name: "Snow", color: "#ECEFF1", solid: true, blend: ["#FCFFFF", "#DCEEF1", "#FFFFFF"], enableTexture: true, textureScale: 0.02, textureContrast: 0.2, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 3, tileMapY: 1, enableAutotile: false },
+            9: { name: "Ice", color: "#B3E5FC", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.1, tileMapX: 0, tileMapY: 2, enableAutotile: false }
         };
 
         // Editor state
@@ -137,14 +146,6 @@ class TilemapSystem extends Module {
                 }
             }
         });
-
-        /*this.exposeProperty("chunkSize", "number", this.chunkSize, {
-            description: "Tiles per chunk (affects generation performance)",
-            onChange: (val) => {
-                this.chunkSize = val;
-                this.regenerateWorld();
-            }
-        });*/
 
         this.exposeProperty("worldWidthTiles", "number", this.worldWidthTiles, {
             description: "Width of the world in chunks (finite world size)",
@@ -270,6 +271,24 @@ class TilemapSystem extends Module {
             }
         });
 
+        this.exposeProperty("smoothLighting", "boolean", this.smoothLighting, {
+            description: "Enable smooth gradient lighting (uses radial gradients per tile)",
+            onChange: (val) => {
+                this.smoothLighting = val;
+            }
+        });
+
+        this.exposeProperty("darknessSubdivisions", "number", this.darknessSubdivisions, {
+            description: "Number of subdivisions per tile for smooth lighting",
+            min: 1, max: 16, step: 1,
+            onChange: (val) => {
+                this.darknessSubdivisions = val;
+                if (this.enableLighting) {
+                    this.computeLighting();
+                }
+            }
+        });
+
         this.exposeProperty("lightingGradientSize", "number", this.lightingGradientSize, {
             description: "Number of tiles to fade to black from air blocks",
             min: 1, max: 50, step: 1,
@@ -280,6 +299,7 @@ class TilemapSystem extends Module {
                 }
             }
         });
+
 
         this.exposeProperty("enableTexture", "boolean", this.enableTexture, {
             description: "Enable procedural texture generation for tiles",
@@ -411,6 +431,32 @@ class TilemapSystem extends Module {
                     this.tileTypes[key].squareOpacity = val;
                 }
             });
+
+            this.exposeProperty(`tileAutotile_${key}`, "boolean", tileData.enableAutotile || false, {
+                description: `Enable autotiling for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableAutotile = val;
+                }
+            });
+
+            // Add tileMapX and tileMapY properties INSIDE the loop
+            this.exposeProperty(`tileMapX_${key}`, "number", tileData.tileMapX || 0, {
+                description: `Texture map X coordinate for ${tileData.name} tile`,
+                min: 0,
+                max: 31,
+                onChange: (val) => {
+                    this.tileTypes[key].tileMapX = val;
+                }
+            });
+
+            this.exposeProperty(`tileMapY_${key}`, "number", tileData.tileMapY || 0, {
+                description: `Texture map Y coordinate for ${tileData.name} tile`,
+                min: 0,
+                max: 31,
+                onChange: (val) => {
+                    this.tileTypes[key].tileMapY = val;
+                }
+            });
         }
 
         this.exposeProperty("selectedTileType", "select", this.selectedTileType, {
@@ -445,6 +491,9 @@ class TilemapSystem extends Module {
                 this.gridColor = val;
             }
         });
+
+        // Move the tile type loop to a separate method
+        this.setupTileTypeProperties();
     }
 
     style(style) {
@@ -629,10 +678,22 @@ class TilemapSystem extends Module {
             style: { label: "Enable Lighting" }
         });
 
-        style.exposeProperty("lightingGradientSize", "number", this.lightingGradientSize, {
-            description: "Number of tiles to fade to black from air blocks",
-            min: 1, max: 50, step: 1
-        });
+        if (this.enableLighting) {
+            style.exposeProperty("smoothLighting", "boolean", this.smoothLighting, {
+                description: "Enable smooth gradient lighting with radial gradients per tile",
+                style: { label: "Smooth Lighting" }
+            });
+
+            style.exposeProperty("darknessSubdivisions", "number", this.darknessSubdivisions, {
+                description: "Number of subdivisions per tile for smooth lighting",
+                min: 1, max: 16, step: 1
+            });
+
+            style.exposeProperty("lightingGradientSize", "number", this.lightingGradientSize, {
+                description: "Number of tiles to fade to black from air blocks",
+                min: 1, max: 50, step: 1
+            });
+        }
 
         style.exposeProperty("enableTexture", "boolean", this.enableTexture, {
             description: "Enable procedural texture generation for tiles"
@@ -651,6 +712,57 @@ class TilemapSystem extends Module {
             max: 1,
             step: 0.05
         });
+
+        style.startGroup("Texture Map Settings", false, {
+            backgroundColor: 'rgba(156,39,176,0.1)',
+            borderRadius: '6px',
+            padding: '8px'
+        });
+
+        style.exposeProperty("useTextureMap", "boolean", this.useTextureMap, {
+            description: "Use sprite sheet as texture map for tiles",
+            style: { label: "Use Texture Map" },
+            onChange: (val) => {
+                this.useTextureMap = val;
+            }
+        });
+
+        if (this.useTextureMap) {
+            // Check if SpriteRenderer is available
+            if (!this.spriteRendererReference) {
+                this.spriteRendererReference = this.getModule("SpriteRenderer");
+            }
+
+            if (!this.spriteRendererReference) {
+                style.addHelpText("⚠️ SpriteRenderer not found. Please add a SpriteRenderer module to this GameObject to use texture maps.");
+            } else {
+                style.addHelpText("✓ Using texture from SpriteRenderer");
+
+                style.exposeProperty("tilesHor", "number", this.tilesHor, {
+                    description: "Number of tile textures horizontally in sprite sheet",
+                    min: 1,
+                    max: 32,
+                    step: 1,
+                    style: { label: "Tiles Horizontal" },
+                    onChange: (val) => {
+                        this.tilesHor = val;
+                    }
+                });
+
+                style.exposeProperty("tilesVert", "number", this.tilesVert, {
+                    description: "Number of tile textures vertically in sprite sheet",
+                    min: 1,
+                    max: 32,
+                    step: 1,
+                    style: { label: "Tiles Vertical" },
+                    onChange: (val) => {
+                        this.tilesVert = val;
+                    }
+                });
+            }
+        }
+
+        style.endGroup();
 
         style.exposeProperty("showGrid", "boolean", this.showGrid, {
             description: "Show grid lines",
@@ -701,61 +813,101 @@ class TilemapSystem extends Module {
                     padding: '8px'
                 });
 
-                style.exposeProperty(`tileColor`, "color", tileData.color, {
+                style.exposeProperty(`tileColor_${key}`, "color", tileData.color, {
                     description: `Color for ${tileData.name} tile`,
                     style: { label: tileData.name }
                 });
-                style.exposeProperty(`tileSolid`, "boolean", tileData.solid, {
+                style.exposeProperty(`tileSolid_${key}`, "boolean", tileData.solid, {
                     description: `Solid property for ${tileData.name} tile`,
                     style: { label: `${tileData.name} Solid` }
                 });
 
-                style.exposeProperty(`tileTexture`, "boolean", tileData.enableTexture, {
+                style.exposeProperty(`tileTexture_${key}`, "boolean", tileData.enableTexture, {
                     description: `Enable texture for ${tileData.name} tile`
                 });
 
-                style.exposeProperty(`tileTextureScale`, "number", tileData.textureScale, {
+                style.exposeProperty(`tileTextureScale_${key}`, "number", tileData.textureScale, {
                     description: `Texture scale for ${tileData.name} tile`,
                     min: 0.001,
                     max: 0.1,
                     step: 0.001
                 });
 
-                style.exposeProperty(`tileTextureContrast`, "number", tileData.textureContrast, {
+                style.exposeProperty(`tileTextureContrast_${key}`, "number", tileData.textureContrast, {
                     description: `Texture contrast for ${tileData.name} tile`,
                     min: 0,
                     max: 1,
                     step: 0.05
                 });
 
-                style.exposeProperty(`tileSquares`, "boolean", tileData.enableSquares, {
+                style.exposeProperty(`tileSquares_${key}`, "boolean", tileData.enableSquares, {
                     description: `Enable decorative squares for ${tileData.name} tile`
                 });
 
-                style.exposeProperty(`tileSquareCount`, "number", tileData.squareCount, {
+                style.exposeProperty(`tileSquareCount_${key}`, "number", tileData.squareCount, {
                     description: `Number of squares per ${tileData.name} tile`,
                     min: 0,
                     max: 10
                 });
 
-                style.exposeProperty(`tileSquareSize`, "number", tileData.squareSize, {
+                style.exposeProperty(`tileSquareSize_${key}`, "number", tileData.squareSize, {
                     description: `Square size for ${tileData.name} tile`,
                     min: 1,
                     max: 20
                 });
 
-                style.exposeProperty(`tileSquareSpacing`, "number", tileData.squareSpacing, {
+                style.exposeProperty(`tileSquareSpacing_${key}`, "number", tileData.squareSpacing, {
                     description: `Square spacing for ${tileData.name} tile`,
                     min: 2,
                     max: 50
                 });
 
-                style.exposeProperty(`tileSquareOpacity`, "number", tileData.squareOpacity, {
+                style.exposeProperty(`tileSquareOpacity_${key}`, "number", tileData.squareOpacity, {
                     description: `Square opacity for ${tileData.name} tile`,
                     min: 0,
                     max: 1,
                     step: 0.05
                 });
+
+                if (this.useTextureMap && this.spriteRendererReference) {
+                    style.startGroup(`${tileData.name} Texture Index`, false, {
+                        backgroundColor: 'rgba(255, 235, 59, 0.1)',
+                        borderRadius: '6px',
+                        padding: '8px'
+                    });
+
+                    style.exposeProperty(`tileAutotile_${key}`, "boolean", tileData.enableAutotile, {
+                        description: `Enable autotiling for ${tileData.name} tile (requires 4x4 tile grid)`,
+                        style: { label: "Enable Autotile" },
+                        onChange: (val) => {
+                            this.tileTypes[key].enableAutotile = val;
+                        }
+                    });
+
+                    style.exposeProperty(`tileMapX_${key}`, "number", tileData.tileMapX, {
+                        description: `Texture X position for ${tileData.name} tile (column index)`,
+                        min: 0,
+                        max: this.tilesHor - 1,
+                        step: 1,
+                        style: { label: "Texture X" },
+                        onChange: (val) => {
+                            this.tileTypes[key].tileMapX = val;
+                        }
+                    });
+
+                    style.exposeProperty(`tileMapY_${key}`, "number", tileData.tileMapY, {
+                        description: `Texture Y position for ${tileData.name} tile (row index)`,
+                        min: 0,
+                        max: this.tilesVert - 1,
+                        step: 1,
+                        style: { label: "Texture Y" },
+                        onChange: (val) => {
+                            this.tileTypes[key].tileMapY = val;
+                        }
+                    });
+
+                    style.endGroup();
+                }
 
                 style.endGroup();
             }
@@ -786,10 +938,131 @@ class TilemapSystem extends Module {
         style.addHelpText("🌍 TileMap terrain with generation. Hold Ctrl and click to paint tiles. The world generates infinitely in all directions based on the seed.");
     }
 
-    start() {
-        if(this.infiniteWorld) {
+    setupTileTypeProperties() {
+        for (const [key, tileData] of Object.entries(this.tileTypes)) {
+            this.exposeProperty(`tileColor_${key}`, "color", tileData.color, {
+                description: `Color for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].color = val;
+                }
+            });
+            this.exposeProperty('tileSolid_' + key, "boolean", tileData.solid, {
+                description: `Solid property for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].solid = val;
+                }
+            });
+            this.exposeProperty(`tileTexture_${key}`, "boolean", tileData.enableTexture, {
+                description: `Enable texture for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableTexture = val;
+                }
+            });
+
+            this.exposeProperty(`tileTextureScale_${key}`, "number", tileData.textureScale, {
+                description: `Texture scale for ${tileData.name} tile`,
+                min: 0.001,
+                max: 0.1,
+                step: 0.001,
+                onChange: (val) => {
+                    this.tileTypes[key].textureScale = val;
+                }
+            });
+
+            this.exposeProperty(`tileTextureContrast_${key}`, "number", tileData.textureContrast, {
+                description: `Texture contrast for ${tileData.name} tile`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.tileTypes[key].textureContrast = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquares_${key}`, "boolean", tileData.enableSquares, {
+                description: `Enable decorative squares for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableSquares = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareCount_${key}`, "number", tileData.squareCount, {
+                description: `Number of squares per ${tileData.name} tile`,
+                min: 0,
+                max: 10,
+                onChange: (val) => {
+                    this.tileTypes[key].squareCount = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareSize_${key}`, "number", tileData.squareSize, {
+                description: `Square size for ${tileData.name} tile`,
+                min: 1,
+                max: 20,
+                onChange: (val) => {
+                    this.tileTypes[key].squareSize = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareSpacing_${key}`, "number", tileData.squareSpacing, {
+                description: `Square spacing for ${tileData.name} tile`,
+                min: 2,
+                max: 50,
+                onChange: (val) => {
+                    this.tileTypes[key].squareSpacing = val;
+                }
+            });
+
+            this.exposeProperty(`tileSquareOpacity_${key}`, "number", tileData.squareOpacity, {
+                description: `Square opacity for ${tileData.name} tile`,
+                min: 0,
+                max: 1,
+                step: 0.05,
+                onChange: (val) => {
+                    this.tileTypes[key].squareOpacity = val;
+                }
+            });
+
+            this.exposeProperty(`tileAutotile_${key}`, "boolean", tileData.enableAutotile || false, {
+                description: `Enable autotiling for ${tileData.name} tile`,
+                onChange: (val) => {
+                    this.tileTypes[key].enableAutotile = val;
+                }
+            });
+
+            // Add tileMapX and tileMapY properties INSIDE the loop
+            this.exposeProperty(`tileMapX_${key}`, "number", tileData.tileMapX || 0, {
+                description: `Texture map X coordinate for ${tileData.name} tile`,
+                min: 0,
+                max: 31,
+                onChange: (val) => {
+                    this.tileTypes[key].tileMapX = val;
+                }
+            });
+
+            this.exposeProperty(`tileMapY_${key}`, "number", tileData.tileMapY || 0, {
+                description: `Texture map Y coordinate for ${tileData.name} tile`,
+                min: 0,
+                max: 31,
+                onChange: (val) => {
+                    this.tileTypes[key].tileMapY = val;
+                }
+            });
+        }
+    }
+
+    async start() {
+        if (this.infiniteWorld) {
             this.gameObject.position.x = 0;
             this.gameObject.position.y = 0;
+        }
+
+        // Always re-acquire SpriteRenderer reference from this GameObject's modules
+        // This ensures cloned TilemapSystems get their own SpriteRenderer reference
+        this.spriteRendererReference = this.getModule("SpriteRenderer");
+
+        if (this.spriteRendererReference) {
+            this.spriteRendererReference.visible = false;
         }
     }
 
@@ -1421,20 +1694,36 @@ class TilemapSystem extends Module {
         const queue = [];
         const visited = new Set();
 
-        // Start from all air blocks
+        // Mark all solid blocks adjacent to air as fully lit (distance 0)
+        const directions = [
+            { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 },
+            { dx: -1, dy: -1 }, { dx: 1, dy: -1 }, { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+        ];
+
         for (let x = 0; x < this.worldWidthTiles; x++) {
             for (let y = 0; y < this.worldHeightTiles; y++) {
-                if (this.tiles[x][y] === 0) { // Air
+                if (this.tiles[x][y] === 0) continue; // Skip air
+
+                // Check if this solid block has any air neighbors
+                let hasAirNeighbor = false;
+                for (const dir of directions) {
+                    const nx = x + dir.dx;
+                    const ny = y + dir.dy;
+                    if (nx >= 0 && nx < this.worldWidthTiles && ny >= 0 && ny < this.worldHeightTiles) {
+                        if (this.tiles[nx][ny] === 0) { // Has an air neighbor
+                            hasAirNeighbor = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasAirNeighbor) {
                     queue.push({ x, y, dist: 0 });
                     visited.add(`${x},${y}`);
-                    this.lighting[x][y] = 1; // Full light at air
+                    this.lighting[x][y] = 1; // Full light for blocks touching air
                 }
             }
         }
-
-        const directions = [
-            { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
-        ];
 
         while (queue.length > 0) {
             const { x, y, dist } = queue.shift();
@@ -1484,6 +1773,108 @@ class TilemapSystem extends Module {
         return `rgb(${r}, ${g}, ${b})`;
     }
 
+    /**
+     * Calculates the correct tileset offset for a tile based on its neighbors.
+     * This function uses a 16-tile "blob" pattern based on the 4 cardinal neighbors.
+     *
+     * It can optionally replace the 4 inner-corner tiles with 4 ramp tiles
+     * if the 'enableRamps' flag is set to true.
+     *
+     * @param {number} tileX - The X coordinate of the tile to check.
+     * @param {number} tileY - The Y coordinate of the tile to check.
+     * @param {boolean} [enableRamps=false] - Optional. If true, overrides inner-corners with ramps.
+     * @returns {{offsetX: number, offsetY: number}} - The (x, y) offset in the tileset.
+     */
+    getAutotileOffset(tileX, tileY, enableRamps = false) {
+        const currentType = this.getTileAt(tileX, tileY);
+
+        // Check cardinal neighbors - only same type counts as neighbor
+        const up = this.getTileAt(tileX, tileY - 1) > 0;
+        const down = this.getTileAt(tileX, tileY + 1) > 0;
+        const left = this.getTileAt(tileX - 1, tileY) > 0;
+        const right = this.getTileAt(tileX + 1, tileY) > 0;
+
+        // If tile has neighbors on all 4 sides, use the 4x4 blob section (columns 4-7)
+        if (up && down && left && right) {
+            // Check diagonal neighbors for corner variations
+            const nw = this.getTileAt(tileX - 1, tileY - 1) > 0;
+            const ne = this.getTileAt(tileX + 1, tileY - 1) > 0;
+            const sw = this.getTileAt(tileX - 1, tileY + 1) > 0;
+            const se = this.getTileAt(tileX + 1, tileY + 1) > 0;
+
+            // 4x4 blob mapping for platformer tiles (columns 4-7, rows 0-3)
+            // Row 0
+            if (nw && ne && sw && se) return { offsetX: 2, offsetY: 2 }; // All corners - fully surrounded
+            if (!nw && ne && sw && se) return { offsetX: 5, offsetY: 1 }; // Missing NW
+            if (nw && !ne && sw && se) return { offsetX: 4, offsetY: 1 }; // Missing NE
+            if (!nw && !ne && sw && se) return { offsetX: 4, offsetY: 3 }; // Missing both top corners
+
+            // Row 1
+            if (nw && ne && !sw && se) return { offsetX: 2, offsetY: 2 }; // Missing SW
+            if (!nw && ne && !sw && se) return { offsetX: 2, offsetY: 2 }; // Missing NW+SW
+            if (nw && !ne && sw && !se) return { offsetX: 6, offsetY: 1 }; // Missing NE+SE
+            if (nw && ne && sw && !se) return { offsetX: 2, offsetY: 2 }; // Missing SE
+
+            // Row 2
+            if (!nw && !ne && !sw && se) return { offsetX: 4, offsetY: 2 }; // Only SE
+            if (nw && !ne && !sw && se) return { offsetX: 5, offsetY: 2 }; // NW+SE diagonal
+            if (!nw && ne && sw && !se) return { offsetX: 6, offsetY: 2 }; // NE+SW diagonal
+            if (!nw && ne && !sw && !se) return { offsetX: 7, offsetY: 2 }; // Only NE
+
+            // Row 3
+            if (nw && ne && !sw && !se) return { offsetX: 3, offsetY: 2 }; // Missing both bottom
+            if (!nw && !ne && sw && !se) return { offsetX: 5, offsetY: 3 }; // Only SW
+            if (!nw && !ne && !sw && !se) return { offsetX: 4, offsetY: 3 }; // No corners
+            if (nw && !ne && !sw && !se) return { offsetX: 7, offsetY: 3 }; // Only NW
+
+            return { offsetX: 2, offsetY: 2 }; // Default to fully surrounded
+        }
+
+        // Compute diagonal neighbors (safe even if some cardinals are missing)
+        const nw = this.getTileAt(tileX - 1, tileY - 1) > 0;
+        const ne = this.getTileAt(tileX + 1, tileY - 1) > 0;
+        const sw = this.getTileAt(tileX - 1, tileY + 1) > 0;
+        const se = this.getTileAt(tileX + 1, tileY + 1) > 0;
+
+        // If both top diagonals are missing and left is missing, and up/down are present -> use tile at (4,0)
+        if (up && down && right && sw && se && !nw && !ne && !left) {
+            return { offsetX: 4, offsetY: 0 };
+        }
+
+        // If both top diagonals are missing and right is missing, and up/down are present -> use tile at (5,0)
+        if (up && down && left && se && sw && !nw && !ne && !right) {
+            return { offsetX: 5, offsetY: 0 };
+        }
+
+        // For tiles without all 4 cardinal neighbors, use columns 0-3
+
+        // Row 0: Isolated or horizontal-only tiles
+        if (!up && !down && !left && !right) return { offsetX: 0, offsetY: 0 }; // Isolated
+        if (!up && !down && !left && right) return { offsetX: 1, offsetY: 0 }; // Only right
+        if (!up && !down && left && right) return { offsetX: 2, offsetY: 0 }; // Horizontal line
+        if (!up && !down && left && !right) return { offsetX: 3, offsetY: 0 }; // Only left
+
+        // Row 1: Bottom connection
+        if (!up && down && !left && !right) return { offsetX: 0, offsetY: 1 }; // Only down
+        if (!up && down && !left && right) return { offsetX: 1, offsetY: 1 }; // Down+right corner
+        if (!up && down && left && right) return { offsetX: 2, offsetY: 1 }; // T-shape top
+        if (!up && down && left && !right) return { offsetX: 3, offsetY: 1 }; // Down+left corner
+
+        // Row 2: Vertical or T-shapes
+        if (up && down && !left && !right) return { offsetX: 0, offsetY: 2 }; // Vertical line
+        if (up && down && !left && right) return { offsetX: 1, offsetY: 2 }; // T-shape left
+        if (up && down && left && !right) return { offsetX: 3, offsetY: 2 }; // T-shape right
+
+        // Row 3: Top connection
+        if (up && !down && !left && !right) return { offsetX: 0, offsetY: 3 }; // Only up
+        if (up && !down && !left && right) return { offsetX: 1, offsetY: 3 }; // Up+right corner
+        if (up && !down && left && right) return { offsetX: 2, offsetY: 3 }; // T-shape bottom
+        if (up && !down && left && !right) return { offsetX: 3, offsetY: 3 }; // Up+left corner
+
+        // Fallback
+        return { offsetX: 0, offsetY: 0 };
+    }
+
     draw(ctx) {
         const viewport = window.engine.viewport;
 
@@ -1497,48 +1888,205 @@ class TilemapSystem extends Module {
             this.preloadChunks(centerX, centerY);
         }
 
-        // For infinite worlds, expand bounds based on viewport; for finite, use existing limits
-        const maxX = this.infiniteWorld ? Infinity : this.worldWidthTiles;
-        const maxY = this.infiniteWorld ? Infinity : this.worldHeightTiles;
+        let startTileX, endTileX, startTileY, endTileY;
 
-        // Updated: Allow negative start coordinates for infinite worlds
-        const startTileX = this.infiniteWorld ? Math.floor(viewport.x / this.tileSize) : Math.max(0, Math.floor(viewport.x / this.tileSize));
-        const endTileX = Math.min(maxX, Math.ceil((viewport.x + viewport.width) / this.tileSize));
-        const startTileY = this.infiniteWorld ? Math.floor(viewport.y / this.tileSize) : Math.max(0, Math.floor(viewport.y / this.tileSize));
-        const endTileY = Math.min(maxY, Math.ceil((viewport.y + viewport.height) / this.tileSize));
+        if (this.infiniteWorld) {
+            // For infinite worlds, render based on viewport only
+            startTileX = Math.floor(viewport.x / this.tileSize);
+            endTileX = Math.ceil((viewport.x + viewport.width) / this.tileSize);
+            startTileY = Math.floor(viewport.y / this.tileSize);
+            endTileY = Math.ceil((viewport.y + viewport.height) / this.tileSize);
+        } else {
+            // For finite worlds, clamp to actual world dimensions
+            startTileX = Math.max(0, Math.floor(viewport.x / this.tileSize));
+            endTileX = Math.min(this.worldWidthTiles, Math.ceil((viewport.x + viewport.width) / this.tileSize));
+            startTileY = Math.max(0, Math.floor(viewport.y / this.tileSize));
+            endTileY = Math.min(this.worldHeightTiles, Math.ceil((viewport.y + viewport.height) / this.tileSize));
+        }
 
         for (let tileX = startTileX; tileX < endTileX; tileX++) {
             for (let tileY = startTileY; tileY < endTileY; tileY++) {
-                const tileType = this.getTileAt(tileX, tileY); // Now uses chunks if infinite
+                const tileType = this.getTileAt(tileX, tileY);
                 if (tileType === 0) continue;
 
                 const drawX = tileX * this.tileSize;
                 const drawY = tileY * this.tileSize;
-                const px = Math.round(drawX);
-                const py = Math.round(drawY);
-                const pSize = Math.ceil(this.tileSize);
 
-                let color = this.getTexturedColor(tileX, tileY);
-                if (!color) continue;
+                // PIXEL-PERFECT ROUNDING: Use floor instead of round to prevent gaps
+                const px = Math.floor(drawX);
+                const py = Math.floor(drawY);
+                // Use ceiling + 1 to ensure tiles overlap slightly and prevent gaps
+                const pSize = Math.floor(this.tileSize + 0.999);
 
-                // Apply lighting
-                if (this.enableLighting && !this.infiniteWorld) {
-                    const light = this.lighting[tileX][tileY];
-                    if (light >= 1) {
-                        color = this.applyLighting("#000000", light);
-                        return;
-                    } else {
-                        color = this.applyLighting(color, light);
+
+                // Check if we should use texture map
+                if (this.useTextureMap && this.spriteRendererReference &&
+                    this.spriteRendererReference._image && this.spriteRendererReference._isLoaded) {
+
+                    // Apply lighting check
+                    let light = 1;
+                    if (this.enableLighting && !this.infiniteWorld) {
+                        light = this.lighting[tileX][tileY];
+                    }
+
+                    // If fully dark, just draw a black square (skip texture for performance)
+                    if (this.enableLighting && !this.infiniteWorld && light <= 0.01) {
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(px, py, pSize, pSize);
+                        continue;
+                    }
+
+                    const img = this.spriteRendererReference._image;
+                    const imgWidth = this.spriteRendererReference._imageWidth;
+                    const imgHeight = this.spriteRendererReference._imageHeight;
+                    const tileData = this.tileTypes[tileType];
+
+                    // Calculate texture tile dimensions
+                    const textureTileWidth = imgWidth / this.tilesHor;
+                    const textureTileHeight = imgHeight / this.tilesVert;
+
+                    // Get base tile map coordinates
+                    let tileMapX = tileData.tileMapX || 0;
+                    let tileMapY = tileData.tileMapY || 0;
+
+                    // Apply autotiling if enabled
+                    if (tileData.enableAutotile) {
+                        const offset = this.getAutotileOffset(tileX, tileY, tileType);
+                        tileMapX += offset.offsetX;
+                        tileMapY += offset.offsetY;
+                    }
+
+                    // Calculate source coordinates
+                    const sourceX = tileMapX * textureTileWidth;
+                    const sourceY = tileMapY * textureTileHeight;
+
+                    // Draw the texture tile
+                    ctx.drawImage(
+                        img,
+                        Math.floor(sourceX), Math.floor(sourceY), Math.floor(textureTileWidth), Math.floor(textureTileHeight),
+                        px, py, pSize, pSize
+                    );
+
+                    // Apply lighting by drawing a darkening overlay
+                    if (this.enableLighting && !this.infiniteWorld && this.smoothLighting) {
+                        // Get corner light values
+                        const tl = this.getCornerLight(tileX, tileY);
+                        const tr = this.getCornerLight(tileX + 1, tileY);
+                        const bl = this.getCornerLight(tileX, tileY + 1);
+                        const br = this.getCornerLight(tileX + 1, tileY + 1);
+
+                        // Subdivide tile into a grid for smooth bilinear interpolation
+                        const subdivisions = this.darknessSubdivisions; // 4x4 grid per tile
+                        const subSize = pSize / subdivisions;
+
+                        for (let sy = 0; sy < subdivisions; sy++) {
+                            for (let sx = 0; sx < subdivisions; sx++) {
+                                // Calculate interpolation factors for this sub-tile
+                                const u0 = sx / subdivisions;
+                                const u1 = (sx + 1) / subdivisions;
+                                const v0 = sy / subdivisions;
+                                const v1 = (sy + 1) / subdivisions;
+
+                                // Bilinear interpolation for each corner of the sub-tile
+                                const subTL = (1 - u0) * (1 - v0) * (1 - tl) + u0 * (1 - v0) * (1 - tr) +
+                                    (1 - u0) * v0 * (1 - bl) + u0 * v0 * (1 - br);
+                                const subTR = (1 - u1) * (1 - v0) * (1 - tl) + u1 * (1 - v0) * (1 - tr) +
+                                    (1 - u1) * v0 * (1 - bl) + u1 * v0 * (1 - br);
+                                const subBL = (1 - u0) * (1 - v1) * (1 - tl) + u0 * (1 - v1) * (1 - tr) +
+                                    (1 - u0) * v1 * (1 - bl) + u0 * v1 * (1 - br);
+                                const subBR = (1 - u1) * (1 - v1) * (1 - tl) + u1 * (1 - v1) * (1 - tr) +
+                                    (1 - u1) * v1 * (1 - bl) + u1 * v1 * (1 - br);
+
+                                const avgSubDark = (subTL + subTR + subBL + subBR) / 4;
+
+                                const subX = Math.floor(px + sx * subSize);
+                                const subY = Math.floor(py + sy * subSize);
+
+                                ctx.fillStyle = `rgba(0, 0, 0, ${avgSubDark * 2})`;
+                                ctx.fillRect(subX, subY, Math.ceil(subSize), Math.ceil(subSize));
+                            }
+                        }
+                    } else if (this.enableLighting && !this.infiniteWorld && light < 1) {
+                        const darkness = 1 - light;
+                        ctx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
+                        ctx.fillRect(px, py, pSize, pSize);
+                    }
+                } else {
+                    // Original color-based drawing
+                    let color = this.getTexturedColor(tileX, tileY);
+                    if (!color) continue;
+
+                    // Apply lighting
+                    if (this.smoothLighting) {
+                        // Draw base color first
+                        ctx.fillStyle = color;
+                        ctx.fillRect(px, py, pSize + 1, pSize + 1);
+
+                        const neighbors = [
+                            { tile: this.getTileAt(tileX, tileY - 1), dx: 0, dy: -1 },
+                            { tile: this.getTileAt(tileX, tileY + 1), dx: 0, dy: 1 },
+                            { tile: this.getTileAt(tileX - 1, tileY), dx: -1, dy: 0 },
+                            { tile: this.getTileAt(tileX + 1, tileY), dx: 1, dy: 0 },
+                        ];
+
+                        let gradientAngle = 0;
+                        let hasLighterNeighbor = false;
+                        let lightestNeighborLight = 0;
+
+                        for (const n of neighbors) {
+                            const neighborX = tileX + n.dx;
+                            const neighborY = tileY + n.dy;
+
+                            if (neighborX >= 0 && neighborX < this.worldWidthTiles &&
+                                neighborY >= 0 && neighborY < this.worldHeightTiles) {
+                                const neighborLight = this.lighting[neighborX][neighborY];
+
+                                if (neighborLight > light) {
+                                    if (!hasLighterNeighbor || neighborLight > lightestNeighborLight) {
+                                        hasLighterNeighbor = true;
+                                        lightestNeighborLight = neighborLight;
+                                        gradientAngle = Math.atan2(n.dy, n.dx);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (hasLighterNeighbor) {
+                            const centerX = px + pSize / 2;
+                            const centerY = py + pSize / 2;
+                            const distance = pSize * 0.7;
+
+                            const x0 = centerX - Math.cos(gradientAngle) * distance;
+                            const y0 = centerY - Math.sin(gradientAngle) * distance;
+                            const x1 = centerX + Math.cos(gradientAngle) * distance;
+                            const y1 = centerY + Math.sin(gradientAngle) * distance;
+
+                            const gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+
+                            const lighterDarkness = 1 - lightestNeighborLight;
+                            const currentDarkness = 1 - light;
+
+                            gradient.addColorStop(0, `rgba(0, 0, 0, ${lighterDarkness})`);
+                            gradient.addColorStop(1, `rgba(0, 0, 0, ${currentDarkness})`);
+                            ctx.fillStyle = gradient;
+                        } else {
+                            const darkness = 1 - light;
+                            ctx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
+                        }
+
+                        ctx.fillRect(px, py, pSize, pSize);
+                        continue;
+                    }
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(px, py, pSize + 1, pSize + 1);
+
+                    if (this.enableTexture && this.tileTypes[tileType].enableSquares) {
+                        this.drawDecorativeSquares(ctx, tileX, tileY, px, py, pSize, this.tileTypes[tileType]);
                     }
                 }
 
-                ctx.fillStyle = color;
-                ctx.fillRect(px, py, pSize + 1, pSize + 1);
-
-                if (this.enableTexture && this.tileTypes[tileType].enableSquares) {
-                    this.drawDecorativeSquares(ctx, tileX, tileY, px, py, pSize, this.tileTypes[tileType]);
-                }
-
+                // Shading effects (apply to both texture and color modes)
                 if (this.enableShading && tileY > this.grassHeight) {
                     const depth = (tileY - this.grassHeight) / 100;
                     const shadingAlpha = Math.min(depth * this.shadingStrength, this.shadingStrength);
@@ -1592,6 +2140,57 @@ class TilemapSystem extends Module {
         }
 
         ctx.restore();
+    }
+
+    normalizeDarkness(darkness, minDark, maxDark) {
+        // Map darkness from actual range to 0-1 display range
+        if (maxDark - minDark < 0.01) {
+            return darkness; // No normalization needed if range is tiny
+        }
+
+        // Normalize: 0 = brightest in area, 1 = darkest in area
+        const normalized = (darkness - minDark) / (maxDark - minDark);
+        return Math.max(0, Math.min(1, normalized));
+    }
+
+    getCornerLight(cornerX, cornerY) {
+        // A corner is shared by up to 4 tiles - average their lighting
+        const tiles = [
+            { x: cornerX - 1, y: cornerY - 1 },
+            { x: cornerX, y: cornerY - 1 },
+            { x: cornerX - 1, y: cornerY },
+            { x: cornerX, y: cornerY }
+        ];
+
+        let sum = 0;
+        let count = 0;
+
+        for (const t of tiles) {
+            if (t.x >= 0 && t.x < this.worldWidthTiles &&
+                t.y >= 0 && t.y < this.worldHeightTiles) {
+                // Treat air tiles as fully lit (light = 1)
+                const tileType = this.getTileAt(t.x, t.y);
+                const lightValue = tileType === 0 ? 1 : this.lighting[t.x][t.y];
+                sum += lightValue;
+                count++;
+            }
+        }
+
+        return count > 0 ? sum / count : 1;
+    }
+
+    getLightAt(x, y) {
+        // Clamp to valid coordinates
+        const tx = Math.max(0, Math.min(this.worldWidthTiles - 1, Math.floor(x)));
+        const ty = Math.max(0, Math.min(this.worldHeightTiles - 1, Math.floor(y)));
+        return this.lighting[tx][ty];
+    }
+
+    getTileLight(x, y) {
+        if (x >= 0 && x < this.worldWidthTiles && y >= 0 && y < this.worldHeightTiles) {
+            return this.lighting[x][y];
+        }
+        return 1; // Full light outside bounds
     }
 
     preloadChunks(centerX, centerY) {
@@ -2434,6 +3033,21 @@ class TilemapSystem extends Module {
         return tiles;
     }
 
+    createDefaultTileTypes() {
+        return {
+            0: { name: "Air", color: "transparent", solid: false, blend: [], enableTexture: false, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 4, squareSpacing: 8, squareOpacity: 0.6, tileMapX: 0, tileMapY: 0, enableAutotile: false },
+            1: { name: "Grass", color: "#4CAF50", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: true, squareCount: 3, squareSize: 4, squareSpacing: 8, squareOpacity: 0.2, tileMapX: 0, tileMapY: 0, enableAutotile: true },
+            2: { name: "Dirt", color: "#8D6E63", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3, tileMapX: 1, tileMapY: 0, enableAutotile: true },
+            3: { name: "Stone", color: "#607D8B", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.025, textureContrast: 0.4, enableSquares: true, squareCount: 1, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 2, tileMapY: 0, enableAutotile: true },
+            4: { name: "Coal", color: "#37474F", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 3, tileMapY: 0, enableAutotile: false },
+            5: { name: "Iron", color: "#FF7043", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.4, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 0, tileMapY: 1, enableAutotile: false },
+            6: { name: "Gold", color: "#FFD700", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 1, tileMapY: 1, enableAutotile: false },
+            7: { name: "Sand", color: "#F4E4C1", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.015, textureContrast: 0.3, enableSquares: true, squareCount: 2, squareSize: 3, squareSpacing: 6, squareOpacity: 0.3, tileMapX: 2, tileMapY: 1, enableAutotile: false },
+            8: { name: "Snow", color: "#ECEFF1", solid: true, blend: ["#FCFFFF", "#DCEEF1", "#FFFFFF"], enableTexture: true, textureScale: 0.02, textureContrast: 0.2, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.2, tileMapX: 3, tileMapY: 1, enableAutotile: false },
+            9: { name: "Ice", color: "#B3E5FC", solid: true, blend: ["#47575F", "#27373F", "#57676F"], enableTexture: true, textureScale: 0.02, textureContrast: 0.3, enableSquares: false, squareCount: 0, squareSize: 2, squareSpacing: 4, squareOpacity: 0.1, tileMapX: 0, tileMapY: 2, enableAutotile: false }
+        };
+    }
+
     // ========================================
     // SERIALIZATION
     // ========================================
@@ -2452,6 +3066,7 @@ class TilemapSystem extends Module {
             infiniteWorld: this.infiniteWorld,
             worldWidthTiles: this.worldWidthTiles,
             worldHeightTiles: this.worldHeightTiles,
+            chunkLoadRadius: this.chunkLoadRadius,  // Added missing property
             seed: this.seed,
             generationType: this.generationType,
             randomizePerChunk: this.randomizePerChunk,
@@ -2477,8 +3092,13 @@ class TilemapSystem extends Module {
             lighting: this.infiniteWorld ? null : this.lighting,
             enableLighting: this.enableLighting,
             lightingGradientSize: this.lightingGradientSize,
-            chunks: this.infiniteWorld ? [] : Array.from(this.chunks.values())
-
+            chunks: this.infiniteWorld ? [] : Array.from(this.chunks.values()),
+            useTextureMap: this.useTextureMap,
+            tilesHor: this.tilesHor,
+            tilesVert: this.tilesVert,
+            tileTypes: this.tileTypes,
+            smoothLighting: this.smoothLighting,
+            darknessSubdivisions: this.darknessSubdivisions
         };
     }
 
@@ -2486,11 +3106,14 @@ class TilemapSystem extends Module {
         super.fromJSON(data);
         if (!data) return;
 
+        this.chunks.clear();
+
         this.chunkSize = data.chunkSize || 32;
         this.tileSize = data.tileSize || 32;
         this.infiniteWorld = data.infiniteWorld || false;
         this.worldWidthTiles = data.worldWidthTiles || 100;
         this.worldHeightTiles = data.worldHeightTiles || 100;
+        this.chunkLoadRadius = data.chunkLoadRadius || 5;  // Added missing property
         this.seed = data.seed || 12345;
         this.generationType = data.generationType || "terraria";
         this.randomizePerChunk = data.randomizePerChunk !== undefined ? data.randomizePerChunk : false;
@@ -2503,19 +3126,55 @@ class TilemapSystem extends Module {
         this.terrainOctaves = data.terrainOctaves || 3;
         this.terrainPersistence = data.terrainPersistence || 0.5;
         this.mountainHeight = data.mountainHeight || 40;
-        this.showGrid = data.showGrid || false;
-        this.gridColor = data.gridColor || "#444444";
+        this.showGrid = data.showGrid !== undefined ? data.showGrid : true;  // Fixed default to match constructor
+        this.gridColor = data.gridColor || "#e2e2e2ff";  // Fixed default to match constructor
         this.enableBlending = data.enableBlending !== undefined ? data.enableBlending : true;
         this.blendStrength = data.blendStrength !== undefined ? data.blendStrength : 0.7;
         this.enableShading = data.enableShading !== undefined ? data.enableShading : true;
         this.shadingStrength = data.shadingStrength !== undefined ? data.shadingStrength : 0.3;
         this.enableTexture = data.enableTexture !== undefined ? data.enableTexture : true;
-        this.textureScale = data.textureScale || 0.1;
-        this.textureContrast = data.textureContrast || 1.2;
+        this.textureScale = data.textureScale || 0.02;  // Fixed default to match constructor
+        this.textureContrast = data.textureContrast || 0.7;  // Fixed default to match constructor
         this.tiles = this.infiniteWorld ? null : (data.tiles || this.createEmptyTileArray());
         this.lighting = this.infiniteWorld ? null : (data.lighting || this.createEmptyTileArray());
         this.enableLighting = data.enableLighting || false;
         this.lightingGradientSize = data.lightingGradientSize || 5;
+        this.useTextureMap = data.useTextureMap || false;
+        this.tilesHor = data.tilesHor || 4;
+        this.tilesVert = data.tilesVert || 4;
+        this.smoothLighting = data.smoothLighting !== undefined ? data.smoothLighting : true;
+        this.darknessSubdivisions = data.darknessSubdivisions || 2;
+
+        // Restore tile types from saved data, with fallback to default tile types
+        if (data.tileTypes && typeof data.tileTypes === 'object') {
+            // Merge saved tile types with default tile types to ensure all properties are present
+            const defaultTileTypes = this.createDefaultTileTypes();
+            this.tileTypes = {};
+
+            // Include all default tile types
+            for (const [key, defaultTile] of Object.entries(defaultTileTypes)) {
+                if (data.tileTypes[key]) {
+                    // Merge saved properties with defaults
+                    this.tileTypes[key] = { ...defaultTile, ...data.tileTypes[key] };
+                } else {
+                    // Use default if not saved
+                    this.tileTypes[key] = { ...defaultTile };
+                }
+            }
+
+            // Also include any custom tile types that were saved but not in defaults
+            for (const [key, savedTile] of Object.entries(data.tileTypes)) {
+                if (!this.tileTypes[key]) {
+                    this.tileTypes[key] = { ...savedTile };
+                }
+            }
+        } else {
+            // Use default tile types if none saved
+            this.tileTypes = this.createDefaultTileTypes();
+        }
+
+        // Re-expose tile type properties with loaded values
+        this.setupTileTypeProperties();
 
         // Restore chunks if finite and saved
         if (!this.infiniteWorld && data.chunks && Array.isArray(data.chunks)) {
