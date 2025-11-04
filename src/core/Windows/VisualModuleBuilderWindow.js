@@ -108,7 +108,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Node group panels
         this.showGroupPanels = true; // Toggle for showing/hiding group panels
-        this.groupPanels = []; // Store panel data { bounds, color, label, nodes }
+        this.groupPanels = []; // Store panel data { bounds, color, label, nodes, customColor, customLabel }
+        this.draggedGroupPanel = null; // Currently dragged group panel
+        this.groupPanelDragOffset = { x: 0, y: 0 }; // Offset for group dragging
 
         this.setupUI();
         this.setupCanvas();
@@ -1453,7 +1455,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (this.showGroupPanels) {
             const panelButtonHit = this.getGroupPanelButtonHit(x, y);
             if (panelButtonHit) {
-                this.handleGroupPanelButtonClick(panelButtonHit);
+                this.handleGroupPanelButtonClick(panelButtonHit, e);
                 return;
             }
         }
@@ -1536,6 +1538,33 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const x = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
         const y = (e.clientY - rect.top - this.panOffset.y) / this.zoom;
 
+        // Handle group panel dragging with proper zoom handling
+        if (this.draggedGroupPanel) {
+            // Calculate delta in canvas space (already accounts for zoom)
+            const deltaX = x - this.groupPanelDragStart.x;
+            const deltaY = y - this.groupPanelDragStart.y;
+
+            const newPanelX = this.groupPanelInitialBounds.x + deltaX;
+            const newPanelY = this.groupPanelInitialBounds.y + deltaY;
+
+            const actualDeltaX = newPanelX - this.draggedGroupPanel.bounds.x;
+            const actualDeltaY = newPanelY - this.draggedGroupPanel.bounds.y;
+
+            // Move all nodes in the group WITHOUT snapping during drag
+            this.draggedGroupPanel.nodes.forEach(node => {
+                node.x += actualDeltaX;
+                node.y += actualDeltaY;
+            });
+
+            // Update panel bounds
+            this.draggedGroupPanel.bounds.x = newPanelX;
+            this.draggedGroupPanel.bounds.y = newPanelY;
+
+            this.hasUnsavedChanges = true;
+            this.lastMousePos = { x: e.clientX, y: e.clientY };
+            return;
+        }
+
         // Handle panning FIRST before updating lastMousePos
         if (this.isPanning) {
             const dx = e.clientX - this.lastMousePos.x;
@@ -1583,10 +1612,16 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const portHit = this.getPortAtPosition(x, y);
         const interactiveHit = this.getInteractiveElementAtPosition(x, y);
 
+        // Check if hovering over grip
+        const panelHit = this.showGroupPanels ? this.getGroupPanelButtonHit(x, y) : null;
+        const isGripHover = panelHit?.button === 'grip';
+
         if (portHit || this.connectingFrom) {
             this.canvas.style.cursor = 'crosshair';
         } else if (interactiveHit) {
             this.canvas.style.cursor = 'text';
+        } else if (isGripHover) {
+            this.canvas.style.cursor = 'move';
         } else if (nodeHit) {
             this.canvas.style.cursor = 'move';
         } else {
@@ -1610,7 +1645,21 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.connectingFrom = null;
         }
 
+        // Snap group panel nodes to grid on release
+        if (this.draggedGroupPanel) {
+            this.draggedGroupPanel.nodes.forEach(node => {
+                const snapped = this.snapPositionToGrid(node.x, node.y);
+                node.x = snapped.x;
+                node.y = snapped.y;
+            });
+
+            // Recalculate panel bounds based on snapped node positions
+            const bounds = this.calculateGroupBounds(new Set(this.draggedGroupPanel.nodes));
+            this.draggedGroupPanel.bounds = bounds;
+        }
+
         this.draggedNode = null;
+        this.draggedGroupPanel = null;
         this.isPanning = false;
         this.canvas.style.cursor = 'grab';
     }
@@ -1619,8 +1668,22 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Handle document mouse up (catches releases outside canvas)
      */
     handleDocumentMouseUp(e) {
+        // Snap group panel nodes to grid on release (even if released outside canvas)
+        if (this.draggedGroupPanel) {
+            this.draggedGroupPanel.nodes.forEach(node => {
+                const snapped = this.snapPositionToGrid(node.x, node.y);
+                node.x = snapped.x;
+                node.y = snapped.y;
+            });
+
+            // Recalculate panel bounds based on snapped node positions
+            const bounds = this.calculateGroupBounds(new Set(this.draggedGroupPanel.nodes));
+            this.draggedGroupPanel.bounds = bounds;
+        }
+
         // Stop panning and dragging even if mouse is released outside canvas
         this.draggedNode = null;
+        this.draggedGroupPanel = null;
         this.isPanning = false;
         if (this.canvas) {
             this.canvas.style.cursor = 'grab';
@@ -1771,10 +1834,35 @@ class VisualModuleBuilderWindow extends EditorWindow {
     }
 
     /**
+     * Get set of node IDs that are in collapsed groups
+     */
+    getCollapsedNodeIds() {
+        const collapsedNodeIds = new Set();
+        if (this.showGroupPanels) {
+            this.groupPanels.forEach(panel => {
+                if (panel.collapsed) {
+                    panel.nodes.forEach(node => collapsedNodeIds.add(node.id));
+                }
+            });
+        }
+        return collapsedNodeIds;
+    }
+
+    /**
      * Check if clicking on an interactive element and handle it
      */
+    /**
+ * Check if clicking on an interactive element and handle it
+ */
     checkInteractiveElement(x, y, event) {
+        const collapsedNodeIds = this.getCollapsedNodeIds();
+
         for (const node of this.nodes) {
+            // Skip nodes in collapsed groups
+            if (collapsedNodeIds.has(node.id)) {
+                continue;
+            }
+
             // Check expose checkbox
             if (node.hasExposeCheckbox) {
                 const checkboxY = node.y + node.height - (node.hasInput || node.hasToggle || node.hasDropdown || node.hasColorPicker || node.hasPropertyDropdown ? 56 : 28);
@@ -1891,7 +1979,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Get interactive element at position
      */
     getInteractiveElementAtPosition(x, y) {
+        const collapsedNodeIds = this.getCollapsedNodeIds();
+
         for (const node of this.nodes) {
+            // Skip nodes in collapsed groups
+            if (collapsedNodeIds.has(node.id)) {
+                continue;
+            }
+
             if (node.hasInput || node.hasToggle || node.hasDropdown || node.hasColorPicker || node.hasPropertyDropdown) {
                 const elementY = node.y + node.height - 28;
                 const elementX = node.hasToggle ? node.x + node.width / 2 - 15 : node.x + 10;
@@ -2158,8 +2253,16 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Get node at position
      */
     getNodeAtPosition(x, y) {
+        const collapsedNodeIds = this.getCollapsedNodeIds();
+
         for (let i = this.nodes.length - 1; i >= 0; i--) {
             const node = this.nodes[i];
+
+            // Skip nodes in collapsed groups
+            if (collapsedNodeIds.has(node.id)) {
+                continue;
+            }
+
             if (x >= node.x && x <= node.x + node.width &&
                 y >= node.y && y <= node.y + node.height) {
                 return node;
@@ -2172,9 +2275,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Get port at position
      */
     getPortAtPosition(x, y) {
+        const collapsedNodeIds = this.getCollapsedNodeIds();
         const portRadius = 10; // Increased hit area
 
         for (const node of this.nodes) {
+            // Skip nodes in collapsed groups
+            if (collapsedNodeIds.has(node.id)) {
+                continue;
+            }
+
             // Check input ports
             for (let index = 0; index < node.inputs.length; index++) {
                 const portPos = this.getInputPortPosition(node, index);
@@ -2196,7 +2305,6 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         return null;
     }
-
     /**
      * Get input port position
      */
@@ -2360,7 +2468,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
     renderLoop() {
         if (!this.isActive) return; // Stop if window is closed
 
-        this.animationTime += 0.016; // Roughly 60fps
+        // Use actual time delta instead of fixed increment
+        const currentTime = performance.now() / 1000; // Convert to seconds
+        if (!this.lastAnimationTime) {
+            this.lastAnimationTime = currentTime;
+        }
+        const deltaTime = currentTime - this.lastAnimationTime;
+        this.lastAnimationTime = currentTime;
+
+        this.animationTime += deltaTime; // Use actual delta time
         this.render();
         this.animationFrameId = requestAnimationFrame(() => this.renderLoop());
     }
@@ -2379,25 +2495,42 @@ class VisualModuleBuilderWindow extends EditorWindow {
         ctx.translate(this.panOffset.x, this.panOffset.y);
         ctx.scale(this.zoom, this.zoom);
 
+        // Draw grid
+        this.drawGrid(ctx);
+
         // Draw group panels (underneath everything except grid)
         if (this.showGroupPanels) {
             this.updateGroupPanels();
             this.drawGroupPanels(ctx);
         }
 
-        // Draw grid
-        this.drawGrid(ctx);
+        // Get collapsed node IDs once for this render
+        const collapsedNodeIds = this.getCollapsedNodeIds();
 
-        // Draw connections FIRST (underneath nodes)
-        this.connections.forEach(conn => this.drawConnection(ctx, conn));
+        // Draw connections FIRST (underneath nodes) - FILTER OUT connections in collapsed groups
+        this.connections.forEach(conn => {
+            // Hide connection if BOTH endpoints are in collapsed groups
+            const fromNodeCollapsed = collapsedNodeIds.has(conn.from.node.id);
+            const toNodeCollapsed = collapsedNodeIds.has(conn.to.node.id);
+
+            if (!fromNodeCollapsed || !toNodeCollapsed) {
+                // Draw if at least one endpoint is visible
+                this.drawConnection(ctx, conn);
+            }
+        });
 
         // Draw connecting line if in progress
         if (this.connectingFrom) {
             this.drawConnectingLine(ctx);
         }
 
-        // Draw nodes on top
-        this.nodes.forEach(node => this.drawNode(ctx, node));
+        this.nodes.forEach(node => {
+
+            // Skip drawing nodes that are in collapsed groups
+            if (!collapsedNodeIds.has(node.id)) {
+                this.drawNode(ctx, node);
+            }
+        });
 
         ctx.restore();
 
@@ -5992,17 +6125,33 @@ class ${className} extends Module {
      */
     updateGroupPanels() {
         const groups = this.findConnectedGroups();
-        this.groupPanels = groups.map((nodeSet, index) => {
+        const newGroupPanels = groups.map((nodeSet, index) => {
             const bounds = this.calculateGroupBounds(nodeSet);
             const baseColor = this.generateGroupColor(index);
-            
+
+            // Check if we already have a panel for this group (by matching nodes)
+            const existingPanel = this.groupPanels.find(panel => {
+                // Compare node sets
+                if (panel.nodes.length !== nodeSet.size) return false;
+                const panelNodeIds = new Set(panel.nodes.map(n => n.id));
+                for (const node of nodeSet) {
+                    if (!panelNodeIds.has(node.id)) return false;
+                }
+                return true;
+            });
+
             return {
                 bounds,
-                color: baseColor,
-                label: `Group ${index + 1}`,
-                nodes: Array.from(nodeSet)
+                color: existingPanel?.customColor || baseColor,
+                label: existingPanel?.customLabel || `Group ${index + 1}`,
+                nodes: Array.from(nodeSet),
+                customColor: existingPanel?.customColor,
+                customLabel: existingPanel?.customLabel,
+                collapsed: existingPanel?.collapsed || false // Preserve collapsed state
             };
         });
+
+        this.groupPanels = newGroupPanels;
     }
 
     /**
@@ -6044,8 +6193,108 @@ class ${className} extends Module {
      */
     drawGroupPanels(ctx) {
         this.groupPanels.forEach((panel, index) => {
-            const { bounds, color, label } = panel;
+            const { bounds, color, label, collapsed } = panel;
 
+            // If collapsed, draw compact version
+            if (collapsed) {
+                const collapsedWidth = 200;
+                const collapsedHeight = 80;
+                const collapsedX = bounds.x;
+                const collapsedY = bounds.y;
+
+                // Draw compact panel
+                ctx.fillStyle = color;
+                this.roundRect(ctx, collapsedX, collapsedY, collapsedWidth, collapsedHeight, 12);
+                ctx.fill();
+
+                // Draw dashed outline
+                ctx.strokeStyle = this.getLighterColor(color);
+                ctx.lineWidth = 2;
+                ctx.setLineDash([8, 4]);
+                this.roundRect(ctx, collapsedX, collapsedY, collapsedWidth, collapsedHeight, 12);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw grip handle at top center
+                const gripX = collapsedX + collapsedWidth / 2;
+                const gripY = collapsedY + 16;
+                const gripWidth = 60;
+                const gripHeight = 20;
+
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                this.roundRect(ctx, gripX - gripWidth / 2, gripY - gripHeight / 2, gripWidth, gripHeight, 4);
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                for (let i = 0; i < 3; i++) {
+                    const lineY = gripY - 4 + i * 4;
+                    ctx.beginPath();
+                    ctx.moveTo(gripX - 15, lineY);
+                    ctx.lineTo(gripX + 15, lineY);
+                    ctx.stroke();
+                }
+
+                panel.grip = { x: gripX, y: gripY, width: gripWidth, height: gripHeight };
+
+                // Draw buttons
+                const buttonY = collapsedY + 20;
+                const expandButtonX = collapsedX + 20;
+                const colorButtonX = collapsedX + collapsedWidth - 60;
+                const labelButtonX = collapsedX + collapsedWidth - 30;
+
+                // Expand button (left side)
+                ctx.fillStyle = 'rgba(76, 175, 80, 0.8)';
+                ctx.beginPath();
+                ctx.arc(expandButtonX, buttonY, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('▼', expandButtonX, buttonY + 4);
+
+                // Color button
+                ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
+                ctx.beginPath();
+                ctx.arc(colorButtonX, buttonY, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.fillText('🎨', colorButtonX, buttonY + 4);
+
+                // Label button
+                ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
+                ctx.beginPath();
+                ctx.arc(labelButtonX, buttonY, 10, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.fillText('✎', labelButtonX, buttonY + 4);
+
+                panel.expandButton = { x: expandButtonX, y: buttonY, radius: 10 };
+                panel.colorButton = { x: colorButtonX, y: buttonY, radius: 10 };
+                panel.labelButton = { x: labelButtonX, y: buttonY, radius: 10 };
+
+                // Draw label in center
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(label, collapsedX + collapsedWidth / 2, collapsedY + collapsedHeight - 20);
+                ctx.font = '11px Arial';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fillText(`${panel.nodes.length} nodes hidden`, collapsedX + collapsedWidth / 2, collapsedY + collapsedHeight - 5);
+
+                // Store collapsed bounds
+                panel.collapsedBounds = {
+                    x: collapsedX,
+                    y: collapsedY,
+                    width: collapsedWidth,
+                    height: collapsedHeight
+                };
+
+                return;
+            }
+
+            // Normal expanded panel
             // Draw filled rounded rectangle
             ctx.fillStyle = color;
             this.roundRect(ctx, bounds.x, bounds.y, bounds.width, bounds.height, 12);
@@ -6059,10 +6308,52 @@ class ${className} extends Module {
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // Draw grip handle at top center
+            const gripX = bounds.x + bounds.width / 2;
+            const gripY = bounds.y + 16;
+            const gripWidth = 60;
+            const gripHeight = 20;
+
+            // Grip background
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            this.roundRect(ctx, gripX - gripWidth / 2, gripY - gripHeight / 2, gripWidth, gripHeight, 4);
+            ctx.fill();
+
+            // Grip dots/lines
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            for (let i = 0; i < 3; i++) {
+                const lineY = gripY - 4 + i * 4;
+                ctx.beginPath();
+                ctx.moveTo(gripX - 15, lineY);
+                ctx.lineTo(gripX + 15, lineY);
+                ctx.stroke();
+            }
+
+            // Store grip position for interaction
+            panel.grip = {
+                x: gripX,
+                y: gripY,
+                width: gripWidth,
+                height: gripHeight
+            };
+
             // Draw edit buttons in top-right corner
             const buttonY = bounds.y + 20;
+            const collapseButtonX = bounds.x + 20;
             const colorButtonX = bounds.x + bounds.width - 60;
             const labelButtonX = bounds.x + bounds.width - 30;
+
+            // Collapse button (left side)
+            ctx.fillStyle = 'rgba(255, 152, 0, 0.8)';
+            ctx.beginPath();
+            ctx.arc(collapseButtonX, buttonY, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('▲', collapseButtonX, buttonY + 4);
 
             // Color button
             ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
@@ -6085,6 +6376,7 @@ class ${className} extends Module {
             ctx.fillText('✎', labelButtonX, buttonY + 4);
 
             // Store button positions for interaction
+            panel.collapseButton = { x: collapseButtonX, y: buttonY, radius: 10 };
             panel.colorButton = { x: colorButtonX, y: buttonY, radius: 10 };
             panel.labelButton = { x: labelButtonX, y: buttonY, radius: 10 };
 
@@ -6102,7 +6394,36 @@ class ${className} extends Module {
     getGroupPanelButtonHit(x, y) {
         for (let i = 0; i < this.groupPanels.length; i++) {
             const panel = this.groupPanels[i];
-            
+
+            // Check grip first
+            if (panel.grip) {
+                const gripLeft = panel.grip.x - panel.grip.width / 2;
+                const gripRight = panel.grip.x + panel.grip.width / 2;
+                const gripTop = panel.grip.y - panel.grip.height / 2;
+                const gripBottom = panel.grip.y + panel.grip.height / 2;
+
+                if (x >= gripLeft && x <= gripRight && y >= gripTop && y <= gripBottom) {
+                    return { panel, button: 'grip', index: i };
+                }
+            }
+
+            // Check collapse/expand button
+            if (panel.collapseButton) {
+                const dx = x - panel.collapseButton.x;
+                const dy = y - panel.collapseButton.y;
+                if (Math.sqrt(dx * dx + dy * dy) <= panel.collapseButton.radius) {
+                    return { panel, button: 'collapse', index: i };
+                }
+            }
+
+            if (panel.expandButton) {
+                const dx = x - panel.expandButton.x;
+                const dy = y - panel.expandButton.y;
+                if (Math.sqrt(dx * dx + dy * dy) <= panel.expandButton.radius) {
+                    return { panel, button: 'expand', index: i };
+                }
+            }
+
             if (panel.colorButton) {
                 const dx = x - panel.colorButton.x;
                 const dy = y - panel.colorButton.y;
@@ -6125,14 +6446,38 @@ class ${className} extends Module {
     /**
      * Handle group panel button click
      */
-    handleGroupPanelButtonClick(hit) {
+    handleGroupPanelButtonClick(hit, mouseEvent) {
         const { panel, button, index } = hit;
 
-        if (button === 'color') {
-            // Show color picker
+        if (button === 'collapse') {
+            panel.collapsed = true;
+            return;
+        } else if (button === 'expand') {
+            panel.collapsed = false;
+            return;
+        } else if (button === 'grip') {
+            // Start dragging the group
+            const rect = this.canvas.getBoundingClientRect();
+            const x = (mouseEvent.clientX - rect.left - this.panOffset.x) / this.zoom;
+            const y = (mouseEvent.clientY - rect.top - this.panOffset.y) / this.zoom;
+
+            this.draggedGroupPanel = panel;
+
+            // Store initial mouse position in canvas space (already transformed)
+            this.groupPanelDragStart = { x, y };
+
+            // Store initial bounds
+            this.groupPanelInitialBounds = {
+                x: panel.bounds.x,
+                y: panel.bounds.y
+            };
+
+            return;
+        } else if (button === 'color') {
+            // Show color picker at mouse position
             const input = document.createElement('input');
             input.type = 'color';
-            // Convert rgba to hex (rough approximation)
+            // Convert rgba to hex
             const match = panel.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
             if (match) {
                 const r = parseInt(match[1]).toString(16).padStart(2, '0');
@@ -6141,24 +6486,38 @@ class ${className} extends Module {
                 input.value = `#${r}${g}${b}`;
             }
             input.style.position = 'fixed';
-            input.style.opacity = '0';
+            input.style.left = `${mouseEvent.clientX}px`;
+            input.style.top = `${mouseEvent.clientY}px`;
+            input.style.zIndex = '10000';
             document.body.appendChild(input);
-            
+
             input.addEventListener('change', (e) => {
                 const hex = e.target.value;
                 const r = parseInt(hex.substr(1, 2), 16);
                 const g = parseInt(hex.substr(3, 2), 16);
                 const b = parseInt(hex.substr(5, 2), 16);
-                panel.color = `rgba(${r}, ${g}, ${b}, 0.15)`;
+                const newColor = `rgba(${r}, ${g}, ${b}, 0.15)`;
+                panel.color = newColor;
+                panel.customColor = newColor; // Store as custom color
                 document.body.removeChild(input);
             });
-            
-            input.click();
+
+            input.addEventListener('blur', () => {
+                setTimeout(() => {
+                    if (document.body.contains(input)) {
+                        document.body.removeChild(input);
+                    }
+                }, 100);
+            });
+
+            // Trigger click after a short delay to ensure it's rendered
+            setTimeout(() => input.click(), 10);
         } else if (button === 'label') {
             // Show prompt for new label
             const newLabel = prompt('Enter group label:', panel.label);
             if (newLabel !== null && newLabel.trim() !== '') {
                 panel.label = newLabel.trim();
+                panel.customLabel = newLabel.trim(); // Store as custom label
             }
         }
     }
