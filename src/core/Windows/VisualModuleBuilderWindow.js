@@ -72,7 +72,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         this.isActive = true;
         this.animationFrameId = null;
-        
+
         // Store bound event handlers for cleanup
         this.boundHandlers = {
             keydown: null,
@@ -312,7 +312,12 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => {
-                        const varName = ctx.getInputValue(node, 'name') || 'myConst';
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        // Extract from quotes if it's a string literal
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myConst';
                         const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `const ${varName} = ${varValue};`;
                     }
@@ -327,7 +332,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => {
-                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
                         const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `let ${varName} = ${varValue};`;
                     }
@@ -342,7 +351,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => {
-                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
                         const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `var ${varName} = ${varValue};`;
                     }
@@ -355,7 +368,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     inputs: ['name'],
                     outputs: ['value'],
                     codeGen: (node, ctx) => {
-                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
                         return `(${varName} !== undefined ? ${varName} : variables['${varName}'])`;
                     }
                 },
@@ -368,7 +385,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     outputs: ['flow'],
                     wrapFlowNode: false,
                     codeGen: (node, ctx) => {
-                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
                         const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `(${varName} = ${varValue})`;
                     }
@@ -381,13 +402,19 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     inputs: ['name'],
                     outputs: ['value'],
                     codeGen: (node, ctx) => {
-                        let propName = ctx.getInputValue(node, 'name') || 'property';
-                        // Strip quotes if it's a string literal
-                        propName = propName.replace(/^'|'$/g, '').replace(/^"|"$/g, '');
+                        // Get the raw value without cleaning
+                        let propName = ctx.getInputValue(node, 'name', false);
+                        
+                        // If it's a string literal (wrapped in quotes), extract the content
+                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
+                            propName = propName.slice(1, -1); // Remove quotes
+                        }
+                        
                         // Validate it's a valid identifier
                         if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
                             propName = 'property'; // fallback to default if invalid
                         }
+                        
                         return `(this.${propName} !== undefined ? this.${propName} : this.properties['${propName}'])`;
                     }
                 },
@@ -401,7 +428,19 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     wrapFlowNode: false,
                     hasExposeCheckbox: true,
                     codeGen: (node, ctx) => {
-                        const propName = ctx.getInputValue(node, 'name').replace(/^'|'$/g, '').replace(/^"|"$/g, '');
+                        // Get the raw value without cleaning
+                        let propName = ctx.getInputValue(node, 'name', false);
+                        
+                        // If it's a string literal (wrapped in quotes), extract the content
+                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
+                            propName = propName.slice(1, -1); // Remove quotes
+                        }
+                        
+                        // Validate it's a valid identifier, use default if invalid
+                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
+                            propName = 'property';
+                        }
+                        
                         const propValue = ctx.getInputValue(node, 'value');
 
                         if (node.exposeProperty) {
@@ -685,7 +724,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     label: 'Vector2',
                     color: '#1e3c44ff',
                     icon: 'fas fa-arrows-alt',
-                    inputs: ['name','x', 'y'],
+                    inputs: ['name', 'x', 'y'],
                     outputs: ['x', 'y'],
                     hasInput: false,
                     codeGen: (node, ctx) => {
@@ -2472,6 +2511,18 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
             this.panOffset.x += dx;
             this.panOffset.y += dy;
             this.lastMousePos = { x: e.clientX, y: e.clientY };
+
+            // Update text editor position if it's open
+            if (this.editingElement && this.editingNode) {
+                this.updateTextEditorPosition(
+                    this.editingElement,
+                    this.editingNodeCanvasX,
+                    this.editingNodeCanvasY,
+                    this.editingNodeCanvasWidth,
+                    this.editingNodeCanvasHeight
+                );
+            }
+
             return;
         }
 
@@ -2674,6 +2725,17 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         this.panOffset.y = mouseY - (mouseY - this.panOffset.y) * zoomChange;
 
         this.zoom = newZoom;
+
+        // Update text editor position if it's open
+        if (this.editingElement && this.editingNode) {
+            this.updateTextEditorPosition(
+                this.editingElement,
+                this.editingNodeCanvasX,
+                this.editingNodeCanvasY,
+                this.editingNodeCanvasWidth,
+                this.editingNodeCanvasHeight
+            );
+        }
     }
 
     /**
@@ -2984,7 +3046,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
     /**
      * Get the value for an output port with special handling for setProperty propName output
      */
-    getOutputPortValue(node, portIndex) {
+    getOutputPortValue(node, portIndex, removeUnwantedChars = false) {
         // Special case: setProperty node's propName output (index 1)
         if (node.type === 'setProperty' && portIndex === 1) {
             // Get the property name from the 'name' input
@@ -2993,7 +3055,11 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
             );
 
             if (nameConn && nameConn.from.node.type === 'string') {
-                return `'${nameConn.from.node.value || 'property'}'`;
+                let value = nameConn.from.node.value || 'property';
+                if (removeUnwantedChars) {
+                    value = this.cleanupString(value);
+                }
+                return `'${value}'`;
             }
             return "'property'";
         }
@@ -3004,14 +3070,38 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
             const ctx = {
                 nodes: this.nodes,
                 connections: this.connections,
-                getInputValue: (n, portName) => this.getInputValue(n, portName),
+                getInputValue: (n, portName) => this.getInputValue(n, portName, removeUnwantedChars),
                 generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, ''),
                 indent: ''
             };
-            return nodeTemplate.codeGen(node, ctx);
+            let result = nodeTemplate.codeGen(node, ctx);
+
+            if (removeUnwantedChars && typeof result === 'string') {
+                result = this.cleanupString(result);
+            }
+
+            return result;
         }
 
         return 'undefined';
+    }
+
+    /**
+     * Clean up a string by removing quotes and non-alphabetic characters from the start
+     */
+    cleanupString(str) {
+        if (typeof str !== 'string') return str;
+
+        // Remove surrounding quotes (single or double)
+        let cleaned = str.replace(/^['"]|['"]$/g, '');
+
+        // Remove non-alphabetic characters from the beginning
+        cleaned = cleaned.replace(/^[^a-zA-Z]+/, '');
+
+        // Replace spaces with camelCase, but keep the first word lowercase
+        cleaned = cleaned.replace(/ (\w)/g, (_, c) => c.toUpperCase());
+
+        return cleaned;
     }
 
     /**
@@ -3160,7 +3250,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         // 1. flow output -> flow input (normal flow)
         // 2. flow input -> callback/event output (e.g., node with flow input -> onChange output)
         // 3. callback/event output -> flow input (e.g., onChange output -> node with flow input)
-        
+
         if (fromIsFlow || toIsFlow) {
             // At least one side is a flow type
             if (!fromIsFlow || !toIsFlow) {
@@ -3192,6 +3282,12 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
      * Delete a node and its connections
      */
     deleteNode(node) {
+        // Prevent deletion of special group input/output nodes
+        if (node.isGroupInput || node.isGroupOutput) {
+            this.showNotification('Cannot delete group input/output nodes!', 'warning');
+            return;
+        }
+
         this.nodes = this.nodes.filter(n => n.id !== node.id);
         this.connections = this.connections.filter(c =>
             c.from.node.id !== node.id && c.to.node.id !== node.id
@@ -3231,7 +3327,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
      */
     renderLoop() {
         if (!this.isActive) return; // Stop if window is closed
-        
+
         this.animationTime += 0.016; // Roughly 60fps
         this.render();
         this.animationFrameId = requestAnimationFrame(() => this.renderLoop());
@@ -3345,7 +3441,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
 
         // Open group button for group nodes
         if (node.isGroup) {
-            const openX = node.x + node.width - 32;
+            const openX = node.x + node.width - 36;
             const openY = node.y + 16;
             ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
             ctx.beginPath();
@@ -3361,7 +3457,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
 
         // Edit name button for group nodes
         if (node.isGroup) {
-            const editX = node.x + (node.width / 2);
+            const editX = node.x + (node.width / 2) - 24;
             const editY = node.y;
             ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
             ctx.beginPath();
@@ -3426,10 +3522,10 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     ctx.fillStyle = '#ccc';
                     ctx.font = '11px Arial';
                     ctx.textAlign = 'right';
-                    
+
                     // Show the output label
                     ctx.fillText(output, pos.x - 12, pos.y + 4);
-                    
+
                     // If this is an onChange/callback output and the node has a value, show it
                     const isCallbackOutput = ['onChange', 'onComplete', 'onError', 'onSuccess', 'onFailure', 'then', 'catch', 'finally', 'callback'].includes(output);
                     if (isCallbackOutput && node.value !== undefined && node.value !== null) {
@@ -3437,7 +3533,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         ctx.font = '9px monospace';
                         ctx.textAlign = 'right';
                         let displayValue = node.value;
-                        
+
                         // Format the value for display
                         if (typeof displayValue === 'string' && displayValue.length > 15) {
                             displayValue = displayValue.substring(0, 12) + '...';
@@ -3446,7 +3542,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         } else if (typeof displayValue === 'number') {
                             displayValue = displayValue.toString();
                         }
-                        
+
                         ctx.fillText(`(${displayValue})`, pos.x - 12, pos.y + 16);
                     }
                 }
@@ -3933,22 +4029,163 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         // Load group canvas
         this.currentGroup = groupNode;
         this.nodes = groupNode.groupData.nodes;
-        this.connections = groupNode.groupData.connections;
+
+        // FIX: Rebuild connections with proper node references
+        // The saved connections have references to old node objects,
+        // we need to map them to the newly loaded nodes
+        const nodeMap = new Map();
+        this.nodes.forEach(node => nodeMap.set(node.id, node));
+
+        this.connections = (groupNode.groupData.connections || []).map(conn => {
+            // Handle both serialized format (with nodeId) and object reference format
+            const fromNodeId = conn.from.nodeId || conn.from.node?.id;
+            const toNodeId = conn.to.nodeId || conn.to.node?.id;
+
+            const fromNode = nodeMap.get(fromNodeId);
+            const toNode = nodeMap.get(toNodeId);
+
+            if (!fromNode || !toNode) {
+                console.warn('Failed to restore connection:', conn);
+                return null;
+            }
+
+            return {
+                from: {
+                    node: fromNode,
+                    portIndex: conn.from.portIndex,
+                    isOutput: true
+                },
+                to: {
+                    node: toNode,
+                    portIndex: conn.to.portIndex,
+                    isOutput: false
+                }
+            };
+        }).filter(conn => conn !== null); // Remove any failed connections
+
         this.panOffset = groupNode.groupData.panOffset;
         this.zoom = groupNode.groupData.zoom;
+
+        // Add a special "Group Input" node if it doesn't exist
+        this.ensureGroupInputNode(groupNode);
 
         this.showNotification(`Opened group: ${groupNode.label}`, 'info');
         this.updateGroupBreadcrumb();
     }
 
+    /**
+     * Ensure the group has a special input node that represents the group's input connector
+     */
+    ensureGroupInputNode(groupNode) {
+        // Check if the group has a flow input (most groups do)
+        const hasFlowInput = groupNode.inputs && groupNode.inputs.includes('flow');
+
+        if (!hasFlowInput) return; // No input connector, no need for input node
+
+        // Check if we already have a group input node
+        const existingInputNode = this.nodes.find(n => n.type === 'groupInput');
+
+        if (!existingInputNode) {
+            // Create the group input node
+            const inputNode = {
+                id: 'groupInput_' + groupNode.id,
+                type: 'groupInput',
+                label: 'Group Input',
+                color: '#4a148c',
+                icon: 'fas fa-sign-in-alt',
+                x: 100,
+                y: 50,
+                width: 180,
+                height: 80,
+                inputs: [],
+                outputs: ['flow'], // Output that will connect to internal nodes
+                hasInput: false,
+                hasToggle: false,
+                hasDropdown: false,
+                hasColorPicker: false,
+                hasPropertyDropdown: false,
+                hasExposeCheckbox: false,
+                isGroup: false,
+                isGroupInput: true, // Special flag
+                value: null,
+                dropdownValue: null,
+                dropdownOptions: null,
+                selectedProperty: null,
+                exposeProperty: false,
+                groupName: ''
+            };
+
+            this.nodes.unshift(inputNode); // Add at the beginning
+        }
+
+        // Also check if we need a group output node
+        const hasFlowOutput = groupNode.outputs && groupNode.outputs.includes('flow');
+
+        if (hasFlowOutput) {
+            const existingOutputNode = this.nodes.find(n => n.type === 'groupOutput');
+
+            if (!existingOutputNode) {
+                const outputNode = {
+                    id: 'groupOutput_' + groupNode.id,
+                    type: 'groupOutput',
+                    label: 'Group Output',
+                    color: '#1a237e',
+                    icon: 'fas fa-sign-out-alt',
+                    x: 400,
+                    y: 50,
+                    width: 180,
+                    height: 80,
+                    inputs: ['flow'], // Input that will receive from internal nodes
+                    outputs: [],
+                    hasInput: false,
+                    hasToggle: false,
+                    hasDropdown: false,
+                    hasColorPicker: false,
+                    hasPropertyDropdown: false,
+                    hasExposeCheckbox: false,
+                    isGroup: false,
+                    isGroupOutput: true, // Special flag
+                    value: null,
+                    dropdownValue: null,
+                    dropdownOptions: null,
+                    selectedProperty: null,
+                    exposeProperty: false,
+                    groupName: ''
+                };
+
+                this.nodes.push(outputNode);
+            }
+        }
+    }
+
     exitGroup() {
         if (this.groupHistory.length === 0) return;
 
-        // Save current group state
+        // Save current group state (but remove special group input/output nodes first)
         if (this.currentGroup) {
+            // Filter out the special group input/output nodes before saving
+            const filteredNodes = this.nodes.filter(n => !n.isGroupInput && !n.isGroupOutput);
+            const filteredConnections = this.connections.filter(c => {
+                const fromNodeValid = filteredNodes.find(n => n.id === c.from.node.id);
+                const toNodeValid = filteredNodes.find(n => n.id === c.to.node.id);
+                return fromNodeValid && toNodeValid;
+            });
+
+            // FIX: Save connections in a serializable format that preserves node references
             this.currentGroup.groupData = {
-                nodes: this.nodes,
-                connections: this.connections,
+                nodes: filteredNodes,
+                connections: filteredConnections.map(c => ({
+                    from: {
+                        nodeId: c.from.node.id,
+                        portIndex: c.from.portIndex,
+                        node: c.from.node  // Keep reference for immediate re-entry
+                    },
+                    to: {
+                        nodeId: c.to.node.id,
+                        portIndex: c.to.portIndex,
+                        node: c.to.node  // Keep reference for immediate re-entry
+                    }
+                })),
                 panOffset: this.panOffset,
                 zoom: this.zoom
             };
@@ -4208,317 +4445,6 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
     }
 
     /**
-     * Generate JavaScript code from visual nodes
-     */
-    generateModuleCode() {
-        const className = this.moduleName;
-        const namespace = this.moduleNamespace;
-        const description = this.moduleDescription;
-        const iconClass = this.moduleIcon;
-        const moduleColor = this.moduleColor || '#2c3f4eff';
-        const allowMultiple = this.allowMultiple;
-        const drawInEditor = this.drawInEditor;
-
-        // Find event nodes
-        const startNode = this.nodes.find(n => n.type === 'start');
-        const loopNode = this.nodes.find(n => n.type === 'loop');
-        const drawNode = this.nodes.find(n => n.type === 'draw');
-        const destroyNode = this.nodes.find(n => n.type === 'onDestroy');
-        const methodNodes = this.nodes.filter(n => n.type === 'method');
-
-        // Find all exposed properties (setProperty nodes with exposeProperty = true AND variable nodes)
-        const exposedSetPropertyNodes = this.nodes.filter(n => n.type === 'setProperty' && n.exposeProperty);
-        const exposedVariableNodes = this.nodes.filter(n =>
-            ['numberVar', 'stringVar', 'booleanVar', 'colorVar', 'vector2Var', 'assetVar', 'scriptVar'].includes(n.type)
-            && n.exposeProperty
-        );
-
-        const allExposedNodes = [...exposedSetPropertyNodes, ...exposedVariableNodes];
-
-        const groupedExposed = {};
-        allExposedNodes.forEach(node => {
-            const groupName = node.groupName || 'General';
-            if (!groupedExposed[groupName]) {
-                groupedExposed[groupName] = [];
-            }
-            groupedExposed[groupName].push(node);
-        });
-
-        let code = `/**
-* ${className} - Visual Module
-* Generated by Visual Module Builder
-* ${description}
-*/
-class ${className} extends Module {
-    static allowMultiple = ${allowMultiple};
-    static namespace = "${namespace}";
-    static description = "${description}";
-    static iconClass = "${iconClass}";
-    static color = "${moduleColor}";
-    
-    constructor() {
-        super("${className}");
-        
-`;
-
-        // Add exposed properties to constructor
-        if (Object.keys(groupedExposed).length > 0) {
-            code += `\n        // Exposed properties\n`;
-            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
-                nodes.forEach(node => {
-                    let propName = null;
-                    let defaultValue = '""'; // Will be updated below
-                    let propType = 'string';
-                    let options = '';
-
-                    // Handle setProperty nodes
-                    if (node.type === 'setProperty') {
-                        const nameConn = this.connections.find(c =>
-                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
-                        );
-
-                        if (nameConn && nameConn.from.node.type === 'string') {
-                            propName = nameConn.from.node.value || 'property';
-
-                            // Determine property type AND get default value
-                            const valueConn = this.connections.find(c =>
-                                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
-                            );
-
-                            if (valueConn) {
-                                const valueNode = valueConn.from.node;
-                                if (valueNode.type === 'string') {
-                                    propType = 'string';
-                                    defaultValue = `"${valueNode.value || ''}"`;
-                                } else if (valueNode.type === 'number') {
-                                    propType = 'number';
-                                    defaultValue = valueNode.value || '0';
-                                    options = ', { min: -999999, max: 999999';
-                                } else if (valueNode.type === 'boolean') {
-                                    propType = 'boolean';
-                                    defaultValue = valueNode.value ? 'true' : 'false';
-                                } else if (valueNode.type === 'color') {
-                                    propType = 'color';
-                                    defaultValue = `"${valueNode.value || '#ffffff'}"`;
-                                } else if (valueNode.type === 'vector2') {
-                                    propType = 'vector2';
-                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
-                                }
-                            }
-
-                            // Check for onChange connection
-                            //const onChangeIndex = node.outputs.indexOf('onChange');
-                            //if (onChangeIndex !== -1) {
-                            //    const onChangeConn = this.connections.find(c =>
-                            //        c.from.node.id === node.id && c.from.portIndex === onChangeIndex
-                            //    );
-
-                                //if (onChangeConn) {
-                                    // Add onChange callback to options
-                                    if (!options) {
-                                    options = ', { onChange: (val) => { this.' + propName + ' = val; }';
-                                    } else {
-                                        options += ', onChange: (val) => { this.' + propName + ' = val; }';
-                                    }
-                                //}
-                            //}
-
-                            // Close options object if it was opened
-                            if (options) {
-                                options += '\n      }';
-                            }
-                        }
-                    }
-                    // Handle variable nodes
-                    else {
-                        propName = node.groupName || 'property';
-
-                        if (node.type === 'numberVar') {
-                            propType = 'number';
-                            defaultValue = node.value || '0';
-                            options = ', { min: 0, max: 100 }';
-                        } else if (node.type === 'stringVar') {
-                            propType = 'string';
-                            defaultValue = `"${node.value || ''}"`;
-                        } else if (node.type === 'booleanVar') {
-                            propType = 'boolean';
-                            defaultValue = node.value ? 'true' : 'false';
-                        } else if (node.type === 'colorVar') {
-                            propType = 'color';
-                            defaultValue = `"${node.value || '#ffffff'}"`;
-                        } else if (node.type === 'vector2Var') {
-                            propType = 'vector2';
-                            defaultValue = `new Vector2(0, 0)`;
-                        } else if (node.type === 'assetVar') {
-                            propType = 'asset';
-                            defaultValue = 'null';
-                        } else if (node.type === 'scriptVar') {
-                            propType = 'script';
-                            defaultValue = `""`;
-                        }
-                    }
-
-                    if (propName) {
-                        code += `        this.${propName} = ${defaultValue};\n`;
-                    }
-                });
-            }
-        }
-
-        code += `    }\n`;
-
-        // Generate style method with exposed properties
-        if (Object.keys(groupedExposed).length > 0) {
-            code += `\n    style(style) {\n`;
-
-            // Iterate through each group
-            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
-                code += `        style.startGroup("${groupName}", false, {\n`;
-                code += `            backgroundColor: 'rgba(100,150,255,0.1)',\n`;
-                code += `            borderRadius: '6px',\n`;
-                code += `            padding: '8px'\n`;
-                code += `        });\n`;
-
-                nodes.forEach(node => {
-                    let propName = null;
-                    let propType = 'string';
-                    let options = '';
-
-                    // Handle setProperty nodes
-                    if (node.type === 'setProperty') {
-                        const nameConn = this.connections.find(c =>
-                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
-                        );
-
-                        if (nameConn && nameConn.from.node.type === 'string') {
-                            propName = nameConn.from.node.value || 'property';
-
-                            // Determine property type
-                            const valueConn = this.connections.find(c =>
-                                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
-                            );
-
-                            if (valueConn) {
-                                const valueNode = valueConn.from.node;
-                                if (valueNode.type === 'string') {
-                                    propType = 'string';
-                                } else if (valueNode.type === 'number') {
-                                    propType = 'number';
-                                    options = ', { min: -999999, max: 999999';
-                                } else if (valueNode.type === 'boolean') {
-                                    propType = 'boolean';
-                                }
-                            }
-
-                            // Check for onChange connection
-                            //const onChangeIndex = node.outputs.indexOf('onChange');
-                            //if (onChangeIndex !== -1) {
-                            //    const onChangeConn = this.connections.find(c =>
-                            //        c.from.node.id === node.id && c.from.portIndex === onChangeIndex
-                            //    );
-
-                                //if (onChangeConn) {
-                                // Add onChange callback to options
-                                if (!options) {
-                                    options = ', { onChange: (val) => { this.' + propName + ' = val; }';
-                                } else {
-                                    options += ', onChange: (val) => { this.' + propName + ' = val; }';
-                                }
-                                //}
-                            //}
-
-                            // Close options object if it was opened
-                            if (options) {
-                                options += ' }';
-                            }
-                        }
-                    }
-                    // Handle variable nodes
-                    else {
-                        propName = node.groupName || 'property';
-
-                        if (node.type === 'numberVar') {
-                            propType = 'number';
-                            options = ', { min: 0, max: 100 }';
-                        } else if (node.type === 'stringVar') {
-                            propType = 'string';
-                        } else if (node.type === 'booleanVar') {
-                            propType = 'boolean';
-                        } else if (node.type === 'colorVar') {
-                            propType = 'color';
-                        } else if (node.type === 'vector2Var') {
-                            propType = 'vector2';
-                        } else if (node.type === 'assetVar') {
-                            propType = 'asset';
-                        } else if (node.type === 'scriptVar') {
-                            propType = 'script';
-                        }
-                    }
-
-                    if (propName) {
-                        code += `        style.exposeProperty("${propName}", "${propType}", this.${propName}${options});\n`;
-                    }
-                });
-
-                code += `        style.endGroup();\n\n`;
-            }
-
-            code += `    }\n`;
-        }
-
-        // Generate start method
-        if (startNode) {
-            code += `\n    start() {\n`;
-            code += this.generateCodeForFlowNode(startNode, '        ');
-            code += `    }\n`;
-        }
-
-        // Generate loop method
-        if (loopNode) {
-            code += `\n    loop(deltaTime) {\n`;
-            code += this.generateCodeForFlowNode(loopNode, '        ');
-            code += `    }\n`;
-        }
-
-        // Generate draw method
-        if (drawNode) {
-            code += `\n    draw(ctx) {\n`;
-            code += this.generateCodeForFlowNode(drawNode, '        ');
-            code += `    }\n`;
-        }
-
-        // Generate onDestroy method
-        if (destroyNode) {
-            code += `\n    onDestroy() {\n`;
-            code += this.generateCodeForFlowNode(destroyNode, '        ');
-            code += `    }\n`;
-        }
-
-        // Generate custom methods from method blocks
-        methodNodes.forEach(methodNode => {
-            const methodSignature = methodNode.value || 'customMethod()';
-            code += `\n    ${methodSignature} {\n`;
-            code += this.generateMethodBlockCode(methodNode, '        ');
-            code += `    }\n`;
-        });
-
-        // Generate methods from groups without flow connections
-        const groupsWithoutFlow = this.nodes.filter(n => n.isGroup && n.type === 'group' && !this.hasFlowInput(n));
-        groupsWithoutFlow.forEach(groupNode => {
-            const methodName = this.sanitizeMethodName(groupNode.label);
-            code += `\n    ${methodName}() {\n`;
-            code += this.generateGroupAsMethod(groupNode, '        ');
-            code += `    }\n`;
-        });
-
-        code += `}\n\n`;
-        code += `// Register the module\n`;
-        code += `window.${className} = ${className};\n`;
-
-        return code;
-    }
-
-    /**
      * Check if a node has a flow input connection
      */
     hasFlowInput(node) {
@@ -4542,7 +4468,7 @@ class ${className} extends Module {
      */
     generateMethodBlockCode(methodNode, indent) {
         if (!methodNode.groupData || !methodNode.groupData.nodes) {
-            return `${indent}// Empty method`;
+            return `${indent}// Empty method\n`;
         }
 
         return this.generateGroupContentCode(methodNode.groupData.nodes, methodNode.groupData.connections, indent);
@@ -4553,7 +4479,7 @@ class ${className} extends Module {
      */
     generateGroupAsMethod(groupNode, indent) {
         if (!groupNode.groupData || !groupNode.groupData.nodes) {
-            return `${indent}// Empty group`;
+            return `${indent}// Empty group\n`;
         }
 
         return this.generateGroupContentCode(groupNode.groupData.nodes, groupNode.groupData.connections, indent);
@@ -4572,25 +4498,50 @@ class ${className} extends Module {
         const ctx = {
             nodes: nodes,
             connections: connections,
-            getInputValue: (node, portName) => this.getInputValueFromContext(node, portName, nodes, connections),
-            getOutputValue: (node, portName) => this.getOutputValueFromContext(node, portName, nodes, connections),
-            generateGroupCode: (node) => this.generateGroupContentCode(node.groupData.nodes, node.groupData.connections, indent),
+            getInputValue: (node, portName, removeUnwantedChars = false) =>
+                this.getInputValueFromContext(node, portName, nodes, connections, removeUnwantedChars),
+            getOutputValue: (node, portName, removeUnwantedChars = false) =>
+                this.getOutputValueFromContext(node, portName, nodes, connections, removeUnwantedChars),
+            generateGroupCode: (node) =>
+                this.generateGroupContentCode(node.groupData.nodes, node.groupData.connections, indent),
             indent: indent
         };
 
-        // Find all nodes without flow inputs (entry points)
-        const entryNodes = nodes.filter(n => {
-            const flowInputIndex = n.inputs?.indexOf('flow');
-            if (flowInputIndex === -1 || flowInputIndex === undefined) return true;
+        // Filter out special group input/output nodes for code generation
+        const codeNodes = nodes.filter(n => !n.isGroupInput && !n.isGroupOutput);
 
-            return !connections.some(conn =>
-                conn.to.node.id === n.id && conn.to.portIndex === flowInputIndex
-            );
-        });
+        // Find entry points - nodes that connect from the group input node OR have no flow input
+        const groupInputNode = nodes.find(n => n.isGroupInput);
+        const groupOutputNode = nodes.find(n => n.isGroupOutput);
+        let entryNodes = [];
+
+        if (groupInputNode) {
+            // Find nodes connected to the group input's flow output
+            const flowOutputIndex = 0; // Group input only has one output
+            const connectedNodes = connections
+                .filter(c => c.from.node.id === groupInputNode.id && c.from.portIndex === flowOutputIndex)
+                .map(c => c.to.node);
+            entryNodes = connectedNodes;
+        } else {
+            // Fallback: find nodes without flow inputs
+            entryNodes = codeNodes.filter(n => {
+                const flowInputIndex = n.inputs?.indexOf('flow');
+                if (flowInputIndex === -1 || flowInputIndex === undefined) return true;
+
+                return !connections.some(conn =>
+                    conn.to.node.id === n.id && conn.to.portIndex === flowInputIndex
+                );
+            });
+        }
+
+        // FIX: Mark the group output node so we don't generate duplicate output code
+        if (groupOutputNode) {
+            visited.add(groupOutputNode.id);
+        }
 
         // Generate code for each entry point
         entryNodes.forEach(node => {
-            code += this.generateNodeCodeRecursive(node, indent, visited, ctx, nodes, connections);
+            code += this.generateNodeCodeRecursive(node, indent, visited, ctx, codeNodes, connections);
         });
 
         return code || `${indent}// No code generated`;
@@ -4638,6 +4589,51 @@ class ${className} extends Module {
      */
     generateNodeCodeRecursive(node, indent, visited, ctx, nodes, connections) {
         if (!node || visited.has(node.id)) return '';
+
+        // FIX: Skip group input/output nodes during code generation
+        if (node.isGroupInput || node.isGroupOutput) {
+            // Mark as visited but don't generate code
+            visited.add(node.id);
+
+            // If it's a group output, find what connects to it and continue the flow
+            if (node.isGroupOutput && node.inputs && node.inputs.includes('flow')) {
+                const flowInputIndex = node.inputs.indexOf('flow');
+                // Find nodes that connect TO this group output (these should flow through)
+                const incomingConnections = connections.filter(c =>
+                    c.to.node.id === node.id && c.to.portIndex === flowInputIndex
+                );
+
+                // Continue processing those nodes
+                let code = '';
+                incomingConnections.forEach(conn => {
+                    const sourceNode = conn.from.node;
+                    if (!visited.has(sourceNode.id)) {
+                        code += this.generateNodeCodeRecursive(sourceNode, indent, visited, ctx, nodes, connections);
+                    }
+                });
+                return code;
+            }
+
+            // For group input, continue to connected nodes
+            if (node.isGroupInput && node.outputs && node.outputs.includes('flow')) {
+                const flowOutputIndex = node.outputs.indexOf('flow');
+                const outgoingConnections = connections.filter(c =>
+                    c.from.node.id === node.id && c.from.portIndex === flowOutputIndex
+                );
+
+                let code = '';
+                outgoingConnections.forEach(conn => {
+                    const targetNode = conn.to.node;
+                    if (!visited.has(targetNode.id)) {
+                        code += this.generateNodeCodeRecursive(targetNode, indent, visited, ctx, nodes, connections);
+                    }
+                });
+                return code;
+            }
+
+            return '';
+        }
+
         visited.add(node.id);
 
         let code = '';
@@ -4693,7 +4689,15 @@ class ${className} extends Module {
                     code += `${indent}// Group: ${node.label}\n`;
                     code += this.generateGroupContentCode(node.groupData.nodes, node.groupData.connections, indent);
                 } else {
-                    code += `${indent}${generatedCode}\n`;
+                    // FIX: Only output as statement if node has flow input or output
+                    // Value-only nodes should only be used when referenced, not output standalone
+                    const hasFlowInput = node.inputs && node.inputs.includes('flow');
+                    const hasFlowOutput = node.outputs && node.outputs.includes('flow');
+
+                    if (hasFlowInput || hasFlowOutput) {
+                        code += `${indent}${generatedCode}\n`;
+                    }
+                    // Otherwise, skip - this is a value node that will be used as input elsewhere
                 }
             }
         }
@@ -4779,12 +4783,137 @@ class ${className} extends Module {
     
     constructor() {
         super("${className}");
-        
 `;
 
         // Add exposed properties to constructor
         if (Object.keys(groupedExposed).length > 0) {
-            code += `\n        // Exposed properties\n`;
+            // Generate summary of exposed properties
+            const totalProps = allExposedNodes.length;
+            const propTypes = {};
+            allExposedNodes.forEach(node => {
+                let type = 'string';
+                if (node.type === 'setProperty') {
+                    const valueConn = this.connections.find(c =>
+                        c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
+                    );
+                    if (valueConn) {
+                        const valueNode = valueConn.from.node;
+                        if (valueNode.type === 'number') type = 'number';
+                        else if (valueNode.type === 'boolean') type = 'boolean';
+                        else if (valueNode.type === 'color') type = 'color';
+                        else if (valueNode.type === 'vector2') type = 'vector2';
+                    }
+                } else {
+                    if (node.type === 'numberVar') type = 'number';
+                    else if (node.type === 'booleanVar') type = 'boolean';
+                    else if (node.type === 'colorVar') type = 'color';
+                    else if (node.type === 'vector2Var') type = 'vector2';
+                    else if (node.type === 'assetVar') type = 'asset';
+                    else if (node.type === 'scriptVar') type = 'script';
+                }
+                propTypes[type] = (propTypes[type] || 0) + 1;
+            });
+
+            const typeSummary = Object.entries(propTypes)
+                .map(([type, count]) => `${count} ${type}${count > 1 ? 's' : ''}`)
+                .join(', ');
+
+            code += `
+        /**
+         * EXPOSED PROPERTIES (${totalProps} total: ${typeSummary})
+         * These properties are initialized with default values and can be modified
+         * in the inspector panel. Each property is editable at runtime and will be
+         * saved/loaded with the module instance.
+         */
+`;
+
+            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
+                code += `        // ${groupName} Group (${nodes.length} ${nodes.length === 1 ? 'property' : 'properties'})\n`;
+                nodes.forEach(node => {
+                    let propName = null;
+                    let defaultValue = '""';
+                    let propType = 'string';
+                    let options = '';
+
+                    // Handle setProperty nodes
+                    if (node.type === 'setProperty') {
+                        const nameConn = this.connections.find(c =>
+                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
+                        );
+
+                        if (nameConn && nameConn.from.node.type === 'string') {
+                            propName = nameConn.from.node.value || 'property';
+
+                            const valueConn = this.connections.find(c =>
+                                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
+                            );
+
+                            if (valueConn) {
+                                const valueNode = valueConn.from.node;
+                                if (valueNode.type === 'string') {
+                                    propType = 'string';
+                                    defaultValue = `"${valueNode.value || ''}"`;
+                                } else if (valueNode.type === 'number') {
+                                    propType = 'number';
+                                    defaultValue = valueNode.value || '0';
+                                    options = ', { min: -999999, max: 999999 }';
+                                } else if (valueNode.type === 'boolean') {
+                                    propType = 'boolean';
+                                    defaultValue = valueNode.value ? 'true' : 'false';
+                                } else if (valueNode.type === 'color') {
+                                    propType = 'color';
+                                    defaultValue = `"${valueNode.value || '#ffffff'}"`;
+                                } else if (valueNode.type === 'vector2') {
+                                    propType = 'vector2';
+                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
+                                }
+                            }
+                        }
+                    }
+                    // Handle variable nodes
+                    else {
+                        propName = node.groupName || 'property';
+
+                        if (node.type === 'numberVar') {
+                            propType = 'number';
+                            defaultValue = node.value || '0';
+                            options = ', { min: 0, max: 100 }';
+                        } else if (node.type === 'stringVar') {
+                            propType = 'string';
+                            defaultValue = `"${node.value || ''}"`;
+                        } else if (node.type === 'booleanVar') {
+                            propType = 'boolean';
+                            defaultValue = node.value ? 'true' : 'false';
+                        } else if (node.type === 'colorVar') {
+                            propType = 'color';
+                            defaultValue = `"${node.value || '#ffffff'}"`;
+                        } else if (node.type === 'vector2Var') {
+                            propType = 'vector2';
+                            defaultValue = `new Vector2(0, 0)`;
+                        } else if (node.type === 'assetVar') {
+                            propType = 'asset';
+                            defaultValue = 'null';
+                        } else if (node.type === 'scriptVar') {
+                            propType = 'script';
+                            defaultValue = `""`;
+                        }
+                    }
+
+                    if (propName) {
+                        code += `        this.${propName} = ${defaultValue};\n`;
+                    }
+                });
+            }
+
+            // Add this.exposeProperty calls for each property
+            code += `
+        /**
+         * PROPERTY REGISTRATION
+         * Each property is registered with the engine's inspector system using exposeProperty().
+         * The onChange callbacks ensure that the internal property values stay synchronized
+         * when modified through the inspector UI.
+         */
+`;
             for (const [groupName, nodes] of Object.entries(groupedExposed)) {
                 nodes.forEach(node => {
                     let propName = null;
@@ -4813,27 +4942,25 @@ class ${className} extends Module {
                                 } else if (valueNode.type === 'number') {
                                     propType = 'number';
                                     defaultValue = valueNode.value || '0';
-                                    options = ', { min: -999999, max: 999999';
+                                    options = ', { min: -999999, max: 999999, onChange: (val) => { this.' + propName + ' = val; } }';
                                 } else if (valueNode.type === 'boolean') {
                                     propType = 'boolean';
                                     defaultValue = valueNode.value ? 'true' : 'false';
+                                    options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                                 } else if (valueNode.type === 'color') {
                                     propType = 'color';
                                     defaultValue = `"${valueNode.value || '#ffffff'}"`;
+                                    options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                                 } else if (valueNode.type === 'vector2') {
                                     propType = 'vector2';
-                                    defaultValue = `{ x: ${valueNode.value?.x || 0}, y: ${valueNode.value?.y || 0}`;
+                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
+                                    options = ', { onChange: (val) => { this.' + propName + ' = new Vector2(val.x, val.y); } }';
                                 }
                             }
 
+                            // Add onChange for string type if not already added
                             if (!options) {
-                                options = ', { onChange: (val) => { this.' + propName + ' = val; }';
-                            } else {
-                                options += ', onChange: (val) => { this.' + propName + ' = val; }';
-                            }
-
-                            if (options) {
-                                options += '\n      }';
+                                options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                             }
                         }
                     }
@@ -4844,30 +4971,36 @@ class ${className} extends Module {
                         if (node.type === 'numberVar') {
                             propType = 'number';
                             defaultValue = node.value || '0';
-                            options = ', { min: 0, max: 100 }';
+                            options = ', { min: 0, max: 100, onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'stringVar') {
                             propType = 'string';
                             defaultValue = `"${node.value || ''}"`;
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'booleanVar') {
                             propType = 'boolean';
                             defaultValue = node.value ? 'true' : 'false';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'colorVar') {
                             propType = 'color';
                             defaultValue = `"${node.value || '#ffffff'}"`;
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'vector2Var') {
                             propType = 'vector2';
-                            defaultValue = `{ x: 0, y: 0 }`;
+                            defaultValue = `new Vector2(0, 0)`;
+                            options = ', { onChange: (val) => { this.' + propName + ' = new Vector2(val.x, val.y); } }';
                         } else if (node.type === 'assetVar') {
                             propType = 'asset';
                             defaultValue = 'null';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'scriptVar') {
                             propType = 'script';
                             defaultValue = `""`;
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         }
                     }
 
                     if (propName) {
-                        code += `        this.${propName} = ${defaultValue};\n`;
+                        code += `        this.exposeProperty("${propName}", "${propType}", ${defaultValue}${options});\n`;
                     }
                 });
             }
@@ -4877,9 +5010,18 @@ class ${className} extends Module {
 
         // Generate style method with exposed properties
         if (Object.keys(groupedExposed).length > 0) {
-            code += `\n    style(style) {\n`;
+            code += `
+    /**
+     * INSPECTOR STYLE CONFIGURATION
+     * Defines how properties are displayed in the inspector panel.
+     * Properties are organized into collapsible groups with custom styling.
+     * Each group can have its own background color, border radius, and padding.
+     */
+    style(style) {
+`;
 
             for (const [groupName, nodes] of Object.entries(groupedExposed)) {
+                code += `        // "${groupName}" group contains ${nodes.length} ${nodes.length === 1 ? 'property' : 'properties'}\n`;
                 code += `        style.startGroup("${groupName}", false, {\n`;
                 code += `            backgroundColor: 'rgba(100,150,255,0.1)',\n`;
                 code += `            borderRadius: '6px',\n`;
@@ -4912,16 +5054,17 @@ class ${className} extends Module {
                                     options = ', { min: -999999, max: 999999';
                                 } else if (valueNode.type === 'boolean') {
                                     propType = 'boolean';
+                                } else if (valueNode.type === 'color') {
+                                    propType = 'color';
+                                } else if (valueNode.type === 'vector2') {
+                                    propType = 'vector2';
                                 }
                             }
 
-                            const onChangeIndex = node.outputs.indexOf('onChange');
-                            if (onChangeIndex !== -1) {
-                                if (!options) {
-                                    options = ', { onChange: (val) => { this.' + propName + ' = val; }';
-                                } else {
-                                    options += ', onChange: (val) => { this.' + propName + ' = val; }';
-                                }
+                            if (!options) {
+                                options = ', { onChange: (val) => { this.' + propName + ' = val; }';
+                            } else {
+                                options += ', onChange: (val) => { this.' + propName + ' = val; }';
                             }
 
                             if (options) {
@@ -4934,19 +5077,25 @@ class ${className} extends Module {
 
                         if (node.type === 'numberVar') {
                             propType = 'number';
-                            options = ', { min: 0, max: 100 }';
+                            options = ', { min: 0, max: 100, onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'stringVar') {
                             propType = 'string';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'booleanVar') {
                             propType = 'boolean';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'colorVar') {
                             propType = 'color';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'vector2Var') {
                             propType = 'vector2';
+                            options = ', { onChange: (val) => { this.' + propName + ' = new Vector2(val.x, val.y); } }';
                         } else if (node.type === 'assetVar') {
                             propType = 'asset';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         } else if (node.type === 'scriptVar') {
                             propType = 'script';
+                            options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                         }
                     }
 
@@ -4963,51 +5112,222 @@ class ${className} extends Module {
 
         // Generate start method
         if (startNode) {
-            code += `\n    start() {\n`;
+            code += `
+    /**
+     * START METHOD
+     * Called once when the module is first initialized.
+     * Use this for setting up initial state, loading resources, or
+     * performing one-time setup operations.
+     */
+    start() {
+`;
             code += this.generateCodeForFlowNode(startNode, '        ');
             code += `    }\n`;
         }
 
         // Generate loop method
         if (loopNode) {
-            code += `\n    loop(deltaTime) {\n`;
+            code += `
+    /**
+     * LOOP METHOD
+     * Called every frame during the game loop.
+     * @param {number} deltaTime - Time elapsed since the last frame (in seconds)
+     * Use deltaTime for frame-rate independent movement and animations.
+     */
+    loop(deltaTime) {
+`;
             code += this.generateCodeForFlowNode(loopNode, '        ');
             code += `    }\n`;
         }
 
         // Generate draw method
         if (drawNode) {
-            code += `\n    draw(ctx) {\n`;
+            code += `
+    /**
+     * DRAW METHOD
+     * Called every frame after loop() for rendering operations.
+     * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
+     * All drawing operations (shapes, text, images) should be placed here.
+     */
+    draw(ctx) {
+`;
             code += this.generateCodeForFlowNode(drawNode, '        ');
             code += `    }\n`;
         }
 
         // Generate onDestroy method
         if (destroyNode) {
-            code += `\n    onDestroy() {\n`;
+            code += `
+    /**
+     * ON DESTROY METHOD
+     * Called when the module is being removed or the game object is destroyed.
+     * Use this for cleanup operations: removing listeners, clearing intervals,
+     * releasing resources, or saving final state.
+     */
+    onDestroy() {
+`;
             code += this.generateCodeForFlowNode(destroyNode, '        ');
             code += `    }\n`;
         }
 
         // Generate custom methods from method blocks
-        methodNodes.forEach(methodNode => {
-            const methodSignature = methodNode.value || 'customMethod()';
-            code += `\n    ${methodSignature} {\n`;
-            code += this.generateMethodBlockCode(methodNode, '        ');
-            code += `    }\n`;
-        });
+        if (methodNodes.length > 0) {
+            code += `
+    /**
+     * CUSTOM METHODS (${methodNodes.length} total)
+     * User-defined methods created in the visual editor.
+     * These can be called from other nodes or methods within this module.
+     */
+`;
+            methodNodes.forEach(methodNode => {
+                const methodSignature = methodNode.value || 'customMethod()';
+                code += `    ${methodSignature} {\n`;
+                code += this.generateMethodBlockCode(methodNode, '        ');
+                code += `    }\n\n`;
+            });
+        }
 
         // Generate methods from normal groups WITHOUT flow connections (not method blocks)
         const groupsWithoutFlow = this.nodes.filter(n => n.isGroup && n.type === 'group' && !this.hasFlowInput(n));
-        groupsWithoutFlow.forEach(groupNode => {
-            const methodName = this.sanitizeMethodName(groupNode.label);
-            code += `\n    ${methodName}() {\n`;
-            code += this.generateGroupAsMethod(groupNode, '        ');
+        if (groupsWithoutFlow.length > 0) {
+            code += `
+    /**
+     * GROUP METHODS (${groupsWithoutFlow.length} total)
+     * Methods generated from standalone groups in the visual editor.
+     * Groups without flow connections are automatically converted to callable methods.
+     */
+`;
+            groupsWithoutFlow.forEach(groupNode => {
+                const methodName = this.sanitizeMethodName(groupNode.label);
+                code += `    ${methodName}() {\n`;
+                code += this.generateGroupAsMethod(groupNode, '        ');
+                code += `    }\n\n`;
+            });
+        }
+
+        // Generate toJSON method
+        if (Object.keys(groupedExposed).length > 0) {
+            const propertyNames = [];
+            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
+                nodes.forEach(node => {
+                    let propName = null;
+
+                    if (node.type === 'setProperty') {
+                        const nameConn = this.connections.find(c =>
+                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
+                        );
+                        if (nameConn && nameConn.from.node.type === 'string') {
+                            propName = nameConn.from.node.value || 'property';
+                        }
+                    } else {
+                        propName = node.groupName || 'property';
+                    }
+
+                    if (propName && !propertyNames.includes(propName)) {
+                        propertyNames.push(propName);
+                    }
+                });
+            }
+
+            code += `
+    /**
+     * SERIALIZATION (toJSON)
+     * Converts the module's current state to a JSON object for saving.
+     * This includes all ${propertyNames.length} exposed ${propertyNames.length === 1 ? 'property' : 'properties'} and their current values.
+     * Called automatically when saving scenes or exporting game objects.
+     */
+    toJSON() {
+        return {
+            ...super.toJSON(),
+`;
+
+            propertyNames.forEach(propName => {
+                code += `            ${propName}: this.${propName},\n`;
+            });
+
+            code += `        };\n`;
             code += `    }\n`;
-        });
+
+            // Generate fromJSON method
+            code += `
+    /**
+     * DESERIALIZATION (fromJSON)
+     * Restores the module's state from a saved JSON object.
+     * Loads all ${propertyNames.length} exposed ${propertyNames.length === 1 ? 'property' : 'properties'} with fallback to default values.
+     * Called automatically when loading scenes or instantiating saved game objects.
+     * @param {Object} data - The saved module data
+     */
+    fromJSON(data) {
+        super.fromJSON(data);
+
+        if (!data) return;
+
+`;
+
+            // Restore each property with default values
+            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
+                nodes.forEach(node => {
+                    let propName = null;
+                    let defaultValue = '""';
+
+                    if (node.type === 'setProperty') {
+                        const nameConn = this.connections.find(c =>
+                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
+                        );
+                        if (nameConn && nameConn.from.node.type === 'string') {
+                            propName = nameConn.from.node.value || 'property';
+
+                            const valueConn = this.connections.find(c =>
+                                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
+                            );
+
+                            if (valueConn) {
+                                const valueNode = valueConn.from.node;
+                                if (valueNode.type === 'string') {
+                                    defaultValue = `"${valueNode.value || ''}"`;
+                                } else if (valueNode.type === 'number') {
+                                    defaultValue = valueNode.value || '0';
+                                } else if (valueNode.type === 'boolean') {
+                                    defaultValue = valueNode.value ? 'true' : 'false';
+                                } else if (valueNode.type === 'color') {
+                                    defaultValue = `"${valueNode.value || '#ffffff'}"`;
+                                } else if (valueNode.type === 'vector2') {
+                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
+                                }
+                            }
+                        }
+                    } else {
+                        propName = node.groupName || 'property';
+
+                        if (node.type === 'numberVar') {
+                            defaultValue = node.value || '0';
+                        } else if (node.type === 'stringVar') {
+                            defaultValue = `"${node.value || ''}"`;
+                        } else if (node.type === 'booleanVar') {
+                            defaultValue = node.value ? 'true' : 'false';
+                        } else if (node.type === 'colorVar') {
+                            defaultValue = `"${node.value || '#ffffff'}"`;
+                        } else if (node.type === 'vector2Var') {
+                            defaultValue = `new Vector2(0, 0)`;
+                        } else if (node.type === 'assetVar') {
+                            defaultValue = 'null';
+                        } else if (node.type === 'scriptVar') {
+                            defaultValue = `""`;
+                        }
+                    }
+
+                    if (propName && !propertyNames.slice(0, propertyNames.indexOf(propName)).includes(propName)) {
+                        code += `        this.${propName} = data.${propName} !== undefined ? data.${propName} : ${defaultValue};\n`;
+                    }
+                });
+            }
+
+            code += `    }\n`;
+        }
 
         code += `}\n\n`;
-        code += `// Register the module\n`;
+        code += `// Register the module with the engine\n`;
+        code += `// This makes ${className} available globally and to the module system\n`;
         code += `window.${className} = ${className};\n`;
 
         return code;
@@ -5027,7 +5347,7 @@ class ${className} extends Module {
     /**
      * Get input value for a node port from a specific context
      */
-    getInputValueFromContext(node, portName, nodes, connections) {
+    getInputValueFromContext(node, portName, nodes, connections, removeUnwantedChars = false) {
         const portIndex = node.inputs.indexOf(portName);
         if (portIndex === -1) return '0';
 
@@ -5044,12 +5364,16 @@ class ${className} extends Module {
                 const ctx = {
                     nodes: nodes,
                     connections: connections,
-                    getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
-                    getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
+                    getInputValue: (n, p, clean = false) => this.getInputValueFromContext(n, p, nodes, connections, clean),
+                    getOutputValue: (n, p, clean = false) => this.getOutputValueFromContext(n, p, nodes, connections, clean),
                     generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
                     indent: '        '
                 };
-                return nodeTemplate.codeGen(sourceNode, ctx);
+                let result = nodeTemplate.codeGen(sourceNode, ctx);
+                if (removeUnwantedChars && typeof result === 'string') {
+                    result = this.cleanupString(result);
+                }
+                return result;
             }
         }
 
@@ -5132,7 +5456,7 @@ class ${className} extends Module {
     /**
      * Get output value for a node port from a specific context
      */
-    getOutputValueFromContext(node, portName, nodes, connections) {
+    getOutputValueFromContext(node, portName, nodes, connections, removeUnwantedChars = false) {
         const portIndex = node.outputs.indexOf(portName);
         if (portIndex === -1) return '';
 
@@ -5143,63 +5467,75 @@ class ${className} extends Module {
 
         if (connection) {
             const targetNode = connection.to.node;
-            
+
             // Check if target node has a flow input - if so, generate flow code
             const hasFlowInput = targetNode.inputs && targetNode.inputs.includes('flow');
-            
+
             if (hasFlowInput) {
                 // Generate flow code for this node and its connected chain
                 const visited = new Set();
                 const ctx = {
                     nodes: nodes,
                     connections: connections,
-                    getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
-                    getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
+                    getInputValue: (n, p, clean = false) => this.getInputValueFromContext(n, p, nodes, connections, clean),
+                    getOutputValue: (n, p, clean = false) => this.getOutputValueFromContext(n, p, nodes, connections, clean),
                     generateGroupCode: (n) => this.generateGroupContentCode(
-                        n.groupData.nodes, 
-                        n.groupData.connections, 
+                        n.groupData.nodes,
+                        n.groupData.connections,
                         '    '
                     ),
                     indent: '    '
                 };
-                
+
                 // Generate the code chain starting from this node
                 let code = this.generateNodeCodeRecursive(
-                    targetNode, 
-                    '    ', 
-                    visited, 
-                    ctx, 
-                    nodes, 
+                    targetNode,
+                    '    ',
+                    visited,
+                    ctx,
+                    nodes,
                     connections
                 );
-                
-                return code.trim();
+
+                let result = code.trim();
+                if (removeUnwantedChars && typeof result === 'string') {
+                    result = this.cleanupString(result);
+                }
+                return result;
             } else {
                 // Not a flow node - generate as a value expression
                 const nodeTemplate = this.getNodeTemplate(targetNode.type);
-                
+
                 if (nodeTemplate && nodeTemplate.codeGen) {
                     const ctx = {
                         nodes: nodes,
                         connections: connections,
-                        getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
-                        getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
+                        getInputValue: (n, p, clean = false) => this.getInputValueFromContext(n, p, nodes, connections, clean),
+                        getOutputValue: (n, p, clean = false) => this.getOutputValueFromContext(n, p, nodes, connections, clean),
                         generateGroupCode: (n) => this.generateGroupContentCode(
-                            n.groupData.nodes, 
-                            n.groupData.connections, 
+                            n.groupData.nodes,
+                            n.groupData.connections,
                             '    '
                         ),
                         indent: '    '
                     };
-                    
-                    return nodeTemplate.codeGen(targetNode, ctx);
+
+                    let result = nodeTemplate.codeGen(targetNode, ctx);
+                    if (removeUnwantedChars && typeof result === 'string') {
+                        result = this.cleanupString(result);
+                    }
+                    return result;
                 }
-                
+
                 // Fallback for simple value nodes
                 if (targetNode.type === 'number') {
                     return targetNode.value || '0';
                 } else if (targetNode.type === 'string') {
-                    return `'${targetNode.value || ''}'`;
+                    let value = `'${targetNode.value || ''}'`;
+                    if (removeUnwantedChars) {
+                        value = this.cleanupString(value);
+                    }
+                    return value;
                 } else if (targetNode.type === 'boolean') {
                     return targetNode.value ? 'true' : 'false';
                 }
@@ -5212,7 +5548,7 @@ class ${className} extends Module {
     /**
      * Get input value for a node port
      */
-    getInputValue(node, portName) {
+    getInputValue(node, portName, removeUnwantedChars = false) {
         const portIndex = node.inputs.indexOf(portName);
         if (portIndex === -1) return '0';
 
@@ -5230,8 +5566,8 @@ class ${className} extends Module {
                 const ctx = {
                     nodes: this.nodes,
                     connections: this.connections,
-                    getInputValue: (n, p) => this.getInputValue(n, p),
-                    getOutputValue: (n, p) => this.getOutputValue(n, p),
+                    getInputValue: (n, p, clean = false) => this.getInputValue(n, p, clean),
+                    getOutputValue: (n, p, clean = false) => this.getOutputValue(n, p, clean),
                     generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
                     indent: '        ',
                     sourcePortIndex: sourcePortIndex,
@@ -5246,20 +5582,35 @@ class ${className} extends Module {
 
                     // Check if this node has a multiOutputAccess function or if we should auto-append
                     if (nodeTemplate.multiOutputAccess) {
-                        return nodeTemplate.multiOutputAccess(baseValue, outputPortName, sourceNode, ctx);
+                        let result = nodeTemplate.multiOutputAccess(baseValue, outputPortName, sourceNode, ctx);
+                        if (removeUnwantedChars && typeof result === 'string') {
+                            result = this.cleanupString(result);
+                        }
+                        return result;
                     } else {
                         // Default behavior: append .portName to access the property
-                        return `${baseValue}.${outputPortName}`;
+                        let result = `${baseValue}.${outputPortName}`;
+                        if (removeUnwantedChars && typeof result === 'string') {
+                            result = this.cleanupString(result);
+                        }
+                        return result;
                     }
                 }
 
+                if (removeUnwantedChars && typeof baseValue === 'string') {
+                    return this.cleanupString(baseValue);
+                }
                 return baseValue;
             }
 
             // Fallback for nodes without templates (backwards compatibility)
             if (sourceNode.type === 'number' || sourceNode.type === 'string' || sourceNode.type === 'boolean') {
                 if (sourceNode.type === 'string') {
-                    return `'${sourceNode.value || ''}'`;
+                    let value = `'${sourceNode.value || ''}'`;
+                    if (removeUnwantedChars) {
+                        value = this.cleanupString(value);
+                    }
+                    return value;
                 }
                 return sourceNode.value || '0';
             }
@@ -5273,7 +5624,7 @@ class ${className} extends Module {
      * This allows output ports to act like "code injection points" where connected nodes
      * will have their code generated and inserted at the call site
      */
-    getOutputValue(node, portName) {
+    getOutputValue(node, portName, removeUnwantedChars = false) {
         const portIndex = node.outputs.indexOf(portName);
         if (portIndex === -1) return '';
 
@@ -5284,64 +5635,76 @@ class ${className} extends Module {
 
         if (connection) {
             const targetNode = connection.to.node;
-            
+
             // Check if target node has a flow input - if so, generate flow code
             const hasFlowInput = targetNode.inputs && targetNode.inputs.includes('flow');
-            
+
             if (hasFlowInput) {
                 // Generate flow code for this node and its connected chain
                 const visited = new Set();
                 const ctx = {
                     nodes: this.nodes,
                     connections: this.connections,
-                    getInputValue: (n, p) => this.getInputValue(n, p),
-                    getOutputValue: (n, p) => this.getOutputValue(n, p),
+                    getInputValue: (n, p, clean = false) => this.getInputValue(n, p, clean),
+                    getOutputValue: (n, p, clean = false) => this.getOutputValue(n, p, clean),
                     generateGroupCode: (n) => this.generateGroupContentCode(
-                        n.groupData.nodes, 
-                        n.groupData.connections, 
+                        n.groupData.nodes,
+                        n.groupData.connections,
                         '    '
                     ),
                     indent: '    '
                 };
-                
+
                 // Generate the code chain starting from this node
                 let code = this.generateNodeCodeRecursive(
-                    targetNode, 
-                    '    ', 
-                    visited, 
-                    ctx, 
-                    this.nodes, 
+                    targetNode,
+                    '    ',
+                    visited,
+                    ctx,
+                    this.nodes,
                     this.connections
                 );
-                
+
                 // Remove the indentation from the first line if needed
-                return code.trim();
+                let result = code.trim();
+                if (removeUnwantedChars && typeof result === 'string') {
+                    result = this.cleanupString(result);
+                }
+                return result;
             } else {
                 // Not a flow node - generate as a value expression
                 const nodeTemplate = this.getNodeTemplate(targetNode.type);
-                
+
                 if (nodeTemplate && nodeTemplate.codeGen) {
                     const ctx = {
                         nodes: this.nodes,
                         connections: this.connections,
-                        getInputValue: (n, p) => this.getInputValue(n, p),
-                        getOutputValue: (n, p) => this.getOutputValue(n, p),
+                        getInputValue: (n, p, clean = false) => this.getInputValue(n, p, clean),
+                        getOutputValue: (n, p, clean = false) => this.getOutputValue(n, p, clean),
                         generateGroupCode: (n) => this.generateGroupContentCode(
-                            n.groupData.nodes, 
-                            n.groupData.connections, 
+                            n.groupData.nodes,
+                            n.groupData.connections,
                             '    '
                         ),
                         indent: '    '
                     };
-                    
-                    return nodeTemplate.codeGen(targetNode, ctx);
+
+                    let result = nodeTemplate.codeGen(targetNode, ctx);
+                    if (removeUnwantedChars && typeof result === 'string') {
+                        result = this.cleanupString(result);
+                    }
+                    return result;
                 }
-                
+
                 // Fallback for simple value nodes
                 if (targetNode.type === 'number') {
                     return targetNode.value || '0';
                 } else if (targetNode.type === 'string') {
-                    return `'${targetNode.value || ''}'`;
+                    let value = `'${targetNode.value || ''}'`;
+                    if (removeUnwantedChars) {
+                        value = this.cleanupString(value);
+                    }
+                    return value;
                 } else if (targetNode.type === 'boolean') {
                     return targetNode.value ? 'true' : 'false';
                 }
@@ -6016,38 +6379,19 @@ class ${className} extends Module {
         // Remove existing editor if any
         this.closeTextEditor();
 
-        // Convert canvas coordinates to screen coordinates
-        const screenX = x * this.zoom + this.panOffset.x;
-        const screenY = y * this.zoom + this.panOffset.y;
-        const screenW = width * this.zoom;
-        const screenH = height * this.zoom;
+        // Store the canvas-space coordinates for repositioning
+        this.editingNodeCanvasX = x;
+        this.editingNodeCanvasY = y;
+        this.editingNodeCanvasWidth = width;
+        this.editingNodeCanvasHeight = height;
 
         // Create input element
         const input = document.createElement('input');
         input.type = 'text';
         input.value = node.value || '';
-        input.style.cssText = `
-            position: absolute;
-            left: ${screenX}px;
-            top: ${screenY}px;
-            width: ${screenW}px;
-            height: ${screenH}px;
-            background: #333;
-            border: 2px solid #00ffff;
-            border-radius: 4px;
-            color: #fff;
-            font-size: ${11 * this.zoom}px;
-            font-family: monospace;
-            padding: 2px 4px;
-            box-sizing: border-box;
-            z-index: 10000;
-            outline: none;
-        `;
 
-        // Get canvas position
-        const canvasRect = this.canvas.getBoundingClientRect();
-        input.style.left = (canvasRect.left + screenX) + 'px';
-        input.style.top = (canvasRect.top + screenY) + 'px';
+        // Initial positioning
+        this.updateTextEditorPosition(input, x, y, width, height);
 
         // Add to body
         document.body.appendChild(input);
@@ -6066,7 +6410,10 @@ class ${className} extends Module {
 
         // Handle blur and enter key
         const closeEditor = () => {
-            this.closeTextEditor();
+            // Only close if the element still exists
+            if (this.editingElement) {
+                this.closeTextEditor();
+            }
         };
 
         input.addEventListener('blur', closeEditor);
@@ -6081,6 +6428,38 @@ class ${className} extends Module {
         input.addEventListener('mousedown', (e) => {
             e.stopPropagation();
         });
+    }
+
+    /**
+     * Update text editor position based on current zoom and pan
+     */
+    updateTextEditorPosition(input, canvasX, canvasY, canvasWidth, canvasHeight) {
+        // Convert canvas coordinates to screen coordinates
+        const screenX = canvasX * this.zoom + this.panOffset.x;
+        const screenY = canvasY * this.zoom + this.panOffset.y;
+        const screenW = canvasWidth * this.zoom;
+        const screenH = canvasHeight * this.zoom;
+
+        // Get canvas position
+        const canvasRect = this.canvas.getBoundingClientRect();
+
+        input.style.cssText = `
+            position: absolute;
+            left: ${canvasRect.left + screenX}px;
+            top: ${canvasRect.top + screenY}px;
+            width: ${screenW}px;
+            height: ${screenH}px;
+            background: #333;
+            border: 2px solid #00ffff;
+            border-radius: 4px;
+            color: #fff;
+            font-size: ${11 * this.zoom}px;
+            font-family: monospace;
+            padding: 2px 4px;
+            box-sizing: border-box;
+            z-index: 10000;
+            outline: none;
+        `;
     }
 
     /**
@@ -6345,7 +6724,10 @@ class ${className} extends Module {
      */
     closeTextEditor() {
         if (this.editingElement) {
-            this.editingElement.remove();
+            // Check if element is still in DOM before removing
+            if (this.editingElement.parentNode) {
+                this.editingElement.remove();
+            }
             this.editingElement = null;
         }
         this.editingNode = null;
@@ -6554,7 +6936,7 @@ class ${className} extends Module {
 
         // Close any open text editor
         this.closeTextEditor();
-        
+
         // Check for unsaved changes
         if (this.hasUnsavedChanges) {
             return confirm('You have unsaved changes. Close anyway?');
@@ -6574,7 +6956,7 @@ class ${className} extends Module {
         this.connections = [];
         this.canvas = null;
         this.ctx = null;
-        
+
         // Call parent destroy if it exists
         if (super.destroy) {
             super.destroy();
