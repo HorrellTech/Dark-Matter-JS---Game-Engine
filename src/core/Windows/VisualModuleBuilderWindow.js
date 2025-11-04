@@ -16,8 +16,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
     constructor() {
         super("Visual Module Builder", {
-            width: 1200,
-            height: 800,
+            width: window.innerWidth,
+            height: window.innerHeight,
             resizable: true,
             modal: false,
             closable: true,
@@ -106,15 +106,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.availableModules = []; // Store loaded module metadata
         this.requiredModules = new Set(); // Track which modules are required
 
+        // Node group panels
+        this.showGroupPanels = true; // Toggle for showing/hiding group panels
+        this.groupPanels = []; // Store panel data { bounds, color, label, nodes }
+
         this.setupUI();
         this.setupCanvas();
         this.setupCanvasEventListeners();
         this.loadAvailableModules();
         this.setupModuleRefreshListener();
-
-
-
-        //setTimeout(() => this.addRequireModuleNode(), 100);
     }
 
     setupModuleRefreshListener() {
@@ -251,1020 +251,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
         ]);
     }
 
-    /**
-     * Build the node library with all available node types
-     */
     buildNodeLibrary() {
-        return {
-            'Events': [
-                {
-                    type: 'start',
-                    label: 'Start',
-                    color: '#2d4a2d',
-                    icon: 'fas fa-play',
-                    outputs: ['flow'],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'loop',
-                    label: 'Loop',
-                    color: '#2a3341',
-                    icon: 'fas fa-rotate',
-                    outputs: ['flow', 'deltaTime'],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'draw',
-                    label: 'Draw',
-                    color: '#3d2626',
-                    icon: 'fas fa-paintbrush',
-                    outputs: ['flow', 'ctx'],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'onDestroy',
-                    label: 'On Destroy',
-                    color: '#4a3d2a',
-                    icon: 'fas fa-skull-crossbones',
-                    outputs: ['flow'],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'method',
-                    label: 'Method Block',
-                    color: '#3d4026',
-                    icon: 'fas fa-cube',
-                    inputs: [],
-                    outputs: ['flow'],
-                    hasInput: true,
-                    isGroup: true,
-                    codeGen: (node, ctx) => ''
-                },
-            ],
-            'Variables': [
-                {
-                    type: 'const',
-                    label: 'Local Const',
-                    color: '#0d3d5c',
-                    icon: 'fas fa-lock',
-                    inputs: ['flow', 'name', 'value'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    codeGen: (node, ctx) => {
-                        let varName = ctx.getInputValue(node, 'name', false);
-                        // Extract from quotes if it's a string literal
-                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
-                            varName = varName.slice(1, -1);
-                        }
-                        varName = varName || 'myConst';
-                        const varValue = ctx.getInputValue(node, 'value') || 'null';
-                        return `const ${varName} = ${varValue};`;
-                    }
-                },
-                {
-                    type: 'let',
-                    label: 'Local Let',
-                    color: '#194263',
-                    icon: 'fas fa-unlock',
-                    inputs: ['flow', 'name', 'value'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    codeGen: (node, ctx) => {
-                        let varName = ctx.getInputValue(node, 'name', false);
-                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
-                            varName = varName.slice(1, -1);
-                        }
-                        varName = varName || 'myVar';
-                        const varValue = ctx.getInputValue(node, 'value') || 'null';
-                        return `let ${varName} = ${varValue};`;
-                    }
-                },
-                {
-                    type: 'var',
-                    label: 'Local Var',
-                    color: '#3d5c26',
-                    icon: 'fas fa-cube',
-                    inputs: ['flow', 'name', 'value'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    codeGen: (node, ctx) => {
-                        let varName = ctx.getInputValue(node, 'name', false);
-                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
-                            varName = varName.slice(1, -1);
-                        }
-                        varName = varName || 'myVar';
-                        const varValue = ctx.getInputValue(node, 'value') || 'null';
-                        return `var ${varName} = ${varValue};`;
-                    }
-                },
-                {
-                    type: 'getVariable',
-                    label: 'Get Local Variable',
-                    color: '#26476a',
-                    icon: 'fas fa-arrow-right',
-                    inputs: ['name'],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => {
-                        let varName = ctx.getInputValue(node, 'name', false);
-                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
-                            varName = varName.slice(1, -1);
-                        }
-                        varName = varName || 'myVar';
-                        return `(${varName} !== undefined ? ${varName} : variables['${varName}'])`;
-                    }
-                },
-                {
-                    type: 'setVariable',
-                    label: 'Set Local Variable',
-                    color: '#26476a',
-                    icon: 'fas fa-arrow-left',
-                    inputs: ['flow', 'name', 'value'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => {
-                        let varName = ctx.getInputValue(node, 'name', false);
-                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
-                            varName = varName.slice(1, -1);
-                        }
-                        varName = varName || 'myVar';
-                        const varValue = ctx.getInputValue(node, 'value') || 'null';
-                        return `(${varName} = ${varValue})`;
-                    }
-                },
-                {
-                    type: 'getProperty',
-                    label: 'Get Property',
-                    color: '#26476a',
-                    icon: 'fas fa-arrow-right',
-                    inputs: ['name'],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => {
-                        // Get the raw value without cleaning
-                        let propName = ctx.getInputValue(node, 'name', false);
-                        
-                        // If it's a string literal (wrapped in quotes), extract the content
-                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
-                            propName = propName.slice(1, -1); // Remove quotes
-                        }
-                        
-                        // Validate it's a valid identifier
-                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
-                            propName = 'property'; // fallback to default if invalid
-                        }
-                        
-                        return `(this.${propName} !== undefined ? this.${propName} : this.properties['${propName}'])`;
-                    }
-                },
-                {
-                    type: 'setProperty',
-                    label: 'Set Property',
-                    color: '#334d71',
-                    icon: 'fas fa-arrow-left',
-                    inputs: ['flow', 'name', 'value'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasExposeCheckbox: true,
-                    codeGen: (node, ctx) => {
-                        // Get the raw value without cleaning
-                        let propName = ctx.getInputValue(node, 'name', false);
-                        
-                        // If it's a string literal (wrapped in quotes), extract the content
-                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
-                            propName = propName.slice(1, -1); // Remove quotes
-                        }
-                        
-                        // Validate it's a valid identifier, use default if invalid
-                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
-                            propName = 'property';
-                        }
-                        
-                        const propValue = ctx.getInputValue(node, 'value');
-
-                        if (node.exposeProperty) {
-                            return `this.${propName} = ${propValue};`;
-                        } else {
-                            return `this.properties['${propName}'] = ${propValue};`;
-                        }
-                    }
-                }
-            ],
-            'Values': [
-                {
-                    type: 'number',
-                    label: 'Number',
-                    color: '#405278',
-                    icon: 'fas fa-hashtag',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasInput: true,
-                    codeGen: (node, ctx) => node.value || '0'
-                },
-                {
-                    type: 'string',
-                    label: 'String',
-                    color: '#4d577f',
-                    icon: 'fas fa-quote-right',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasInput: true,
-                    codeGen: (node, ctx) => `'${node.value || ''}'`
-                },
-                {
-                    type: 'boolean',
-                    label: 'Boolean',
-                    color: '#0a2f4d',
-                    icon: 'fas fa-toggle-on',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasToggle: true,
-                    codeGen: (node, ctx) => node.value ? 'true' : 'false'
-                },
-                {
-                    type: 'color',
-                    label: 'Color',
-                    color: '#444444ff',
-                    icon: 'fas fa-palette',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasColorPicker: true,
-                    codeGen: (node, ctx) => `'${node.value || '#ffffff'}'`
-                },
-                {
-                    type: 'null',
-                    label: 'Null',
-                    color: '#000000ff',
-                    icon: 'fas fa-ban',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => 'null'
-                },
-                {
-                    type: 'undefined',
-                    label: 'Undefined',
-                    color: '#000000',
-                    icon: 'fas fa-ban',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => 'undefined'
-                },
-                {
-                    type: 'infinity',
-                    label: 'Infinity',
-                    color: '#000000',
-                    icon: 'fas fa-infinity',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => 'Infinity'
-                },
-                {
-                    type: 'negativeInfinity',
-                    label: 'Negative Infinity',
-                    color: '#000000',
-                    icon: 'fas fa-infinity',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => '-Infinity'
-                }
-            ],
-            'Logic': [
-                {
-                    type: 'if',
-                    label: 'If',
-                    color: '#663d00',
-                    icon: 'fas fa-code-branch',
-                    inputs: ['flow', 'condition'],
-                    outputs: ['true', 'false'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `if (${ctx.getInputValue(node, 'condition')})`
-                },
-                {
-                    type: 'compare',
-                    label: 'Compare',
-                    color: '#6b4410',
-                    icon: 'fas fa-balance-scale',
-                    inputs: ['a', 'b'],
-                    outputs: ['==', '!=', '>', '<', '>=', '<='],
-                    hasDropdown: true,
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} ${node.dropdownValue || '=='} ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'and',
-                    label: 'AND',
-                    color: '#704a1f',
-                    icon: 'fas fa-link',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} && ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'or',
-                    label: 'OR',
-                    color: '#75502e',
-                    icon: 'fas fa-plus',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} || ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'not',
-                    label: 'NOT',
-                    color: '#7a563d',
-                    icon: 'fas fa-ban',
-                    inputs: ['value'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `!(${ctx.getInputValue(node, 'value')})`
-                },
-                {
-                    type: 'return',
-                    label: 'Return',
-                    color: '#663300',
-                    icon: 'fas fa-reply',
-                    inputs: ['flow', 'value'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `return ${ctx.getInputValue(node, 'value')};`
-                }
-            ],
-            'Modules': [
-                {
-                    type: 'getModule',
-                    label: 'Get Module',
-                    color: '#681d75ff',
-                    icon: 'fas fa-puzzle-piece',
-                    inputs: ['flow', 'name'],
-                    outputs: ['flow', 'module'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    defaultValue: 'ModuleName',
-                    codeGen: (node, ctx) => {
-                        const moduleName = ctx.getInputValue(node, 'name') || 'ModuleName';
-                        return `this.gameObject.getModule('${moduleName}')`;
-                    }
-                },
-                {
-                    type: 'require',
-                    label: 'Require',
-                    color: '#4a2f4eff',
-                    icon: 'fas fa-plug',
-                    inputs: ['name'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    defaultValue: 'ModuleName',
-                    codeGen: (node, ctx) => {
-                        const moduleName = ctx.getInputValue(node, 'name') || node.value || 'ModuleName';
-                        return `require('${moduleName}')`;
-                    }
-                }
-            ],
-            'Math': [
-                {
-                    type: 'add',
-                    label: 'Add',
-                    color: '#3d0f47',
-                    icon: 'fas fa-plus',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} + ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'subtract',
-                    label: 'Subtract',
-                    color: '#44194e',
-                    icon: 'fas fa-minus',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} - ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'multiply',
-                    label: 'Multiply',
-                    color: '#4b2355',
-                    icon: 'fas fa-xmark',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} * ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'divide',
-                    label: 'Divide',
-                    color: '#522d5c',
-                    icon: 'fas fa-divide',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} / ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'modulo',
-                    label: 'Modulo',
-                    color: '#593763',
-                    icon: 'fas fa-percent',
-                    inputs: ['a', 'b'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} % ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'random',
-                    label: 'Random',
-                    color: '#60416a',
-                    icon: 'fas fa-dice',
-                    inputs: ['min', 'max'],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => `(Math.random() * (${ctx.getInputValue(node, 'max')} - ${ctx.getInputValue(node, 'min')}) + ${ctx.getInputValue(node, 'min')})`
-                },
-                {
-                    type: 'abs',
-                    label: 'Absolute',
-                    color: '#360d40',
-                    icon: 'fas fa-arrows-left-right',
-                    inputs: ['value'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `Math.abs(${ctx.getInputValue(node, 'value')})`
-                },
-                {
-                    type: 'sqrt',
-                    label: 'Square Root',
-                    color: '#2e0936',
-                    icon: 'fas fa-square-root-alt',
-                    inputs: ['value'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `Math.sqrt(${ctx.getInputValue(node, 'value')})`
-                },
-                {
-                    type: 'pow',
-                    label: 'Power',
-                    color: '#26082c',
-                    icon: 'fas fa-superscript',
-                    inputs: ['base', 'exp'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `Math.pow(${ctx.getInputValue(node, 'base')}, ${ctx.getInputValue(node, 'exp')})`
-                },
-                {
-                    type: 'sin',
-                    label: 'Sine',
-                    color: '#1e0624',
-                    icon: 'fas fa-wave-square',
-                    inputs: ['angle'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `Math.sin(${ctx.getInputValue(node, 'angle')})`
-                },
-                {
-                    type: 'cos',
-                    label: 'Cosine',
-                    color: '#14001a',
-                    icon: 'fas fa-wave-square',
-                    inputs: ['angle'],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `Math.cos(${ctx.getInputValue(node, 'angle')})`
-                },
-                {
-                    type: 'vector2',
-                    label: 'Vector2',
-                    color: '#1e3c44ff',
-                    icon: 'fas fa-arrows-alt',
-                    inputs: ['name', 'x', 'y'],
-                    outputs: ['x', 'y'],
-                    hasInput: false,
-                    codeGen: (node, ctx) => {
-                        const x = ctx.getInputValue(node, 'x');
-                        const y = ctx.getInputValue(node, 'y');
-                        return `new Vector2(${x}, ${y})`;
-                    },
-                    multiOutputAccess: (baseValue, portName, node, ctx) => {
-                        // If accessing .x or .y from the vector object
-                        return `(${baseValue}).${portName}`;
-                    }
-                }
-            ],
-            'Comparison': [
-                {
-                    type: 'equals',
-                    label: 'Equals',
-                    color: '#FFC107',
-                    icon: 'fas fa-equals',
-                    inputs: ['value', 'value'],
-                    inputLabels: ['a', 'b'],
-                    outputs: ['value'],
-                    outputLabels: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} === ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'notEquals',
-                    label: 'Not Equals',
-                    color: '#FFC107',
-                    icon: 'fas fa-not-equal',
-                    inputs: ['value', 'value'],
-                    inputLabels: ['a', 'b'],
-                    outputs: ['value'],
-                    outputLabels: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} !== ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'greaterThan',
-                    label: 'Greater Than',
-                    color: '#FFC107',
-                    icon: 'fas fa-greater-than',
-                    inputs: ['value', 'value'],
-                    inputLabels: ['a', 'b'],
-                    outputs: ['value'],
-                    outputLabels: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} > ${ctx.getInputValue(node, 'b')}`
-                },
-                {
-                    type: 'lessThan',
-                    label: 'Less Than',
-                    color: '#FFC107',
-                    icon: 'fas fa-less-than',
-                    inputs: ['value', 'value'],
-                    inputLabels: ['a', 'b'],
-                    outputs: ['value'],
-                    outputLabels: ['result'],
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} < ${ctx.getInputValue(node, 'b')}`
-                }
-            ],
-            'GameObject': [
-                {
-                    type: 'getPosition',
-                    label: 'Get Position',
-                    color: '#004d54',
-                    icon: 'fas fa-location-dot',
-                    inputs: [],
-                    outputs: ['x', 'y'],
-                    codeGen: (node, ctx) => {
-                        // This node outputs multiple values, handled specially in code generation
-                        return 'this.gameObject.position';
-                    }
-                },
-                {
-                    type: 'setPosition',
-                    label: 'Set Position',
-                    color: '#0a5259',
-                    icon: 'fas fa-arrows-up-down-left-right',
-                    inputs: ['flow', 'x', 'y'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.position.x = ${ctx.getInputValue(node, 'x')};
-${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
-                },
-                {
-                    type: 'getScale',
-                    label: 'Get Scale',
-                    color: '#14575e',
-                    icon: 'fas fa-maximize',
-                    inputs: [],
-                    outputs: ['scaleX', 'scaleY'],
-                    codeGen: (node, ctx) => {
-                        // This node outputs multiple values, handled specially in code generation
-                        return 'this.gameObject.scale';
-                    }
-                },
-                {
-                    type: 'setScale',
-                    label: 'Set Scale',
-                    color: '#1e5c63',
-                    icon: 'fas fa-up-right-and-down-left-from-center',
-                    inputs: ['flow', 'scaleX', 'scaleY'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.scale.x = ${ctx.getInputValue(node, 'scaleX')};\n${ctx.indent}this.gameObject.scale.y = ${ctx.getInputValue(node, 'scaleY')};`
-                },
-                {
-                    type: 'getAngle',
-                    label: 'Get Angle',
-                    color: '#286168',
-                    icon: 'fas fa-rotate-right',
-                    inputs: [],
-                    outputs: ['angle'],
-                    codeGen: (node, ctx) => `this.gameObject.angle`
-                },
-                {
-                    type: 'setAngle',
-                    label: 'Set Angle',
-                    color: '#32666d',
-                    icon: 'fas fa-rotate',
-                    inputs: ['flow', 'angle'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.angle = ${ctx.getInputValue(node, 'angle')};`
-                },
-                {
-                    type: 'getModule',
-                    label: 'Get Module',
-                    color: '#004852',
-                    icon: 'fas fa-puzzle-piece',
-                    inputs: ['name'],
-                    outputs: ['module'],
-                    codeGen: (node, ctx) => `this.gameObject.getModule(${ctx.getInputValue(node, 'name')})`
-                },
-                {
-                    type: 'addModule',
-                    label: 'Add Module',
-                    color: '#003d45',
-                    icon: 'fas fa-plus-circle',
-                    inputs: ['flow', 'name'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.addModule(${ctx.getInputValue(node, 'name')})`
-                },
-                {
-                    type: 'removeModule',
-                    label: 'Remove Module',
-                    color: '#003238',
-                    icon: 'fas fa-minus-circle',
-                    inputs: ['flow', 'name'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.removeModule(${ctx.getInputValue(node, 'name')});`
-                },
-                {
-                    type: 'findGameObject',
-                    label: 'Find GameObject',
-                    color: '#00272b',
-                    icon: 'fas fa-search',
-                    inputs: ['name'],
-                    outputs: ['object'],
-                    codeGen: (node, ctx) => `window.engine.findGameObject(${ctx.getInputValue(node, 'name')})`
-                },
-                {
-                    type: 'instanceCreate',
-                    label: 'Instance Create',
-                    color: '#001c1e',
-                    icon: 'fas fa-circle-plus',
-                    inputs: ['flow', 'x', 'y', 'name'],
-                    outputs: ['instance'],
-                    codeGen: (node, ctx) => `this.instanceCreate(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'name')})`
-                },
-                {
-                    type: 'instanceDestroy',
-                    label: 'Instance Destroy',
-                    color: '#001417',
-                    icon: 'fas fa-trash',
-                    inputs: ['flow', 'object'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'object')}.destroy();`
-                },
-                {
-                    type: 'getName',
-                    label: 'Get Name',
-                    color: '#000f11',
-                    icon: 'fas fa-tag',
-                    inputs: [],
-                    outputs: ['name'],
-                    codeGen: (node, ctx) => `this.gameObject.name`
-                },
-                {
-                    type: 'setName',
-                    label: 'Set Name',
-                    color: '#000a0b',
-                    icon: 'fas fa-pen',
-                    inputs: ['flow', 'name'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `this.gameObject.name = ${ctx.getInputValue(node, 'name')};`
-                }
-            ],
-            'Drawing': [
-                {
-                    type: 'fillRect',
-                    label: 'Fill Rect',
-                    color: '#5c0a28',
-                    icon: 'fas fa-square',
-                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
-                },
-                {
-                    type: 'strokeRect',
-                    label: 'Stroke Rect',
-                    color: '#63162f',
-                    icon: 'fas fa-square-full',
-                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
-                },
-                {
-                    type: 'fillCircle',
-                    label: 'Fill Circle',
-                    color: '#6a2236',
-                    icon: 'fas fa-circle',
-                    inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'radius')}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
-                },
-                {
-                    type: 'drawText',
-                    label: 'Draw Text',
-                    color: '#712e3d',
-                    icon: 'fas fa-font',
-                    inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillText(${ctx.getInputValue(node, 'text')}, ${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')});`
-                },
-                {
-                    type: 'drawLine',
-                    label: 'Draw Line',
-                    color: '#783a44',
-                    icon: 'fas fa-slash',
-                    inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1')}, ${ctx.getInputValue(node, 'y1')});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2')}, ${ctx.getInputValue(node, 'y2')});\n${ctx.indent}ctx.stroke();`
-                },
-                {
-                    type: 'setLineWidth',
-                    label: 'Set Line Width',
-                    color: '#520824',
-                    icon: 'fas fa-ruler-horizontal',
-                    inputs: ['flow', 'ctx', 'width'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.lineWidth = ${ctx.getInputValue(node, 'width')};`
-                }
-            ],
-            'Debug': [
-                {
-                    type: 'log',
-                    label: 'Console Log',
-                    color: '#607D8B',
-                    icon: 'fas fa-terminal',
-                    inputs: ['flow', 'message'],
-                    inputLabels: ['', 'message'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    outputLabels: [''],
-                    codeGen: (node, ctx) => `console.log(${ctx.getInputValue(node, 'message')});`
-                },
-                {
-                    type: 'warn',
-                    label: 'Console Warn',
-                    color: '#FFC107',
-                    icon: 'fas fa-exclamation-triangle',
-                    inputs: ['flow', 'message'],
-                    inputLabels: ['', 'message'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    outputLabels: [''],
-                    codeGen: (node, ctx) => `console.warn(${ctx.getInputValue(node, 'message')});`
-                },
-                {
-                    type: 'error',
-                    label: 'Console Error',
-                    color: '#F44336',
-                    icon: 'fas fa-bug',
-                    inputs: ['flow', 'message'],
-                    inputLabels: ['', 'message'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    outputLabels: [''],
-                    codeGen: (node, ctx) => `console.error(${ctx.getInputValue(node, 'message')});`
-                }
-            ],
-            'Input': [
-                // Key Selector Node
-                {
-                    type: 'keySelector',
-                    label: 'Key',
-                    color: '#0d1f2b',
-                    icon: 'fas fa-keyboard',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasDropdown: true,
-                    dropdownOptions: Object.keys(InputManager.key),
-                    defaultValue: 'a',
-                    codeGen: (node, ctx) => {
-                        const key = node.dropdownValue || 'a';
-                        return `window.input.key.${key}`;
-                    }
-                },
-                // Mouse Button Selector Node
-                {
-                    type: 'mouseButtonSelector',
-                    label: 'Mouse Button',
-                    color: '#11242f',
-                    icon: 'fas fa-computer-mouse',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasDropdown: true,
-                    dropdownOptions: ['left', 'middle', 'right'],
-                    defaultValue: 'left',
-                    codeGen: (node, ctx) => {
-                        const button = node.dropdownValue || 'left';
-                        return `'${button}'`;
-                    }
-                },
-                // Keyboard Input Nodes
-                {
-                    type: 'keyDown',
-                    label: 'Key Down',
-                    color: '#1a3847',
-                    icon: 'fas fa-keyboard',
-                    inputs: ['flow', 'key'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyDown(${ctx.getInputValue(node, 'key')})`
-                },
-                {
-                    type: 'keyPressed',
-                    label: 'Key Pressed',
-                    color: '#1e4152',
-                    icon: 'fas fa-keyboard',
-                    inputs: ['flow', 'key'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyPressed(${ctx.getInputValue(node, 'key')})`
-                },
-                {
-                    type: 'keyReleased',
-                    label: 'Key Released',
-                    color: '#22495d',
-                    icon: 'fas fa-keyboard',
-                    inputs: ['flow', 'key'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyReleased(${ctx.getInputValue(node, 'key')})`
-                },
-                // Mouse Input Nodes
-                {
-                    type: 'mouseDown',
-                    label: 'Mouse Down',
-                    color: '#265268',
-                    icon: 'fas fa-computer-mouse',
-                    inputs: ['flow', 'button'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mouseDown(${ctx.getInputValue(node, 'button')})`
-                },
-                {
-                    type: 'mousePressed',
-                    label: 'Mouse Pressed',
-                    color: '#2a5a73',
-                    icon: 'fas fa-computer-mouse',
-                    inputs: ['flow', 'button'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mousePressed(${ctx.getInputValue(node, 'button')})`
-                },
-                {
-                    type: 'mouseReleased',
-                    label: 'Mouse Released',
-                    color: '#2e637e',
-                    icon: 'fas fa-computer-mouse',
-                    inputs: ['flow', 'button'],
-                    outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mouseReleased(${ctx.getInputValue(node, 'button')})`
-                },
-                {
-                    type: 'getMousePosition',
-                    label: 'Get Mouse Position',
-                    color: '#326b89',
-                    icon: 'fas fa-location-crosshairs',
-                    inputs: ['worldSpace'],
-                    outputs: ['x', 'y'],
-                    codeGen: (node, ctx) => {
-                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
-                        return `window.input.getMousePosition(${worldSpace})`;
-                    }
-                },
-                {
-                    type: 'getMouseX',
-                    label: 'Get Mouse X',
-                    color: '#367494',
-                    icon: 'fas fa-left-right',
-                    inputs: ['worldSpace'],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => {
-                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
-                        return `window.input.getMousePosition(${worldSpace}).x`;
-                    }
-                },
-                {
-                    type: 'getMouseY',
-                    label: 'Get Mouse Y',
-                    color: '#3a7c9f',
-                    icon: 'fas fa-up-down',
-                    inputs: ['worldSpace'],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => {
-                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
-                        return `window.input.getMousePosition(${worldSpace}).y`;
-                    }
-                },
-                {
-                    type: 'didMouseMove',
-                    label: 'Did Mouse Move',
-                    color: '#3e85aa',
-                    icon: 'fas fa-arrows',
-                    inputs: [],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `window.input.didMouseMove()`
-                },
-                {
-                    type: 'getMouseWheelDelta',
-                    label: 'Get Mouse Wheel',
-                    color: '#428db5',
-                    icon: 'fas fa-circle-dot',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => `window.input.getMouseWheelDelta()`
-                },
-                // Touch Input Nodes
-                {
-                    type: 'getTouchCount',
-                    label: 'Get Touch Count',
-                    color: '#1b2f3d',
-                    icon: 'fas fa-hand-pointer',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => `window.input.getTouchCount()`
-                },
-                {
-                    type: 'isTapped',
-                    label: 'Is Tapped',
-                    color: '#1f3847',
-                    icon: 'fas fa-hand-point-up',
-                    inputs: [],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `window.input.isTapped()`
-                },
-                {
-                    type: 'isLongPressed',
-                    label: 'Is Long Pressed',
-                    color: '#234051',
-                    icon: 'fas fa-hand-back-fist',
-                    inputs: [],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `window.input.isLongPressed()`
-                },
-                {
-                    type: 'isPinching',
-                    label: 'Is Pinching',
-                    color: '#27495b',
-                    icon: 'fas fa-hands',
-                    inputs: [],
-                    outputs: ['result'],
-                    codeGen: (node, ctx) => `window.input.isPinching()`
-                },
-                {
-                    type: 'getPinchScale',
-                    label: 'Get Pinch Scale',
-                    color: '#2b5165',
-                    icon: 'fas fa-expand',
-                    inputs: [],
-                    outputs: ['value'],
-                    codeGen: (node, ctx) => `(window.input.getPinchData()?.scale || 1)`
-                },
-                {
-                    type: 'getSwipeDirection',
-                    label: 'Get Swipe Direction',
-                    color: '#2f5a6f',
-                    icon: 'fas fa-hand-pointer',
-                    inputs: [],
-                    outputs: ['direction'],
-                    codeGen: (node, ctx) => `window.input.getSwipeDirection()`
-                },
-                // Input State Control
-                {
-                    type: 'enableInput',
-                    label: 'Enable Input',
-                    color: '#14232e',
-                    icon: 'fas fa-toggle-on',
-                    inputs: ['flow'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `window.input.enable();`
-                },
-                {
-                    type: 'disableInput',
-                    label: 'Disable Input',
-                    color: '#182a38',
-                    icon: 'fas fa-toggle-off',
-                    inputs: ['flow'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    codeGen: (node, ctx) => `window.input.disable();`
-                }
-            ],
-            'Organization': [
-                {
-                    type: 'group',
-                    label: 'Group',
-                    color: '#263238',
-                    icon: 'fas fa-layer-group',
-                    inputs: ['flow'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    isGroup: true,
-                    codeGen: (node, ctx) => ctx.generateGroupCode(node)
-                },
-                {
-                    type: 'comment',
-                    label: 'Comment',
-                    color: '#333d42',
-                    icon: 'fas fa-comment',
-                    inputs: ['flow'],
-                    outputs: ['flow'],
-                    wrapFlowNode: false,
-                    hasInput: true,
-                    codeGen: (node, ctx) => `// ${node.value || 'Comment'}`
-                }
-            ]
-        };
+        // Delegate to VMBExampleModules for the static node library
+        return VMBExampleModules.buildNodeLibrary();
     }
 
     /**
@@ -1484,6 +473,40 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         snapLabel.appendChild(snapCheckbox);
         snapLabel.appendChild(snapText);
         toolbar.appendChild(snapLabel);
+
+        // Group Panels Toggle
+        const groupPanelsLabel = document.createElement('label');
+        groupPanelsLabel.style.cssText = `
+        color: #fff;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 8px;
+        background: ${this.showGroupPanels ? '#4CAF50' : '#444'};
+        border: 1px solid ${this.showGroupPanels ? '#66BB6A' : '#666'};
+        border-radius: 4px;
+        transition: all 0.2s;
+    `;
+
+        const groupPanelsCheckbox = document.createElement('input');
+        groupPanelsCheckbox.type = 'checkbox';
+        groupPanelsCheckbox.checked = this.showGroupPanels;
+        groupPanelsCheckbox.style.cssText = 'cursor: pointer;';
+
+        const groupPanelsText = document.createElement('span');
+        groupPanelsText.innerHTML = '<i class="fas fa-layer-group" style="margin-right: 4px;"></i>Group Panels';
+
+        groupPanelsCheckbox.addEventListener('change', (e) => {
+            this.showGroupPanels = e.target.checked;
+            groupPanelsLabel.style.background = this.showGroupPanels ? '#4CAF50' : '#444';
+            groupPanelsLabel.style.borderColor = this.showGroupPanels ? '#66BB6A' : '#666';
+        });
+
+        groupPanelsLabel.appendChild(groupPanelsCheckbox);
+        groupPanelsLabel.appendChild(groupPanelsText);
+        toolbar.appendChild(groupPanelsLabel);
 
         toolbar.appendChild(divider());
 
@@ -2426,6 +1449,15 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         const x = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
         const y = (e.clientY - rect.top - this.panOffset.y) / this.zoom;
 
+        // Check for group panel button clicks FIRST
+        if (this.showGroupPanels) {
+            const panelButtonHit = this.getGroupPanelButtonHit(x, y);
+            if (panelButtonHit) {
+                this.handleGroupPanelButtonClick(panelButtonHit);
+                return;
+            }
+        }
+
         // Check for delete button click
         for (const node of this.nodes) {
             if (node.deleteButton) {
@@ -2451,7 +1483,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                 }
             }
 
-            // Check for edit name button click (ADD THIS)
+            // Check for edit name button click
             if (node.editNameButton) {
                 const dx = x - node.editNameButton.x;
                 const dy = y - node.editNameButton.y;
@@ -3346,6 +2378,12 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
         ctx.save();
         ctx.translate(this.panOffset.x, this.panOffset.y);
         ctx.scale(this.zoom, this.zoom);
+
+        // Draw group panels (underneath everything except grid)
+        if (this.showGroupPanels) {
+            this.updateGroupPanels();
+            this.drawGroupPanels(ctx);
+        }
 
         // Draw grid
         this.drawGrid(ctx);
@@ -6877,6 +5915,251 @@ class ${className} extends Module {
 
             // Try to load the documentation script for next time
             this.loadDocumentationScript();
+        }
+    }
+
+    /**
+     * Find all connected node groups using union-find algorithm
+     */
+    findConnectedGroups() {
+        const nodeToGroup = new Map();
+        const groups = [];
+
+        // Initialize each node in its own group
+        this.nodes.forEach(node => {
+            const groupId = groups.length;
+            nodeToGroup.set(node, groupId);
+            groups.push(new Set([node]));
+        });
+
+        // Helper to find root group
+        const findRoot = (nodeId) => {
+            let id = nodeId;
+            while (groups[id].size === 0) {
+                id = nodeToGroup.get(Array.from(groups[id])[0]);
+            }
+            return id;
+        };
+
+        // Merge groups based on connections
+        this.connections.forEach(conn => {
+            const fromGroup = nodeToGroup.get(conn.from.node);
+            const toGroup = nodeToGroup.get(conn.to.node);
+
+            if (fromGroup !== toGroup) {
+                // Merge smaller group into larger
+                const smallerGroup = groups[fromGroup].size < groups[toGroup].size ? fromGroup : toGroup;
+                const largerGroup = smallerGroup === fromGroup ? toGroup : fromGroup;
+
+                // Move all nodes from smaller to larger
+                groups[smallerGroup].forEach(node => {
+                    groups[largerGroup].add(node);
+                    nodeToGroup.set(node, largerGroup);
+                });
+                groups[smallerGroup].clear();
+            }
+        });
+
+        // Return only non-empty groups with more than one node
+        return groups.filter(g => g.size > 1);
+    }
+
+    /**
+     * Calculate bounds for a group of nodes
+     */
+    calculateGroupBounds(nodeSet) {
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+
+        nodeSet.forEach(node => {
+            minX = Math.min(minX, node.x);
+            minY = Math.min(minY, node.y);
+            maxX = Math.max(maxX, node.x + node.width);
+            maxY = Math.max(maxY, node.y + node.height);
+        });
+
+        const padding = 48;
+        return {
+            x: minX - padding,
+            y: minY - padding,
+            width: (maxX - minX) + (padding * 2),
+            height: (maxY - minY) + (padding * 2)
+        };
+    }
+
+    /**
+     * Update group panels data
+     */
+    updateGroupPanels() {
+        const groups = this.findConnectedGroups();
+        this.groupPanels = groups.map((nodeSet, index) => {
+            const bounds = this.calculateGroupBounds(nodeSet);
+            const baseColor = this.generateGroupColor(index);
+            
+            return {
+                bounds,
+                color: baseColor,
+                label: `Group ${index + 1}`,
+                nodes: Array.from(nodeSet)
+            };
+        });
+    }
+
+    /**
+     * Generate a color for a group
+     */
+    generateGroupColor(index) {
+        const colors = [
+            'rgba(76, 175, 80, 0.15)',   // Green
+            'rgba(33, 150, 243, 0.15)',  // Blue
+            'rgba(156, 39, 176, 0.15)',  // Purple
+            'rgba(255, 152, 0, 0.15)',   // Orange
+            'rgba(244, 67, 54, 0.15)',   // Red
+            'rgba(0, 188, 212, 0.15)',   // Cyan
+            'rgba(255, 235, 59, 0.15)',  // Yellow
+            'rgba(233, 30, 99, 0.15)',   // Pink
+        ];
+        return colors[index % colors.length];
+    }
+
+    /**
+     * Get lighter color for outline
+     */
+    getLighterColor(rgbaColor) {
+        // Parse rgba color
+        const match = rgbaColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+        if (!match) return rgbaColor;
+
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const a = match[4] ? parseFloat(match[4]) : 1;
+
+        // Make it lighter and more opaque for outline
+        return `rgba(${Math.min(r + 60, 255)}, ${Math.min(g + 60, 255)}, ${Math.min(b + 60, 255)}, ${Math.min(a * 3, 0.6)})`;
+    }
+
+    /**
+     * Draw all group panels
+     */
+    drawGroupPanels(ctx) {
+        this.groupPanels.forEach((panel, index) => {
+            const { bounds, color, label } = panel;
+
+            // Draw filled rounded rectangle
+            ctx.fillStyle = color;
+            this.roundRect(ctx, bounds.x, bounds.y, bounds.width, bounds.height, 12);
+            ctx.fill();
+
+            // Draw dashed outline with lighter color
+            ctx.strokeStyle = this.getLighterColor(color);
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 4]);
+            this.roundRect(ctx, bounds.x, bounds.y, bounds.width, bounds.height, 12);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw edit buttons in top-right corner
+            const buttonY = bounds.y + 20;
+            const colorButtonX = bounds.x + bounds.width - 60;
+            const labelButtonX = bounds.x + bounds.width - 30;
+
+            // Color button
+            ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
+            ctx.beginPath();
+            ctx.arc(colorButtonX, buttonY, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🎨', colorButtonX, buttonY + 4);
+
+            // Label button
+            ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
+            ctx.beginPath();
+            ctx.arc(labelButtonX, buttonY, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('✎', labelButtonX, buttonY + 4);
+
+            // Store button positions for interaction
+            panel.colorButton = { x: colorButtonX, y: buttonY, radius: 10 };
+            panel.labelButton = { x: labelButtonX, y: buttonY, radius: 10 };
+
+            // Draw label at bottom
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, bounds.x + bounds.width / 2, bounds.y + bounds.height - 15);
+        });
+    }
+
+    /**
+     * Check if a point is inside a group panel button
+     */
+    getGroupPanelButtonHit(x, y) {
+        for (let i = 0; i < this.groupPanels.length; i++) {
+            const panel = this.groupPanels[i];
+            
+            if (panel.colorButton) {
+                const dx = x - panel.colorButton.x;
+                const dy = y - panel.colorButton.y;
+                if (Math.sqrt(dx * dx + dy * dy) <= panel.colorButton.radius) {
+                    return { panel, button: 'color', index: i };
+                }
+            }
+
+            if (panel.labelButton) {
+                const dx = x - panel.labelButton.x;
+                const dy = y - panel.labelButton.y;
+                if (Math.sqrt(dx * dx + dy * dy) <= panel.labelButton.radius) {
+                    return { panel, button: 'label', index: i };
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Handle group panel button click
+     */
+    handleGroupPanelButtonClick(hit) {
+        const { panel, button, index } = hit;
+
+        if (button === 'color') {
+            // Show color picker
+            const input = document.createElement('input');
+            input.type = 'color';
+            // Convert rgba to hex (rough approximation)
+            const match = panel.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (match) {
+                const r = parseInt(match[1]).toString(16).padStart(2, '0');
+                const g = parseInt(match[2]).toString(16).padStart(2, '0');
+                const b = parseInt(match[3]).toString(16).padStart(2, '0');
+                input.value = `#${r}${g}${b}`;
+            }
+            input.style.position = 'fixed';
+            input.style.opacity = '0';
+            document.body.appendChild(input);
+            
+            input.addEventListener('change', (e) => {
+                const hex = e.target.value;
+                const r = parseInt(hex.substr(1, 2), 16);
+                const g = parseInt(hex.substr(3, 2), 16);
+                const b = parseInt(hex.substr(5, 2), 16);
+                panel.color = `rgba(${r}, ${g}, ${b}, 0.15)`;
+                document.body.removeChild(input);
+            });
+            
+            input.click();
+        } else if (button === 'label') {
+            // Show prompt for new label
+            const newLabel = prompt('Enter group label:', panel.label);
+            if (newLabel !== null && newLabel.trim() !== '') {
+                panel.label = newLabel.trim();
+            }
         }
     }
 

@@ -39,16 +39,7 @@ class VMBExampleModules {
      */
     static getNodeBuilder() {
         if (!this._builder) {
-            // Access the static node library if available
-            let nodeLibrary = {};
-            
-            // Try to get it from a global registry if one exists
-            if (window._VMBNodeLibrary) {
-                nodeLibrary = window._VMBNodeLibrary;
-            } else {
-                // Last resort: use a hardcoded minimal library
-                nodeLibrary = this._getMinimalNodeLibrary();
-            }
+            const nodeLibrary = this._getMinimalNodeLibrary();
             
             this._builder = {
                 nodeLibrary: nodeLibrary,
@@ -123,6 +114,14 @@ class VMBExampleModules {
             };
         }
         return this._builder;
+    }
+
+    /**
+     * Helper: Get minimal node library for standalone use
+     */
+    static _getMinimalNodeLibrary() {
+        // Just use the full library
+        return this.buildNodeLibrary();
     }
 
     /**
@@ -714,6 +713,1375 @@ class VMBExampleModules {
             drawInEditor: true,
             nodes: nodes,
             connections: connections
+        };
+    }
+
+    /**
+     * Build the node library with all available node types
+     */
+   static buildNodeLibrary() {
+        return {
+            'Events': [
+                {
+                    type: 'start',
+                    label: 'Start',
+                    color: '#2d4a2d',
+                    icon: 'fas fa-play',
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => ''
+                },
+                {
+                    type: 'loop',
+                    label: 'Loop',
+                    color: '#2a3341',
+                    icon: 'fas fa-rotate',
+                    outputs: ['flow', 'deltaTime'],
+                    codeGen: (node, ctx) => ''
+                },
+                {
+                    type: 'draw',
+                    label: 'Draw',
+                    color: '#3d2626',
+                    icon: 'fas fa-paintbrush',
+                    outputs: ['flow', 'ctx'],
+                    codeGen: (node, ctx) => ''
+                },
+                {
+                    type: 'onDestroy',
+                    label: 'On Destroy',
+                    color: '#4a3d2a',
+                    icon: 'fas fa-skull-crossbones',
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => ''
+                },
+                {
+                    type: 'method',
+                    label: 'Method Block',
+                    color: '#3d4026',
+                    icon: 'fas fa-cube',
+                    inputs: [],
+                    outputs: ['flow'],
+                    hasInput: true,
+                    isGroup: true,
+                    codeGen: (node, ctx) => ''
+                },
+            ],
+            'Variables': [
+                {
+                    type: 'const',
+                    label: 'Local Const',
+                    color: '#0d3d5c',
+                    icon: 'fas fa-lock',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    codeGen: (node, ctx) => {
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        // Extract from quotes if it's a string literal
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myConst';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `const ${varName} = ${varValue};`;
+                    }
+                },
+                {
+                    type: 'let',
+                    label: 'Local Let',
+                    color: '#194263',
+                    icon: 'fas fa-unlock',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    codeGen: (node, ctx) => {
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `let ${varName} = ${varValue};`;
+                    }
+                },
+                {
+                    type: 'var',
+                    label: 'Local Var',
+                    color: '#3d5c26',
+                    icon: 'fas fa-cube',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    codeGen: (node, ctx) => {
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `var ${varName} = ${varValue};`;
+                    }
+                },
+                {
+                    type: 'getVariable',
+                    label: 'Get Local Variable',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-right',
+                    inputs: ['name'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
+                        return `(${varName} !== undefined ? ${varName} : variables['${varName}'])`;
+                    }
+                },
+                {
+                    type: 'setVariable',
+                    label: 'Set Local Variable',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-left',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        let varName = ctx.getInputValue(node, 'name', false);
+                        if (typeof varName === 'string' && /^['"].*['"]$/.test(varName)) {
+                            varName = varName.slice(1, -1);
+                        }
+                        varName = varName || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `(${varName} = ${varValue})`;
+                    }
+                },
+                {
+                    type: 'getProperty',
+                    label: 'Get Property',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-right',
+                    inputs: ['name'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        // Get the raw value without cleaning
+                        let propName = ctx.getInputValue(node, 'name', false);
+                        
+                        // If it's a string literal (wrapped in quotes), extract the content
+                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
+                            propName = propName.slice(1, -1); // Remove quotes
+                        }
+                        
+                        // Validate it's a valid identifier
+                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
+                            propName = 'property'; // fallback to default if invalid
+                        }
+                        
+                        return `(this.${propName} !== undefined ? this.${propName} : this.properties['${propName}'])`;
+                    }
+                },
+                {
+                    type: 'setProperty',
+                    label: 'Set Property',
+                    color: '#334d71',
+                    icon: 'fas fa-arrow-left',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasExposeCheckbox: true,
+                    codeGen: (node, ctx) => {
+                        // Get the raw value without cleaning
+                        let propName = ctx.getInputValue(node, 'name', false);
+                        
+                        // If it's a string literal (wrapped in quotes), extract the content
+                        if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
+                            propName = propName.slice(1, -1); // Remove quotes
+                        }
+                        
+                        // Validate it's a valid identifier, use default if invalid
+                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
+                            propName = 'property';
+                        }
+                        
+                        const propValue = ctx.getInputValue(node, 'value');
+
+                        if (node.exposeProperty) {
+                            return `this.${propName} = ${propValue};`;
+                        } else {
+                            return `this.properties['${propName}'] = ${propValue};`;
+                        }
+                    }
+                }
+            ],
+            'Values': [
+                {
+                    type: 'number',
+                    label: 'Number',
+                    color: '#405278',
+                    icon: 'fas fa-hashtag',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasInput: true,
+                    codeGen: (node, ctx) => node.value || '0'
+                },
+                {
+                    type: 'string',
+                    label: 'String',
+                    color: '#4d577f',
+                    icon: 'fas fa-quote-right',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasInput: true,
+                    codeGen: (node, ctx) => `'${node.value || ''}'`
+                },
+                {
+                    type: 'boolean',
+                    label: 'Boolean',
+                    color: '#0a2f4d',
+                    icon: 'fas fa-toggle-on',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasToggle: true,
+                    codeGen: (node, ctx) => node.value ? 'true' : 'false'
+                },
+                {
+                    type: 'color',
+                    label: 'Color',
+                    color: '#444444ff',
+                    icon: 'fas fa-palette',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasColorPicker: true,
+                    codeGen: (node, ctx) => `'${node.value || '#ffffff'}'`
+                },
+                {
+                    type: 'null',
+                    label: 'Null',
+                    color: '#000000ff',
+                    icon: 'fas fa-ban',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'null'
+                },
+                {
+                    type: 'undefined',
+                    label: 'Undefined',
+                    color: '#000000',
+                    icon: 'fas fa-ban',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'undefined'
+                },
+                {
+                    type: 'infinity',
+                    label: 'Infinity',
+                    color: '#000000',
+                    icon: 'fas fa-infinity',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'Infinity'
+                },
+                {
+                    type: 'negativeInfinity',
+                    label: 'Negative Infinity',
+                    color: '#000000',
+                    icon: 'fas fa-infinity',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => '-Infinity'
+                }
+            ],
+            'Logic': [
+                {
+                    type: 'if',
+                    label: 'If',
+                    color: '#663d00',
+                    icon: 'fas fa-code-branch',
+                    inputs: ['flow', 'condition'],
+                    outputs: ['true', 'false'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `if (${ctx.getInputValue(node, 'condition')})`
+                },
+                {
+                    type: 'compare',
+                    label: 'Compare',
+                    color: '#6b4410',
+                    icon: 'fas fa-balance-scale',
+                    inputs: ['a', 'b'],
+                    outputs: ['==', '!=', '>', '<', '>=', '<='],
+                    hasDropdown: true,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} ${node.dropdownValue || '=='} ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'and',
+                    label: 'AND',
+                    color: '#704a1f',
+                    icon: 'fas fa-link',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} && ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'or',
+                    label: 'OR',
+                    color: '#75502e',
+                    icon: 'fas fa-plus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} || ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'not',
+                    label: 'NOT',
+                    color: '#7a563d',
+                    icon: 'fas fa-ban',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `!(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'return',
+                    label: 'Return',
+                    color: '#663300',
+                    icon: 'fas fa-reply',
+                    inputs: ['flow', 'value'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `return ${ctx.getInputValue(node, 'value')};`
+                }
+            ],
+            'Loops & Control': [
+                {
+                    type: 'forLoop',
+                    label: 'For Loop',
+                    color: '#5a3d1f',
+                    icon: 'fas fa-repeat',
+                    inputs: ['flow', 'start', 'end'],
+                    outputs: ['flow', 'index'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const start = ctx.getInputValue(node, 'start') || '0';
+                        const end = ctx.getInputValue(node, 'end') || '10';
+                        return `for(let i = ${start}; i < ${end}; i++)`;
+                    }
+                },
+                {
+                    type: 'whileLoop',
+                    label: 'While Loop',
+                    color: '#6b4a2f',
+                    icon: 'fas fa-sync',
+                    inputs: ['flow', 'condition'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `while(${ctx.getInputValue(node, 'condition')})`
+                },
+                {
+                    type: 'break',
+                    label: 'Break',
+                    color: '#7a5640',
+                    icon: 'fas fa-stop',
+                    inputs: ['flow'],
+                    outputs: [],
+                    codeGen: (node, ctx) => 'break;'
+                },
+                {
+                    type: 'continue',
+                    label: 'Continue',
+                    color: '#896350',
+                    icon: 'fas fa-forward',
+                    inputs: ['flow'],
+                    outputs: [],
+                    codeGen: (node, ctx) => 'continue;'
+                }
+            ],
+            'Modules': [
+                {
+                    type: 'getModule',
+                    label: 'Get Module',
+                    color: '#681d75ff',
+                    icon: 'fas fa-puzzle-piece',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow', 'module'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    defaultValue: 'ModuleName',
+                    codeGen: (node, ctx) => {
+                        const moduleName = ctx.getInputValue(node, 'name') || 'ModuleName';
+                        return `this.gameObject.getModule('${moduleName}')`;
+                    }
+                },
+                {
+                    type: 'require',
+                    label: 'Require',
+                    color: '#4a2f4eff',
+                    icon: 'fas fa-plug',
+                    inputs: ['name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    defaultValue: 'ModuleName',
+                    codeGen: (node, ctx) => {
+                        const moduleName = ctx.getInputValue(node, 'name') || node.value || 'ModuleName';
+                        return `require('${moduleName}')`;
+                    }
+                }
+            ],
+            'Math': [
+                {
+                    type: 'add',
+                    label: 'Add',
+                    color: '#3d0f47',
+                    icon: 'fas fa-plus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} + ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'subtract',
+                    label: 'Subtract',
+                    color: '#44194e',
+                    icon: 'fas fa-minus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} - ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'multiply',
+                    label: 'Multiply',
+                    color: '#4b2355',
+                    icon: 'fas fa-xmark',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} * ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'divide',
+                    label: 'Divide',
+                    color: '#522d5c',
+                    icon: 'fas fa-divide',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} / ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'modulo',
+                    label: 'Modulo',
+                    color: '#593763',
+                    icon: 'fas fa-percent',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} % ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'random',
+                    label: 'Random',
+                    color: '#60416a',
+                    icon: 'fas fa-dice',
+                    inputs: ['min', 'max'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `(Math.random() * (${ctx.getInputValue(node, 'max')} - ${ctx.getInputValue(node, 'min')}) + ${ctx.getInputValue(node, 'min')})`
+                },
+                {
+                    type: 'abs',
+                    label: 'Absolute',
+                    color: '#360d40',
+                    icon: 'fas fa-arrows-left-right',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.abs(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'sqrt',
+                    label: 'Square Root',
+                    color: '#2e0936',
+                    icon: 'fas fa-square-root-alt',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.sqrt(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'pow',
+                    label: 'Power',
+                    color: '#26082c',
+                    icon: 'fas fa-superscript',
+                    inputs: ['base', 'exp'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.pow(${ctx.getInputValue(node, 'base')}, ${ctx.getInputValue(node, 'exp')})`
+                },
+                {
+                    type: 'sin',
+                    label: 'Sine',
+                    color: '#1e0624',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['angle'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.sin(${ctx.getInputValue(node, 'angle')})`
+                },
+                {
+                    type: 'cos',
+                    label: 'Cosine',
+                    color: '#14001a',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['angle'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.cos(${ctx.getInputValue(node, 'angle')})`
+                },
+                {
+                    type: 'min',
+                    label: 'Min',
+                    color: '#1e0924',
+                    icon: 'fas fa-arrow-down',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.min(${ctx.getInputValue(node, 'a')}, ${ctx.getInputValue(node, 'b')})`
+                },
+                {
+                    type: 'max',
+                    label: 'Max',
+                    color: '#24102a',
+                    icon: 'fas fa-arrow-up',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.max(${ctx.getInputValue(node, 'a')}, ${ctx.getInputValue(node, 'b')})`
+                },
+                {
+                    type: 'clamp',
+                    label: 'Clamp',
+                    color: '#2a1630',
+                    icon: 'fas fa-compress-arrows-alt',
+                    inputs: ['value', 'min', 'max'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.min(Math.max(${ctx.getInputValue(node, 'value')}, ${ctx.getInputValue(node, 'min')}), ${ctx.getInputValue(node, 'max')})`
+                },
+                {
+                    type: 'floor',
+                    label: 'Floor',
+                    color: '#301c36',
+                    icon: 'fas fa-angle-down',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.floor(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'ceil',
+                    label: 'Ceil',
+                    color: '#36223c',
+                    icon: 'fas fa-angle-up',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.ceil(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'round',
+                    label: 'Round',
+                    color: '#3c2842',
+                    icon: 'fas fa-circle-half-stroke',
+                    inputs: ['value'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.round(${ctx.getInputValue(node, 'value')})`
+                },
+                {
+                    type: 'lerp',
+                    label: 'Lerp',
+                    color: '#422e48',
+                    icon: 'fas fa-arrows-left-right',
+                    inputs: ['from', 'to', 'amount'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `(${ctx.getInputValue(node, 'from')} + (${ctx.getInputValue(node, 'to')} - ${ctx.getInputValue(node, 'from')}) * ${ctx.getInputValue(node, 'amount')})`
+                },
+                {
+                    type: 'tan',
+                    label: 'Tangent',
+                    color: '#0a0010',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['angle'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.tan(${ctx.getInputValue(node, 'angle')})`
+                },
+                {
+                    type: 'atan2',
+                    label: 'Atan2',
+                    color: '#100016',
+                    icon: 'fas fa-compass',
+                    inputs: ['y', 'x'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `Math.atan2(${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'x')})`
+                },
+                {
+                    type: 'vector2',
+                    label: 'Vector2',
+                    color: '#1e3c44ff',
+                    icon: 'fas fa-arrows-alt',
+                    inputs: ['name', 'x', 'y'],
+                    outputs: ['x', 'y'],
+                    hasInput: false,
+                    codeGen: (node, ctx) => {
+                        const x = ctx.getInputValue(node, 'x');
+                        const y = ctx.getInputValue(node, 'y');
+                        return `new Vector2(${x}, ${y})`;
+                    },
+                    multiOutputAccess: (baseValue, portName, node, ctx) => {
+                        // If accessing .x or .y from the vector object
+                        return `(${baseValue}).${portName}`;
+                    }
+                }
+            ],
+            'String': [
+                {
+                    type: 'stringConcat',
+                    label: 'Concatenate',
+                    color: '#3a3a5c',
+                    icon: 'fas fa-link',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} + ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'stringLength',
+                    label: 'String Length',
+                    color: '#444563',
+                    icon: 'fas fa-ruler',
+                    inputs: ['string'],
+                    outputs: ['length'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'string')}.length`
+                },
+                {
+                    type: 'stringToUpper',
+                    label: 'To Uppercase',
+                    color: '#4e506a',
+                    icon: 'fas fa-arrow-up',
+                    inputs: ['string'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'string')}.toUpperCase()`
+                },
+                {
+                    type: 'stringToLower',
+                    label: 'To Lowercase',
+                    color: '#585b71',
+                    icon: 'fas fa-arrow-down',
+                    inputs: ['string'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'string')}.toLowerCase()`
+                },
+                {
+                    type: 'stringSubstring',
+                    label: 'Substring',
+                    color: '#626678',
+                    icon: 'fas fa-scissors',
+                    inputs: ['string', 'start', 'end'],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'string')}.substring(${ctx.getInputValue(node, 'start')}, ${ctx.getInputValue(node, 'end')})`
+                }
+            ],
+            'Time': [
+                {
+                    type: 'getDeltaTime',
+                    label: 'Get Delta Time',
+                    color: '#2a4a2a',
+                    icon: 'fas fa-clock',
+                    inputs: [],
+                    outputs: ['deltaTime'],
+                    codeGen: (node, ctx) => 'deltaTime'
+                },
+                {
+                    type: 'getTimeScale',
+                    label: 'Get Time Scale',
+                    color: '#345535',
+                    icon: 'fas fa-gauge',
+                    inputs: [],
+                    outputs: ['timeScale'],
+                    codeGen: (node, ctx) => 'window.engine.timeScale'
+                },
+                {
+                    type: 'setTimeScale',
+                    label: 'Set Time Scale',
+                    color: '#3e6040',
+                    icon: 'fas fa-gauge-high',
+                    inputs: ['flow', 'timeScale'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.engine.timeScale = ${ctx.getInputValue(node, 'timeScale')};`
+                },
+                {
+                    type: 'isPaused',
+                    label: 'Is Paused',
+                    color: '#486b4b',
+                    icon: 'fas fa-pause',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => 'window.engine.paused'
+                },
+                {
+                    type: 'pauseGame',
+                    label: 'Pause Game',
+                    color: '#527656',
+                    icon: 'fas fa-pause-circle',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => 'window.engine.paused = true;'
+                },
+                {
+                    type: 'resumeGame',
+                    label: 'Resume Game',
+                    color: '#5c8161',
+                    icon: 'fas fa-play-circle',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => 'window.engine.paused = false;'
+                }
+            ],
+            'Arrays': [
+                {
+                    type: 'createArray',
+                    label: 'Create Array',
+                    color: '#1a4a5a',
+                    icon: 'fas fa-list',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow', 'array'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => '[]'
+                },
+                {
+                    type: 'arrayPush',
+                    label: 'Array Push',
+                    color: '#245560',
+                    icon: 'fas fa-plus-square',
+                    inputs: ['flow', 'array', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.push(${ctx.getInputValue(node, 'value')});`
+                },
+                {
+                    type: 'arrayPop',
+                    label: 'Array Pop',
+                    color: '#2e6066',
+                    icon: 'fas fa-minus-square',
+                    inputs: ['flow', 'array'],
+                    outputs: ['flow', 'value'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.pop()`
+                },
+                {
+                    type: 'arrayGet',
+                    label: 'Array Get',
+                    color: '#386b6c',
+                    icon: 'fas fa-arrow-right',
+                    inputs: ['array', 'index'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}[${ctx.getInputValue(node, 'index')}]`
+                },
+                {
+                    type: 'arraySet',
+                    label: 'Array Set',
+                    color: '#427672',
+                    icon: 'fas fa-arrow-left',
+                    inputs: ['flow', 'array', 'index', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}[${ctx.getInputValue(node, 'index')}] = ${ctx.getInputValue(node, 'value')};`
+                },
+                {
+                    type: 'arrayLength',
+                    label: 'Array Length',
+                    color: '#4c8178',
+                    icon: 'fas fa-ruler-horizontal',
+                    inputs: ['array'],
+                    outputs: ['length'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.length`
+                },
+                {
+                    type: 'arrayShift',
+                    label: 'Array Shift',
+                    color: '#568c7e',
+                    icon: 'fas fa-chevron-left',
+                    inputs: ['flow', 'array'],
+                    outputs: ['flow', 'value'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.shift()`
+                },
+                {
+                    type: 'arrayUnshift',
+                    label: 'Array Unshift',
+                    color: '#609784',
+                    icon: 'fas fa-chevron-right',
+                    inputs: ['flow', 'array', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.unshift(${ctx.getInputValue(node, 'value')});`
+                }
+            ],
+            'Comparison': [
+                {
+                    type: 'equals',
+                    label: 'Equals',
+                    color: '#FFC107',
+                    icon: 'fas fa-equals',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} === ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'notEquals',
+                    label: 'Not Equals',
+                    color: '#FFC107',
+                    icon: 'fas fa-not-equal',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} !== ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'greaterThan',
+                    label: 'Greater Than',
+                    color: '#FFC107',
+                    icon: 'fas fa-greater-than',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} > ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'lessThan',
+                    label: 'Less Than',
+                    color: '#FFC107',
+                    icon: 'fas fa-less-than',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} < ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'greaterThanOrEqual',
+                    label: 'Greater/Equal',
+                    color: '#FFD700',
+                    icon: 'fas fa-greater-than-equal',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} >= ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'lessThanOrEqual',
+                    label: 'Less/Equal',
+                    color: '#FFD700',
+                    icon: 'fas fa-less-than-equal',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} <= ${ctx.getInputValue(node, 'b')}`
+                }
+            ],
+            'GameObject': [
+                {
+                    type: 'getPosition',
+                    label: 'Get Position',
+                    color: '#004d54',
+                    icon: 'fas fa-location-dot',
+                    inputs: [],
+                    outputs: ['x', 'y'],
+                    codeGen: (node, ctx) => {
+                        // This node outputs multiple values, handled specially in code generation
+                        return 'this.gameObject.position';
+                    }
+                },
+                {
+                    type: 'setPosition',
+                    label: 'Set Position',
+                    color: '#0a5259',
+                    icon: 'fas fa-arrows-up-down-left-right',
+                    inputs: ['flow', 'x', 'y'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.position.x = ${ctx.getInputValue(node, 'x')};
+${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
+                },
+                {
+                    type: 'getScale',
+                    label: 'Get Scale',
+                    color: '#14575e',
+                    icon: 'fas fa-maximize',
+                    inputs: [],
+                    outputs: ['scaleX', 'scaleY'],
+                    codeGen: (node, ctx) => {
+                        // This node outputs multiple values, handled specially in code generation
+                        return 'this.gameObject.scale';
+                    }
+                },
+                {
+                    type: 'setScale',
+                    label: 'Set Scale',
+                    color: '#1e5c63',
+                    icon: 'fas fa-up-right-and-down-left-from-center',
+                    inputs: ['flow', 'scaleX', 'scaleY'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.scale.x = ${ctx.getInputValue(node, 'scaleX')};\n${ctx.indent}this.gameObject.scale.y = ${ctx.getInputValue(node, 'scaleY')};`
+                },
+                {
+                    type: 'getAngle',
+                    label: 'Get Angle',
+                    color: '#286168',
+                    icon: 'fas fa-rotate-right',
+                    inputs: [],
+                    outputs: ['angle'],
+                    codeGen: (node, ctx) => `this.gameObject.angle`
+                },
+                {
+                    type: 'setAngle',
+                    label: 'Set Angle',
+                    color: '#32666d',
+                    icon: 'fas fa-rotate',
+                    inputs: ['flow', 'angle'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.angle = ${ctx.getInputValue(node, 'angle')};`
+                },
+                {
+                    type: 'getModule',
+                    label: 'Get Module',
+                    color: '#004852',
+                    icon: 'fas fa-puzzle-piece',
+                    inputs: ['name'],
+                    outputs: ['module'],
+                    codeGen: (node, ctx) => `this.gameObject.getModule(${ctx.getInputValue(node, 'name')})`
+                },
+                {
+                    type: 'addModule',
+                    label: 'Add Module',
+                    color: '#003d45',
+                    icon: 'fas fa-plus-circle',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.addModule(${ctx.getInputValue(node, 'name')})`
+                },
+                {
+                    type: 'removeModule',
+                    label: 'Remove Module',
+                    color: '#003238',
+                    icon: 'fas fa-minus-circle',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.removeModule(${ctx.getInputValue(node, 'name')});`
+                },
+                {
+                    type: 'findGameObject',
+                    label: 'Find GameObject',
+                    color: '#00272b',
+                    icon: 'fas fa-search',
+                    inputs: ['name'],
+                    outputs: ['object'],
+                    codeGen: (node, ctx) => `window.engine.findGameObject(${ctx.getInputValue(node, 'name')})`
+                },
+                {
+                    type: 'instanceCreate',
+                    label: 'Instance Create',
+                    color: '#001c1e',
+                    icon: 'fas fa-circle-plus',
+                    inputs: ['flow', 'x', 'y', 'name'],
+                    outputs: ['instance'],
+                    codeGen: (node, ctx) => `this.instanceCreate(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'name')})`
+                },
+                {
+                    type: 'instanceDestroy',
+                    label: 'Instance Destroy',
+                    color: '#001417',
+                    icon: 'fas fa-trash',
+                    inputs: ['flow', 'object'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'object')}.destroy();`
+                },
+                {
+                    type: 'getName',
+                    label: 'Get Name',
+                    color: '#000f11',
+                    icon: 'fas fa-tag',
+                    inputs: [],
+                    outputs: ['name'],
+                    codeGen: (node, ctx) => `this.gameObject.name`
+                },
+                {
+                    type: 'setName',
+                    label: 'Set Name',
+                    color: '#000a0b',
+                    icon: 'fas fa-pen',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.name = ${ctx.getInputValue(node, 'name')};`
+                },
+                {
+                    type: 'getVisible',
+                    label: 'Get Visible',
+                    color: '#000510',
+                    icon: 'fas fa-eye',
+                    inputs: [],
+                    outputs: ['visible'],
+                    codeGen: (node, ctx) => `this.gameObject.visible`
+                },
+                {
+                    type: 'setVisible',
+                    label: 'Set Visible',
+                    color: '#000a15',
+                    icon: 'fas fa-eye-slash',
+                    inputs: ['flow', 'visible'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.visible = ${ctx.getInputValue(node, 'visible')};`
+                }
+            ],
+            
+            'Drawing': [
+                {
+                    type: 'fillRect',
+                    label: 'Fill Rect',
+                    color: '#5c0a28',
+                    icon: 'fas fa-square',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
+                },
+                {
+                    type: 'strokeRect',
+                    label: 'Stroke Rect',
+                    color: '#63162f',
+                    icon: 'fas fa-square-full',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
+                },
+                {
+                    type: 'fillCircle',
+                    label: 'Fill Circle',
+                    color: '#6a2236',
+                    icon: 'fas fa-circle',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'radius')}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
+                },
+                {
+                    type: 'drawText',
+                    label: 'Draw Text',
+                    color: '#712e3d',
+                    icon: 'fas fa-font',
+                    inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillText(${ctx.getInputValue(node, 'text')}, ${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')});`
+                },
+                {
+                    type: 'drawLine',
+                    label: 'Draw Line',
+                    color: '#783a44',
+                    icon: 'fas fa-slash',
+                    inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1')}, ${ctx.getInputValue(node, 'y1')});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2')}, ${ctx.getInputValue(node, 'y2')});\n${ctx.indent}ctx.stroke();`
+                },
+                {
+                    type: 'setLineWidth',
+                    label: 'Set Line Width',
+                    color: '#520824',
+                    icon: 'fas fa-ruler-horizontal',
+                    inputs: ['flow', 'ctx', 'width'],
+                    outputs: [],
+                    codeGen: (node, ctx) => `ctx.lineWidth = ${ctx.getInputValue(node, 'width')};`
+                }
+            ],
+            'Debug': [
+                {
+                    type: 'log',
+                    label: 'Console Log',
+                    color: '#607D8B',
+                    icon: 'fas fa-terminal',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.log(${ctx.getInputValue(node, 'message')});`
+                },
+                {
+                    type: 'warn',
+                    label: 'Console Warn',
+                    color: '#FFC107',
+                    icon: 'fas fa-exclamation-triangle',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.warn(${ctx.getInputValue(node, 'message')});`
+                },
+                {
+                    type: 'error',
+                    label: 'Console Error',
+                    color: '#F44336',
+                    icon: 'fas fa-bug',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.error(${ctx.getInputValue(node, 'message')});`
+                }
+            ],
+            'Input': [
+                // Key Selector Node
+                {
+                    type: 'keySelector',
+                    label: 'Key',
+                    color: '#0d1f2b',
+                    icon: 'fas fa-keyboard',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: Object.keys(InputManager.key),
+                    defaultValue: 'a',
+                    codeGen: (node, ctx) => {
+                        const key = node.dropdownValue || 'a';
+                        return `window.input.key.${key}`;
+                    }
+                },
+                // Mouse Button Selector Node
+                {
+                    type: 'mouseButtonSelector',
+                    label: 'Mouse Button',
+                    color: '#11242f',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: ['left', 'middle', 'right'],
+                    defaultValue: 'left',
+                    codeGen: (node, ctx) => {
+                        const button = node.dropdownValue || 'left';
+                        return `'${button}'`;
+                    }
+                },
+                // Keyboard Input Nodes
+                {
+                    type: 'keyDown',
+                    label: 'Key Down',
+                    color: '#1a3847',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyDown(${ctx.getInputValue(node, 'key')})`
+                },
+                {
+                    type: 'keyPressed',
+                    label: 'Key Pressed',
+                    color: '#1e4152',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyPressed(${ctx.getInputValue(node, 'key')})`
+                },
+                {
+                    type: 'keyReleased',
+                    label: 'Key Released',
+                    color: '#22495d',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyReleased(${ctx.getInputValue(node, 'key')})`
+                },
+                // Mouse Input Nodes
+                {
+                    type: 'mouseDown',
+                    label: 'Mouse Down',
+                    color: '#265268',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mouseDown(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'mousePressed',
+                    label: 'Mouse Pressed',
+                    color: '#2a5a73',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mousePressed(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'mouseReleased',
+                    label: 'Mouse Released',
+                    color: '#2e637e',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mouseReleased(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'getMousePosition',
+                    label: 'Get Mouse Position',
+                    color: '#326b89',
+                    icon: 'fas fa-location-crosshairs',
+                    inputs: ['worldSpace'],
+                    outputs: ['x', 'y'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace})`;
+                    }
+                },
+                {
+                    type: 'getMouseX',
+                    label: 'Get Mouse X',
+                    color: '#367494',
+                    icon: 'fas fa-left-right',
+                    inputs: ['worldSpace'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace}).x`;
+                    }
+                },
+                {
+                    type: 'getMouseY',
+                    label: 'Get Mouse Y',
+                    color: '#3a7c9f',
+                    icon: 'fas fa-up-down',
+                    inputs: ['worldSpace'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace}).y`;
+                    }
+                },
+                {
+                    type: 'didMouseMove',
+                    label: 'Did Mouse Move',
+                    color: '#3e85aa',
+                    icon: 'fas fa-arrows',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.didMouseMove()`
+                },
+                {
+                    type: 'getMouseWheelDelta',
+                    label: 'Get Mouse Wheel',
+                    color: '#428db5',
+                    icon: 'fas fa-circle-dot',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `window.input.getMouseWheelDelta()`
+                },
+                // Touch Input Nodes
+                {
+                    type: 'getTouchCount',
+                    label: 'Get Touch Count',
+                    color: '#1b2f3d',
+                    icon: 'fas fa-hand-pointer',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `window.input.getTouchCount()`
+                },
+                {
+                    type: 'isTapped',
+                    label: 'Is Tapped',
+                    color: '#1f3847',
+                    icon: 'fas fa-hand-point-up',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isTapped()`
+                },
+                {
+                    type: 'isLongPressed',
+                    label: 'Is Long Pressed',
+                    color: '#234051',
+                    icon: 'fas fa-hand-back-fist',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isLongPressed()`
+                },
+                {
+                    type: 'isPinching',
+                    label: 'Is Pinching',
+                    color: '#27495b',
+                    icon: 'fas fa-hands',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isPinching()`
+                },
+                {
+                    type: 'getPinchScale',
+                    label: 'Get Pinch Scale',
+                    color: '#2b5165',
+                    icon: 'fas fa-expand',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `(window.input.getPinchData()?.scale || 1)`
+                },
+                {
+                    type: 'getSwipeDirection',
+                    label: 'Get Swipe Direction',
+                    color: '#2f5a6f',
+                    icon: 'fas fa-hand-pointer',
+                    inputs: [],
+                    outputs: ['direction'],
+                    codeGen: (node, ctx) => `window.input.getSwipeDirection()`
+                },
+                // Input State Control
+                {
+                    type: 'enableInput',
+                    label: 'Enable Input',
+                    color: '#14232e',
+                    icon: 'fas fa-toggle-on',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.input.enable();`
+                },
+                {
+                    type: 'disableInput',
+                    label: 'Disable Input',
+                    color: '#182a38',
+                    icon: 'fas fa-toggle-off',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.input.disable();`
+                }
+            ],
+            'Organization': [
+                {
+                    type: 'group',
+                    label: 'Group',
+                    color: '#263238',
+                    icon: 'fas fa-layer-group',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    isGroup: true,
+                    codeGen: (node, ctx) => ctx.generateGroupCode(node)
+                },
+                {
+                    type: 'comment',
+                    label: 'Comment',
+                    color: '#333d42',
+                    icon: 'fas fa-comment',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    codeGen: (node, ctx) => `// ${node.value || 'Comment'}`
+                }
+            ]
         };
     }
 }
