@@ -24,6 +24,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
             className: 'visual-module-builder'
         });
 
+        // Load documentation script if not already loaded
+        this.loadDocumentationScript();
+        this.loadNodeBuilderScript();
+
         // Canvas and nodes
         this.canvas = null;
         this.ctx = null;
@@ -43,6 +47,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.isPanning = false;
         this.lastMousePos = { x: 0, y: 0 };
 
+        // Grid settings
+        this.gridSize = 20;
+        this.snapToGrid = true;
+
         // Animation
         this.animationTime = 0;
 
@@ -58,6 +66,25 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Category collapse state
         this.collapsedCategories = new Set();
+
+        // Node library
+        this.nodeLibrary = this.buildNodeLibrary();
+
+        this.isActive = true;
+        this.animationFrameId = null;
+        
+        // Store bound event handlers for cleanup
+        this.boundHandlers = {
+            keydown: null,
+            mouseup: null,
+            resize: null
+        };
+
+        // Cache node library globally for examples (without creating a new window)
+        if (!window._VMBNodeLibrary) {
+            window._VMBNodeLibrary = this.nodeLibrary;
+        }
+
         Object.keys(this.buildNodeLibrary()).forEach(cat => this.collapsedCategories.add(cat));
 
         // Module data
@@ -76,10 +103,27 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.projectPath = null;
         this.hasUnsavedChanges = false;
 
+        this.availableModules = []; // Store loaded module metadata
+        this.requiredModules = new Set(); // Track which modules are required
+
         this.setupUI();
         this.setupCanvas();
         this.setupCanvasEventListeners();
         this.loadAvailableModules();
+        this.setupModuleRefreshListener();
+
+
+
+        //setTimeout(() => this.addRequireModuleNode(), 100);
+    }
+
+    setupModuleRefreshListener() {
+        if (window.engine && window.engine.moduleRegistry) {
+            window.engine.moduleRegistry.addListener((event, moduleClass) => {
+                console.log(`Module ${event}: ${moduleClass.name}`);
+                this.loadAvailableModules();
+            });
+        }
     }
 
     setupIconDropdown() {
@@ -214,63 +258,147 @@ class VisualModuleBuilderWindow extends EditorWindow {
         return {
             'Events': [
                 {
-                    type: 'start', label: 'Start', color: '#2d4a2d', icon: 'fas fa-play', outputs: ['flow'],
+                    type: 'start',
+                    label: 'Start',
+                    color: '#2d4a2d',
+                    icon: 'fas fa-play',
+                    outputs: ['flow'],
                     codeGen: (node, ctx) => ''
                 },
                 {
-                    type: 'loop', label: 'Loop', color: '#2a3341', icon: 'fas fa-rotate', outputs: ['flow', 'deltaTime'],
+                    type: 'loop',
+                    label: 'Loop',
+                    color: '#2a3341',
+                    icon: 'fas fa-rotate',
+                    outputs: ['flow', 'deltaTime'],
                     codeGen: (node, ctx) => ''
                 },
                 {
-                    type: 'draw', label: 'Draw', color: '#3d2626', icon: 'fas fa-paintbrush', outputs: ['flow', 'ctx'],
+                    type: 'draw',
+                    label: 'Draw',
+                    color: '#3d2626',
+                    icon: 'fas fa-paintbrush',
+                    outputs: ['flow', 'ctx'],
                     codeGen: (node, ctx) => ''
                 },
                 {
-                    type: 'onDestroy', label: 'On Destroy', color: '#4a3d2a', icon: 'fas fa-skull-crossbones', outputs: ['flow'],
+                    type: 'onDestroy',
+                    label: 'On Destroy',
+                    color: '#4a3d2a',
+                    icon: 'fas fa-skull-crossbones',
+                    outputs: ['flow'],
                     codeGen: (node, ctx) => ''
                 },
                 {
-                    type: 'method', label: 'Method Block', color: '#3d4026', icon: 'fas fa-cube', inputs: [], outputs: [], hasInput: true, isGroup: true,
+                    type: 'method',
+                    label: 'Method Block',
+                    color: '#3d4026',
+                    icon: 'fas fa-cube',
+                    inputs: [],
+                    outputs: ['flow'],
+                    hasInput: true,
+                    isGroup: true,
                     codeGen: (node, ctx) => ''
                 },
             ],
             'Variables': [
                 {
-                    type: 'const', label: 'Const', color: '#0d3d5c', icon: 'fas fa-lock',
-                    inputs: ['flow', 'value'],
-                    outputs: ['flow', 'variable'],
+                    type: 'const',
+                    label: 'Local Const',
+                    color: '#0d3d5c',
+                    icon: 'fas fa-lock',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => {
-                        const varName = node.value || 'myConst';
-                        const varValue = ctx.getInputValue(node, 'value');
+                        const varName = ctx.getInputValue(node, 'name') || 'myConst';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `const ${varName} = ${varValue};`;
                     }
                 },
                 {
-                    type: 'let', label: 'Let', color: '#194263', icon: 'fas fa-unlock',
-                    inputs: ['flow', 'value'],
-                    outputs: ['flow', 'variable'],
+                    type: 'let',
+                    label: 'Local Let',
+                    color: '#194263',
+                    icon: 'fas fa-unlock',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => {
-                        const varName = node.value || 'myVar';
-                        const varValue = ctx.getInputValue(node, 'value');
+                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
                         return `let ${varName} = ${varValue};`;
                     }
                 },
                 {
-                    type: 'getProperty', label: 'Get Property', color: '#26476a', icon: 'fas fa-arrow-right',
-                    inputs: [],
-                    outputs: ['value'],
-                    hasPropertyDropdown: true,
+                    type: 'var',
+                    label: 'Local Var',
+                    color: '#3d5c26',
+                    icon: 'fas fa-cube',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
                     codeGen: (node, ctx) => {
-                        const propName = node.selectedProperty || 'property';
+                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `var ${varName} = ${varValue};`;
+                    }
+                },
+                {
+                    type: 'getVariable',
+                    label: 'Get Local Variable',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-right',
+                    inputs: ['name'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        return `(${varName} !== undefined ? ${varName} : variables['${varName}'])`;
+                    }
+                },
+                {
+                    type: 'setVariable',
+                    label: 'Set Local Variable',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-left',
+                    inputs: ['flow', 'name', 'value'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const varName = ctx.getInputValue(node, 'name') || 'myVar';
+                        const varValue = ctx.getInputValue(node, 'value') || 'null';
+                        return `(${varName} = ${varValue})`;
+                    }
+                },
+                {
+                    type: 'getProperty',
+                    label: 'Get Property',
+                    color: '#26476a',
+                    icon: 'fas fa-arrow-right',
+                    inputs: ['name'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        let propName = ctx.getInputValue(node, 'name') || 'property';
+                        // Strip quotes if it's a string literal
+                        propName = propName.replace(/^'|'$/g, '').replace(/^"|"$/g, '');
+                        // Validate it's a valid identifier
+                        if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
+                            propName = 'property'; // fallback to default if invalid
+                        }
                         return `(this.${propName} !== undefined ? this.${propName} : this.properties['${propName}'])`;
                     }
                 },
                 {
-                    type: 'setProperty', label: 'Set Property', color: '#334d71', icon: 'fas fa-arrow-left',
+                    type: 'setProperty',
+                    label: 'Set Property',
+                    color: '#334d71',
+                    icon: 'fas fa-arrow-left',
                     inputs: ['flow', 'name', 'value'],
                     outputs: ['flow'],
+                    wrapFlowNode: false,
                     hasExposeCheckbox: true,
                     codeGen: (node, ctx) => {
                         const propName = ctx.getInputValue(node, 'name').replace(/^'|'$/g, '').replace(/^"|"$/g, '');
@@ -282,209 +410,818 @@ class VisualModuleBuilderWindow extends EditorWindow {
                             return `this.properties['${propName}'] = ${propValue};`;
                         }
                     }
-                },
+                }
+            ],
+            'Values': [
                 {
-                    type: 'number', label: 'Number', color: '#405278', icon: 'fas fa-hashtag', inputs: [], outputs: ['value'], hasInput: true,
+                    type: 'number',
+                    label: 'Number',
+                    color: '#405278',
+                    icon: 'fas fa-hashtag',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasInput: true,
                     codeGen: (node, ctx) => node.value || '0'
                 },
                 {
-                    type: 'string', label: 'String', color: '#4d577f', icon: 'fas fa-quote-right', inputs: [], outputs: ['value'], hasInput: true,
+                    type: 'string',
+                    label: 'String',
+                    color: '#4d577f',
+                    icon: 'fas fa-quote-right',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasInput: true,
                     codeGen: (node, ctx) => `'${node.value || ''}'`
                 },
                 {
-                    type: 'boolean', label: 'Boolean', color: '#0a2f4d', icon: 'fas fa-toggle-on', inputs: [], outputs: ['value'], hasToggle: true,
+                    type: 'boolean',
+                    label: 'Boolean',
+                    color: '#0a2f4d',
+                    icon: 'fas fa-toggle-on',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasToggle: true,
                     codeGen: (node, ctx) => node.value ? 'true' : 'false'
                 },
                 {
-                    type: 'color', label: 'Color', color: '#082340', icon: 'fas fa-palette', inputs: [], outputs: ['value'], hasColorPicker: true,
+                    type: 'color',
+                    label: 'Color',
+                    color: '#444444ff',
+                    icon: 'fas fa-palette',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasColorPicker: true,
                     codeGen: (node, ctx) => `'${node.value || '#ffffff'}'`
+                },
+                {
+                    type: 'null',
+                    label: 'Null',
+                    color: '#000000ff',
+                    icon: 'fas fa-ban',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'null'
+                },
+                {
+                    type: 'undefined',
+                    label: 'Undefined',
+                    color: '#000000',
+                    icon: 'fas fa-ban',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'undefined'
+                },
+                {
+                    type: 'infinity',
+                    label: 'Infinity',
+                    color: '#000000',
+                    icon: 'fas fa-infinity',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => 'Infinity'
+                },
+                {
+                    type: 'negativeInfinity',
+                    label: 'Negative Infinity',
+                    color: '#000000',
+                    icon: 'fas fa-infinity',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => '-Infinity'
                 }
             ],
             'Logic': [
                 {
-                    type: 'if', label: 'If', color: '#663d00', icon: 'fas fa-code-branch', inputs: ['flow', 'condition'], outputs: ['true', 'false'],
+                    type: 'if',
+                    label: 'If',
+                    color: '#663d00',
+                    icon: 'fas fa-code-branch',
+                    inputs: ['flow', 'condition'],
+                    outputs: ['true', 'false'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `if (${ctx.getInputValue(node, 'condition')})`
                 },
                 {
-                    type: 'compare', label: 'Compare', color: '#6b4410', icon: 'fas fa-balance-scale', inputs: ['a', 'b'], outputs: ['==', '!=', '>', '<', '>=', '<='], hasDropdown: true,
+                    type: 'compare',
+                    label: 'Compare',
+                    color: '#6b4410',
+                    icon: 'fas fa-balance-scale',
+                    inputs: ['a', 'b'],
+                    outputs: ['==', '!=', '>', '<', '>=', '<='],
+                    hasDropdown: true,
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} ${node.dropdownValue || '=='} ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'and', label: 'AND', color: '#704a1f', icon: 'fas fa-link', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'and',
+                    label: 'AND',
+                    color: '#704a1f',
+                    icon: 'fas fa-link',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} && ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'or', label: 'OR', color: '#75502e', icon: 'fas fa-plus', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'or',
+                    label: 'OR',
+                    color: '#75502e',
+                    icon: 'fas fa-plus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} || ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'not', label: 'NOT', color: '#7a563d', icon: 'fas fa-ban', inputs: ['value'], outputs: ['result'],
+                    type: 'not',
+                    label: 'NOT',
+                    color: '#7a563d',
+                    icon: 'fas fa-ban',
+                    inputs: ['value'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `!(${ctx.getInputValue(node, 'value')})`
                 },
                 {
-                    type: 'return', label: 'Return', color: '#663300', icon: 'fas fa-reply', inputs: ['flow', 'value'], outputs: [],
+                    type: 'return',
+                    label: 'Return',
+                    color: '#663300',
+                    icon: 'fas fa-reply',
+                    inputs: ['flow', 'value'],
+                    outputs: [],
                     codeGen: (node, ctx) => `return ${ctx.getInputValue(node, 'value')};`
+                }
+            ],
+            'Modules': [
+                {
+                    type: 'getModule',
+                    label: 'Get Module',
+                    color: '#681d75ff',
+                    icon: 'fas fa-puzzle-piece',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow', 'module'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    defaultValue: 'ModuleName',
+                    codeGen: (node, ctx) => {
+                        const moduleName = ctx.getInputValue(node, 'name') || 'ModuleName';
+                        return `this.gameObject.getModule('${moduleName}')`;
+                    }
+                },
+                {
+                    type: 'require',
+                    label: 'Require',
+                    color: '#4a2f4eff',
+                    icon: 'fas fa-plug',
+                    inputs: ['name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
+                    defaultValue: 'ModuleName',
+                    codeGen: (node, ctx) => {
+                        const moduleName = ctx.getInputValue(node, 'name') || node.value || 'ModuleName';
+                        return `require('${moduleName}')`;
+                    }
                 }
             ],
             'Math': [
                 {
-                    type: 'add', label: 'Add', color: '#3d0f47', icon: 'fas fa-plus', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'add',
+                    label: 'Add',
+                    color: '#3d0f47',
+                    icon: 'fas fa-plus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} + ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'subtract', label: 'Subtract', color: '#44194e', icon: 'fas fa-minus', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'subtract',
+                    label: 'Subtract',
+                    color: '#44194e',
+                    icon: 'fas fa-minus',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} - ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'multiply', label: 'Multiply', color: '#4b2355', icon: 'fas fa-xmark', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'multiply',
+                    label: 'Multiply',
+                    color: '#4b2355',
+                    icon: 'fas fa-xmark',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} * ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'divide', label: 'Divide', color: '#522d5c', icon: 'fas fa-divide', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'divide',
+                    label: 'Divide',
+                    color: '#522d5c',
+                    icon: 'fas fa-divide',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} / ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'modulo', label: 'Modulo', color: '#593763', icon: 'fas fa-percent', inputs: ['a', 'b'], outputs: ['result'],
+                    type: 'modulo',
+                    label: 'Modulo',
+                    color: '#593763',
+                    icon: 'fas fa-percent',
+                    inputs: ['a', 'b'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} % ${ctx.getInputValue(node, 'b')}`
                 },
                 {
-                    type: 'random', label: 'Random', color: '#60416a', icon: 'fas fa-dice', inputs: ['min', 'max'], outputs: ['value'],
+                    type: 'random',
+                    label: 'Random',
+                    color: '#60416a',
+                    icon: 'fas fa-dice',
+                    inputs: ['min', 'max'],
+                    outputs: ['value'],
                     codeGen: (node, ctx) => `(Math.random() * (${ctx.getInputValue(node, 'max')} - ${ctx.getInputValue(node, 'min')}) + ${ctx.getInputValue(node, 'min')})`
                 },
                 {
-                    type: 'abs', label: 'Absolute', color: '#360d40', icon: 'fas fa-arrows-left-right', inputs: ['value'], outputs: ['result'],
+                    type: 'abs',
+                    label: 'Absolute',
+                    color: '#360d40',
+                    icon: 'fas fa-arrows-left-right',
+                    inputs: ['value'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `Math.abs(${ctx.getInputValue(node, 'value')})`
                 },
                 {
-                    type: 'sqrt', label: 'Square Root', color: '#2e0936', icon: 'fas fa-square-root-alt', inputs: ['value'], outputs: ['result'],
+                    type: 'sqrt',
+                    label: 'Square Root',
+                    color: '#2e0936',
+                    icon: 'fas fa-square-root-alt',
+                    inputs: ['value'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `Math.sqrt(${ctx.getInputValue(node, 'value')})`
                 },
                 {
-                    type: 'pow', label: 'Power', color: '#26082c', icon: 'fas fa-superscript', inputs: ['base', 'exp'], outputs: ['result'],
+                    type: 'pow',
+                    label: 'Power',
+                    color: '#26082c',
+                    icon: 'fas fa-superscript',
+                    inputs: ['base', 'exp'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `Math.pow(${ctx.getInputValue(node, 'base')}, ${ctx.getInputValue(node, 'exp')})`
                 },
                 {
-                    type: 'sin', label: 'Sine', color: '#1e0624', icon: 'fas fa-wave-square', inputs: ['angle'], outputs: ['result'],
+                    type: 'sin',
+                    label: 'Sine',
+                    color: '#1e0624',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['angle'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `Math.sin(${ctx.getInputValue(node, 'angle')})`
                 },
                 {
-                    type: 'cos', label: 'Cosine', color: '#14001a', icon: 'fas fa-wave-square', inputs: ['angle'], outputs: ['result'],
+                    type: 'cos',
+                    label: 'Cosine',
+                    color: '#14001a',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['angle'],
+                    outputs: ['result'],
                     codeGen: (node, ctx) => `Math.cos(${ctx.getInputValue(node, 'angle')})`
+                },
+                {
+                    type: 'vector2',
+                    label: 'Vector2',
+                    color: '#1e3c44ff',
+                    icon: 'fas fa-arrows-alt',
+                    inputs: ['name','x', 'y'],
+                    outputs: ['x', 'y'],
+                    hasInput: false,
+                    codeGen: (node, ctx) => {
+                        const x = ctx.getInputValue(node, 'x');
+                        const y = ctx.getInputValue(node, 'y');
+                        return `new Vector2(${x}, ${y})`;
+                    },
+                    multiOutputAccess: (baseValue, portName, node, ctx) => {
+                        // If accessing .x or .y from the vector object
+                        return `(${baseValue}).${portName}`;
+                    }
+                }
+            ],
+            'Comparison': [
+                {
+                    type: 'equals',
+                    label: 'Equals',
+                    color: '#FFC107',
+                    icon: 'fas fa-equals',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} === ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'notEquals',
+                    label: 'Not Equals',
+                    color: '#FFC107',
+                    icon: 'fas fa-not-equal',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} !== ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'greaterThan',
+                    label: 'Greater Than',
+                    color: '#FFC107',
+                    icon: 'fas fa-greater-than',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} > ${ctx.getInputValue(node, 'b')}`
+                },
+                {
+                    type: 'lessThan',
+                    label: 'Less Than',
+                    color: '#FFC107',
+                    icon: 'fas fa-less-than',
+                    inputs: ['value', 'value'],
+                    inputLabels: ['a', 'b'],
+                    outputs: ['value'],
+                    outputLabels: ['result'],
+                    codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} < ${ctx.getInputValue(node, 'b')}`
                 }
             ],
             'GameObject': [
                 {
-                    type: 'getPosition', label: 'Get Position', color: '#004d54', icon: 'fas fa-location-dot', inputs: [], outputs: ['x', 'y'],
-                    codeGen: (node, ctx) => ''
+                    type: 'getPosition',
+                    label: 'Get Position',
+                    color: '#004d54',
+                    icon: 'fas fa-location-dot',
+                    inputs: [],
+                    outputs: ['x', 'y'],
+                    codeGen: (node, ctx) => {
+                        // This node outputs multiple values, handled specially in code generation
+                        return 'this.gameObject.position';
+                    }
                 },
                 {
-                    type: 'setPosition', label: 'Set Position', color: '#0a5259', icon: 'fas fa-arrows-up-down-left-right', inputs: ['flow', 'x', 'y'], outputs: ['flow'],
-                    codeGen: (node, ctx) => `this.gameObject.position.x = ${ctx.getInputValue(node, 'x')};\n${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
+                    type: 'setPosition',
+                    label: 'Set Position',
+                    color: '#0a5259',
+                    icon: 'fas fa-arrows-up-down-left-right',
+                    inputs: ['flow', 'x', 'y'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.position.x = ${ctx.getInputValue(node, 'x')};
+${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                 },
                 {
-                    type: 'getScale', label: 'Get Scale', color: '#14575e', icon: 'fas fa-maximize', inputs: [], outputs: ['scaleX', 'scaleY'],
-                    codeGen: (node, ctx) => ''
+                    type: 'getScale',
+                    label: 'Get Scale',
+                    color: '#14575e',
+                    icon: 'fas fa-maximize',
+                    inputs: [],
+                    outputs: ['scaleX', 'scaleY'],
+                    codeGen: (node, ctx) => {
+                        // This node outputs multiple values, handled specially in code generation
+                        return 'this.gameObject.scale';
+                    }
                 },
                 {
-                    type: 'setScale', label: 'Set Scale', color: '#1e5c63', icon: 'fas fa-up-right-and-down-left-from-center', inputs: ['flow', 'scaleX', 'scaleY'], outputs: ['flow'],
+                    type: 'setScale',
+                    label: 'Set Scale',
+                    color: '#1e5c63',
+                    icon: 'fas fa-up-right-and-down-left-from-center',
+                    inputs: ['flow', 'scaleX', 'scaleY'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `this.gameObject.scale.x = ${ctx.getInputValue(node, 'scaleX')};\n${ctx.indent}this.gameObject.scale.y = ${ctx.getInputValue(node, 'scaleY')};`
                 },
                 {
-                    type: 'getRotation', label: 'Get Rotation', color: '#286168', icon: 'fas fa-rotate-right', inputs: [], outputs: ['rotation'],
-                    codeGen: (node, ctx) => `this.gameObject.rotation`
+                    type: 'getAngle',
+                    label: 'Get Angle',
+                    color: '#286168',
+                    icon: 'fas fa-rotate-right',
+                    inputs: [],
+                    outputs: ['angle'],
+                    codeGen: (node, ctx) => `this.gameObject.angle`
                 },
                 {
-                    type: 'setRotation', label: 'Set Rotation', color: '#32666d', icon: 'fas fa-rotate', inputs: ['flow', 'rotation'], outputs: ['flow'],
-                    codeGen: (node, ctx) => `this.gameObject.rotation = ${ctx.getInputValue(node, 'rotation')};`
+                    type: 'setAngle',
+                    label: 'Set Angle',
+                    color: '#32666d',
+                    icon: 'fas fa-rotate',
+                    inputs: ['flow', 'angle'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `this.gameObject.angle = ${ctx.getInputValue(node, 'angle')};`
                 },
                 {
-                    type: 'getModule', label: 'Get Module', color: '#004852', icon: 'fas fa-puzzle-piece', inputs: ['name'], outputs: ['module'],
+                    type: 'getModule',
+                    label: 'Get Module',
+                    color: '#004852',
+                    icon: 'fas fa-puzzle-piece',
+                    inputs: ['name'],
+                    outputs: ['module'],
                     codeGen: (node, ctx) => `this.gameObject.getModule(${ctx.getInputValue(node, 'name')})`
                 },
                 {
-                    type: 'addModule', label: 'Add Module', color: '#003d45', icon: 'fas fa-plus-circle', inputs: ['flow', 'name'], outputs: ['flow', 'module'],
+                    type: 'addModule',
+                    label: 'Add Module',
+                    color: '#003d45',
+                    icon: 'fas fa-plus-circle',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `this.gameObject.addModule(${ctx.getInputValue(node, 'name')})`
                 },
                 {
-                    type: 'removeModule', label: 'Remove Module', color: '#003238', icon: 'fas fa-minus-circle', inputs: ['flow', 'name'], outputs: ['flow'],
+                    type: 'removeModule',
+                    label: 'Remove Module',
+                    color: '#003238',
+                    icon: 'fas fa-minus-circle',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `this.gameObject.removeModule(${ctx.getInputValue(node, 'name')});`
                 },
                 {
-                    type: 'findGameObject', label: 'Find GameObject', color: '#00272b', icon: 'fas fa-search', inputs: ['name'], outputs: ['object'],
-                    codeGen: (node, ctx) => `engine.scene.findGameObject(${ctx.getInputValue(node, 'name')})`
+                    type: 'findGameObject',
+                    label: 'Find GameObject',
+                    color: '#00272b',
+                    icon: 'fas fa-search',
+                    inputs: ['name'],
+                    outputs: ['object'],
+                    codeGen: (node, ctx) => `window.engine.findGameObject(${ctx.getInputValue(node, 'name')})`
                 },
                 {
-                    type: 'instanceCreate', label: 'Instance Create', color: '#001c1e', icon: 'fas fa-circle-plus', inputs: ['flow', 'x', 'y', 'name'], outputs: ['flow', 'instance'],
-                    codeGen: (node, ctx) => `engine.scene.instanceCreate(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'name')})`
+                    type: 'instanceCreate',
+                    label: 'Instance Create',
+                    color: '#001c1e',
+                    icon: 'fas fa-circle-plus',
+                    inputs: ['flow', 'x', 'y', 'name'],
+                    outputs: ['instance'],
+                    codeGen: (node, ctx) => `this.instanceCreate(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'name')})`
                 },
                 {
-                    type: 'instanceDestroy', label: 'Instance Destroy', color: '#001417', icon: 'fas fa-trash', inputs: ['flow', 'object'], outputs: ['flow'],
+                    type: 'instanceDestroy',
+                    label: 'Instance Destroy',
+                    color: '#001417',
+                    icon: 'fas fa-trash',
+                    inputs: ['flow', 'object'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'object')}.destroy();`
                 },
                 {
-                    type: 'getName', label: 'Get Name', color: '#000f11', icon: 'fas fa-tag', inputs: [], outputs: ['name'],
+                    type: 'getName',
+                    label: 'Get Name',
+                    color: '#000f11',
+                    icon: 'fas fa-tag',
+                    inputs: [],
+                    outputs: ['name'],
                     codeGen: (node, ctx) => `this.gameObject.name`
                 },
                 {
-                    type: 'setName', label: 'Set Name', color: '#000a0b', icon: 'fas fa-pen', inputs: ['flow', 'name'], outputs: ['flow'],
+                    type: 'setName',
+                    label: 'Set Name',
+                    color: '#000a0b',
+                    icon: 'fas fa-pen',
+                    inputs: ['flow', 'name'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
                     codeGen: (node, ctx) => `this.gameObject.name = ${ctx.getInputValue(node, 'name')};`
-                }
-            ],
-            'Module': [
-                {
-                    type: 'moduleStart', label: 'Module Start', color: '#662311', icon: 'fas fa-power-off', inputs: [], outputs: [],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'moduleLoop', label: 'Module Loop', color: '#6b2e1a', icon: 'fas fa-arrows-rotate', inputs: ['deltaTime'], outputs: [],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'moduleDraw', label: 'Module Draw', color: '#703823', icon: 'fas fa-brush', inputs: ['ctx'], outputs: [],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'moduleOnDestroy', label: 'Module OnDestroy', color: '#75422c', icon: 'fas fa-stop', inputs: [], outputs: [],
-                    codeGen: (node, ctx) => ''
-                },
-                {
-                    type: 'getGameObject', label: 'Get GameObject', color: '#5e1d08', icon: 'fas fa-cube', inputs: [], outputs: ['gameObject'],
-                    codeGen: (node, ctx) => `this.gameObject`
                 }
             ],
             'Drawing': [
                 {
-                    type: 'fillRect', label: 'Fill Rect', color: '#5c0a28', icon: 'fas fa-square', inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'], outputs: ['flow'],
+                    type: 'fillRect',
+                    label: 'Fill Rect',
+                    color: '#5c0a28',
+                    icon: 'fas fa-square',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
                 },
                 {
-                    type: 'strokeRect', label: 'Stroke Rect', color: '#63162f', icon: 'fas fa-square-full', inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'], outputs: ['flow'],
+                    type: 'strokeRect',
+                    label: 'Stroke Rect',
+                    color: '#63162f',
+                    icon: 'fas fa-square-full',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
                 },
                 {
-                    type: 'fillCircle', label: 'Fill Circle', color: '#6a2236', icon: 'fas fa-circle', inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'], outputs: ['flow'],
+                    type: 'fillCircle',
+                    label: 'Fill Circle',
+                    color: '#6a2236',
+                    icon: 'fas fa-circle',
+                    inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'radius')}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
                 },
                 {
-                    type: 'drawText', label: 'Draw Text', color: '#712e3d', icon: 'fas fa-font', inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color'], outputs: ['flow'],
+                    type: 'drawText',
+                    label: 'Draw Text',
+                    color: '#712e3d',
+                    icon: 'fas fa-font',
+                    inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillText(${ctx.getInputValue(node, 'text')}, ${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')});`
                 },
                 {
-                    type: 'drawLine', label: 'Draw Line', color: '#783a44', icon: 'fas fa-slash', inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'], outputs: ['flow'],
+                    type: 'drawLine',
+                    label: 'Draw Line',
+                    color: '#783a44',
+                    icon: 'fas fa-slash',
+                    inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1')}, ${ctx.getInputValue(node, 'y1')});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2')}, ${ctx.getInputValue(node, 'y2')});\n${ctx.indent}ctx.stroke();`
                 },
                 {
-                    type: 'setLineWidth', label: 'Set Line Width', color: '#520824', icon: 'fas fa-ruler-horizontal', inputs: ['flow', 'ctx', 'width'], outputs: ['flow'],
+                    type: 'setLineWidth',
+                    label: 'Set Line Width',
+                    color: '#520824',
+                    icon: 'fas fa-ruler-horizontal',
+                    inputs: ['flow', 'ctx', 'width'],
+                    outputs: [],
                     codeGen: (node, ctx) => `ctx.lineWidth = ${ctx.getInputValue(node, 'width')};`
                 }
             ],
-            'Group': [
+            'Debug': [
                 {
-                    type: 'group', label: 'Group', color: '#263238', icon: 'fas fa-layer-group', inputs: ['flow'], outputs: ['flow'], isGroup: true,
+                    type: 'log',
+                    label: 'Console Log',
+                    color: '#607D8B',
+                    icon: 'fas fa-terminal',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.log(${ctx.getInputValue(node, 'message')});`
+                },
+                {
+                    type: 'warn',
+                    label: 'Console Warn',
+                    color: '#FFC107',
+                    icon: 'fas fa-exclamation-triangle',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.warn(${ctx.getInputValue(node, 'message')});`
+                },
+                {
+                    type: 'error',
+                    label: 'Console Error',
+                    color: '#F44336',
+                    icon: 'fas fa-bug',
+                    inputs: ['flow', 'message'],
+                    inputLabels: ['', 'message'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    outputLabels: [''],
+                    codeGen: (node, ctx) => `console.error(${ctx.getInputValue(node, 'message')});`
+                }
+            ],
+            'Input': [
+                // Key Selector Node
+                {
+                    type: 'keySelector',
+                    label: 'Key',
+                    color: '#0d1f2b',
+                    icon: 'fas fa-keyboard',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: Object.keys(InputManager.key),
+                    defaultValue: 'a',
+                    codeGen: (node, ctx) => {
+                        const key = node.dropdownValue || 'a';
+                        return `window.input.key.${key}`;
+                    }
+                },
+                // Mouse Button Selector Node
+                {
+                    type: 'mouseButtonSelector',
+                    label: 'Mouse Button',
+                    color: '#11242f',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: ['left', 'middle', 'right'],
+                    defaultValue: 'left',
+                    codeGen: (node, ctx) => {
+                        const button = node.dropdownValue || 'left';
+                        return `'${button}'`;
+                    }
+                },
+                // Keyboard Input Nodes
+                {
+                    type: 'keyDown',
+                    label: 'Key Down',
+                    color: '#1a3847',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyDown(${ctx.getInputValue(node, 'key')})`
+                },
+                {
+                    type: 'keyPressed',
+                    label: 'Key Pressed',
+                    color: '#1e4152',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyPressed(${ctx.getInputValue(node, 'key')})`
+                },
+                {
+                    type: 'keyReleased',
+                    label: 'Key Released',
+                    color: '#22495d',
+                    icon: 'fas fa-keyboard',
+                    inputs: ['flow', 'key'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.keyReleased(${ctx.getInputValue(node, 'key')})`
+                },
+                // Mouse Input Nodes
+                {
+                    type: 'mouseDown',
+                    label: 'Mouse Down',
+                    color: '#265268',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mouseDown(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'mousePressed',
+                    label: 'Mouse Pressed',
+                    color: '#2a5a73',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mousePressed(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'mouseReleased',
+                    label: 'Mouse Released',
+                    color: '#2e637e',
+                    icon: 'fas fa-computer-mouse',
+                    inputs: ['flow', 'button'],
+                    outputs: ['flow', 'result'],
+                    codeGen: (node, ctx) => `window.input.mouseReleased(${ctx.getInputValue(node, 'button')})`
+                },
+                {
+                    type: 'getMousePosition',
+                    label: 'Get Mouse Position',
+                    color: '#326b89',
+                    icon: 'fas fa-location-crosshairs',
+                    inputs: ['worldSpace'],
+                    outputs: ['x', 'y'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace})`;
+                    }
+                },
+                {
+                    type: 'getMouseX',
+                    label: 'Get Mouse X',
+                    color: '#367494',
+                    icon: 'fas fa-left-right',
+                    inputs: ['worldSpace'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace}).x`;
+                    }
+                },
+                {
+                    type: 'getMouseY',
+                    label: 'Get Mouse Y',
+                    color: '#3a7c9f',
+                    icon: 'fas fa-up-down',
+                    inputs: ['worldSpace'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => {
+                        const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
+                        return `window.input.getMousePosition(${worldSpace}).y`;
+                    }
+                },
+                {
+                    type: 'didMouseMove',
+                    label: 'Did Mouse Move',
+                    color: '#3e85aa',
+                    icon: 'fas fa-arrows',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.didMouseMove()`
+                },
+                {
+                    type: 'getMouseWheelDelta',
+                    label: 'Get Mouse Wheel',
+                    color: '#428db5',
+                    icon: 'fas fa-circle-dot',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `window.input.getMouseWheelDelta()`
+                },
+                // Touch Input Nodes
+                {
+                    type: 'getTouchCount',
+                    label: 'Get Touch Count',
+                    color: '#1b2f3d',
+                    icon: 'fas fa-hand-pointer',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `window.input.getTouchCount()`
+                },
+                {
+                    type: 'isTapped',
+                    label: 'Is Tapped',
+                    color: '#1f3847',
+                    icon: 'fas fa-hand-point-up',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isTapped()`
+                },
+                {
+                    type: 'isLongPressed',
+                    label: 'Is Long Pressed',
+                    color: '#234051',
+                    icon: 'fas fa-hand-back-fist',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isLongPressed()`
+                },
+                {
+                    type: 'isPinching',
+                    label: 'Is Pinching',
+                    color: '#27495b',
+                    icon: 'fas fa-hands',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.input.isPinching()`
+                },
+                {
+                    type: 'getPinchScale',
+                    label: 'Get Pinch Scale',
+                    color: '#2b5165',
+                    icon: 'fas fa-expand',
+                    inputs: [],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `(window.input.getPinchData()?.scale || 1)`
+                },
+                {
+                    type: 'getSwipeDirection',
+                    label: 'Get Swipe Direction',
+                    color: '#2f5a6f',
+                    icon: 'fas fa-hand-pointer',
+                    inputs: [],
+                    outputs: ['direction'],
+                    codeGen: (node, ctx) => `window.input.getSwipeDirection()`
+                },
+                // Input State Control
+                {
+                    type: 'enableInput',
+                    label: 'Enable Input',
+                    color: '#14232e',
+                    icon: 'fas fa-toggle-on',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.input.enable();`
+                },
+                {
+                    type: 'disableInput',
+                    label: 'Disable Input',
+                    color: '#182a38',
+                    icon: 'fas fa-toggle-off',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.input.disable();`
+                }
+            ],
+            'Organization': [
+                {
+                    type: 'group',
+                    label: 'Group',
+                    color: '#263238',
+                    icon: 'fas fa-layer-group',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    isGroup: true,
                     codeGen: (node, ctx) => ctx.generateGroupCode(node)
                 },
                 {
-                    type: 'comment', label: 'Comment', color: '#333d42', icon: 'fas fa-comment', inputs: ['flow'], outputs: ['flow'], hasInput: true,
+                    type: 'comment',
+                    label: 'Comment',
+                    color: '#333d42',
+                    icon: 'fas fa-comment',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    hasInput: true,
                     codeGen: (node, ctx) => `// ${node.value || 'Comment'}`
                 }
             ]
@@ -568,19 +1305,38 @@ class VisualModuleBuilderWindow extends EditorWindow {
     }
 
     /**
+     * Snap a value to the grid
+     */
+    snapToGridValue(value) {
+        if (!this.snapToGrid) return value;
+        return Math.round(value / this.gridSize) * this.gridSize;
+    }
+
+    /**
+     * Snap a position to the grid
+     */
+    snapPositionToGrid(x, y) {
+        if (!this.snapToGrid) return { x, y };
+        return {
+            x: this.snapToGridValue(x),
+            y: this.snapToGridValue(y)
+        };
+    }
+
+    /**
      * Create the top toolbar
      */
     createToolbar() {
         const toolbar = document.createElement('div');
         toolbar.style.cssText = `
-            display: flex;
-            gap: 8px;
-            padding: 8px;
-            background: #2a2a2a;
-            border-radius: 4px;
-            flex-wrap: wrap;
-            align-items: center;
-        `;
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        background: #2a2a2a;
+        border-radius: 4px;
+        flex-wrap: wrap;
+        align-items: center;
+    `;
 
         // Example selector
         const exampleLabel = document.createElement('label');
@@ -590,14 +1346,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         const exampleSelect = document.createElement('select');
         exampleSelect.style.cssText = `
-            padding: 4px 8px;
-            background: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 12px;
-            cursor: pointer;
-        `;
+        padding: 4px 8px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 12px;
+        cursor: pointer;
+    `;
 
         // Add options
         const examples = VMBExampleModules.getExampleNames();
@@ -634,14 +1390,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
         nameInput.type = 'text';
         nameInput.value = this.moduleName;
         nameInput.style.cssText = `
-            padding: 4px 8px;
-            background: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 12px;
-            width: 150px;
-        `;
+        padding: 4px 8px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 12px;
+        width: 150px;
+    `;
         nameInput.addEventListener('input', (e) => {
             this.moduleName = e.target.value;
             this.hasUnsavedChanges = true;
@@ -654,6 +1410,42 @@ class VisualModuleBuilderWindow extends EditorWindow {
             div.style.cssText = 'width: 1px; height: 20px; background: #555; margin: 0 8px;';
             return div;
         };
+        toolbar.appendChild(divider());
+
+        // Snap to Grid Toggle
+        const snapLabel = document.createElement('label');
+        snapLabel.style.cssText = `
+        color: #fff;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 8px;
+        background: ${this.snapToGrid ? '#4CAF50' : '#444'};
+        border: 1px solid ${this.snapToGrid ? '#66BB6A' : '#666'};
+        border-radius: 4px;
+        transition: all 0.2s;
+    `;
+
+        const snapCheckbox = document.createElement('input');
+        snapCheckbox.type = 'checkbox';
+        snapCheckbox.checked = this.snapToGrid;
+        snapCheckbox.style.cssText = 'cursor: pointer;';
+
+        const snapText = document.createElement('span');
+        snapText.innerHTML = '<i class="fas fa-border-all" style="margin-right: 4px;"></i>Snap to Grid';
+
+        snapCheckbox.addEventListener('change', (e) => {
+            this.snapToGrid = e.target.checked;
+            snapLabel.style.background = this.snapToGrid ? '#4CAF50' : '#444';
+            snapLabel.style.borderColor = this.snapToGrid ? '#66BB6A' : '#666';
+        });
+
+        snapLabel.appendChild(snapCheckbox);
+        snapLabel.appendChild(snapText);
+        toolbar.appendChild(snapLabel);
+
         toolbar.appendChild(divider());
 
         // Action buttons
@@ -671,15 +1463,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
             const button = document.createElement('button');
             button.innerHTML = `${btn.icon} ${btn.text}`;
             button.style.cssText = `
-                padding: 6px 12px;
-                background: ${btn.highlight ? '#4CAF50' : '#444'};
-                border: 1px solid ${btn.highlight ? '#66BB6A' : '#666'};
-                border-radius: 4px;
-                color: #fff;
-                cursor: pointer;
-                font-size: 12px;
-                transition: all 0.2s;
-            `;
+            padding: 6px 12px;
+            background: ${btn.highlight ? '#4CAF50' : '#444'};
+            border: 1px solid ${btn.highlight ? '#66BB6A' : '#666'};
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        `;
             button.addEventListener('mouseenter', () => {
                 button.style.background = btn.highlight ? '#66BB6A' : '#555';
             });
@@ -698,41 +1490,134 @@ class VisualModuleBuilderWindow extends EditorWindow {
      */
     createSidebar() {
         const sidebar = document.createElement('div');
+        sidebar.className = 'vmb-sidebar';
         sidebar.style.cssText = `
-            width: 220px;
-            background: #2a2a2a;
-            border-radius: 4px;
-            overflow-y: auto;
-            padding: 8px;
-        `;
+        width: 220px;
+        background: #2a2a2a;
+        border-radius: 4px;
+        overflow-y: auto;
+        padding: 8px;
+    `;
 
         const title = document.createElement('div');
         title.textContent = 'Node Library';
         title.style.cssText = `
-            color: #fff;
-            font-weight: bold;
-            margin-bottom: 12px;
-            font-size: 14px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #444;
-        `;
+        color: #fff;
+        font-weight: bold;
+        margin-bottom: 12px;
+        font-size: 14px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #444;
+    `;
         sidebar.appendChild(title);
+
+        // Custom Node Toolbar
+        const customNodeToolbar = document.createElement('div');
+        customNodeToolbar.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #444;
+    `;
+
+        // Create Custom Node Button
+        const createNodeBtn = document.createElement('button');
+        createNodeBtn.innerHTML = '✨ Create Custom Node';
+        createNodeBtn.style.cssText = `
+        padding: 8px 10px;
+        background: #4CAF50;
+        border: 1px solid #66BB6A;
+        border-radius: 4px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s;
+        font-weight: 500;
+    `;
+        createNodeBtn.addEventListener('mouseenter', () => {
+            createNodeBtn.style.background = '#66BB6A';
+        });
+        createNodeBtn.addEventListener('mouseleave', () => {
+            createNodeBtn.style.background = '#4CAF50';
+        });
+        createNodeBtn.addEventListener('click', () => this.showNodeBuilder());
+        customNodeToolbar.appendChild(createNodeBtn);
+
+        // Button Container for Export/Import
+        const importExportContainer = document.createElement('div');
+        importExportContainer.style.cssText = `
+        display: flex;
+        gap: 6px;
+    `;
+
+        // Export Nodes Button
+        const exportNodesBtn = document.createElement('button');
+        exportNodesBtn.innerHTML = '📤 Export';
+        exportNodesBtn.title = 'Export custom nodes to share';
+        exportNodesBtn.style.cssText = `
+        padding: 6px 10px;
+        background: #2196F3;
+        border: 1px solid #42A5F5;
+        border-radius: 4px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.2s;
+        flex: 1;
+    `;
+        exportNodesBtn.addEventListener('mouseenter', () => {
+            exportNodesBtn.style.background = '#42A5F5';
+        });
+        exportNodesBtn.addEventListener('mouseleave', () => {
+            exportNodesBtn.style.background = '#2196F3';
+        });
+        exportNodesBtn.addEventListener('click', () => this.exportCustomNodes());
+        importExportContainer.appendChild(exportNodesBtn);
+
+        // Import Nodes Button
+        const importNodesBtn = document.createElement('button');
+        importNodesBtn.innerHTML = '📥 Import';
+        importNodesBtn.title = 'Import custom nodes from file';
+        importNodesBtn.style.cssText = `
+        padding: 6px 10px;
+        background: #FF9800;
+        border: 1px solid #FFA726;
+        border-radius: 4px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.2s;
+        flex: 1;
+    `;
+        importNodesBtn.addEventListener('mouseenter', () => {
+            importNodesBtn.style.background = '#FFA726';
+        });
+        importNodesBtn.addEventListener('mouseleave', () => {
+            importNodesBtn.style.background = '#FF9800';
+        });
+        importNodesBtn.addEventListener('click', () => this.importCustomNodes());
+        importExportContainer.appendChild(importNodesBtn);
+
+        //customNodeToolbar.appendChild(importExportContainer);
+        //sidebar.appendChild(customNodeToolbar);
 
         // Search box
         const searchBox = document.createElement('input');
         searchBox.type = 'text';
         searchBox.placeholder = 'Search nodes...';
         searchBox.style.cssText = `
-            width: 100%;
-            padding: 6px 8px;
-            background: #333;
-            border: 1px solid #555;
-            border-radius: 4px;
-            color: #fff;
-            font-size: 12px;
-            margin-bottom: 12px;
-            box-sizing: border-box;
-        `;
+        width: 100%;
+        padding: 6px 8px;
+        background: #333;
+        border: 1px solid #555;
+        border-radius: 4px;
+        color: #fff;
+        font-size: 12px;
+        margin-bottom: 12px;
+        box-sizing: border-box;
+    `;
         searchBox.addEventListener('input', (e) => this.filterNodes(e.target.value));
         sidebar.appendChild(searchBox);
 
@@ -743,6 +1628,162 @@ class VisualModuleBuilderWindow extends EditorWindow {
         });
 
         return sidebar;
+    }
+
+    /**
+ * Export custom nodes to a file
+ */
+    async exportCustomNodes() {
+        // Collect custom node definitions from the node library
+        const customNodes = [];
+        for (const category in this.nodeLibrary) {
+            for (const nodeDef of this.nodeLibrary[category]) {
+                if (nodeDef.custom) {
+                    customNodes.push({
+                        category: category,
+                        type: nodeDef.type,
+                        label: nodeDef.label,
+                        color: nodeDef.color,
+                        icon: nodeDef.icon,
+                        inputs: nodeDef.inputs,
+                        outputs: nodeDef.outputs,
+                        hasInput: nodeDef.hasInput,
+                        hasToggle: nodeDef.hasToggle,
+                        hasDropdown: nodeDef.hasDropdown,
+                        hasColorPicker: nodeDef.hasColorPicker,
+                        hasExposeCheckbox: nodeDef.hasExposeCheckbox,
+                        isGroup: nodeDef.isGroup,
+                        wrapFlowNode: nodeDef.wrapFlowNode,
+                        codeGenString: nodeDef.codeGen ? nodeDef.codeGen.toString() : null
+                    });
+                }
+            }
+        }
+
+        if (customNodes.length === 0) {
+            this.showNotification('No custom nodes to export.', 'warning');
+            return;
+        }
+
+        const exportData = {
+            version: '1.0',
+            exportDate: new Date().toISOString(),
+            customNodes: customNodes
+        };
+
+        // Create a downloadable file
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `custom-nodes-${Date.now()}.vmbn`; // VMB Nodes file
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        this.showNotification(`Exported ${customNodes.length} custom node(s) successfully!`, 'success');
+    }
+
+    /**
+     * Import custom nodes from a file
+     */
+    async importCustomNodes() {
+        // Create file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.vmbn,.json';
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importData = JSON.parse(text);
+
+                if (!importData.customNodes || !Array.isArray(importData.customNodes)) {
+                    throw new Error('Invalid custom nodes file format.');
+                }
+
+                let importedCount = 0;
+                let skippedCount = 0;
+
+                for (const customNodeData of importData.customNodes) {
+                    // Check if node type already exists
+                    let nodeExists = false;
+                    for (const category in this.nodeLibrary) {
+                        if (this.nodeLibrary[category].find(n => n.type === customNodeData.type)) {
+                            nodeExists = true;
+                            break;
+                        }
+                    }
+
+                    if (nodeExists) {
+                        skippedCount++;
+                        console.log(`Skipped duplicate node type: ${customNodeData.type}`);
+                        continue;
+                    }
+
+                    // Recreate the codeGen function
+                    let codeGenFunction = null;
+                    if (customNodeData.codeGenString) {
+                        try {
+                            codeGenFunction = eval(`(${customNodeData.codeGenString})`);
+                        } catch (e) {
+                            console.error(`Failed to restore codeGen for custom node ${customNodeData.type}:`, e);
+                        }
+                    }
+
+                    // Create the node definition
+                    const nodeDef = {
+                        type: customNodeData.type,
+                        label: customNodeData.label,
+                        color: customNodeData.color,
+                        icon: customNodeData.icon,
+                        inputs: customNodeData.inputs || [],
+                        outputs: customNodeData.outputs || [],
+                        hasInput: customNodeData.hasInput,
+                        hasToggle: customNodeData.hasToggle,
+                        hasDropdown: customNodeData.hasDropdown,
+                        hasColorPicker: customNodeData.hasColorPicker,
+                        hasExposeCheckbox: customNodeData.hasExposeCheckbox,
+                        isGroup: customNodeData.isGroup,
+                        wrapFlowNode: customNodeData.wrapFlowNode,
+                        codeGen: codeGenFunction,
+                        custom: true
+                    };
+
+                    // Add to the appropriate category (or create it if it doesn't exist)
+                    const category = customNodeData.category || 'Custom';
+                    if (!this.nodeLibrary[category]) {
+                        this.nodeLibrary[category] = [];
+                    }
+                    this.nodeLibrary[category].push(nodeDef);
+                    importedCount++;
+                }
+
+                // Rebuild the sidebar to show new nodes
+                const sidebarContainer = this.container.querySelector('.vmb-sidebar');
+                if (sidebarContainer) {
+                    const newSidebar = this.createSidebar();
+                    sidebarContainer.parentNode.replaceChild(newSidebar, sidebarContainer);
+                    newSidebar.className = 'vmb-sidebar';
+                }
+
+                let message = `Imported ${importedCount} custom node(s)`;
+                if (skippedCount > 0) {
+                    message += ` (${skippedCount} skipped - already exists)`;
+                }
+                this.showNotification(message, 'success');
+
+            } catch (error) {
+                console.error('Import error:', error);
+                this.showNotification(`Error importing nodes: ${error.message}`, 'error');
+            }
+        };
+
+        input.click();
     }
 
     /**
@@ -812,7 +1853,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
             const nodeItem = document.createElement('div');
             nodeItem.className = 'node-library-item';
             nodeItem.dataset.nodeType = node.type;
-            nodeItem.textContent = node.label;
+
+            // FIX: Add icon support
+            if (node.icon) {
+                nodeItem.innerHTML = `<i class="${node.icon}" style="margin-right: 6px;"></i>${node.label}`;
+            } else {
+                nodeItem.textContent = node.label;
+            }
+
             nodeItem.style.cssText = `
             padding: 8px;
             background: ${node.color}33;
@@ -823,6 +1871,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
             margin-bottom: 4px;
             font-size: 12px;
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
         `;
 
             nodeItem.addEventListener('mouseenter', () => {
@@ -1095,7 +2145,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
     /**
      * Show icon dropdown menu
      */
-    showIconDropdown(inputElement, previewIcon, propertyKey) {
+    showIconDropdown(inputElement, previewIcon, propertyKey, callback = null) {
         // Remove existing dropdown if any
         const existingDropdown = document.querySelector('.icon-dropdown-menu');
         if (existingDropdown) {
@@ -1172,8 +2222,13 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
             item.addEventListener('click', () => {
                 inputElement.value = iconClass;
-                this[propertyKey] = iconClass;
-                this.hasUnsavedChanges = true;
+                if (propertyKey) {
+                    this[propertyKey] = iconClass;
+                    this.hasUnsavedChanges = true;
+                }
+                if (callback) {
+                    callback(iconClass);
+                }
                 previewIcon.className = iconClass;
                 dropdown.remove();
             });
@@ -1274,8 +2329,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.render();
         };
 
+        this.boundHandlers.resize = resizeCanvas;
+
         resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('resize', this.boundHandlers.resize);
 
         // Start render loop
         this.renderLoop();
@@ -1306,22 +2363,20 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.canvas.addEventListener('mousemove', (e) => this.handleCanvasMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleCanvasMouseUp(e));
 
-        // Listen to document-level mouseup to catch releases outside the canvas
-        document.addEventListener('mouseup', (e) => this.handleDocumentMouseUp(e));
+        // Store bound handlers for cleanup
+        this.boundHandlers.mouseup = (e) => this.handleDocumentMouseUp(e);
+        document.addEventListener('mouseup', this.boundHandlers.mouseup);
 
         this.canvas.addEventListener('wheel', (e) => this.handleCanvasWheel(e));
         this.canvas.addEventListener('contextmenu', (e) => this.handleCanvasContextMenu(e));
 
         // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
+        this.boundHandlers.keydown = (e) => {
             if (e.key === 'Delete' && this.selectedNode) {
                 this.deleteNode(this.selectedNode);
             }
-            /*if (e.ctrlKey && e.key === 's') {
-                e.preventDefault();
-                this.saveProject();
-            }*/
-        });
+        };
+        document.addEventListener('keydown', this.boundHandlers.keydown);
     }
 
     /**
@@ -1428,8 +2483,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Handle node dragging
         if (this.draggedNode && !this.isPanning) {
-            this.draggedNode.x = x - this.dragOffset.x;
-            this.draggedNode.y = y - this.dragOffset.y;
+            const newX = x - this.dragOffset.x;
+            const newY = y - this.dragOffset.y;
+
+            // Apply snap to grid
+            const snapped = this.snapPositionToGrid(newX, newY);
+            this.draggedNode.x = snapped.x;
+            this.draggedNode.y = snapped.y;
+
             this.hasUnsavedChanges = true;
             return;
         }
@@ -1691,7 +2752,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
                 if (x >= dropdownX && x <= dropdownX + dropdownW &&
                     y >= dropdownY && y <= dropdownY + 20) {
-                    this.cycleDropdownValue(node);
+                    this.openDropdownMenu(node, dropdownX, dropdownY, dropdownW, 20);
                     this.hasUnsavedChanges = true;
                     event.preventDefault();
                     return true;
@@ -1836,16 +2897,23 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const x = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
         const y = (e.clientY - rect.top - this.panOffset.y) / this.zoom;
 
+        // Snap position to grid
+        const snapped = this.snapPositionToGrid(x, y);
+
+        // Snap width and height to grid
+        const width = this.snapToGridValue(180);
+        const height = this.snapToGridValue(this.calculateNodeHeight(nodeTemplate));
+
         const newNode = {
             id: this.generateNodeId(),
             type: nodeTemplate.type,
             label: nodeTemplate.label,
             color: nodeTemplate.color,
             icon: this.getNodeIcon(nodeTemplate.type), // Add icon when creating node
-            x: x,
-            y: y,
-            width: 180,
-            height: this.calculateNodeHeight(nodeTemplate),
+            x: snapped.x,
+            y: snapped.y,
+            width: width,
+            height: height,
             inputs: nodeTemplate.inputs || [],
             outputs: nodeTemplate.outputs || [],
             hasInput: nodeTemplate.hasInput || false,
@@ -1856,7 +2924,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
             hasExposeCheckbox: nodeTemplate.hasExposeCheckbox || false,
             isGroup: nodeTemplate.isGroup || false,
             value: nodeTemplate.hasInput ? '' : (nodeTemplate.hasToggle ? false : (nodeTemplate.hasColorPicker ? '#ffffff' : null)),
-            dropdownValue: '==',
+            dropdownValue: nodeTemplate.dropdownOptions ? (nodeTemplate.defaultValue || nodeTemplate.dropdownOptions[0]) : '==',
+            dropdownOptions: nodeTemplate.dropdownOptions || null,
             selectedProperty: null,
             exposeProperty: false,
             groupName: ''
@@ -1871,25 +2940,6 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.dragOffset = { x: 0, y: 0 };
         this.hasUnsavedChanges = true;
     }
-
-    /**
-     * Calculate node height based on inputs/outputs
-     */
-    /*calculateNodeHeight(nodeTemplate) {
-        const headerHeight = 32;
-        const portHeight = 24;
-        const maxPorts = Math.max(
-            (nodeTemplate.inputs?.length || 0),
-            (nodeTemplate.outputs?.length || 0)
-        );
-        const extraHeight = nodeTemplate.hasInput ? 32 :
-            (nodeTemplate.hasToggle ? 32 :
-                (nodeTemplate.hasDropdown ? 32 :
-                    (nodeTemplate.hasColorPicker ? 32 :
-                        (nodeTemplate.hasPropertyDropdown ? 32 : 0))));
-        const exposeCheckboxHeight = nodeTemplate.hasExposeCheckbox ? 28 : 0;
-        return headerHeight + (maxPorts * portHeight) + extraHeight + exposeCheckboxHeight + 16;
-    }*/
 
     /**
      * Get all exposed properties in the project
@@ -2092,7 +3142,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // Can't connect to same node
         if (this.connectingFrom.node.id === targetPort.node.id) return;
 
-        // NEW: Flow connectors can ONLY connect to other flow connectors
+        // Get port labels
         const fromPortLabel = this.connectingFrom.isOutput ?
             this.connectingFrom.node.outputs[this.connectingFrom.portIndex] :
             this.connectingFrom.node.inputs[this.connectingFrom.portIndex];
@@ -2100,13 +3150,25 @@ class VisualModuleBuilderWindow extends EditorWindow {
             targetPort.node.outputs[targetPort.portIndex] :
             targetPort.node.inputs[targetPort.portIndex];
 
-        const fromIsFlow = fromPortLabel === 'flow';
-        const toIsFlow = toPortLabel === 'flow';
+        // Define flow-type ports
+        const flowTypes = ['flow', 'true', 'false', 'exec', 'onChange', 'onComplete', 'onError', 'onSuccess', 'onFailure', 'then', 'catch', 'finally', 'callback', 'return'];
+        const fromIsFlow = flowTypes.includes(fromPortLabel);
+        const toIsFlow = flowTypes.includes(toPortLabel);
 
-        // If one is flow, both must be flow
-        if (fromIsFlow !== toIsFlow) {
-            this.showNotification('Flow connectors can only connect to other flow connectors!', 'error');
-            return;
+        // Special validation for flow connections:
+        // Allow these connection patterns:
+        // 1. flow output -> flow input (normal flow)
+        // 2. flow input -> callback/event output (e.g., node with flow input -> onChange output)
+        // 3. callback/event output -> flow input (e.g., onChange output -> node with flow input)
+        
+        if (fromIsFlow || toIsFlow) {
+            // At least one side is a flow type
+            if (!fromIsFlow || !toIsFlow) {
+                // One is flow, one is not - reject
+                this.showNotification('Flow connectors can only connect to other flow connectors!', 'error');
+                return;
+            }
+            // Both are flow types - allow the connection
         }
 
         // Create connection
@@ -2168,9 +3230,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Render loop
      */
     renderLoop() {
+        if (!this.isActive) return; // Stop if window is closed
+        
         this.animationTime += 0.016; // Roughly 60fps
         this.render();
-        requestAnimationFrame(() => this.renderLoop());
+        this.animationFrameId = requestAnimationFrame(() => this.renderLoop());
     }
 
     /**
@@ -2213,8 +3277,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Draw grid background
      */
     drawGrid(ctx) {
-        const gridSize = 20;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        const gridSize = this.gridSize; // Use the gridSize property
+        ctx.strokeStyle = '#333';
         ctx.lineWidth = 1;
 
         const startX = Math.floor(-this.panOffset.x / this.zoom / gridSize) * gridSize;
@@ -2262,8 +3326,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
         ctx.fill();
 
         // Delete button (X)
-        const deleteX = node.x + node.width - 20;
-        const deleteY = node.y + 8;
+        const deleteX = node.x + node.width - 16;
+        const deleteY = node.y + 16;
         ctx.fillStyle = 'rgba(244, 67, 54, 0.8)';
         ctx.beginPath();
         ctx.arc(deleteX, deleteY, 8, 0, Math.PI * 2);
@@ -2281,8 +3345,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Open group button for group nodes
         if (node.isGroup) {
-            const openX = node.x + node.width - 45;
-            const openY = node.y + 8;
+            const openX = node.x + node.width - 32;
+            const openY = node.y + 16;
             ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
             ctx.beginPath();
             ctx.arc(openX, openY, 8, 0, Math.PI * 2);
@@ -2297,8 +3361,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Edit name button for group nodes
         if (node.isGroup) {
-            const editX = node.x + node.width - 70;
-            const editY = node.y + 8;
+            const editX = node.x + (node.width / 2);
+            const editY = node.y;
             ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
             ctx.beginPath();
             ctx.arc(editX, editY, 8, 0, Math.PI * 2);
@@ -2311,6 +3375,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
             node.editNameButton = { x: editX, y: editY, radius: 8 };
         }
 
+        // FIX: Draw node icon if available (using Font Awesome)
+        if (node.icon) {
+            this.drawFontAwesomeIcon(ctx, node.icon, node.x + 16, node.y + 16, 32, 'rgba(255, 255, 255, 0.7)');
+        }
+
         ctx.fillStyle = '#fff';
         ctx.font = 'bold 13px Arial';
         ctx.textAlign = 'center';
@@ -2320,7 +3389,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.inputs && Array.isArray(node.inputs)) {
             node.inputs.forEach((input, index) => {
                 const pos = this.getInputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, false);
+                this.drawPort(ctx, pos.x, pos.y, false, node, index);
 
                 // Position label based on whether it's a flow port or data port
                 if (input === 'flow') {
@@ -2328,7 +3397,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     ctx.fillStyle = '#ccc';
                     ctx.font = '9px Arial';
                     ctx.textAlign = 'center';
-                    ctx.fillText('▼', pos.x, pos.y + 18);
+                    //ctx.fillText('▼', pos.x, pos.y - 12);
                 } else {
                     // Data port on left - label to the right
                     ctx.fillStyle = '#ccc';
@@ -2343,7 +3412,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.outputs && Array.isArray(node.outputs)) {
             node.outputs.forEach((output, index) => {
                 const pos = this.getOutputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, true);
+                this.drawPort(ctx, pos.x, pos.y, true, node, index);
 
                 // Position label based on whether it's a flow port or data port
                 if (output === 'flow') {
@@ -2351,39 +3420,36 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     ctx.fillStyle = '#ccc';
                     ctx.font = '9px Arial';
                     ctx.textAlign = 'center';
-                    ctx.fillText('▼', pos.x, pos.y - 8);
+                    //ctx.fillText('▼', pos.x, pos.y + 12);
                 } else {
                     // Data port on right - label to the left
                     ctx.fillStyle = '#ccc';
                     ctx.font = '11px Arial';
                     ctx.textAlign = 'right';
+                    
+                    // Show the output label
                     ctx.fillText(output, pos.x - 12, pos.y + 4);
+                    
+                    // If this is an onChange/callback output and the node has a value, show it
+                    const isCallbackOutput = ['onChange', 'onComplete', 'onError', 'onSuccess', 'onFailure', 'then', 'catch', 'finally', 'callback'].includes(output);
+                    if (isCallbackOutput && node.value !== undefined && node.value !== null) {
+                        ctx.fillStyle = '#888';
+                        ctx.font = '9px monospace';
+                        ctx.textAlign = 'right';
+                        let displayValue = node.value;
+                        
+                        // Format the value for display
+                        if (typeof displayValue === 'string' && displayValue.length > 15) {
+                            displayValue = displayValue.substring(0, 12) + '...';
+                        } else if (typeof displayValue === 'boolean') {
+                            displayValue = displayValue ? 'true' : 'false';
+                        } else if (typeof displayValue === 'number') {
+                            displayValue = displayValue.toString();
+                        }
+                        
+                        ctx.fillText(`(${displayValue})`, pos.x - 12, pos.y + 16);
+                    }
                 }
-            });
-        }
-
-        ctx.textAlign = 'left';
-        ctx.font = '11px Arial';
-
-        // Add defensive check for inputs array
-        if (node.inputs && Array.isArray(node.inputs)) {
-            node.inputs.forEach((input, index) => {
-                const pos = this.getInputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, false);
-                ctx.fillStyle = '#ccc';
-                ctx.fillText(input, pos.x + 12, pos.y + 4);
-            });
-        }
-
-        ctx.textAlign = 'right';
-
-        // Add defensive check for outputs array
-        if (node.outputs && Array.isArray(node.outputs)) {
-            node.outputs.forEach((output, index) => {
-                const pos = this.getOutputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, true);
-                ctx.fillStyle = '#ccc';
-                ctx.fillText(output, pos.x - 12, pos.y + 4);
             });
         }
 
@@ -2526,6 +3592,68 @@ class VisualModuleBuilderWindow extends EditorWindow {
     }
 
     /**
+     * Draw Font Awesome icon on canvas
+     * Creates an off-screen element to render the icon, then draws it to canvas
+     */
+    drawFontAwesomeIcon(ctx, iconClass, x, y, size, color) {
+        // Cache for icon images to avoid recreating them every frame
+        if (!this.iconCache) {
+            this.iconCache = {};
+        }
+
+        const cacheKey = `${iconClass}_${size}_${color}`;
+
+        if (!this.iconCache[cacheKey]) {
+            // Create off-screen element
+            const tempDiv = document.createElement('div');
+            tempDiv.style.position = 'absolute';
+            tempDiv.style.left = '-9999px';
+            tempDiv.style.width = `${size * 2}px`;
+            tempDiv.style.height = `${size * 2}px`;
+            tempDiv.style.fontSize = `${size}px`;
+            tempDiv.style.color = color;
+            tempDiv.style.display = 'flex';
+            tempDiv.style.alignItems = 'center';
+            tempDiv.style.justifyContent = 'center';
+
+            const icon = document.createElement('i');
+            icon.className = iconClass;
+            tempDiv.appendChild(icon);
+            document.body.appendChild(tempDiv);
+
+            // Create canvas from the element
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = size * 2;
+            tempCanvas.height = size * 2;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Use html2canvas or similar approach - but simpler: use SVG
+            // Since Font Awesome 6 uses SVG, we can extract it
+            const computedStyle = window.getComputedStyle(icon, ':before');
+            const content = computedStyle.getPropertyValue('content');
+
+            // Draw the icon text using the Font Awesome font
+            tempCtx.font = `900 ${size}px "Font Awesome 6 Free"`;
+            tempCtx.fillStyle = color;
+            tempCtx.textAlign = 'center';
+            tempCtx.textBaseline = 'middle';
+
+            // Extract unicode character from content
+            if (content && content !== 'none') {
+                const char = content.replace(/['"]/g, '');
+                tempCtx.fillText(char, size, size);
+            }
+
+            document.body.removeChild(tempDiv);
+
+            this.iconCache[cacheKey] = tempCanvas;
+        }
+
+        // Draw cached icon
+        ctx.drawImage(this.iconCache[cacheKey], x - size / 2, y - size / 2, size, size);
+    }
+
+    /**
      * Sanitize node data to ensure all required properties exist
      */
     sanitizeNode(node) {
@@ -2543,20 +3671,26 @@ class VisualModuleBuilderWindow extends EditorWindow {
     /**
      * Draw a port
      */
-    drawPort(ctx, x, y, isOutput) {
+    drawPort(ctx, x, y, isOutput, node, portIndex) {
+        // FIX: Proper hover detection by comparing actual port node ID and port index
         const isHovered = this.hoveredPort &&
-            this.hoveredPort.node &&
-            Math.abs(this.hoveredPort.node.x - (isOutput ? x - this.hoveredPort.node.width : x)) < 1 &&
+            this.hoveredPort.node.id === node.id &&
+            this.hoveredPort.portIndex === portIndex &&
             this.hoveredPort.isOutput === isOutput;
 
-        // Outer glow for ports
-        if (isHovered) {
+        // If flow node, use purple glow
+        const portLabel = isOutput ? node.outputs[portIndex] : node.inputs[portIndex];
+        const isFlowPort = portLabel === 'flow';
+        if (isHovered && isFlowPort) {
+            ctx.shadowColor = '#ff00ff';
+            ctx.shadowBlur = 15;
+        } else if (isHovered) {
             ctx.shadowColor = '#00ffff';
             ctx.shadowBlur = 15;
         }
 
-        ctx.fillStyle = isHovered ? '#00ffff' : '#666';
-        ctx.strokeStyle = isHovered ? '#00ffff' : '#999';
+        ctx.fillStyle = isHovered ? '#ffffffff' : '#666';
+        ctx.strokeStyle = isHovered ? '#bbbbbbff' : '#999';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, Math.PI * 2);
@@ -2881,31 +4015,158 @@ class VisualModuleBuilderWindow extends EditorWindow {
     }
 
     /**
-     * Load available modules for reference
+     * Load available modules and extract their methods
      */
     async loadAvailableModules() {
-        // Try to get all registered modules from the engine
+        this.availableModules = [];
+
         if (window.engine && window.engine.moduleRegistry) {
             const modules = Array.from(window.engine.moduleRegistry.getAllModules());
 
-            // Add custom category nodes for each module
-            modules.forEach(([name, ModuleClass]) => {
-                if (name !== 'Module') { // Skip base class
-                    const node = {
-                        type: `module_${name}`,
-                        label: name,
-                        color: '#673AB7',
-                        inputs: ['flow'],
-                        outputs: ['flow', 'module']
-                    };
+            for (const ModuleClass of modules) {
+                const moduleInfo = {
+                    name: ModuleClass.name,
+                    class: ModuleClass,
+                    namespace: ModuleClass.namespace || 'Custom',
+                    description: ModuleClass.description || '',
+                    iconClass: ModuleClass.iconClass || 'fas fa-cube',
+                    methods: []
+                };
 
-                    if (!this.nodeLibrary['Modules']) {
-                        this.nodeLibrary['Modules'] = [];
-                    }
-                    this.nodeLibrary['Modules'].push(node);
+                // Extract public methods (not starting with _)
+                const prototype = ModuleClass.prototype;
+                const methodNames = Object.getOwnPropertyNames(prototype)
+                    .filter(name => {
+                        // Exclude constructor and private methods
+                        if (name === 'constructor' || name.startsWith('_')) return false;
+
+                        // Only include functions
+                        const descriptor = Object.getOwnPropertyDescriptor(prototype, name);
+                        return descriptor && typeof descriptor.value === 'function';
+                    });
+
+                // Analyze each method
+                for (const methodName of methodNames) {
+                    const method = prototype[methodName];
+                    const methodInfo = this.analyzeMethod(method, methodName, ModuleClass.name);
+                    moduleInfo.methods.push(methodInfo);
                 }
-            });
+
+                this.availableModules.push(moduleInfo);
+            }
+
+            console.log(`Loaded ${this.availableModules.length} modules with methods`, this.availableModules);
+
+            // Rebuild node library with module methods
+            this.rebuildNodeLibraryWithModules();
+
+            // Refresh the sidebar
+            if (this.sidebar) {
+                this.createSidebar();
+            }
         }
+    }
+
+    /**
+     * Analyze a method to determine its parameters
+     */
+    analyzeMethod(method, methodName, moduleName) {
+        const methodStr = method.toString();
+
+        // Extract parameter names using regex
+        const paramsMatch = methodStr.match(/\(([^)]*)\)/);
+        let params = [];
+
+        if (paramsMatch && paramsMatch[1].trim()) {
+            params = paramsMatch[1]
+                .split(',')
+                .map(p => p.trim().split('=')[0].trim()) // Remove default values
+                .filter(p => p && p !== 'this');
+        }
+
+        return {
+            name: methodName,
+            moduleName: moduleName,
+            params: params,
+            paramCount: params.length
+        };
+    }
+
+    /**
+     * Add a "Require Module" node to the Modules category
+     */
+    addRequireModuleNode() {
+        if (!this.nodeLibrary['Modules']) {
+            this.nodeLibrary['Modules'] = [];
+        }
+
+        // Get list of available modules
+        const moduleNames = this.availableModules.map(m => m.name);
+
+        this.nodeLibrary['Modules'].unshift({
+            type: 'require_module',
+            label: 'Require Module',
+            color: '#FF5722',
+            icon: 'fas fa-link',
+            inputs: [],
+            outputs: [],
+            hasDropdown: true,
+            dropdownOptions: moduleNames,
+            defaultValue: moduleNames[0] || '',
+            category: 'Modules',
+            description: 'Declare a required module for this custom module'
+        });
+    }
+
+    /**
+     * Rebuild node library with module method nodes
+     */
+    rebuildNodeLibraryWithModules() {
+        // Keep existing categories
+        const baseLibrary = this.buildNodeLibrary();
+
+        // Add Module Methods category with subcategories per module
+        const moduleMethods = {};
+
+        for (const moduleInfo of this.availableModules) {
+            const categoryName = `Module: ${moduleInfo.name}`;
+            moduleMethods[categoryName] = [];
+
+            for (const method of moduleInfo.methods) {
+                // Create input ports for method parameters
+                const inputs = ['flow'];
+                const inputLabels = [''];
+
+                method.params.forEach(param => {
+                    inputs.push('value');
+                    inputLabels.push(param);
+                });
+
+                // Add module instance input
+                inputs.push('value');
+                inputLabels.push('module');
+
+                moduleMethods[categoryName].push({
+                    type: `module_method_${moduleInfo.name}_${method.name}`,
+                    label: method.name,
+                    color: '#9C27B0',
+                    icon: moduleInfo.iconClass,
+                    inputs: inputs,
+                    inputLabels: inputLabels,
+                    outputs: ['flow', 'value'],
+                    outputLabels: ['', 'result'],
+                    category: categoryName,
+                    moduleInfo: {
+                        moduleName: moduleInfo.name,
+                        methodName: method.name,
+                        params: method.params
+                    }
+                });
+            }
+        }
+
+        // Merge with base library
+        this.nodeLibrary = { ...baseLibrary, ...moduleMethods };
     }
 
     /**
@@ -3041,32 +4302,26 @@ class ${className} extends Module {
                                     defaultValue = `"${valueNode.value || '#ffffff'}"`;
                                 } else if (valueNode.type === 'vector2') {
                                     propType = 'vector2';
-                                    defaultValue = `{ x: ${valueNode.value?.x || 0}, y: ${valueNode.value?.y || 0}`;
+                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
                                 }
                             }
 
                             // Check for onChange connection
-                            const onChangeIndex = node.outputs.indexOf('onChange');
-                            if (onChangeIndex !== -1) {
-                                const onChangeConn = this.connections.find(c =>
-                                    c.from.node.id === node.id && c.from.portIndex === onChangeIndex
-                                );
+                            //const onChangeIndex = node.outputs.indexOf('onChange');
+                            //if (onChangeIndex !== -1) {
+                            //    const onChangeConn = this.connections.find(c =>
+                            //        c.from.node.id === node.id && c.from.portIndex === onChangeIndex
+                            //    );
 
-                                if (onChangeConn) {
+                                //if (onChangeConn) {
                                     // Add onChange callback to options
                                     if (!options) {
-                                        options = `, { 
-                                        onChange: (val) => { 
-                                            this.${propName} = val; 
-                                            }`;
+                                    options = ', { onChange: (val) => { this.' + propName + ' = val; }';
                                     } else {
-                                        options += `, 
-                                        onChange: (val) => { 
-                                            this.${propName} = val; 
-                                            }`;
+                                        options += ', onChange: (val) => { this.' + propName + ' = val; }';
                                     }
-                                }
-                            }
+                                //}
+                            //}
 
                             // Close options object if it was opened
                             if (options) {
@@ -3093,7 +4348,7 @@ class ${className} extends Module {
                             defaultValue = `"${node.value || '#ffffff'}"`;
                         } else if (node.type === 'vector2Var') {
                             propType = 'vector2';
-                            defaultValue = `{ x: 0, y: 0 }`;
+                            defaultValue = `new Vector2(0, 0)`;
                         } else if (node.type === 'assetVar') {
                             propType = 'asset';
                             defaultValue = 'null';
@@ -3156,11 +4411,11 @@ class ${className} extends Module {
                             }
 
                             // Check for onChange connection
-                            const onChangeIndex = node.outputs.indexOf('onChange');
-                            if (onChangeIndex !== -1) {
-                                const onChangeConn = this.connections.find(c =>
-                                    c.from.node.id === node.id && c.from.portIndex === onChangeIndex
-                                );
+                            //const onChangeIndex = node.outputs.indexOf('onChange');
+                            //if (onChangeIndex !== -1) {
+                            //    const onChangeConn = this.connections.find(c =>
+                            //        c.from.node.id === node.id && c.from.portIndex === onChangeIndex
+                            //    );
 
                                 //if (onChangeConn) {
                                 // Add onChange callback to options
@@ -3170,7 +4425,7 @@ class ${className} extends Module {
                                     options += ', onChange: (val) => { this.' + propName + ' = val; }';
                                 }
                                 //}
-                            }
+                            //}
 
                             // Close options object if it was opened
                             if (options) {
@@ -3318,6 +4573,7 @@ class ${className} extends Module {
             nodes: nodes,
             connections: connections,
             getInputValue: (node, portName) => this.getInputValueFromContext(node, portName, nodes, connections),
+            getOutputValue: (node, portName) => this.getOutputValueFromContext(node, portName, nodes, connections),
             generateGroupCode: (node) => this.generateGroupContentCode(node.groupData.nodes, node.groupData.connections, indent),
             indent: indent
         };
@@ -3349,6 +4605,7 @@ class ${className} extends Module {
             nodes: this.nodes,
             connections: this.connections,
             getInputValue: (node, portName) => this.getInputValue(node, portName),
+            getOutputValue: (node, portName) => this.getOutputValue(node, portName),
             generateGroupCode: (node) => this.generateGroupContentCode(node.groupData.nodes, node.groupData.connections, indent),
             indent: indent
         };
@@ -3404,7 +4661,9 @@ class ${className} extends Module {
 
                         if (trueConnections.length > 0) {
                             const trueNode = trueConnections[0].to.node;
-                            code += this.generateNodeCodeRecursive(trueNode, indent + '    ', visited, ctx, nodes, connections);
+                            // Create a new visited set for the true branch to avoid conflicts
+                            const trueBranchVisited = new Set(visited);
+                            code += this.generateNodeCodeRecursive(trueNode, indent + '    ', trueBranchVisited, ctx, nodes, connections);
                         }
                     }
 
@@ -3420,12 +4679,15 @@ class ${className} extends Module {
                         if (falseConnections.length > 0) {
                             const falseNode = falseConnections[0].to.node;
                             code += `${indent}else {\n`;
-                            code += this.generateNodeCodeRecursive(falseNode, indent + '    ', visited, ctx, nodes, connections);
+                            // Create a new visited set for the false branch to avoid conflicts
+                            const falseBranchVisited = new Set(visited);
+                            code += this.generateNodeCodeRecursive(falseNode, indent + '    ', falseBranchVisited, ctx, nodes, connections);
                             code += `${indent}}\n`;
                         }
                     }
 
-                    return code;
+                    // DON'T return here - continue to check for flow output
+                    // return code;  // REMOVE THIS LINE
                 } else if (node.type === 'group' && node.isGroup && node.groupData) {
                     // Normal group node with flow connection - inline the content
                     code += `${indent}// Group: ${node.label}\n`;
@@ -3443,16 +4705,28 @@ class ${className} extends Module {
                 c.from.node.id === node.id && c.from.portIndex === flowOutputIndex
             );
 
-            if (nextConnections.length > 0) {
-                const nextNode = nextConnections[0].to.node;
-                code += this.generateNodeCodeRecursive(nextNode, indent, visited, ctx, nodes, connections);
-            }
+            // Process ALL connected flow nodes in sequence
+            nextConnections.forEach((connection, index) => {
+                const nextNode = connection.to.node;
+
+                // Check if this node type should wrap flow outputs in braces
+                const nodeTemplate = this.getNodeTemplate(node.type);
+                const shouldWrap = nodeTemplate && nodeTemplate.wrapFlowNode;
+
+                if (shouldWrap) {
+                    // Wrap connected flow nodes in braces with increased indent
+                    code += `${indent}{\n`;
+                    code += this.generateNodeCodeRecursive(nextNode, indent + '    ', visited, ctx, nodes, connections);
+                    code += `${indent}}\n`;
+                } else {
+                    // Default behavior - inline at same indent level
+                    code += this.generateNodeCodeRecursive(nextNode, indent, visited, ctx, nodes, connections);
+                }
+            });
         }
 
         return code;
     }
-
-    // ...existing code...
 
     /**
      * Generate JavaScript code from visual nodes
@@ -3552,25 +4826,10 @@ class ${className} extends Module {
                                 }
                             }
 
-                            const onChangeIndex = node.outputs.indexOf('onChange');
-                            if (onChangeIndex !== -1) {
-                                const onChangeConn = this.connections.find(c =>
-                                    c.from.node.id === node.id && c.from.portIndex === onChangeIndex
-                                );
-
-                                if (onChangeConn) {
-                                    if (!options) {
-                                        options = `, { 
-                                    onChange: (val) => { 
-                                        this.${propName} = val; 
-                                        }`;
-                                    } else {
-                                        options += `, 
-                                    onChange: (val) => { 
-                                        this.${propName} = val; 
-                                        }`;
-                                    }
-                                }
+                            if (!options) {
+                                options = ', { onChange: (val) => { this.' + propName + ' = val; }';
+                            } else {
+                                options += ', onChange: (val) => { this.' + propName + ' = val; }';
                             }
 
                             if (options) {
@@ -3786,6 +5045,7 @@ class ${className} extends Module {
                     nodes: nodes,
                     connections: connections,
                     getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
+                    getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
                     generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
                     indent: '        '
                 };
@@ -3828,8 +5088,9 @@ class ${className} extends Module {
                 nodes: this.nodes,
                 connections: this.connections,
                 getInputValue: (n, p) => this.getInputValue(n, p),
-                generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, indent),
-                indent: indent
+                getOutputValue: (n, p) => this.getOutputValue(n, p),
+                generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
+                indent: '        '
             };
             return nodeTemplate.codeGen(node, ctx);
         }
@@ -3869,6 +5130,86 @@ class ${className} extends Module {
     }
 
     /**
+     * Get output value for a node port from a specific context
+     */
+    getOutputValueFromContext(node, portName, nodes, connections) {
+        const portIndex = node.outputs.indexOf(portName);
+        if (portIndex === -1) return '';
+
+        // Find connection from this output
+        const connection = connections.find(c =>
+            c.from.node.id === node.id && c.from.portIndex === portIndex
+        );
+
+        if (connection) {
+            const targetNode = connection.to.node;
+            
+            // Check if target node has a flow input - if so, generate flow code
+            const hasFlowInput = targetNode.inputs && targetNode.inputs.includes('flow');
+            
+            if (hasFlowInput) {
+                // Generate flow code for this node and its connected chain
+                const visited = new Set();
+                const ctx = {
+                    nodes: nodes,
+                    connections: connections,
+                    getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
+                    getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
+                    generateGroupCode: (n) => this.generateGroupContentCode(
+                        n.groupData.nodes, 
+                        n.groupData.connections, 
+                        '    '
+                    ),
+                    indent: '    '
+                };
+                
+                // Generate the code chain starting from this node
+                let code = this.generateNodeCodeRecursive(
+                    targetNode, 
+                    '    ', 
+                    visited, 
+                    ctx, 
+                    nodes, 
+                    connections
+                );
+                
+                return code.trim();
+            } else {
+                // Not a flow node - generate as a value expression
+                const nodeTemplate = this.getNodeTemplate(targetNode.type);
+                
+                if (nodeTemplate && nodeTemplate.codeGen) {
+                    const ctx = {
+                        nodes: nodes,
+                        connections: connections,
+                        getInputValue: (n, p) => this.getInputValueFromContext(n, p, nodes, connections),
+                        getOutputValue: (n, p) => this.getOutputValueFromContext(n, p, nodes, connections),
+                        generateGroupCode: (n) => this.generateGroupContentCode(
+                            n.groupData.nodes, 
+                            n.groupData.connections, 
+                            '    '
+                        ),
+                        indent: '    '
+                    };
+                    
+                    return nodeTemplate.codeGen(targetNode, ctx);
+                }
+                
+                // Fallback for simple value nodes
+                if (targetNode.type === 'number') {
+                    return targetNode.value || '0';
+                } else if (targetNode.type === 'string') {
+                    return `'${targetNode.value || ''}'`;
+                } else if (targetNode.type === 'boolean') {
+                    return targetNode.value ? 'true' : 'false';
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Get input value for a node port
      */
     getInputValue(node, portName) {
@@ -3882,6 +5223,40 @@ class ${className} extends Module {
 
         if (connection) {
             const sourceNode = connection.from.node;
+            const sourcePortIndex = connection.from.portIndex;
+            const nodeTemplate = this.getNodeTemplate(sourceNode.type);
+
+            if (nodeTemplate && nodeTemplate.codeGen) {
+                const ctx = {
+                    nodes: this.nodes,
+                    connections: this.connections,
+                    getInputValue: (n, p) => this.getInputValue(n, p),
+                    getOutputValue: (n, p) => this.getOutputValue(n, p),
+                    generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
+                    indent: '        ',
+                    sourcePortIndex: sourcePortIndex,
+                    sourcePortName: sourceNode.outputs[sourcePortIndex]
+                };
+
+                const baseValue = nodeTemplate.codeGen(sourceNode, ctx);
+
+                // Handle multiple outputs - check if the node has multiple outputs
+                if (sourceNode.outputs && sourceNode.outputs.length > 1) {
+                    const outputPortName = sourceNode.outputs[sourcePortIndex];
+
+                    // Check if this node has a multiOutputAccess function or if we should auto-append
+                    if (nodeTemplate.multiOutputAccess) {
+                        return nodeTemplate.multiOutputAccess(baseValue, outputPortName, sourceNode, ctx);
+                    } else {
+                        // Default behavior: append .portName to access the property
+                        return `${baseValue}.${outputPortName}`;
+                    }
+                }
+
+                return baseValue;
+            }
+
+            // Fallback for nodes without templates (backwards compatibility)
             if (sourceNode.type === 'number' || sourceNode.type === 'string' || sourceNode.type === 'boolean') {
                 if (sourceNode.type === 'string') {
                     return `'${sourceNode.value || ''}'`;
@@ -3891,6 +5266,89 @@ class ${className} extends Module {
         }
 
         return '0';
+    }
+
+    /**
+     * Get output value for a node port - generates code for nodes connected to this output
+     * This allows output ports to act like "code injection points" where connected nodes
+     * will have their code generated and inserted at the call site
+     */
+    getOutputValue(node, portName) {
+        const portIndex = node.outputs.indexOf(portName);
+        if (portIndex === -1) return '';
+
+        // Find connection from this output
+        const connection = this.connections.find(c =>
+            c.from.node.id === node.id && c.from.portIndex === portIndex
+        );
+
+        if (connection) {
+            const targetNode = connection.to.node;
+            
+            // Check if target node has a flow input - if so, generate flow code
+            const hasFlowInput = targetNode.inputs && targetNode.inputs.includes('flow');
+            
+            if (hasFlowInput) {
+                // Generate flow code for this node and its connected chain
+                const visited = new Set();
+                const ctx = {
+                    nodes: this.nodes,
+                    connections: this.connections,
+                    getInputValue: (n, p) => this.getInputValue(n, p),
+                    getOutputValue: (n, p) => this.getOutputValue(n, p),
+                    generateGroupCode: (n) => this.generateGroupContentCode(
+                        n.groupData.nodes, 
+                        n.groupData.connections, 
+                        '    '
+                    ),
+                    indent: '    '
+                };
+                
+                // Generate the code chain starting from this node
+                let code = this.generateNodeCodeRecursive(
+                    targetNode, 
+                    '    ', 
+                    visited, 
+                    ctx, 
+                    this.nodes, 
+                    this.connections
+                );
+                
+                // Remove the indentation from the first line if needed
+                return code.trim();
+            } else {
+                // Not a flow node - generate as a value expression
+                const nodeTemplate = this.getNodeTemplate(targetNode.type);
+                
+                if (nodeTemplate && nodeTemplate.codeGen) {
+                    const ctx = {
+                        nodes: this.nodes,
+                        connections: this.connections,
+                        getInputValue: (n, p) => this.getInputValue(n, p),
+                        getOutputValue: (n, p) => this.getOutputValue(n, p),
+                        generateGroupCode: (n) => this.generateGroupContentCode(
+                            n.groupData.nodes, 
+                            n.groupData.connections, 
+                            '    '
+                        ),
+                        indent: '    '
+                    };
+                    
+                    return nodeTemplate.codeGen(targetNode, ctx);
+                }
+                
+                // Fallback for simple value nodes
+                if (targetNode.type === 'number') {
+                    return targetNode.value || '0';
+                } else if (targetNode.type === 'string') {
+                    return `'${targetNode.value || ''}'`;
+                } else if (targetNode.type === 'boolean') {
+                    return targetNode.value ? 'true' : 'false';
+                }
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -3914,6 +5372,8 @@ class ${className} extends Module {
 
         // Refresh UI
         this.setupUI();
+        this.setupCanvas();
+        this.setupCanvasEventListeners();
         this.showNotification('New project created', 'success');
     }
 
@@ -3935,6 +5395,33 @@ class ${className} extends Module {
             savePath = `Visual Module Builder Proj/${savePath}.vmb`;
         }
 
+        // Collect custom node definitions from the node library
+        const customNodes = [];
+        for (const category in this.nodeLibrary) {
+            for (const nodeDef of this.nodeLibrary[category]) {
+                if (nodeDef.custom) {
+                    // Save custom node definition (excluding the codeGen function which will be recreated)
+                    customNodes.push({
+                        category: category,
+                        type: nodeDef.type,
+                        label: nodeDef.label,
+                        color: nodeDef.color,
+                        icon: nodeDef.icon,
+                        inputs: nodeDef.inputs,
+                        outputs: nodeDef.outputs,
+                        hasInput: nodeDef.hasInput,
+                        hasToggle: nodeDef.hasToggle,
+                        hasDropdown: nodeDef.hasDropdown,
+                        hasColorPicker: nodeDef.hasColorPicker,
+                        hasExposeCheckbox: nodeDef.hasExposeCheckbox,
+                        isGroup: nodeDef.isGroup,
+                        wrapFlowNode: nodeDef.wrapFlowNode,
+                        codeGenString: nodeDef.codeGen ? nodeDef.codeGen.toString() : null
+                    });
+                }
+            }
+        }
+
         const projectData = {
             version: '1.0',
             moduleName: this.moduleName,
@@ -3950,7 +5437,8 @@ class ${className} extends Module {
                 to: { nodeId: c.to.node.id, portIndex: c.to.portIndex }
             })),
             panOffset: this.panOffset,
-            zoom: this.zoom
+            zoom: this.zoom,
+            customNodes: customNodes // Add custom nodes to save data
         };
 
         try {
@@ -3972,52 +5460,132 @@ class ${className} extends Module {
             return;
         }
 
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.vmb';
+        try {
+            // Get all .vmb files from the project directory
+            await window.fileBrowser.ensureDirectoryExists('Visual Module Builder Proj');
+            const allFiles = await window.fileBrowser.getAllFiles();
 
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                const text = await file.text();
-                const projectData = JSON.parse(text);
-
-                this.moduleName = projectData.moduleName;
-                this.moduleNamespace = projectData.moduleNamespace;
-                this.moduleDescription = projectData.moduleDescription;
-                this.moduleIcon = projectData.moduleIcon;
-                this.moduleColor = projectData.moduleColor || '#4CAF50';
-                this.allowMultiple = projectData.allowMultiple;
-                this.drawInEditor = projectData.drawInEditor;
-                this.nodes = projectData.nodes.map(node => this.sanitizeNode(node));
-
-                this.connections = projectData.connections.map(c => ({
-                    from: {
-                        node: this.nodes.find(n => n.id === c.from.nodeId),
-                        portIndex: c.from.portIndex,
-                        isOutput: true
-                    },
-                    to: {
-                        node: this.nodes.find(n => n.id === c.to.nodeId),
-                        portIndex: c.to.portIndex,
-                        isOutput: false
-                    }
+            // Filter for .vmb files in the Visual Module Builder Proj directory
+            // Check for both 'Visual Module Builder Proj/' and without leading slash
+            const vmbFiles = allFiles
+                .filter(file => {
+                    const normalizedPath = file.path.replace(/\\/g, '/');
+                    return (normalizedPath.startsWith('Visual Module Builder Proj/') ||
+                        normalizedPath.includes('/Visual Module Builder Proj/')) &&
+                        normalizedPath.endsWith('.vmb');
+                })
+                .map(file => ({
+                    name: file.name,
+                    path: file.path
                 }));
 
-                this.panOffset = projectData.panOffset || { x: 0, y: 0 };
-                this.zoom = projectData.zoom || 1.0;
-                this.hasUnsavedChanges = false;
-
-                this.setupUI();
-                this.showNotification('Project loaded successfully!', 'success');
-            } catch (error) {
-                this.showNotification(`Error loading project: ${error.message}`, 'error');
+            if (vmbFiles.length === 0) {
+                this.showNotification('No Visual Module Builder projects found.', 'warning');
+                console.log('All files:', allFiles); // Debug: show all files
+                return;
             }
-        };
 
-        input.click();
+            // Show file picker modal
+            const selectedPath = await this.showFilePickerModal(vmbFiles, 'Load Visual Module Builder Project');
+
+            if (!selectedPath) {
+                return; // User cancelled
+            }
+
+            // Load the selected file
+            const file = await window.fileBrowser.getFile(selectedPath);
+            if (!file) {
+                this.showNotification('Failed to load project file.', 'error');
+                return;
+            }
+
+            const projectData = JSON.parse(file.content);
+
+            // Restore custom nodes first (before loading nodes that might reference them)
+            if (projectData.customNodes && Array.isArray(projectData.customNodes)) {
+                for (const customNodeData of projectData.customNodes) {
+                    // Recreate the codeGen function from string
+                    let codeGenFunction = null;
+                    if (customNodeData.codeGenString) {
+                        try {
+                            // Use Function constructor to recreate the function
+                            codeGenFunction = eval(`(${customNodeData.codeGenString})`);
+                        } catch (e) {
+                            console.error(`Failed to restore codeGen for custom node ${customNodeData.type}:`, e);
+                        }
+                    }
+
+                    // Create the node definition
+                    const nodeDef = {
+                        type: customNodeData.type,
+                        label: customNodeData.label,
+                        color: customNodeData.color,
+                        icon: customNodeData.icon,
+                        inputs: customNodeData.inputs || [],
+                        outputs: customNodeData.outputs || [],
+                        hasInput: customNodeData.hasInput || false,
+                        hasToggle: customNodeData.hasToggle || false,
+                        hasDropdown: customNodeData.hasDropdown || false,
+                        hasColorPicker: customNodeData.hasColorPicker || false,
+                        hasExposeCheckbox: customNodeData.hasExposeCheckbox || false,
+                        isGroup: customNodeData.isGroup || false,
+                        wrapFlowNode: customNodeData.wrapFlowNode !== undefined ? customNodeData.wrapFlowNode : true,
+                        codeGen: codeGenFunction,
+                        custom: true
+                    };
+
+                    // Add to node library if not already present
+                    if (!this.nodeLibrary[customNodeData.category]) {
+                        this.nodeLibrary[customNodeData.category] = [];
+                    }
+
+                    // Check if node already exists in the category
+                    const existingIndex = this.nodeLibrary[customNodeData.category].findIndex(n => n.type === customNodeData.type);
+                    if (existingIndex >= 0) {
+                        // Replace existing definition
+                        this.nodeLibrary[customNodeData.category][existingIndex] = nodeDef;
+                    } else {
+                        // Add new definition
+                        this.nodeLibrary[customNodeData.category].push(nodeDef);
+                    }
+                }
+            }
+
+            this.moduleName = projectData.moduleName;
+            this.moduleNamespace = projectData.moduleNamespace;
+            this.moduleDescription = projectData.moduleDescription;
+            this.moduleIcon = projectData.moduleIcon;
+            this.moduleColor = projectData.moduleColor || '#4CAF50';
+            this.allowMultiple = projectData.allowMultiple;
+            this.drawInEditor = projectData.drawInEditor;
+            this.nodes = projectData.nodes.map(node => this.sanitizeNode(node));
+
+            this.connections = projectData.connections.map(c => ({
+                from: {
+                    node: this.nodes.find(n => n.id === c.from.nodeId),
+                    portIndex: c.from.portIndex,
+                    isOutput: true
+                },
+                to: {
+                    node: this.nodes.find(n => n.id === c.to.nodeId),
+                    portIndex: c.to.portIndex,
+                    isOutput: false
+                }
+            }));
+
+            this.panOffset = projectData.panOffset || { x: 0, y: 0 };
+            this.zoom = projectData.zoom || 1.0;
+            this.hasUnsavedChanges = false;
+            this.projectPath = selectedPath;
+
+            this.setupUI();
+            this.setupCanvas(); // Add this line to reinitialize canvas
+            this.setupCanvasEventListeners(); // Add this line to reattach event listeners
+            this.showNotification('Project loaded successfully!', 'success');
+        } catch (error) {
+            console.error('Error loading project:', error);
+            this.showNotification(`Error loading project: ${error.message}`, 'error');
+        }
     }
 
     /**
@@ -4124,6 +5692,164 @@ class ${className} extends Module {
         this.setupCanvasEventListeners();
 
         this.showNotification(`Example "${example.moduleName}" loaded!`, 'success');
+    }
+
+    /**
+     * Show a modal to pick a file from a list
+     * @param {Array} files - Array of file objects with { name, path }
+     * @param {string} title - Modal title
+     * @returns {Promise<string|null>} - Selected file path or null if cancelled
+     */
+    showFilePickerModal(files, title = "Select File") {
+        return new Promise(resolve => {
+            // Remove any existing modal
+            const existingModal = document.getElementById('vmbFilePickerModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+
+            // Create overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'vmbFilePickerModal';
+            overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
+            // Modal content
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+            background: #222;
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 24px;
+            min-width: 400px;
+            max-width: 600px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        `;
+
+            const header = document.createElement('h2');
+            header.textContent = title;
+            header.style.cssText = `
+            color: #64B5F6;
+            margin: 0 0 16px 0;
+            font-size: 18px;
+        `;
+
+            const fileList = document.createElement('div');
+            fileList.style.cssText = `
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 16px;
+        `;
+
+            if (files.length === 0) {
+                fileList.innerHTML = '<div style="color: #ccc; text-align: center; padding: 20px;">No files found.</div>';
+            } else {
+                const ul = document.createElement('ul');
+                ul.style.cssText = `
+                list-style: none;
+                padding: 0;
+                margin: 0;
+            `;
+
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.style.cssText = `
+                    padding: 12px;
+                    border-bottom: 1px solid #333;
+                    cursor: pointer;
+                    color: #fff;
+                    transition: background 0.2s;
+                `;
+                    li.innerHTML = `
+                    <i class="fas fa-file-code" style="margin-right: 8px; color: #64B5F6;"></i>
+                    ${file.name}
+                `;
+
+                    li.addEventListener('mouseenter', () => {
+                        li.style.background = '#2a2a2a';
+                    });
+                    li.addEventListener('mouseleave', () => {
+                        li.style.background = 'transparent';
+                    });
+                    li.addEventListener('click', () => {
+                        overlay.remove();
+                        resolve(file.path);
+                    });
+
+                    ul.appendChild(li);
+                });
+
+                fileList.appendChild(ul);
+            }
+
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        `;
+
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'Cancel';
+            cancelButton.style.cssText = `
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 4px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+        `;
+            cancelButton.addEventListener('mouseenter', () => {
+                cancelButton.style.background = '#555';
+            });
+            cancelButton.addEventListener('mouseleave', () => {
+                cancelButton.style.background = '#444';
+            });
+            cancelButton.addEventListener('click', () => {
+                overlay.remove();
+                resolve(null);
+            });
+
+            buttonContainer.appendChild(cancelButton);
+
+            modal.appendChild(header);
+            modal.appendChild(fileList);
+            modal.appendChild(buttonContainer);
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            // ESC key closes modal
+            overlay.tabIndex = 0;
+            overlay.focus();
+            overlay.onkeydown = (e) => {
+                if (e.key === 'Escape') {
+                    overlay.remove();
+                    resolve(null);
+                }
+            };
+
+            // Click outside to close
+            overlay.onclick = (e) => {
+                if (e.target === overlay) {
+                    overlay.remove();
+                    resolve(null);
+                }
+            };
+        });
     }
 
     /**
@@ -4507,16 +6233,123 @@ class ${className} extends Module {
     }
 
     /**
-     * Close any open text/color editor
+     * Open a dropdown menu for selecting values
+     */
+    openDropdownMenu(node, x, y, width, height) {
+        this.closeTextEditor();
+        this.closeDropdownMenu();
+
+        const screenX = x * this.zoom + this.panOffset.x;
+        const screenY = (y + height) * this.zoom + this.panOffset.y;
+        const screenW = width * this.zoom;
+
+        const container = document.createElement('div');
+        container.className = 'vmb-dropdown-menu';
+        container.style.cssText = `
+            position: absolute;
+            left: ${screenX}px;
+            top: ${screenY}px;
+            width: ${screenW}px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #2a2a2a;
+            border: 2px solid #00ffff;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            z-index: 10001;
+            padding: 4px;
+        `;
+
+        const canvasRect = this.canvas.getBoundingClientRect();
+        container.style.left = (canvasRect.left + screenX) + 'px';
+        container.style.top = (canvasRect.top + screenY) + 'px';
+
+        // Get dropdown options
+        const options = node.dropdownOptions || ['==', '!=', '>', '<', '>=', '<='];
+        const currentValue = node.dropdownValue || options[0];
+
+        // Create option elements
+        options.forEach(option => {
+            const optionDiv = document.createElement('div');
+            optionDiv.textContent = option;
+            optionDiv.style.cssText = `
+                padding: 6px 10px;
+                color: ${option === currentValue ? '#00ffff' : '#fff'};
+                background: ${option === currentValue ? '#333' : 'transparent'};
+                cursor: pointer;
+                border-radius: 3px;
+                font-family: monospace;
+                font-size: 11px;
+                transition: background 0.1s;
+            `;
+
+            optionDiv.addEventListener('mouseenter', () => {
+                if (option !== currentValue) {
+                    optionDiv.style.background = '#333';
+                }
+            });
+
+            optionDiv.addEventListener('mouseleave', () => {
+                if (option !== currentValue) {
+                    optionDiv.style.background = 'transparent';
+                }
+            });
+
+            optionDiv.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                node.dropdownValue = option;
+                this.hasUnsavedChanges = true;
+                this.closeDropdownMenu();
+            });
+
+            container.appendChild(optionDiv);
+        });
+
+        document.body.appendChild(container);
+        this.currentDropdownMenu = container;
+
+        // Close on click outside
+        const closeOnClickOutside = (e) => {
+            if (!container.contains(e.target)) {
+                this.closeDropdownMenu();
+                document.removeEventListener('mousedown', closeOnClickOutside);
+            }
+        };
+
+        setTimeout(() => {
+            document.addEventListener('mousedown', closeOnClickOutside);
+        }, 100);
+
+        // Prevent canvas interactions
+        container.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+        });
+
+        container.addEventListener('wheel', (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    /**
+     * Close the dropdown menu
+     */
+    closeDropdownMenu() {
+        if (this.currentDropdownMenu) {
+            this.currentDropdownMenu.remove();
+            this.currentDropdownMenu = null;
+        }
+    }
+
+    /**
+     * Close text editor (update to also close dropdown)
      */
     closeTextEditor() {
         if (this.editingElement) {
-            if (this.editingElement.parentNode) {
-                this.editingElement.parentNode.removeChild(this.editingElement);
-            }
+            this.editingElement.remove();
             this.editingElement = null;
-            this.editingNode = null;
         }
+        this.editingNode = null;
+        this.closeDropdownMenu();
     }
 
     /**
@@ -4525,57 +6358,144 @@ class ${className} extends Module {
     editGroupName(node) {
         const newName = prompt('Enter group name:', node.label);
         if (newName && newName.trim()) {
-            node.label = newName.trim();
+            // For method nodes, convert to camelCase
+            if (node.type === 'method') {
+                node.label = this.toCamelCase(newName);
+            } else {
+                node.label = newName.trim();
+            }
             this.hasUnsavedChanges = true;
-            this.logToConsole(`Renamed group to "${node.label}"`, 'info');
+            this.logToConsole(`Renamed ${node.type === 'method' ? 'method' : 'group'} to "${node.label}"`, 'info');
         }
+    }
+
+    /**
+     * Convert a title string to camelCase for method names
+     */
+    toCamelCase(str) {
+        return str
+            .trim()
+            .split(/\s+/)
+            .map((word, index) => {
+                // First word is lowercase, subsequent words are title case
+                if (index === 0) {
+                    return word.charAt(0).toLowerCase() + word.slice(1).toLowerCase();
+                } else {
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                }
+            })
+            .join('');
     }
 
     /**
      * Cycle dropdown value
      */
     cycleDropdownValue(node) {
-        const values = ['==', '!=', '>', '<', '>=', '<='];
-        const currentIndex = values.indexOf(node.dropdownValue || '==');
+        // Use dropdownOptions if available, otherwise fall back to comparison operators
+        const values = node.dropdownOptions || ['==', '!=', '>', '<', '>=', '<='];
+        const currentIndex = values.indexOf(node.dropdownValue || values[0]);
         const nextIndex = (currentIndex + 1) % values.length;
         node.dropdownValue = values[nextIndex];
+    }
+
+    showNodeBuilder() {
+        // Ensure the node builder script is loaded
+        this.loadNodeBuilderScript();
+
+        // Show the node builder UI
+        if (window.visualModuleBuilderNodeBuilder && typeof window.visualModuleBuilderNodeBuilder.show === 'function') {
+            window.visualModuleBuilderNodeBuilder.show(this);
+        } else {
+            this.showNotification('Node Builder is not available.', 'error');
+        }
+    }
+
+    /**
+     * Load the node builder
+     */
+    loadNodeBuilderScript() {
+        // Check if already loaded
+        if (window.visualModuleBuilderNodeBuilder) {
+            return;
+        }
+
+        // Create and load the script
+        const script = document.createElement('script');
+        script.src = 'src/core/Windows/VisualModuleBuilderNodeBuilder.js';
+        script.onload = () => {
+            console.log('Visual Module Builder Node Builder loaded successfully');
+        };
+        script.onerror = () => {
+            console.error('Failed to load Visual Module Builder Node Builder');
+        };
+        document.head.appendChild(script);
+    }
+
+    /**
+     * Load the documentation script dynamically
+     */
+    loadDocumentationScript() {
+        // Check if already loaded
+        if (typeof window.showVisualModuleBuilderHelp === 'function') {
+            return;
+        }
+
+        // Create and load the script
+        const script = document.createElement('script');
+        script.src = 'src/core/Windows/VisualModuleBuilderDocumentation.js';
+        script.onload = () => {
+            console.log('Visual Module Builder Documentation loaded successfully');
+        };
+        script.onerror = () => {
+            console.error('Failed to load Visual Module Builder Documentation');
+        };
+        document.head.appendChild(script);
     }
 
     /**
      * Show help modal
      */
     showHelp() {
-        const helpText = `
-Visual Module Builder Help
+        // Check if documentation function is available
+        if (typeof window.showVisualModuleBuilderHelp === 'function') {
+            window.showVisualModuleBuilderHelp();
+        } else {
+            // Fallback to simple alert if documentation script hasn't loaded yet
+            const helpText = `
+    Visual Module Builder Help
 
-CONTROLS:
-- Drag nodes from the library to add them to the canvas
-- Click and drag nodes to move them
-- Click on output ports (right side) and drag to input ports (left side) to create connections
-- Middle mouse or left click + drag on empty space to pan
-- Scroll wheel to zoom in/out
-- Delete key to remove selected node
-- Ctrl+S to save project
+    CONTROLS:
+    - Drag nodes from the library to add them to the canvas
+    - Click and drag nodes to move them
+    - Click on output ports (right side) and drag to input ports (left side) to create connections
+    - Middle mouse or left click + drag on empty space to pan
+    - Scroll wheel to zoom in/out
+    - Delete key to remove selected node
+    - Ctrl+S to save project
 
-NODE TYPES:
-- Events: Start, Loop, Draw, OnDestroy - Entry points for your module
-- Variables: Get/Set properties, constants
-- Logic: Conditionals, comparisons, boolean operations
-- Math: Basic arithmetic operations
-- GameObject: Position, finding objects, instantiation
-- Drawing: Shapes, text rendering
+    NODE TYPES:
+    - Events: Start, Loop, Draw, OnDestroy - Entry points for your module
+    - Variables: Get/Set properties, constants
+    - Logic: Conditionals, comparisons, boolean operations
+    - Math: Basic arithmetic operations
+    - GameObject: Position, finding objects, instantiation
+    - Drawing: Shapes, text rendering
 
-WORKFLOW:
-1. Set module name and properties at the top
-2. Add event nodes (Start, Loop, Draw)
-3. Connect logic and data flow nodes
-4. Test by exporting the module
-5. Save your project for later editing
+    WORKFLOW:
+    1. Set module name and properties at the top
+    2. Add event nodes (Start, Loop, Draw)
+    3. Connect logic and data flow nodes
+    4. Test by exporting the module
+    5. Save your project for later editing
 
-The exported module will be saved to "Visual Modules" directory and automatically registered with the engine.
-        `.trim();
+    The exported module will be saved to "Visual Modules" directory and automatically registered with the engine.
+            `.trim();
 
-        alert(helpText);
+            alert(helpText);
+
+            // Try to load the documentation script for next time
+            this.loadDocumentationScript();
+        }
     }
 
     /**
@@ -4609,11 +6529,56 @@ The exported module will be saved to "Visual Modules" directory and automaticall
      * Called before closing
      */
     onBeforeClose() {
+        // Stop the animation loop
+        this.isActive = false;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        // Remove event listeners
+        if (this.boundHandlers.resize) {
+            window.removeEventListener('resize', this.boundHandlers.resize);
+        }
+        if (this.boundHandlers.mouseup) {
+            document.removeEventListener('mouseup', this.boundHandlers.mouseup);
+        }
+        if (this.boundHandlers.keydown) {
+            document.removeEventListener('keydown', this.boundHandlers.keydown);
+        }
+
+        // Clear the canvas context
+        if (this.ctx && this.canvas) {
+            this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        }
+
+        // Close any open text editor
         this.closeTextEditor();
+        
+        // Check for unsaved changes
         if (this.hasUnsavedChanges) {
             return confirm('You have unsaved changes. Close anyway?');
         }
         return true;
+    }
+
+    destroy() {
+        // Stop animation loop
+        this.isActive = false;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+        }
+
+        // Clear references
+        this.nodes = [];
+        this.connections = [];
+        this.canvas = null;
+        this.ctx = null;
+        
+        // Call parent destroy if it exists
+        if (super.destroy) {
+            super.destroy();
+        }
     }
 
     // ========================================
@@ -4665,15 +6630,22 @@ The exported module will be saved to "Visual Modules" directory and automaticall
             return null;
         }
 
+        // Snap position to grid
+        const snapped = this.snapPositionToGrid(x, y);
+
+        // Snap width and height to grid
+        const width = this.snapToGridValue(options.width || 180);
+        const height = this.snapToGridValue(this.calculateNodeHeight(definition));
+
         const node = {
             id: Date.now() + Math.random(),
             type: type,
             label: options.label || definition.label,
             color: this.getNodeColor(type),
-            x: x,
-            y: y,
-            width: options.width || 180,
-            height: this.calculateNodeHeight(definition),
+            x: snapped.x,
+            y: snapped.y,
+            width: width,
+            height: height,
             inputs: definition.inputs ? [...definition.inputs] : [],
             outputs: definition.outputs ? [...definition.outputs] : [],
             hasInput: definition.hasInput || false,
@@ -4688,6 +6660,7 @@ The exported module will be saved to "Visual Modules" directory and automaticall
             groupName: options.groupName || '',
             selectedProperty: options.selectedProperty || 'none',
             dropdownValue: options.dropdownValue || '==',
+            wrapFlowInBraces: options.wrapFlowInBraces !== undefined ? options.wrapFlowInBraces : true, // New property
             nodes: [],
             codeGen: definition.codeGen
         };
@@ -4784,7 +6757,7 @@ The exported module will be saved to "Visual Modules" directory and automaticall
         const outputCount = definition.outputs ? definition.outputs.length : 0;
         const maxPorts = Math.max(inputCount, outputCount);
 
-        let baseHeight = 90; // Minimum height
+        let baseHeight = 48; // Minimum height
         if (definition.hasInput || definition.hasToggle || definition.hasColorPicker ||
             definition.hasDropdown || definition.hasPropertyDropdown || definition.hasExposeCheckbox) {
             baseHeight += 30; // Extra space for input/controls

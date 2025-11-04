@@ -39,10 +39,19 @@ class VMBExampleModules {
      */
     static getNodeBuilder() {
         if (!this._builder) {
-            // Create a minimal mock builder just for accessing the API
-            const tempVMB = new VisualModuleBuilderWindow();
+            // Access the static node library if available
+            let nodeLibrary = {};
+            
+            // Try to get it from a global registry if one exists
+            if (window._VMBNodeLibrary) {
+                nodeLibrary = window._VMBNodeLibrary;
+            } else {
+                // Last resort: use a hardcoded minimal library
+                nodeLibrary = this._getMinimalNodeLibrary();
+            }
+            
             this._builder = {
-                nodeLibrary: tempVMB.buildNodeLibrary(),
+                nodeLibrary: nodeLibrary,
                 
                 getNodeColor(type) {
                     for (const category in this.nodeLibrary) {
@@ -112,9 +121,6 @@ class VMBExampleModules {
                     };
                 }
             };
-            
-            // Clean up temp instance
-            tempVMB.close();
         }
         return this._builder;
     }
@@ -144,57 +150,66 @@ class VMBExampleModules {
         const nodes = [];
         const connections = [];
 
-        // Properties Setup - using API for correct colors
+        // Properties Setup - Row 1: X property
         const xNameNode = builder.createNode('string', 100, 100, { value: 'x' });
-        const xValueNode = builder.createNode('number', 100, 220, { value: '100' });
-        const xPropNode = builder.createNode('setProperty', 320, 120, { 
+        const xValueNode = builder.createNode('number', 100, 250, { value: '100' });
+        const xPropNode = builder.createNode('setProperty', 350, 150, { 
             exposeProperty: true, 
             groupName: 'Position' 
         });
 
-        const yNameNode = builder.createNode('string', 550, 100, { value: 'y' });
-        const yValueNode = builder.createNode('number', 550, 220, { value: '100' });
-        const yPropNode = builder.createNode('setProperty', 770, 120, { 
+        // Row 2: Y property
+        const yNameNode = builder.createNode('string', 600, 100, { value: 'y' });
+        const yValueNode = builder.createNode('number', 600, 250, { value: '100' });
+        const yPropNode = builder.createNode('setProperty', 850, 150, { 
             exposeProperty: true, 
             groupName: 'Position' 
         });
 
-        const widthNameNode = builder.createNode('string', 100, 340, { value: 'width' });
-        const widthValueNode = builder.createNode('number', 100, 460, { value: '200' });
-        const widthPropNode = builder.createNode('setProperty', 320, 360, { 
+        // Row 3: Width property
+        const widthNameNode = builder.createNode('string', 100, 400, { value: 'width' });
+        const widthValueNode = builder.createNode('number', 100, 550, { value: '200' });
+        const widthPropNode = builder.createNode('setProperty', 350, 450, { 
             exposeProperty: true, 
             groupName: 'Size' 
         });
 
-        const heightNameNode = builder.createNode('string', 550, 340, { value: 'height' });
-        const heightValueNode = builder.createNode('number', 550, 460, { value: '150' });
-        const heightPropNode = builder.createNode('setProperty', 770, 360, { 
+        // Row 4: Height property
+        const heightNameNode = builder.createNode('string', 600, 400, { value: 'height' });
+        const heightValueNode = builder.createNode('number', 600, 550, { value: '150' });
+        const heightPropNode = builder.createNode('setProperty', 850, 450, { 
             exposeProperty: true, 
             groupName: 'Size' 
         });
 
-        const colorNameNode = builder.createNode('string', 100, 580, { value: 'color' });
-        const colorValueNode = builder.createNode('color', 100, 700, { value: '#FF5722' });
-        const colorPropNode = builder.createNode('setProperty', 320, 600, { 
+        // Row 5: Color property
+        const colorNameNode = builder.createNode('string', 100, 700, { value: 'fillColor' });
+        const colorValueNode = builder.createNode('color', 100, 850, { value: '#FF5722' });
+        const colorPropNode = builder.createNode('setProperty', 350, 750, { 
             exposeProperty: true, 
             groupName: 'Style' 
         });
 
-        // Start node
-        const startNode = builder.createNode('start', 1050, 100, {});
+        // Drawing section - Start
+        const startNode = builder.createNode('start', 1150, 100, {});
+        const drawNode = builder.createNode('draw', 1150, 300, {});
 
-        // Draw event
-        const drawNode = builder.createNode('draw', 1050, 250, {});
+        // Property name strings for getProperty nodes
+        const xPropNameNode = builder.createNode('string', 1400, 200, { value: 'x' });
+        const yPropNameNode = builder.createNode('string', 1400, 350, { value: 'y' });
+        const widthPropNameNode = builder.createNode('string', 1400, 500, { value: 'width' });
+        const heightPropNameNode = builder.createNode('string', 1400, 650, { value: 'height' });
+        const colorPropNameNode = builder.createNode('string', 1400, 800, { value: 'fillColor' });
 
         // Get properties
-        const getXNode = builder.createNode('getProperty', 1300, 200, { selectedProperty: 'x' });
-        const getYNode = builder.createNode('getProperty', 1300, 320, { selectedProperty: 'y' });
-        const getWidthNode = builder.createNode('getProperty', 1300, 440, { selectedProperty: 'width' });
-        const getHeightNode = builder.createNode('getProperty', 1300, 560, { selectedProperty: 'height' });
-        const getColorNode = builder.createNode('getProperty', 1300, 680, { selectedProperty: 'color' });
+        const getXNode = builder.createNode('getProperty', 1650, 250, {});
+        const getYNode = builder.createNode('getProperty', 1650, 400, {});
+        const getWidthNode = builder.createNode('getProperty', 1650, 550, {});
+        const getHeightNode = builder.createNode('getProperty', 1650, 700, {});
+        const getColorNode = builder.createNode('getProperty', 1650, 850, {});
 
         // fillRect call
-        const fillRectNode = builder.createNode('fillRect', 1550, 400, {});
+        const fillRectNode = builder.createNode('fillRect', 1900, 500, {});
 
         // Add all nodes
         nodes.push(
@@ -204,6 +219,7 @@ class VMBExampleModules {
             heightNameNode, heightValueNode, heightPropNode,
             colorNameNode, colorValueNode, colorPropNode,
             startNode, drawNode,
+            xPropNameNode, yPropNameNode, widthPropNameNode, heightPropNameNode, colorPropNameNode,
             getXNode, getYNode, getWidthNode, getHeightNode, getColorNode,
             fillRectNode
         );
@@ -222,9 +238,13 @@ class VMBExampleModules {
             { from: colorValueNode.id, fromPort: 0, to: colorPropNode.id, toPort: 2 }
         );
 
-        // Event flow connections
+        // Connect property name strings to getProperty 'name' inputs
         connections.push(
-            { from: startNode.id, fromPort: 0, to: drawNode.id, toPort: 0 }
+            { from: xPropNameNode.id, fromPort: 0, to: getXNode.id, toPort: 0 },
+            { from: yPropNameNode.id, fromPort: 0, to: getYNode.id, toPort: 0 },
+            { from: widthPropNameNode.id, fromPort: 0, to: getWidthNode.id, toPort: 0 },
+            { from: heightPropNameNode.id, fromPort: 0, to: getHeightNode.id, toPort: 0 },
+            { from: colorPropNameNode.id, fromPort: 0, to: getColorNode.id, toPort: 0 }
         );
 
         // Drawing connections
@@ -262,50 +282,58 @@ class VMBExampleModules {
         // Start event
         const startNode = builder.createNode('start', 100, 100, {});
 
-        // Initialize X, Y, velocityY
-        const xNameNode = builder.createNode('string', 100, 220, { value: 'x' });
-        const xValueNode = builder.createNode('number', 100, 340, { value: '400' });
-        const xPropNode = builder.createNode('setProperty', 320, 240, {});
+        // Initialize X
+        const xNameNode = builder.createNode('string', 100, 300, { value: 'x' });
+        const xValueNode = builder.createNode('number', 100, 450, { value: '400' });
+        const xPropNode = builder.createNode('setProperty', 350, 350, {});
 
-        const yNameNode = builder.createNode('string', 100, 460, { value: 'y' });
-        const yValueNode = builder.createNode('number', 100, 580, { value: '100' });
-        const yPropNode = builder.createNode('setProperty', 320, 480, {});
+        // Initialize Y
+        const yNameNode = builder.createNode('string', 600, 300, { value: 'y' });
+        const yValueNode = builder.createNode('number', 600, 450, { value: '100' });
+        const yPropNode = builder.createNode('setProperty', 850, 350, {});
 
-        const vyNameNode = builder.createNode('string', 550, 340, { value: 'velocityY' });
-        const vyValueNode = builder.createNode('number', 550, 460, { value: '0' });
-        const vyPropNode = builder.createNode('setProperty', 770, 360, {});
+        // Initialize velocityY
+        const vyNameNode = builder.createNode('string', 1100, 300, { value: 'velocityY' });
+        const vyValueNode = builder.createNode('number', 1100, 450, { value: '0' });
+        const vyPropNode = builder.createNode('setProperty', 1350, 350, {});
 
         // Loop event
-        const loopNode = builder.createNode('loop', 100, 720, {});
+        const loopNode = builder.createNode('loop', 100, 700, {});
         
         // Update Y position
-        const getYNode = builder.createNode('getProperty', 320, 720, { selectedProperty: 'y' });
-        const getVYNode = builder.createNode('getProperty', 320, 840, { selectedProperty: 'velocityY' });
-        const addYNode = builder.createNode('add', 550, 760, {});
-        const setYNameNode = builder.createNode('string', 550, 640, { value: 'y' });
-        const setYNode = builder.createNode('setProperty', 770, 720, {});
+        const yPropName1 = builder.createNode('string', 350, 650, { value: 'y' });
+        const vyPropName1 = builder.createNode('string', 350, 800, { value: 'velocityY' });
+        const getYNode = builder.createNode('getProperty', 600, 700, {});
+        const getVYNode = builder.createNode('getProperty', 600, 850, {});
+        const addYNode = builder.createNode('add', 850, 750, {});
+        const setYNameNode = builder.createNode('string', 850, 600, { value: 'y' });
+        const setYNode = builder.createNode('setProperty', 1100, 700, {});
 
         // Apply gravity
-        const gravityNode = builder.createNode('number', 320, 960, { value: '0.5' });
-        const addGravityNode = builder.createNode('add', 550, 920, {});
-        const setVYNameNode = builder.createNode('string', 550, 800, { value: 'velocityY' });
-        const setVYNode = builder.createNode('setProperty', 770, 880, {});
+        const vyPropName2 = builder.createNode('string', 1350, 650, { value: 'velocityY' });
+        const getVYNode2 = builder.createNode('getProperty', 1600, 700, {});
+        const gravityNode = builder.createNode('number', 1600, 850, { value: '0.5' });
+        const addGravityNode = builder.createNode('add', 1850, 750, {});
+        const setVYNameNode = builder.createNode('string', 1850, 600, { value: 'velocityY' });
+        const setVYNode = builder.createNode('setProperty', 2100, 700, {});
 
         // Draw event
-        const drawNode = builder.createNode('draw', 1050, 720, {});
-        const getDrawXNode = builder.createNode('getProperty', 1300, 680, { selectedProperty: 'x' });
-        const getDrawYNode = builder.createNode('getProperty', 1300, 800, { selectedProperty: 'y' });
-        const sizeNode = builder.createNode('number', 1300, 920, { value: '20' });
-        const drawColorNode = builder.createNode('color', 1300, 1040, { value: '#2196F3' });
-        const fillCircleNode = builder.createNode('fillCircle', 1550, 820, {});
+        const drawNode = builder.createNode('draw', 100, 1100, {});
+        const xPropName2 = builder.createNode('string', 350, 1050, { value: 'x' });
+        const yPropName2 = builder.createNode('string', 350, 1200, { value: 'y' });
+        const getDrawXNode = builder.createNode('getProperty', 600, 1100, {});
+        const getDrawYNode = builder.createNode('getProperty', 600, 1250, {});
+        const sizeNode = builder.createNode('number', 850, 1150, { value: '20' });
+        const drawColorNode = builder.createNode('color', 850, 1300, { value: '#2196F3' });
+        const fillCircleNode = builder.createNode('fillCircle', 1100, 1200, {});
 
         nodes.push(
             startNode, xNameNode, xValueNode, xPropNode,
             yNameNode, yValueNode, yPropNode,
             vyNameNode, vyValueNode, vyPropNode,
-            loopNode, getYNode, getVYNode, addYNode, setYNode, setYNameNode,
-            gravityNode, addGravityNode, setVYNode, setVYNameNode,
-            drawNode, getDrawXNode, getDrawYNode, sizeNode, drawColorNode, fillCircleNode
+            loopNode, yPropName1, vyPropName1, getYNode, getVYNode, addYNode, setYNode, setYNameNode,
+            vyPropName2, getVYNode2, gravityNode, addGravityNode, setVYNode, setVYNameNode,
+            drawNode, xPropName2, yPropName2, getDrawXNode, getDrawYNode, sizeNode, drawColorNode, fillCircleNode
         );
 
         // Start connections
@@ -325,12 +353,15 @@ class VMBExampleModules {
         connections.push(
             { from: loopNode.id, fromPort: 0, to: setYNode.id, toPort: 0 },
             { from: setYNameNode.id, fromPort: 0, to: setYNode.id, toPort: 1 },
+            { from: yPropName1.id, fromPort: 0, to: getYNode.id, toPort: 0 },
+            { from: vyPropName1.id, fromPort: 0, to: getVYNode.id, toPort: 0 },
             { from: getYNode.id, fromPort: 0, to: addYNode.id, toPort: 0 },
             { from: getVYNode.id, fromPort: 0, to: addYNode.id, toPort: 1 },
             { from: addYNode.id, fromPort: 0, to: setYNode.id, toPort: 2 },
             { from: setYNode.id, fromPort: 0, to: setVYNode.id, toPort: 0 },
             { from: setVYNameNode.id, fromPort: 0, to: setVYNode.id, toPort: 1 },
-            { from: getVYNode.id, fromPort: 0, to: addGravityNode.id, toPort: 0 },
+            { from: vyPropName2.id, fromPort: 0, to: getVYNode2.id, toPort: 0 },
+            { from: getVYNode2.id, fromPort: 0, to: addGravityNode.id, toPort: 0 },
             { from: gravityNode.id, fromPort: 0, to: addGravityNode.id, toPort: 1 },
             { from: addGravityNode.id, fromPort: 0, to: setVYNode.id, toPort: 2 }
         );
@@ -339,6 +370,8 @@ class VMBExampleModules {
         connections.push(
             { from: drawNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 0 },
             { from: drawNode.id, fromPort: 1, to: fillCircleNode.id, toPort: 1 },
+            { from: xPropName2.id, fromPort: 0, to: getDrawXNode.id, toPort: 0 },
+            { from: yPropName2.id, fromPort: 0, to: getDrawYNode.id, toPort: 0 },
             { from: getDrawXNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 2 },
             { from: getDrawYNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 3 },
             { from: sizeNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 4 },
@@ -368,32 +401,40 @@ class VMBExampleModules {
 
         const startNode = builder.createNode('start', 100, 100, {});
         
-        const rotNameNode = builder.createNode('string', 100, 220, { value: 'rotation' });
-        const rotValueNode = builder.createNode('number', 100, 340, { value: '0' });
-        const rotPropNode = builder.createNode('setProperty', 320, 240, {});
+        // Initialize rotation
+        const rotNameNode = builder.createNode('string', 100, 300, { value: 'rotation' });
+        const rotValueNode = builder.createNode('number', 100, 450, { value: '0' });
+        const rotPropNode = builder.createNode('setProperty', 350, 350, {});
 
-        const speedNameNode = builder.createNode('string', 550, 220, { value: 'rotationSpeed' });
-        const speedValueNode = builder.createNode('number', 550, 340, { value: '0.05' });
-        const speedPropNode = builder.createNode('setProperty', 770, 240, { 
+        // Initialize speed
+        const speedNameNode = builder.createNode('string', 600, 300, { value: 'rotationSpeed' });
+        const speedValueNode = builder.createNode('number', 600, 450, { value: '0.05' });
+        const speedPropNode = builder.createNode('setProperty', 850, 350, { 
             exposeProperty: true, 
             groupName: 'Rotation' 
         });
 
-        const loopNode = builder.createNode('loop', 100, 500, {});
-        const getRotNode = builder.createNode('getProperty', 320, 500, { selectedProperty: 'rotation' });
-        const getSpeedNode = builder.createNode('getProperty', 320, 620, { selectedProperty: 'rotationSpeed' });
-        const addRotNode = builder.createNode('add', 550, 540, {});
-        const setRotNameNode = builder.createNode('string', 550, 420, { value: 'rotation' });
-        const setRotNode = builder.createNode('setProperty', 770, 500, {});
+        const loopNode = builder.createNode('loop', 100, 650, {});
+        
+        // Update rotation
+        const rotPropName1 = builder.createNode('string', 350, 600, { value: 'rotation' });
+        const speedPropName = builder.createNode('string', 350, 750, { value: 'rotationSpeed' });
+        const getRotNode = builder.createNode('getProperty', 600, 650, {});
+        const getSpeedNode = builder.createNode('getProperty', 600, 800, {});
+        const addRotNode = builder.createNode('add', 850, 700, {});
+        const setRotNameNode = builder.createNode('string', 850, 550, { value: 'rotation' });
+        const setRotNode = builder.createNode('setProperty', 1100, 650, {});
 
-        const gameObjRotNode = builder.createNode('setRotation', 1000, 500, {});
-        const getRotForGONode = builder.createNode('getProperty', 770, 660, { selectedProperty: 'rotation' });
+        // Apply to game object
+        const rotPropName2 = builder.createNode('string', 1350, 600, { value: 'rotation' });
+        const getRotForGONode = builder.createNode('getProperty', 1600, 650, {});
+        const gameObjRotNode = builder.createNode('setAngle', 1850, 650, {});
 
         nodes.push(
             startNode, rotNameNode, rotValueNode, rotPropNode,
             speedNameNode, speedValueNode, speedPropNode,
-            loopNode, getRotNode, getSpeedNode, addRotNode,
-            setRotNode, setRotNameNode, gameObjRotNode, getRotForGONode
+            loopNode, rotPropName1, speedPropName, getRotNode, getSpeedNode, addRotNode,
+            setRotNode, setRotNameNode, rotPropName2, gameObjRotNode, getRotForGONode
         );
 
         connections.push(
@@ -405,10 +446,13 @@ class VMBExampleModules {
             { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 },
             { from: loopNode.id, fromPort: 0, to: setRotNode.id, toPort: 0 },
             { from: setRotNameNode.id, fromPort: 0, to: setRotNode.id, toPort: 1 },
+            { from: rotPropName1.id, fromPort: 0, to: getRotNode.id, toPort: 0 },
+            { from: speedPropName.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 },
             { from: getRotNode.id, fromPort: 0, to: addRotNode.id, toPort: 0 },
             { from: getSpeedNode.id, fromPort: 0, to: addRotNode.id, toPort: 1 },
             { from: addRotNode.id, fromPort: 0, to: setRotNode.id, toPort: 2 },
             { from: setRotNode.id, fromPort: 0, to: gameObjRotNode.id, toPort: 0 },
+            { from: rotPropName2.id, fromPort: 0, to: getRotForGONode.id, toPort: 0 },
             { from: getRotForGONode.id, fromPort: 0, to: gameObjRotNode.id, toPort: 1 }
         );
 
@@ -435,24 +479,29 @@ class VMBExampleModules {
 
         const startNode = builder.createNode('start', 100, 100, {});
         
-        const counterNameNode = builder.createNode('string', 100, 220, { value: 'clickCount' });
-        const counterValueNode = builder.createNode('number', 100, 340, { value: '0' });
-        const counterPropNode = builder.createNode('setProperty', 320, 240, { 
+        // Initialize counter
+        const counterNameNode = builder.createNode('string', 100, 300, { value: 'clickCount' });
+        const counterValueNode = builder.createNode('number', 100, 450, { value: '0' });
+        const counterPropNode = builder.createNode('setProperty', 350, 350, { 
             exposeProperty: true, 
             groupName: 'Display' 
         });
 
-        const drawNode = builder.createNode('draw', 100, 500, {});
-        const getCountNode = builder.createNode('getProperty', 320, 500, { selectedProperty: 'clickCount' });
+        const drawNode = builder.createNode('draw', 100, 700, {});
         
-        const xPosNode = builder.createNode('number', 550, 460, { value: '0' });
-        const yPosNode = builder.createNode('number', 550, 580, { value: '0' });
-        const colorNode = builder.createNode('color', 550, 700, { value: '#FFFFFF' });
-        const drawTextNode = builder.createNode('drawText', 800, 540, {});
+        // Get counter value
+        const countPropName = builder.createNode('string', 350, 650, { value: 'clickCount' });
+        const getCountNode = builder.createNode('getProperty', 600, 700, {});
+        
+        // Draw text
+        const xPosNode = builder.createNode('number', 850, 650, { value: '10' });
+        const yPosNode = builder.createNode('number', 850, 800, { value: '30' });
+        const colorNode = builder.createNode('color', 1100, 700, { value: '#FFFFFF' });
+        const drawTextNode = builder.createNode('drawText', 1350, 750, {});
 
         nodes.push(
             startNode, counterNameNode, counterValueNode, counterPropNode,
-            drawNode, getCountNode, xPosNode, yPosNode, colorNode, drawTextNode
+            drawNode, countPropName, getCountNode, xPosNode, yPosNode, colorNode, drawTextNode
         );
 
         connections.push(
@@ -461,6 +510,7 @@ class VMBExampleModules {
             { from: counterValueNode.id, fromPort: 0, to: counterPropNode.id, toPort: 2 },
             { from: drawNode.id, fromPort: 0, to: drawTextNode.id, toPort: 0 },
             { from: drawNode.id, fromPort: 1, to: drawTextNode.id, toPort: 1 },
+            { from: countPropName.id, fromPort: 0, to: getCountNode.id, toPort: 0 },
             { from: getCountNode.id, fromPort: 0, to: drawTextNode.id, toPort: 2 },
             { from: xPosNode.id, fromPort: 0, to: drawTextNode.id, toPort: 3 },
             { from: yPosNode.id, fromPort: 0, to: drawTextNode.id, toPort: 4 },
@@ -490,41 +540,49 @@ class VMBExampleModules {
 
         const startNode = builder.createNode('start', 100, 100, {});
         
-        const hueNameNode = builder.createNode('string', 100, 220, { value: 'hue' });
-        const hueValueNode = builder.createNode('number', 100, 340, { value: '0' });
-        const huePropNode = builder.createNode('setProperty', 320, 240, {});
+        // Initialize hue
+        const hueNameNode = builder.createNode('string', 100, 300, { value: 'hue' });
+        const hueValueNode = builder.createNode('number', 100, 450, { value: '0' });
+        const huePropNode = builder.createNode('setProperty', 350, 350, {});
 
-        const speedNameNode = builder.createNode('string', 550, 220, { value: 'cycleSpeed' });
-        const speedValueNode = builder.createNode('number', 550, 340, { value: '1' });
-        const speedPropNode = builder.createNode('setProperty', 770, 240, { 
+        // Initialize speed
+        const speedNameNode = builder.createNode('string', 600, 300, { value: 'cycleSpeed' });
+        const speedValueNode = builder.createNode('number', 600, 450, { value: '1' });
+        const speedPropNode = builder.createNode('setProperty', 850, 350, { 
             exposeProperty: true, 
             groupName: 'Animation' 
         });
 
-        const loopNode = builder.createNode('loop', 100, 500, {});
-        const getHueNode = builder.createNode('getProperty', 320, 500, { selectedProperty: 'hue' });
-        const getSpeedNode = builder.createNode('getProperty', 320, 620, { selectedProperty: 'cycleSpeed' });
-        const addHueNode = builder.createNode('add', 550, 540, {});
+        const loopNode = builder.createNode('loop', 100, 650, {});
         
-        const maxHueNode = builder.createNode('number', 550, 680, { value: '360' });
-        const moduloNode = builder.createNode('modulo', 770, 600, {});
-        const setHueNameNode = builder.createNode('string', 770, 480, { value: 'hue' });
-        const setHueNode = builder.createNode('setProperty', 1000, 560, {});
+        // Update hue
+        const huePropName1 = builder.createNode('string', 350, 600, { value: 'hue' });
+        const speedPropName = builder.createNode('string', 350, 750, { value: 'cycleSpeed' });
+        const getHueNode = builder.createNode('getProperty', 600, 650, {});
+        const getSpeedNode = builder.createNode('getProperty', 600, 800, {});
+        const addHueNode = builder.createNode('add', 850, 700, {});
+        
+        // Modulo to wrap around 360
+        const maxHueNode = builder.createNode('number', 1100, 650, { value: '360' });
+        const moduloNode = builder.createNode('modulo', 1100, 750, {});
+        const setHueNameNode = builder.createNode('string', 1350, 600, { value: 'hue' });
+        const setHueNode = builder.createNode('setProperty', 1350, 700, {});
 
-        const drawNode = builder.createNode('draw', 100, 820, {});
-        const getDrawHueNode = builder.createNode('getProperty', 320, 820, { selectedProperty: 'hue' });
-        const xNode = builder.createNode('number', 320, 940, { value: '0' });
-        const yNode = builder.createNode('number', 320, 1060, { value: '0' });
-        const radiusNode = builder.createNode('number', 550, 940, { value: '30' });
-        const colorNode = builder.createNode('color', 550, 1060, { value: '#FF00FF' });
-        const fillCircleNode = builder.createNode('fillCircle', 800, 920, {});
+        const drawNode = builder.createNode('draw', 100, 1050, {});
+        
+        // Draw circle with fixed color (hue-to-color conversion would be complex)
+        const xNode = builder.createNode('number', 350, 1050, { value: '0' });
+        const yNode = builder.createNode('number', 350, 1200, { value: '0' });
+        const radiusNode = builder.createNode('number', 600, 1050, { value: '30' });
+        const colorNode = builder.createNode('color', 600, 1200, { value: '#FF00FF' });
+        const fillCircleNode = builder.createNode('fillCircle', 850, 1100, {});
 
         nodes.push(
             startNode, hueNameNode, hueValueNode, huePropNode,
             speedNameNode, speedValueNode, speedPropNode,
-            loopNode, getHueNode, getSpeedNode, addHueNode,
+            loopNode, huePropName1, speedPropName, getHueNode, getSpeedNode, addHueNode,
             maxHueNode, moduloNode, setHueNode, setHueNameNode,
-            drawNode, getDrawHueNode, xNode, yNode, radiusNode, colorNode, fillCircleNode
+            drawNode, xNode, yNode, radiusNode, colorNode, fillCircleNode
         );
 
         connections.push(
@@ -536,6 +594,8 @@ class VMBExampleModules {
             { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 },
             { from: loopNode.id, fromPort: 0, to: setHueNode.id, toPort: 0 },
             { from: setHueNameNode.id, fromPort: 0, to: setHueNode.id, toPort: 1 },
+            { from: huePropName1.id, fromPort: 0, to: getHueNode.id, toPort: 0 },
+            { from: speedPropName.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 },
             { from: getHueNode.id, fromPort: 0, to: addHueNode.id, toPort: 0 },
             { from: getSpeedNode.id, fromPort: 0, to: addHueNode.id, toPort: 1 },
             { from: addHueNode.id, fromPort: 0, to: moduloNode.id, toPort: 0 },
