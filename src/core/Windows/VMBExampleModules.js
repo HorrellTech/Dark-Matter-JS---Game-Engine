@@ -958,6 +958,47 @@ class VMBExampleModules {
                     codeGen: (node, ctx) => `'${node.value || '#ffffff'}'`
                 },
                 {
+                    type: 'randomName',
+                    label: 'Random Name',
+                    color: '#5a4078',
+                    icon: 'fas fa-user-tag',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: [
+                        'random', 'medieval', 'fantasy_elf', 'fantasy_dwarf', 'fantasy_orc', 
+                        'scientific', 'alien_species', 'alien_personal', 'cyberpunk', 
+                        'native_american', 'japanese', 'viking', 'roman', 'pirate', 
+                        'steampunk', 'lovecraftian', 'demon', 'angelic', 'egyptian', 
+                        'greek', 'zombie', 'robot', 'superhero', 'dragon', 'witch', 
+                        'werewolf', 'vampire', 'aztec', 'celtic', 'pokemon', 'starwars', 
+                        'cosmic', 'modern_male', 'modern_female', 'caveman', 'cavewoman', 
+                        'mobster', 'cowboy', 'ninja', 'samurai', 'wizard_modern', 
+                        'witch_modern', 'fairy', 'mermaid', 'merman', 'alien_scientist', 
+                        'space_captain', 'demon_hunter', 'ghost', 'frankenstein', 
+                        'serial_killer', 'detective', 'spy', 'gladiator', 'pro_wrestler', 
+                        'rockstar', 'rapper', 'mad_scientist', 'time_traveler', 'kaiju', 
+                        'biblical', 'archangel', 'fallen_angel', 'greek_god', 'norse_god', 
+                        'titan', 'video_game_boss', 'final_fantasy', 'dark_souls', 
+                        'elder_scrolls', 'world_of_warcraft', 'fortnite', 'league_of_legends', 
+                        'minecraft', 'Among_Us', 'tiktok_username', 'twitch_streamer', 
+                        'esports_player', 'youtube_gamer', 'phoneme_based'
+                    ],
+                    defaultValue: 'random',
+                    isGroup: false,
+                    codeGen: (node, ctx) => {
+                        const category = node.dropdownValue || 'random';
+                        if (category === 'random') {
+                            return `window.nameGen.generateRandomCrazy()`;
+                        } else if (category === 'phoneme_based') {
+                            // Fixed: Generate the random syllable count at runtime, not at code generation time
+                            return `window.nameGen.generatePhoneme(Math.floor(Math.random() * 3) + 2)`;
+                        } else {
+                            return `window.nameGen.generate('${category}')`;
+                        }
+                    }
+                },
+                {
                     type: 'null',
                     label: 'Null',
                     color: '#000000ff',
@@ -1777,9 +1818,27 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     label: 'Draw Text',
                     color: '#712e3d',
                     icon: 'fas fa-font',
-                    inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color'],
+                    inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color', 'fontSize', 'fontFamily', 'fontWeight', 'textAlign', 'textBaseline'],
                     outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillText(${ctx.getInputValue(node, 'text')}, ${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')});`
+                    codeGen: (node, ctx) => {
+                        const fontSize = ctx.getInputValue(node, 'fontSize') || '16';
+                        const fontFamily = ctx.getInputValue(node, 'fontFamily') || "'Arial'";
+                        const fontWeight = ctx.getInputValue(node, 'fontWeight') || "'normal'";
+                        const textAlign = ctx.getInputValue(node, 'textAlign') || "'left'";
+                        const textBaseline = ctx.getInputValue(node, 'textBaseline') || "'alphabetic'";
+                        const color = ctx.getInputValue(node, 'color');
+                        const text = ctx.getInputValue(node, 'text');
+                        const x = ctx.getInputValue(node, 'x');
+                        const y = ctx.getInputValue(node, 'y');
+                        
+                        // Build font string properly - ensure quotes are stripped and re-added correctly
+                        const cleanFontWeight = fontWeight.replace(/^['"]|['"]$/g, '');
+                        const cleanFontFamily = fontFamily.replace(/^['"]|['"]$/g, '');
+                        const cleanTextAlign = textAlign.replace(/^['"]|['"]$/g, '');
+                        const cleanTextBaseline = textBaseline.replace(/^['"]|['"]$/g, '');
+                        
+                        return `ctx.font = '${cleanFontWeight} ' + ${fontSize} + 'px ${cleanFontFamily}';\n${ctx.indent}ctx.textAlign = '${cleanTextAlign}';\n${ctx.indent}ctx.textBaseline = '${cleanTextBaseline}';\n${ctx.indent}ctx.fillStyle = ${color};\n${ctx.indent}ctx.fillText(${text}, ${x}, ${y});`;
+                    }
                 },
                 {
                     type: 'drawLine',

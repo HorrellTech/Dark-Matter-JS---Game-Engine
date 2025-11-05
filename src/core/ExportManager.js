@@ -967,6 +967,7 @@ class ExportManager {
             'src/core/Math/MatterMath.js',
             'src/core/Math/Polygon.js',
             'src/core/matter-js/matter.min.js',
+            'SupermandoNameGenerator.js',
 
             // Physics (if using Matter.js)
             'src/core/matter-js/PhysicsManager.js',

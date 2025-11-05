@@ -3995,9 +3995,12 @@ class ${className} extends Module {
                     if (nameConn && nameConn.from.node.type === 'string') {
                         propName = nameConn.from.node.value || 'property';
                     } else {
-                        // No connection - use a default name or the node's stored label
-                        propName = node.label || `property_${node.id}`;
+                        // No connection - use a safe default name based on node ID
+                        propName = `property_${node.id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
                     }
+
+                    // Sanitize property name to ensure it's a valid JavaScript identifier
+                    propName = this.sanitizePropertyName(propName);
 
                     const valueConn = this.connections.find(c =>
                         c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
@@ -4015,6 +4018,20 @@ class ${className} extends Module {
                             defaultValue = `"${valueNode.value || '#ffffff'}"`;
                         } else if (valueNode.type === 'vector2') {
                             defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
+                        } else {
+                            // For any other node type (like randomName), use its codeGen function
+                            const nodeTemplate = this.getNodeTemplate(valueNode.type);
+                            if (nodeTemplate && nodeTemplate.codeGen) {
+                                const ctx = {
+                                    nodes: this.nodes,
+                                    connections: this.connections,
+                                    getInputValue: (n, p) => this.getInputValue(n, p),
+                                    getOutputValue: (n, p) => this.getOutputValue(n, p),
+                                    generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
+                                    indent: '        '
+                                };
+                                defaultValue = nodeTemplate.codeGen(valueNode, ctx) || '""';
+                            }
                         }
                     }
 
@@ -4073,6 +4090,29 @@ class ${className} extends Module {
                                     propType = 'vector2';
                                     defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
                                     options = ', { onChange: (val) => { this.' + propName + ' = new Vector2(val.x, val.y); } }';
+                                } else {
+                                    // For any other node type (like randomName), generate its code and infer type
+                                    const nodeTemplate = this.getNodeTemplate(valueNode.type);
+                                    if (nodeTemplate && nodeTemplate.codeGen) {
+                                        const ctx = {
+                                            nodes: this.nodes,
+                                            connections: this.connections,
+                                            getInputValue: (n, p) => this.getInputValue(n, p),
+                                            getOutputValue: (n, p) => this.getOutputValue(n, p),
+                                            generateGroupCode: (n) => this.generateGroupContentCode(n.groupData.nodes, n.groupData.connections, '        '),
+                                            indent: '        '
+                                        };
+                                        defaultValue = nodeTemplate.codeGen(valueNode, ctx) || '""';
+                                        
+                                        // Infer type based on node type or default to string
+                                        if (valueNode.type === 'randomName') {
+                                            propType = 'string'; // randomName generates strings
+                                        } else {
+                                            propType = 'string'; // Default to string for unknown types
+                                        }
+                                        
+                                        options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
+                                    }
                                 }
                             }
 
@@ -4449,6 +4489,31 @@ class ${className} extends Module {
         code += `window.${className} = ${className};\n`;
 
         return code;
+    }
+
+    /**
+     * Sanitize a property name to be a valid JavaScript identifier
+     */
+    sanitizePropertyName(name) {
+        if (!name || typeof name !== 'string') return 'property';
+        
+        // Remove quotes
+        name = name.replace(/^['"]|['"]$/g, '');
+        
+        // Replace spaces and special characters with underscores
+        name = name.replace(/[^a-zA-Z0-9_$]/g, '_');
+        
+        // Ensure it doesn't start with a number
+        if (/^[0-9]/.test(name)) {
+            name = '_' + name;
+        }
+        
+        // Ensure it's not empty after sanitization
+        if (!name || name === '_') {
+            name = 'property';
+        }
+        
+        return name;
     }
 
     /**
