@@ -28,3 +28,6 @@ user will be able to manipulate the spline in the editor, updating its values.
 - Have to fix the rotation speed when walking and fix the throwing velocity not working
 
 - Release rubber ducky as its own open source javascript project
+
+- For the visual based module builder, when saving project, you need to make sure it goes back out of 
+    groups first otherwise we lose the main code

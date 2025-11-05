@@ -2057,15 +2057,19 @@ class VisualModuleBuilderWindow extends EditorWindow {
         });
 
         const closeEditor = () => {
-            this.closeTextEditor();
+            // Only close if the element still exists and hasn't been closed
+            if (this.editingElement && this.editingElement.parentNode) {
+                this.closeTextEditor();
+            }
         };
 
         input.addEventListener('blur', closeEditor);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === 'Escape') {
+                e.preventDefault(); // Prevent default behavior
                 closeEditor();
             }
-            e.stopPropagation();
+            e.stopPropagation(); // Prevent canvas shortcuts
         });
 
         input.addEventListener('mousedown', (e) => {
@@ -3922,15 +3926,27 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const destroyNode = this.nodes.find(n => n.type === 'onDestroy');
         const methodNodes = this.nodes.filter(n => n.type === 'method');
 
-        // Find all exposed properties (setProperty nodes with exposeProperty = true AND variable nodes)
-        const exposedSetPropertyNodes = this.nodes.filter(n => n.type === 'setProperty' && n.exposeProperty);
+        // Find ALL setProperty nodes (both exposed and non-exposed)
+        const allSetPropertyNodes = this.nodes.filter(n => n.type === 'setProperty');
+        const exposedSetPropertyNodes = allSetPropertyNodes.filter(n => n.exposeProperty);
+
         const exposedVariableNodes = this.nodes.filter(n =>
             ['numberVar', 'stringVar', 'booleanVar', 'colorVar', 'vector2Var', 'assetVar', 'scriptVar'].includes(n.type)
             && n.exposeProperty
         );
 
-        const allExposedNodes = [...exposedSetPropertyNodes, ...exposedVariableNodes];
+        // Group ALL setProperty nodes for constructor initialization
+        const groupedAllSetProperty = {};
+        allSetPropertyNodes.forEach(node => {
+            const groupName = node.groupName || 'General';
+            if (!groupedAllSetProperty[groupName]) {
+                groupedAllSetProperty[groupName] = [];
+            }
+            groupedAllSetProperty[groupName].push(node);
+        });
 
+        // Group only EXPOSED nodes (setProperty + variables) for inspector registration
+        const allExposedNodes = [...exposedSetPropertyNodes, ...exposedVariableNodes];
         const groupedExposed = {};
         allExposedNodes.forEach(node => {
             const groupName = node.groupName || 'General';
@@ -3956,123 +3972,54 @@ class ${className} extends Module {
         super("${className}");
 `;
 
-        // Add exposed properties to constructor
-        if (Object.keys(groupedExposed).length > 0) {
-            // Generate summary of exposed properties
-            const totalProps = allExposedNodes.length;
-            const propTypes = {};
-            allExposedNodes.forEach(node => {
-                let type = 'string';
-                if (node.type === 'setProperty') {
-                    const valueConn = this.connections.find(c =>
-                        c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
-                    );
-                    if (valueConn) {
-                        const valueNode = valueConn.from.node;
-                        if (valueNode.type === 'number') type = 'number';
-                        else if (valueNode.type === 'boolean') type = 'boolean';
-                        else if (valueNode.type === 'color') type = 'color';
-                        else if (valueNode.type === 'vector2') type = 'vector2';
-                    }
-                } else {
-                    if (node.type === 'numberVar') type = 'number';
-                    else if (node.type === 'booleanVar') type = 'boolean';
-                    else if (node.type === 'colorVar') type = 'color';
-                    else if (node.type === 'vector2Var') type = 'vector2';
-                    else if (node.type === 'assetVar') type = 'asset';
-                    else if (node.type === 'scriptVar') type = 'script';
-                }
-                propTypes[type] = (propTypes[type] || 0) + 1;
-            });
-
-            const typeSummary = Object.entries(propTypes)
-                .map(([type, count]) => `${count} ${type}${count > 1 ? 's' : ''}`)
-                .join(', ');
-
+        // Add ALL setProperty properties to constructor (both exposed and non-exposed)
+        if (Object.keys(groupedAllSetProperty).length > 0) {
             code += `
         /**
-         * EXPOSED PROPERTIES (${totalProps} total: ${typeSummary})
-         * These properties are initialized with default values and can be modified
-         * in the inspector panel. Each property is editable at runtime and will be
-         * saved/loaded with the module instance.
+         * PROPERTIES
+         * All setProperty nodes are initialized in the constructor with default values.
          */
 `;
 
-            for (const [groupName, nodes] of Object.entries(groupedExposed)) {
-                code += `        // ${groupName} Group (${nodes.length} ${nodes.length === 1 ? 'property' : 'properties'})\n`;
+            for (const [groupName, nodes] of Object.entries(groupedAllSetProperty)) {
+                code += `        // ${groupName} Group\n`;
                 nodes.forEach(node => {
                     let propName = null;
                     let defaultValue = '""';
-                    let propType = 'string';
-                    let options = '';
 
-                    // Handle setProperty nodes
-                    if (node.type === 'setProperty') {
-                        const nameConn = this.connections.find(c =>
-                            c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
-                        );
+                    const nameConn = this.connections.find(c =>
+                        c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
+                    );
 
-                        if (nameConn && nameConn.from.node.type === 'string') {
-                            propName = nameConn.from.node.value || 'property';
-
-                            const valueConn = this.connections.find(c =>
-                                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
-                            );
-
-                            if (valueConn) {
-                                const valueNode = valueConn.from.node;
-                                if (valueNode.type === 'string') {
-                                    propType = 'string';
-                                    defaultValue = `"${valueNode.value || ''}"`;
-                                } else if (valueNode.type === 'number') {
-                                    propType = 'number';
-                                    defaultValue = valueNode.value || '0';
-                                    options = ', { min: -999999, max: 999999 }';
-                                } else if (valueNode.type === 'boolean') {
-                                    propType = 'boolean';
-                                    defaultValue = valueNode.value ? 'true' : 'false';
-                                } else if (valueNode.type === 'color') {
-                                    propType = 'color';
-                                    defaultValue = `"${valueNode.value || '#ffffff'}"`;
-                                } else if (valueNode.type === 'vector2') {
-                                    propType = 'vector2';
-                                    defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
-                                }
-                            }
-                        }
+                    // Get property name from connection or use default
+                    if (nameConn && nameConn.from.node.type === 'string') {
+                        propName = nameConn.from.node.value || 'property';
+                    } else {
+                        // No connection - use a default name or the node's stored label
+                        propName = node.label || `property_${node.id}`;
                     }
-                    // Handle variable nodes
-                    else {
-                        propName = node.groupName || 'property';
 
-                        if (node.type === 'numberVar') {
-                            propType = 'number';
-                            defaultValue = node.value || '0';
-                            options = ', { min: 0, max: 100 }';
-                        } else if (node.type === 'stringVar') {
-                            propType = 'string';
-                            defaultValue = `"${node.value || ''}"`;
-                        } else if (node.type === 'booleanVar') {
-                            propType = 'boolean';
-                            defaultValue = node.value ? 'true' : 'false';
-                        } else if (node.type === 'colorVar') {
-                            propType = 'color';
-                            defaultValue = `"${node.value || '#ffffff'}"`;
-                        } else if (node.type === 'vector2Var') {
-                            propType = 'vector2';
-                            defaultValue = `new Vector2(0, 0)`;
-                        } else if (node.type === 'assetVar') {
-                            propType = 'asset';
-                            defaultValue = 'null';
-                        } else if (node.type === 'scriptVar') {
-                            propType = 'script';
-                            defaultValue = `""`;
+                    const valueConn = this.connections.find(c =>
+                        c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('value')
+                    );
+
+                    if (valueConn) {
+                        const valueNode = valueConn.from.node;
+                        if (valueNode.type === 'string') {
+                            defaultValue = `"${valueNode.value || ''}"`;
+                        } else if (valueNode.type === 'number') {
+                            defaultValue = valueNode.value || '0';
+                        } else if (valueNode.type === 'boolean') {
+                            defaultValue = valueNode.value ? 'true' : 'false';
+                        } else if (valueNode.type === 'color') {
+                            defaultValue = `"${valueNode.value || '#ffffff'}"`;
+                        } else if (valueNode.type === 'vector2') {
+                            defaultValue = `new Vector2(${valueNode.value?.x || 0}, ${valueNode.value?.y || 0})`;
                         }
                     }
 
-                    if (propName) {
-                        code += `        this.${propName} = ${defaultValue};\n`;
-                    }
+                    // Always add property to constructor
+                    code += `        this.${propName} = ${defaultValue};\n`;
                 });
             }
 
@@ -4929,6 +4876,57 @@ class ${className} extends Module {
             savePath = `Visual Module Builder Proj/${savePath}.vmb`;
         }
 
+        // **FIX: Save the current state and return to main canvas before saving**
+        const wasInGroup = this.currentGroup !== null;
+        const savedCurrentGroup = this.currentGroup;
+        const savedNodes = this.nodes;
+        const savedConnections = this.connections;
+        const savedPanOffset = this.panOffset;
+        const savedZoom = this.zoom;
+        const savedHistory = [...this.groupHistory];
+
+        // If we're in a group, save its state and exit all groups to get to the root
+        if (wasInGroup) {
+            // Save current group state first
+            if (this.currentGroup) {
+                // Filter out the special group input/output nodes before saving
+                const filteredNodes = this.nodes.filter(n => !n.isGroupInput && !n.isGroupOutput);
+                const filteredConnections = this.connections.filter(c => {
+                    const fromNodeValid = filteredNodes.find(n => n.id === c.from.node.id);
+                    const toNodeValid = filteredNodes.find(n => n.id === c.to.node.id);
+                    return fromNodeValid && toNodeValid;
+                });
+
+                this.currentGroup.groupData = {
+                    nodes: filteredNodes,
+                    connections: filteredConnections.map(c => ({
+                        from: {
+                            nodeId: c.from.node.id,
+                            portIndex: c.from.portIndex,
+                            node: c.from.node
+                        },
+                        to: {
+                            nodeId: c.to.node.id,
+                            portIndex: c.to.portIndex,
+                            node: c.to.node
+                        }
+                    })),
+                    panOffset: this.panOffset,
+                    zoom: this.zoom
+                };
+            }
+
+            // Exit all groups to get to root
+            while (this.groupHistory.length > 0) {
+                const previousState = this.groupHistory.pop();
+                this.nodes = previousState.nodes;
+                this.connections = previousState.connections;
+                this.panOffset = previousState.panOffset;
+                this.zoom = previousState.zoom;
+                this.currentGroup = previousState.currentGroup;
+            }
+        }
+
         // Collect custom node definitions from the node library
         const customNodes = [];
         for (const category in this.nodeLibrary) {
@@ -4982,6 +4980,20 @@ class ${className} extends Module {
             this.showNotification(`Project saved to ${savePath}!`, 'success');
         } catch (error) {
             this.showNotification(`Error saving project: ${error.message}`, 'error');
+        }
+
+        // **FIX: Restore the group state if we were in a group**
+        if (wasInGroup) {
+            // Restore the group history and current state
+            this.groupHistory = savedHistory;
+            this.nodes = savedNodes;
+            this.connections = savedConnections;
+            this.panOffset = savedPanOffset;
+            this.zoom = savedZoom;
+            this.currentGroup = savedCurrentGroup;
+
+            // Update the breadcrumb to show we're back in the group
+            this.updateGroupBreadcrumb();
         }
     }
 
@@ -5895,13 +5907,16 @@ class ${className} extends Module {
      */
     closeTextEditor() {
         if (this.editingElement) {
-            // Check if element is still in DOM before removing
-            if (this.editingElement.parentNode) {
-                this.editingElement.remove();
-            }
+            // Store reference and clear immediately to prevent re-entry
+            const elementToRemove = this.editingElement;
             this.editingElement = null;
+            this.editingNode = null;
+            
+            // Now safely remove from DOM
+            if (elementToRemove.parentNode) {
+                elementToRemove.remove();
+            }
         }
-        this.editingNode = null;
         this.closeDropdownMenu();
     }
 

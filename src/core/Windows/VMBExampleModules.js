@@ -838,7 +838,7 @@ class VMBExampleModules {
                             varName = varName.slice(1, -1);
                         }
                         varName = varName || 'myVar';
-                        return `(${varName} !== undefined ? ${varName} : variables['${varName}'])`;
+                        return `${varName}`;
                     }
                 },
                 {
@@ -880,7 +880,7 @@ class VMBExampleModules {
                             propName = 'property'; // fallback to default if invalid
                         }
                         
-                        return `(this.${propName} !== undefined ? this.${propName} : this.properties['${propName}'])`;
+                        return `this.${propName}`;
                     }
                 },
                 {
@@ -909,9 +909,9 @@ class VMBExampleModules {
                         const propValue = ctx.getInputValue(node, 'value');
 
                         if (node.exposeProperty) {
-                            return `this.${propName} = ${propValue};`;
+                            return `this.${propName} = ${propValue}; // Exposed Property (See below)`;
                         } else {
-                            return `this.properties['${propName}'] = ${propValue};`;
+                            return `this.${propName} = ${propValue}; // Hidden Property`;
                         }
                     }
                 }
