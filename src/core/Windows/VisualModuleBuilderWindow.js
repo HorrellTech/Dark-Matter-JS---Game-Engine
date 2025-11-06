@@ -115,11 +115,38 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.draggedGroupPanel = null; // Currently dragged group panel
         this.groupPanelDragOffset = { x: 0, y: 0 }; // Offset for group dragging
 
+        // ========== NEW: UNDO/REDO SYSTEM ==========
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxUndoSteps = 50; // Limit undo history
+
+        // ========== NEW: MINIMAP ==========
+        this.showMinimap = true;
+        this.minimapCanvas = null;
+        this.minimapCtx = null;
+        this.minimapScale = 0.1; // How much to scale down the view
+        this.minimapPadding = 10;
+
+        // ========== NEW: COMMAND PALETTE ==========
+        this.commandPalette = null;
+        this.commandPaletteVisible = false;
+
+        // ========== NEW: COMMENT/ANNOTATION SYSTEM ==========
+        this.nodeComments = new Map(); // Map of nodeId -> comment text
+        this.hoveredCommentButton = null;
+
+        // ========== NEW: LIVE PREVIEW/DEBUGGING ==========
+        this.livePreviewActive = false;
+        this.previewModuleInstance = null;
+
         this.setupUI();
         this.setupCanvas();
         this.setupCanvasEventListeners();
         this.loadAvailableModules();
         this.setupModuleRefreshListener();
+
+        // Save initial state for undo/redo
+        this.saveState();
     }
 
     setupModuleRefreshListener() {
@@ -513,6 +540,44 @@ class VisualModuleBuilderWindow extends EditorWindow {
         groupPanelsLabel.appendChild(groupPanelsText);
         toolbar.appendChild(groupPanelsLabel);
 
+        // ========== NEW: MINIMAP TOGGLE ==========
+        const minimapLabel = document.createElement('label');
+        minimapLabel.style.cssText = `
+        color: #fff;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 8px;
+        background: ${this.showMinimap ? '#4CAF50' : '#444'};
+        border: 1px solid ${this.showMinimap ? '#66BB6A' : '#666'};
+        border-radius: 4px;
+        transition: all 0.2s;
+    `;
+
+        const minimapCheckbox = document.createElement('input');
+        minimapCheckbox.type = 'checkbox';
+        minimapCheckbox.checked = this.showMinimap;
+        minimapCheckbox.style.cssText = 'cursor: pointer;';
+
+        const minimapText = document.createElement('span');
+        minimapText.innerHTML = '<i class="fas fa-map" style="margin-right: 4px;"></i>Minimap';
+
+        minimapCheckbox.addEventListener('change', (e) => {
+            this.showMinimap = e.target.checked;
+            minimapLabel.style.background = this.showMinimap ? '#4CAF50' : '#444';
+            minimapLabel.style.borderColor = this.showMinimap ? '#66BB6A' : '#666';
+
+            if (this.minimapCanvas) {
+                this.minimapCanvas.style.display = this.showMinimap ? 'block' : 'none';
+            }
+        });
+
+        minimapLabel.appendChild(minimapCheckbox);
+        minimapLabel.appendChild(minimapText);
+        toolbar.appendChild(minimapLabel);
+
         toolbar.appendChild(divider());
 
         // Connection Color Picker
@@ -561,8 +626,12 @@ class VisualModuleBuilderWindow extends EditorWindow {
             { text: 'New', icon: '📄', action: () => this.newProject() },
             { text: 'Save', icon: '💾', action: () => this.saveProject() },
             { text: 'Load', icon: '📂', action: () => this.loadProject() },
+            { text: 'Undo', icon: '↶', action: () => this.undo(), title: 'Undo (Ctrl+Z)' },
+            { text: 'Redo', icon: '↷', action: () => this.redo(), title: 'Redo (Ctrl+Shift+Z)' },
+            { text: 'Command', icon: '⌘', action: () => this.toggleCommandPalette(), title: 'Command Palette (Ctrl+Space)' },
             { text: 'Export Module', icon: '📤', action: () => this.exportModule(), highlight: true },
             { text: 'Validate', icon: '✓', action: () => this.validateGraph() },
+            { text: 'Test Module', icon: '▶', action: () => this.testModule(), highlight: false, style: 'background: #2196F3; border-color: #42A5F5' },
             { text: 'Clear', icon: '🗑️', action: () => this.clearCanvas() },
             { text: 'Help', icon: '❓', action: () => this.showHelp() }
         ];
@@ -570,7 +639,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
         buttons.forEach(btn => {
             const button = document.createElement('button');
             button.innerHTML = `${btn.icon} ${btn.text}`;
-            button.style.cssText = `
+            button.title = btn.title || '';
+            button.style.cssText = btn.style || `
             padding: 6px 12px;
             background: ${btn.highlight ? '#4CAF50' : '#444'};
             border: 1px solid ${btn.highlight ? '#66BB6A' : '#666'};
@@ -759,8 +829,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         hasInput: nodeDef.hasInput,
                         hasToggle: nodeDef.hasToggle,
                         hasDropdown: nodeDef.hasDropdown,
-                        dropdownOptions: nodeDef.dropdownOptions, 
-                        defaultValue: nodeDef.defaultValue, 
+                        dropdownOptions: nodeDef.dropdownOptions,
+                        defaultValue: nodeDef.defaultValue,
                         hasColorPicker: nodeDef.hasColorPicker,
                         hasExposeCheckbox: nodeDef.hasExposeCheckbox,
                         isGroup: nodeDef.isGroup,
@@ -857,8 +927,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         hasInput: customNodeData.hasInput || false,
                         hasToggle: customNodeData.hasToggle || false,
                         hasDropdown: customNodeData.hasDropdown || false,
-                        dropdownOptions: customNodeData.dropdownOptions || [],  
-                        defaultValue: customNodeData.defaultValue,             
+                        dropdownOptions: customNodeData.dropdownOptions || [],
+                        defaultValue: customNodeData.defaultValue,
                         hasColorPicker: customNodeData.hasColorPicker || false,
                         hasExposeCheckbox: customNodeData.hasExposeCheckbox || false,
                         isGroup: customNodeData.isGroup || false,
@@ -1434,6 +1504,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.canvas.style.userSelect = 'none';
         this.canvas.style.webkitUserSelect = 'none';
 
+        // ========== NEW: CREATE MINIMAP CANVAS ==========
+        this.createMinimap();
+
         // Handle canvas resize
         const resizeCanvas = () => {
             const rect = this.canvas.getBoundingClientRect();
@@ -1485,8 +1558,27 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Keyboard shortcuts
         this.boundHandlers.keydown = (e) => {
+            // DELETE key - delete selected node
             if (e.key === 'Delete' && this.selectedNode) {
                 this.deleteNode(this.selectedNode);
+            }
+
+            // CTRL+Z - Undo
+            if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                this.undo();
+            }
+
+            // CTRL+SHIFT+Z or CTRL+Y - Redo
+            if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || (e.ctrlKey && e.key === 'y')) {
+                e.preventDefault();
+                this.redo();
+            }
+
+            // CTRL+SPACE - Command Palette
+            if (e.ctrlKey && e.code === 'Space') {
+                e.preventDefault();
+                this.toggleCommandPalette();
             }
         };
         document.addEventListener('keydown', this.boundHandlers.keydown);
@@ -1519,6 +1611,17 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     if (confirm('Delete this node and all its connections?')) {
                         this.deleteNode(node);
                     }
+                    return;
+                }
+            }
+
+            // ========== NEW: Check for comment button click ==========
+            if (node.commentButton) {
+                const dx = x - node.commentButton.x;
+                const dy = y - node.commentButton.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist <= node.commentButton.radius) {
+                    this.editNodeComment(node);
                     return;
                 }
             }
@@ -1663,15 +1766,17 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Check if hovering over any button
         let isButtonHover = false;
-        
+
+        this.hoveredCommentButton = null;
+
         // Check panel buttons (grip, collapse, expand, label)
         const panelHit = this.showGroupPanels ? this.getGroupPanelButtonHit(x, y) : null;
         const isGripHover = panelHit?.button === 'grip';
-        
+
         if (panelHit && (panelHit.button === 'collapse' || panelHit.button === 'expand' || panelHit.button === 'label')) {
             isButtonHover = true;
         }
-        
+
         // Check node buttons (delete, open group, edit name)
         if (!isButtonHover) {
             for (const node of this.nodes) {
@@ -1685,7 +1790,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         break;
                     }
                 }
-                
+
                 // Check open group button
                 if (node.openGroupButton) {
                     const dx = x - node.openGroupButton.x;
@@ -1696,7 +1801,18 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         break;
                     }
                 }
-                
+
+                if (node.commentButton) {
+                    const dx = x - node.commentButton.x;
+                    const dy = y - node.commentButton.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= node.commentButton.radius) {
+                        isButtonHover = true;
+                        this.hoveredCommentButton = node;
+                        break;
+                    }
+                }
+
                 // Check edit name button
                 if (node.editNameButton) {
                     const dx = x - node.editNameButton.x;
@@ -1730,6 +1846,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Handle canvas mouse up
      */
     handleCanvasMouseUp(e) {
+        const hadChanges = this.draggedNode !== null || this.draggedGroupPanel !== null;
+
         if (this.connectingFrom) {
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
@@ -1738,6 +1856,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
             const portHit = this.getPortAtPosition(x, y);
             if (portHit) {
                 this.completeConnection(portHit);
+                this.saveState(); // Save state after creating connection
             }
             this.connectingFrom = null;
         }
@@ -1753,6 +1872,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
             // Recalculate panel bounds based on snapped node positions
             const bounds = this.calculateGroupBounds(new Set(this.draggedGroupPanel.nodes));
             this.draggedGroupPanel.bounds = bounds;
+        }
+
+        // Save state if something was dragged
+        if (hadChanges) {
+            this.saveState();
         }
 
         this.draggedNode = null;
@@ -1948,9 +2072,6 @@ class VisualModuleBuilderWindow extends EditorWindow {
     /**
      * Check if clicking on an interactive element and handle it
      */
-    /**
- * Check if clicking on an interactive element and handle it
- */
     checkInteractiveElement(x, y, event) {
         const collapsedNodeIds = this.getCollapsedNodeIds();
 
@@ -1978,6 +2099,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     // Recalculate node height
                     node.height = this.calculateNodeHeight(node);
                     this.hasUnsavedChanges = true;
+                    this.saveState(); // NEW: Save state after expose checkbox toggle
                     event.preventDefault();
                     return true;
                 }
@@ -2018,6 +2140,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     y >= toggleY && y <= toggleY + 20) {
                     node.value = !node.value;
                     this.hasUnsavedChanges = true;
+                    this.saveState(); // NEW: Save state after toggle change
                     event.preventDefault();
                     return true;
                 }
@@ -2032,6 +2155,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 if (x >= dropdownX && x <= dropdownX + dropdownW &&
                     y >= dropdownY && y <= dropdownY + 20) {
                     this.openDropdownMenu(node, dropdownX, dropdownY, dropdownW, 20);
+                    // NOTE: saveState() will be called in openDropdownMenu when option is selected
                     this.hasUnsavedChanges = true;
                     event.preventDefault();
                     return true;
@@ -2048,6 +2172,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 if (x >= colorX && x <= colorX + colorW &&
                     y >= colorY && y <= colorY + colorH) {
                     this.openColorPicker(node, colorX, colorY, colorW, colorH);
+                    // NOTE: saveState() will be called when color picker is closed
                     event.preventDefault();
                     return true;
                 }
@@ -2062,6 +2187,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 if (x >= dropdownX && x <= dropdownX + dropdownW &&
                     y >= dropdownY && y <= dropdownY + 20) {
                     this.cyclePropertyDropdownValue(node);
+                    // NOTE: saveState() is now called in cyclePropertyDropdownValue
                     this.hasUnsavedChanges = true;
                     event.preventDefault();
                     return true;
@@ -2120,22 +2246,22 @@ class VisualModuleBuilderWindow extends EditorWindow {
         input.value = node.groupName || '';
         input.placeholder = 'Group';
         input.style.cssText = `
-            position: absolute;
-            left: ${screenX}px;
-            top: ${screenY}px;
-            width: ${screenW}px;
-            height: ${screenH}px;
-            background: #333;
-            border: 2px solid #00ffff;
-            border-radius: 4px;
-            color: #fff;
-            font-size: ${9 * this.zoom}px;
-            font-family: monospace;
-            padding: 2px 4px;
-            box-sizing: border-box;
-            z-index: 10000;
-            outline: none;
-        `;
+        position: absolute;
+        left: ${screenX}px;
+        top: ${screenY}px;
+        width: ${screenW}px;
+        height: ${screenH}px;
+        background: #333;
+        border: 2px solid #00ffff;
+        border-radius: 4px;
+        color: #fff;
+        font-size: ${9 * this.zoom}px;
+        font-family: monospace;
+        padding: 2px 4px;
+        box-sizing: border-box;
+        z-index: 10000;
+        outline: none;
+    `;
 
         const canvasRect = this.canvas.getBoundingClientRect();
         input.style.left = (canvasRect.left + screenX) + 'px';
@@ -2156,6 +2282,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const closeEditor = () => {
             // Only close if the element still exists and hasn't been closed
             if (this.editingElement && this.editingElement.parentNode) {
+                this.saveState(); // NEW: Save state when closing editor
                 this.closeTextEditor();
             }
         };
@@ -2486,20 +2613,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const fromIsFlow = flowTypes.includes(fromPortLabel);
         const toIsFlow = flowTypes.includes(toPortLabel);
 
-        // Special validation for flow connections:
-        // Allow these connection patterns:
-        // 1. flow output -> flow input (normal flow)
-        // 2. flow input -> callback/event output (e.g., node with flow input -> onChange output)
-        // 3. callback/event output -> flow input (e.g., onChange output -> node with flow input)
-
         if (fromIsFlow || toIsFlow) {
-            // At least one side is a flow type
             if (!fromIsFlow || !toIsFlow) {
-                // One is flow, one is not - reject
                 this.showNotification('Flow connectors can only connect to other flow connectors!', 'error');
                 return;
             }
-            // Both are flow types - allow the connection
         }
 
         // Create connection
@@ -2517,6 +2635,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         this.connections.push(connection);
         this.hasUnsavedChanges = true;
+        this.saveState(); // Save state after creating connection
     }
 
     /**
@@ -2535,6 +2654,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         );
         this.selectedNode = null;
         this.hasUnsavedChanges = true;
+        this.saveState(); // Save state after deletion
     }
 
     /**
@@ -2626,7 +2746,6 @@ class VisualModuleBuilderWindow extends EditorWindow {
         }
 
         this.nodes.forEach(node => {
-
             // Skip drawing nodes that are in collapsed groups
             if (!collapsedNodeIds.has(node.id)) {
                 this.drawNode(ctx, node);
@@ -2639,6 +2758,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
         ctx.font = '12px monospace';
         ctx.fillText(`Zoom: ${(this.zoom * 100).toFixed(0)}%`, 10, this.canvas.height - 10);
+
+        // ========== NEW: RENDER MINIMAP ==========
+        this.renderMinimap();
     }
 
     /**
@@ -2711,6 +2833,22 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         node.deleteButton = { x: deleteX, y: deleteY, radius: 8 };
 
+        // ========== NEW: Comment/Annotation button ==========
+        const commentX = node.x + node.width - 16;
+        const commentY = node.y + node.height - 16;
+        const hasComment = this.nodeComments.has(node.id);
+        
+        ctx.fillStyle = hasComment ? 'rgba(255, 152, 0, 0.8)' : 'rgba(100, 100, 100, 0.6)';
+        ctx.beginPath();
+        ctx.arc(commentX, commentY, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬', commentX, commentY + 4);
+
+        node.commentButton = { x: commentX, y: commentY, radius: 8 };
+
         // Open group button for group nodes
         if (node.isGroup) {
             const openX = node.x + node.width - 36;
@@ -2771,21 +2909,21 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     ctx.fillStyle = '#ccc';
                     ctx.font = '11px Arial';
                     ctx.textAlign = 'left';
-                    
+
                     // Check if this input has a connection
                     const connection = this.connections.find(c =>
                         c.to.node.id === node.id && c.to.portIndex === index
                     );
-                    
+
                     if (connection) {
                         // Get the source node and output port
                         const sourceNode = connection.from.node;
                         const sourcePortIndex = connection.from.portIndex;
                         const sourceOutput = sourceNode.outputs[sourcePortIndex];
-                        
+
                         // Get the value to display
                         let displayValue = '';
-                        
+
                         // For property reference nodes, show the property name
                         if (sourceNode.type === 'property' && sourceNode.value) {
                             displayValue = sourceNode.value;
@@ -2810,7 +2948,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         else if (sourceOutput) {
                             displayValue = sourceOutput;
                         }
-                        
+
                         // Format the value for display
                         if (typeof displayValue === 'string' && displayValue.length > 15) {
                             displayValue = displayValue.substring(0, 12) + '...';
@@ -2819,7 +2957,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         } else if (typeof displayValue === 'number') {
                             displayValue = displayValue.toString();
                         }
-                        
+
                         // Draw input label with value in parentheses
                         ctx.fillText(`${input} (${displayValue})`, pos.x + 12, pos.y + 4);
                     } else {
@@ -3010,6 +3148,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
             ctx.fillText('▼', dropdownX + dropdownW - 10, dropdownY + 13);
         }
 
+        // ========== NEW: Draw comment tooltip on hover ==========
+        if (this.hoveredCommentButton === node && hasComment) {
+            this.drawCommentTooltip(ctx, node, commentX, commentY);
+        }
+
         ctx.textAlign = 'left';
     }
 
@@ -3108,10 +3251,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // If flow node, use purple glow
         const portLabel = isOutput ? node.outputs[portIndex] : node.inputs[portIndex];
         const isFlowPort = portLabel === 'flow';
-        
+
         // Determine the color to use
         const lineColor = isFlowPort ? '#ff00ff' : this.connectionColor;
-        
+
         // Set shadow/glow based on state
         if (isHovered) {
             if (isConnected) {
@@ -4287,14 +4430,14 @@ class ${className} extends Module {
                                             indent: '        '
                                         };
                                         defaultValue = nodeTemplate.codeGen(valueNode, ctx) || '""';
-                                        
+
                                         // Infer type based on node type or default to string
                                         if (valueNode.type === 'randomName') {
                                             propType = 'string'; // randomName generates strings
                                         } else {
                                             propType = 'string'; // Default to string for unknown types
                                         }
-                                        
+
                                         options = ', { onChange: (val) => { this.' + propName + ' = val; } }';
                                     }
                                 }
@@ -4680,23 +4823,23 @@ class ${className} extends Module {
      */
     sanitizePropertyName(name) {
         if (!name || typeof name !== 'string') return 'property';
-        
+
         // Remove quotes
         name = name.replace(/^['"]|['"]$/g, '');
-        
+
         // Replace spaces and special characters with underscores
         name = name.replace(/[^a-zA-Z0-9_$]/g, '_');
-        
+
         // Ensure it doesn't start with a number
         if (/^[0-9]/.test(name)) {
             name = '_' + name;
         }
-        
+
         // Ensure it's not empty after sanitization
         if (!name || name === '_') {
             name = 'property';
         }
-        
+
         return name;
     }
 
@@ -5212,14 +5355,12 @@ class ${className} extends Module {
             moduleColor: this.moduleColor,
             allowMultiple: this.allowMultiple,
             drawInEditor: this.drawInEditor,
-            nodes: this.nodes,
-            connections: this.connections.map(c => ({
-                from: { nodeId: c.from.node.id, portIndex: c.from.portIndex },
-                to: { nodeId: c.to.node.id, portIndex: c.to.portIndex }
-            })),
+            nodes: this.nodes.map(this.serializeNode.bind(this)),
+            connections: this.connections.map(this.serializeConnection.bind(this)),
             panOffset: this.panOffset,
             zoom: this.zoom,
-            customNodes: customNodes // Add custom nodes to save data
+            groupPanels: this.groupPanels.map(this.serializeGroupPanel.bind(this)),
+            nodeComments: Array.from(this.nodeComments.entries()) // ========== NEW: Save comments ==========
         };
 
         try {
@@ -5367,6 +5508,14 @@ class ${className} extends Module {
                     isOutput: false
                 }
             }));
+
+            // ========== NEW: Restore comments ==========
+            this.nodeComments = new Map();
+            if (projectData.nodeComments && Array.isArray(projectData.nodeComments)) {
+                projectData.nodeComments.forEach(([nodeId, comment]) => {
+                    this.nodeComments.set(nodeId, comment);
+                });
+            }
 
             this.panOffset = projectData.panOffset || { x: 0, y: 0 };
             this.zoom = projectData.zoom || 1.0;
@@ -5647,6 +5796,19 @@ class ${className} extends Module {
         });
     }
 
+    close() {
+        super.close();
+
+        // ========== NEW: Stop live preview on close ==========
+        this.stopLivePreview();
+        
+        // Stop animation loop
+        this.isActive = false;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+        }
+    }
+
     /**
      * Helper to find node by ID (including nested nodes in groups)
      */
@@ -5808,7 +5970,6 @@ class ${className} extends Module {
      * Open text editor for node input
      */
     openTextEditor(node, x, y, width, height) {
-        // Remove existing editor if any
         this.closeTextEditor();
 
         // Store the canvas-space coordinates for repositioning
@@ -5844,6 +6005,7 @@ class ${className} extends Module {
         const closeEditor = () => {
             // Only close if the element still exists
             if (this.editingElement) {
+                this.saveState(); // NEW: Save state when closing text editor
                 this.closeTextEditor();
             }
         };
@@ -5895,6 +6057,187 @@ class ${className} extends Module {
     }
 
     /**
+     * Edit node comment/annotation
+     */
+    editNodeComment(node) {
+        const currentComment = this.nodeComments.get(node.id) || '';
+        const newComment = prompt('Enter comment/annotation for this node:', currentComment);
+        
+        if (newComment !== null) {
+            if (newComment.trim()) {
+                this.nodeComments.set(node.id, newComment.trim());
+                this.showNotification('Comment added!', 'success');
+            } else {
+                this.nodeComments.delete(node.id);
+                this.showNotification('Comment removed!', 'info');
+            }
+            this.hasUnsavedChanges = true;
+            this.saveState();
+        }
+    }
+
+    /**
+     * Draw comment tooltip as a speech bubble
+     */
+    drawCommentTooltip(ctx, node, bubbleX, bubbleY) {
+        const comment = this.nodeComments.get(node.id);
+        if (!comment) return;
+
+        // Speech bubble styling
+        const padding = 12;
+        const maxWidth = 250;
+        const lineHeight = 16;
+        
+        // Measure text and wrap
+        ctx.font = '11px Arial';
+        const words = comment.split(' ');
+        const lines = [];
+        let currentLine = '';
+        
+        words.forEach(word => {
+            const testLine = currentLine + (currentLine ? ' ' : '') + word;
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > maxWidth - padding * 2) {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = testLine;
+            }
+        });
+        if (currentLine) lines.push(currentLine);
+
+        const bubbleWidth = Math.min(maxWidth, Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2);
+        const bubbleHeight = lines.length * lineHeight + padding * 2;
+        
+        // Position bubble above and to the left of the button
+        const bx = bubbleX - bubbleWidth - 10;
+        const by = bubbleY - bubbleHeight / 2;
+        
+        // Draw speech bubble tail (small triangle)
+        ctx.fillStyle = '#2a2a2a';
+        ctx.beginPath();
+        ctx.moveTo(bx + bubbleWidth, by + bubbleHeight / 2 - 6);
+        ctx.lineTo(bx + bubbleWidth + 8, by + bubbleHeight / 2);
+        ctx.lineTo(bx + bubbleWidth, by + bubbleHeight / 2 + 6);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw speech bubble with glowing outline
+        ctx.shadowColor = this.connectionColor;
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#2a2a2a';
+        ctx.strokeStyle = this.connectionColor;
+        ctx.lineWidth = 2;
+        this.roundRect(ctx, bx, by, bubbleWidth, bubbleHeight, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Draw text
+        ctx.fillStyle = '#fff';
+        ctx.font = '11px Arial';
+        ctx.textAlign = 'left';
+        lines.forEach((line, i) => {
+            ctx.fillText(line, bx + padding, by + padding + (i + 1) * lineHeight - 4);
+        });
+    }
+
+    /**
+     * Test the module in live preview mode
+     */
+    async testModule() {
+        if (!this.moduleName) {
+            this.showNotification('Please enter a module name first!', 'warning');
+            return;
+        }
+
+        this.logToConsole('🔬 Starting live preview...', 'info');
+        
+        try {
+            // Generate module code
+            const code = this.generateModuleCode();
+            
+            // Create a temporary module class
+            const tempModuleCode = code.replace(
+                `class ${this.moduleName}`,
+                `class ${this.moduleName}_Preview`
+            );
+            
+            // Execute the code to create the class
+            eval(tempModuleCode);
+            
+            // Get the preview class
+            const PreviewModuleClass = eval(`${this.moduleName}_Preview`);
+            
+            // Check if we already have a preview instance
+            if (this.previewModuleInstance) {
+                // Clean up old instance
+                if (this.previewModuleInstance.onDestroy) {
+                    this.previewModuleInstance.onDestroy();
+                }
+                if (window.engine && window.engine.currentScene) {
+                    const scene = window.engine.currentScene;
+                    const index = scene.modules.indexOf(this.previewModuleInstance);
+                    if (index !== -1) {
+                        scene.modules.splice(index, 1);
+                    }
+                }
+            }
+            
+            // Create a new instance
+            this.previewModuleInstance = new PreviewModuleClass();
+            
+            // Add to the current scene if engine is available
+            if (window.engine && window.engine.currentScene) {
+                const scene = window.engine.currentScene;
+                scene.modules.push(this.previewModuleInstance);
+                
+                // Call start if it exists
+                if (this.previewModuleInstance.start) {
+                    this.previewModuleInstance.start();
+                }
+                
+                this.livePreviewActive = true;
+                this.logToConsole('✅ Live preview active! Module added to current scene.', 'success');
+                this.showNotification('Live preview started! Check the game canvas.', 'success');
+            } else {
+                this.logToConsole('⚠️ No active scene found. Module created but not added to scene.', 'warning');
+                this.showNotification('Module compiled, but no active scene to test in.', 'warning');
+            }
+            
+        } catch (error) {
+            this.logToConsole(`❌ Live preview error: ${error.message}`, 'error');
+            console.error('Live preview error:', error);
+            this.showNotification('Live preview failed! Check console for details.', 'error');
+        }
+    }
+
+    /**
+     * Stop live preview
+     */
+    stopLivePreview() {
+        if (this.previewModuleInstance) {
+            // Clean up
+            if (this.previewModuleInstance.onDestroy) {
+                this.previewModuleInstance.onDestroy();
+            }
+            
+            // Remove from scene
+            if (window.engine && window.engine.currentScene) {
+                const scene = window.engine.currentScene;
+                const index = scene.modules.indexOf(this.previewModuleInstance);
+                if (index !== -1) {
+                    scene.modules.splice(index, 1);
+                }
+            }
+            
+            this.previewModuleInstance = null;
+            this.livePreviewActive = false;
+            this.logToConsole('🛑 Live preview stopped.', 'info');
+        }
+    }
+
+    /**
      * Open color picker for a node
      */
     openColorPicker(node, x, y, width, height) {
@@ -5907,13 +6250,13 @@ class ${className} extends Module {
 
         const container = document.createElement('div');
         container.style.cssText = `
-            position: absolute;
-            left: ${screenX}px;
-            top: ${screenY}px;
-            display: flex;
-            gap: 4px;
-            z-index: 10000;
-        `;
+        position: absolute;
+        left: ${screenX}px;
+        top: ${screenY}px;
+        display: flex;
+        gap: 4px;
+        z-index: 10000;
+    `;
 
         const canvasRect = this.canvas.getBoundingClientRect();
         container.style.left = (canvasRect.left + screenX) + 'px';
@@ -5924,31 +6267,31 @@ class ${className} extends Module {
         colorInput.type = 'color';
         colorInput.value = node.value || '#ffffff';
         colorInput.style.cssText = `
-            width: ${screenW * 0.3}px;
-            height: ${screenH}px;
-            border: 2px solid #00ffff;
-            border-radius: 4px;
-            cursor: pointer;
-            background: none;
-        `;
+        width: ${screenW * 0.3}px;
+        height: ${screenH}px;
+        border: 2px solid #00ffff;
+        border-radius: 4px;
+        cursor: pointer;
+        background: none;
+    `;
 
         // Text input for hex value
         const textInput = document.createElement('input');
         textInput.type = 'text';
         textInput.value = node.value || '#ffffff';
         textInput.style.cssText = `
-            width: ${screenW * 0.7 - 8}px;
-            height: ${screenH}px;
-            background: #333;
-            border: 2px solid #00ffff;
-            border-radius: 4px;
-            color: #fff;
-            font-size: ${10 * this.zoom}px;
-            font-family: monospace;
-            padding: 2px 4px;
-            box-sizing: border-box;
-            outline: none;
-        `;
+        width: ${screenW * 0.7 - 8}px;
+        height: ${screenH}px;
+        background: #333;
+        border: 2px solid #00ffff;
+        border-radius: 4px;
+        color: #fff;
+        font-size: ${10 * this.zoom}px;
+        font-family: monospace;
+        padding: 2px 4px;
+        box-sizing: border-box;
+        outline: none;
+    `;
 
         colorInput.addEventListener('input', (e) => {
             node.value = e.target.value;
@@ -5974,6 +6317,7 @@ class ${className} extends Module {
         this.editingElement = container;
 
         const closeEditor = () => {
+            this.saveState(); // NEW: Save state when closing color picker
             this.closeTextEditor();
         };
 
@@ -6012,6 +6356,7 @@ class ${className} extends Module {
         const currentIndex = exposedProps.indexOf(node.selectedProperty);
         const nextIndex = (currentIndex + 1) % exposedProps.length;
         node.selectedProperty = exposedProps[nextIndex];
+        this.saveState(); // NEW: Save state after property dropdown change
     }
 
     /**
@@ -6110,6 +6455,7 @@ class ${className} extends Module {
                 e.stopPropagation();
                 node.dropdownValue = option;
                 this.hasUnsavedChanges = true;
+                this.saveState();
                 this.closeDropdownMenu();
             });
 
@@ -6160,7 +6506,7 @@ class ${className} extends Module {
             const elementToRemove = this.editingElement;
             this.editingElement = null;
             this.editingNode = null;
-            
+
             // Now safely remove from DOM
             if (elementToRemove.parentNode) {
                 elementToRemove.remove();
@@ -6208,11 +6554,11 @@ class ${className} extends Module {
      * Cycle dropdown value
      */
     cycleDropdownValue(node) {
-        // Use dropdownOptions if available, otherwise fall back to comparison operators
-        const values = node.dropdownOptions || ['==', '!=', '>', '<', '>=', '<='];
-        const currentIndex = values.indexOf(node.dropdownValue || values[0]);
+        const values = node.dropdownOptions || ['==', '!=', '<', '>', '<=', '>='];
+        const currentIndex = values.indexOf(node.dropdownValue);
         const nextIndex = (currentIndex + 1) % values.length;
         node.dropdownValue = values[nextIndex];
+        this.saveState(); // NEW: Save state after cycling dropdown
     }
 
     showNodeBuilder() {
@@ -6772,12 +7118,12 @@ class ${className} extends Module {
                 const trimmedLabel = newLabel.trim();
                 panel.label = trimmedLabel;
                 panel.customLabel = trimmedLabel;
-                
+
                 // Update all nodes in this panel with the new group name
                 panel.nodes.forEach(node => {
                     node.groupPanelName = trimmedLabel;
                 });
-                
+
                 this.hasUnsavedChanges = true;
             }
         }
@@ -6864,6 +7210,519 @@ class ${className} extends Module {
         if (super.destroy) {
             super.destroy();
         }
+    }
+
+    /**
+ * ========== NEW: UNDO/REDO SYSTEM ==========
+ */
+
+    /**
+     * Save current state to undo stack
+     */
+    saveState() {
+        const state = {
+            nodes: JSON.parse(JSON.stringify(this.nodes)),
+            connections: this.connections.map(conn => ({
+                from: { nodeId: conn.from.node.id, portIndex: conn.from.portIndex },
+                to: { nodeId: conn.to.node.id, portIndex: conn.to.portIndex }
+            })),
+            panOffset: { ...this.panOffset },
+            zoom: this.zoom,
+            moduleName: this.moduleName,
+            moduleNamespace: this.moduleNamespace,
+            moduleDescription: this.moduleDescription,
+            moduleIcon: this.moduleIcon,
+            moduleColor: this.moduleColor,
+            allowMultiple: this.allowMultiple,
+            drawInEditor: this.drawInEditor
+        };
+
+        this.undoStack.push(state);
+
+        // Limit stack size
+        if (this.undoStack.length > this.maxUndoSteps) {
+            this.undoStack.shift();
+        }
+
+        // Clear redo stack when new action is performed
+        this.redoStack = [];
+    }
+
+    /**
+     * Undo the last action
+     */
+    undo() {
+        if (this.undoStack.length <= 1) {
+            this.showNotification('Nothing to undo', 'warning');
+            return;
+        }
+
+        // Save current state to redo stack
+        const currentState = this.undoStack.pop();
+        this.redoStack.push(currentState);
+
+        // Restore previous state
+        const previousState = this.undoStack[this.undoStack.length - 1];
+        this.restoreState(previousState);
+
+        this.showNotification('Undo successful', 'success');
+    }
+
+    /**
+     * Redo the last undone action
+     */
+    redo() {
+        if (this.redoStack.length === 0) {
+            this.showNotification('Nothing to redo', 'warning');
+            return;
+        }
+
+        const state = this.redoStack.pop();
+        this.undoStack.push(state);
+        this.restoreState(state);
+
+        this.showNotification('Redo successful', 'success');
+    }
+
+    /**
+     * Restore a saved state
+     */
+    restoreState(state) {
+        this.nodes = JSON.parse(JSON.stringify(state.nodes));
+
+        // Rebuild connections with proper node references
+        const nodeMap = new Map();
+        this.nodes.forEach(node => nodeMap.set(node.id, node));
+
+        this.connections = state.connections.map(conn => {
+            const fromNode = nodeMap.get(conn.from.nodeId);
+            const toNode = nodeMap.get(conn.to.nodeId);
+
+            if (!fromNode || !toNode) return null;
+
+            return {
+                from: { node: fromNode, portIndex: conn.from.portIndex, isOutput: true },
+                to: { node: toNode, portIndex: conn.to.portIndex, isOutput: false }
+            };
+        }).filter(conn => conn !== null);
+
+        this.panOffset = { ...state.panOffset };
+        this.zoom = state.zoom;
+        this.moduleName = state.moduleName;
+        this.moduleNamespace = state.moduleNamespace;
+        this.moduleDescription = state.moduleDescription;
+        this.moduleIcon = state.moduleIcon;
+        this.moduleColor = state.moduleColor;
+        this.allowMultiple = state.allowMultiple;
+        this.drawInEditor = state.drawInEditor;
+
+        this.selectedNode = null;
+        this.hasUnsavedChanges = true;
+    }
+
+    /**
+ * ========== NEW: MINIMAP FEATURE ==========
+ */
+
+    /**
+     * Create minimap canvas
+     */
+    createMinimap() {
+        const canvasContainer = this.canvas.parentElement;
+
+        this.minimapCanvas = document.createElement('canvas');
+        this.minimapCanvas.width = 200;
+        this.minimapCanvas.height = 150;
+        this.minimapCanvas.style.cssText = `
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(26, 26, 26, 0.9);
+        border: 2px solid #555;
+        border-radius: 8px;
+        z-index: 100;
+        cursor: pointer;
+        display: ${this.showMinimap ? 'block' : 'none'};
+    `;
+
+        canvasContainer.appendChild(this.minimapCanvas);
+        this.minimapCtx = this.minimapCanvas.getContext('2d');
+
+        // Add click handler to jump to position
+        this.minimapCanvas.addEventListener('click', (e) => {
+            const rect = this.minimapCanvas.getBoundingClientRect();
+            const clickX = (e.clientX - rect.left) / rect.width;
+            const clickY = (e.clientY - rect.top) / rect.height;
+
+            // Calculate the bounds of all nodes
+            const bounds = this.calculateNodeBounds();
+
+            // Convert minimap click to canvas coordinates
+            const targetX = bounds.minX + (bounds.maxX - bounds.minX) * clickX;
+            const targetY = bounds.minY + (bounds.maxY - bounds.minY) * clickY;
+
+            // Center the view on the clicked position
+            this.panOffset.x = this.canvas.width / 2 - targetX * this.zoom;
+            this.panOffset.y = this.canvas.height / 2 - targetY * this.zoom;
+        });
+    }
+
+    /**
+ * Calculate bounds of all nodes
+ */
+    calculateNodeBounds() {
+        if (this.nodes.length === 0) {
+            return { minX: 0, minY: 0, maxX: 1000, maxY: 1000, width: 1000, height: 1000 };
+        }
+
+        let minX = Infinity, minY = Infinity;
+        let maxX = -Infinity, maxY = -Infinity;
+
+        this.nodes.forEach(node => {
+            minX = Math.min(minX, node.x);
+            minY = Math.min(minY, node.y);
+            maxX = Math.max(maxX, node.x + node.width);
+            maxY = Math.max(maxY, node.y + node.height);
+        });
+
+        // Add padding
+        const padding = 100;
+        minX -= padding;
+        minY -= padding;
+        maxX += padding;
+        maxY += padding;
+
+        return {
+            minX, minY, maxX, maxY,
+            width: maxX - minX,
+            height: maxY - minY
+        };
+    }
+
+    /**
+     * Render minimap
+     */
+    renderMinimap() {
+        if (!this.showMinimap || !this.minimapCtx) return;
+
+        const ctx = this.minimapCtx;
+        const width = this.minimapCanvas.width;
+        const height = this.minimapCanvas.height;
+
+        // Clear
+        ctx.clearRect(0, 0, width, height);
+
+        // Calculate bounds
+        const bounds = this.calculateNodeBounds();
+        const scaleX = width / bounds.width;
+        const scaleY = height / bounds.height;
+        const scale = Math.min(scaleX, scaleY) * 0.9;
+
+        const offsetX = (width - bounds.width * scale) / 2 - bounds.minX * scale;
+        const offsetY = (height - bounds.height * scale) / 2 - bounds.minY * scale;
+
+        ctx.save();
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+
+        // Draw nodes
+        this.nodes.forEach(node => {
+            ctx.fillStyle = node.color || '#4CAF50';
+            ctx.fillRect(node.x, node.y, node.width, node.height);
+        });
+
+        // Draw connections
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+        ctx.lineWidth = 2 / scale;
+        this.connections.forEach(conn => {
+            const fromPos = this.getOutputPortPosition(conn.from.node, conn.from.portIndex);
+            const toPos = this.getInputPortPosition(conn.to.node, conn.to.portIndex);
+
+            ctx.beginPath();
+            ctx.moveTo(fromPos.x, fromPos.y);
+            ctx.lineTo(toPos.x, toPos.y);
+            ctx.stroke();
+        });
+
+        // Draw viewport rectangle
+        const viewX = -this.panOffset.x / this.zoom;
+        const viewY = -this.panOffset.y / this.zoom;
+        const viewW = this.canvas.width / this.zoom;
+        const viewH = this.canvas.height / this.zoom;
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2 / scale;
+        ctx.strokeRect(viewX, viewY, viewW, viewH);
+
+        ctx.restore();
+    }
+
+    /**
+     * ========== NEW: COMMAND PALETTE ==========
+     */
+
+    /**
+     * Toggle command palette visibility
+     */
+    toggleCommandPalette() {
+        if (this.commandPaletteVisible) {
+            this.closeCommandPalette();
+        } else {
+            this.openCommandPalette();
+        }
+    }
+
+    /**
+     * Open command palette
+     */
+    openCommandPalette() {
+        if (this.commandPalette) {
+            this.commandPalette.remove();
+        }
+
+        this.commandPaletteVisible = true;
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 100px;
+    `;
+
+        // Create palette container
+        const palette = document.createElement('div');
+        palette.style.cssText = `
+        background: #2a2a2a;
+        border: 2px solid #555;
+        border-radius: 8px;
+        width: 600px;
+        max-height: 500px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    `;
+
+        // Search input
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search nodes... (type to filter)';
+        searchInput.style.cssText = `
+        padding: 12px 16px;
+        background: #333;
+        border: none;
+        border-bottom: 2px solid #555;
+        color: #fff;
+        font-size: 16px;
+        outline: none;
+        border-radius: 8px 8px 0 0;
+    `;
+
+        // Results container
+        const resultsContainer = document.createElement('div');
+        resultsContainer.style.cssText = `
+        overflow-y: auto;
+        max-height: 400px;
+        padding: 8px;
+    `;
+
+        // Build node list
+        const allNodes = [];
+        Object.keys(this.nodeLibrary).forEach(category => {
+            this.nodeLibrary[category].forEach(node => {
+                allNodes.push({ ...node, category });
+            });
+        });
+
+        let selectedIndex = 0;
+
+        const renderResults = (filter = '') => {
+            resultsContainer.innerHTML = '';
+            selectedIndex = 0;
+
+            const filtered = allNodes.filter(node => {
+                const searchText = `${node.label} ${node.category} ${node.type}`.toLowerCase();
+                return searchText.includes(filter.toLowerCase());
+            });
+
+            if (filtered.length === 0) {
+                const noResults = document.createElement('div');
+                noResults.textContent = 'No nodes found';
+                noResults.style.cssText = 'padding: 16px; color: #999; text-align: center;';
+                resultsContainer.appendChild(noResults);
+                return;
+            }
+
+            filtered.forEach((node, index) => {
+                const item = document.createElement('div');
+                item.style.cssText = `
+                padding: 12px 16px;
+                cursor: pointer;
+                border-radius: 4px;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: ${index === selectedIndex ? '#444' : 'transparent'};
+            `;
+
+                const icon = document.createElement('i');
+                if (node.icon) {
+                    icon.className = node.icon;
+                    icon.style.cssText = `color: ${node.color}; font-size: 20px; width: 24px;`;
+                }
+
+                const labelContainer = document.createElement('div');
+                labelContainer.style.flex = '1';
+
+                const label = document.createElement('div');
+                label.textContent = node.label;
+                label.style.cssText = 'color: #fff; font-size: 14px; font-weight: 500;';
+
+                const category = document.createElement('div');
+                category.textContent = node.category;
+                category.style.cssText = 'color: #999; font-size: 11px; margin-top: 2px;';
+
+                labelContainer.appendChild(label);
+                labelContainer.appendChild(category);
+
+                item.appendChild(icon);
+                item.appendChild(labelContainer);
+
+                item.addEventListener('mouseenter', () => {
+                    selectedIndex = index;
+                    renderResults(filter);
+                });
+
+                item.addEventListener('click', () => {
+                    this.addNodeFromPalette(node);
+                    this.closeCommandPalette();
+                });
+
+                resultsContainer.appendChild(item);
+            });
+        };
+
+        searchInput.addEventListener('input', (e) => {
+            renderResults(e.target.value);
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            const items = resultsContainer.children;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                renderResults(searchInput.value);
+                items[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, 0);
+                renderResults(searchInput.value);
+                items[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const filtered = allNodes.filter(node => {
+                    const searchText = `${node.label} ${node.category} ${node.type}`.toLowerCase();
+                    return searchText.includes(searchInput.value.toLowerCase());
+                });
+                if (filtered[selectedIndex]) {
+                    this.addNodeFromPalette(filtered[selectedIndex]);
+                    this.closeCommandPalette();
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this.closeCommandPalette();
+            }
+        });
+
+        // Initial render
+        renderResults();
+
+        palette.appendChild(searchInput);
+        palette.appendChild(resultsContainer);
+        overlay.appendChild(palette);
+        document.body.appendChild(overlay);
+
+        this.commandPalette = overlay;
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                this.closeCommandPalette();
+            }
+        });
+
+        // Focus search input
+        setTimeout(() => searchInput.focus(), 50);
+    }
+
+    /**
+     * Close command palette
+     */
+    closeCommandPalette() {
+        if (this.commandPalette) {
+            this.commandPalette.remove();
+            this.commandPalette = null;
+        }
+        this.commandPaletteVisible = false;
+    }
+
+    /**
+     * Add a node from the command palette
+     */
+    addNodeFromPalette(nodeTemplate) {
+        // Add node at center of viewport
+        const viewCenterX = (-this.panOffset.x + this.canvas.width / 2) / this.zoom;
+        const viewCenterY = (-this.panOffset.y + this.canvas.height / 2) / this.zoom;
+
+        const snapped = this.snapPositionToGrid(viewCenterX - 90, viewCenterY - 60);
+
+        const newNode = {
+            id: this.generateNodeId(),
+            type: nodeTemplate.type,
+            label: nodeTemplate.label,
+            color: nodeTemplate.color,
+            icon: this.getNodeIcon(nodeTemplate.type),
+            x: snapped.x,
+            y: snapped.y,
+            width: this.snapToGridValue(180),
+            height: this.snapToGridValue(this.calculateNodeHeight(nodeTemplate)),
+            inputs: nodeTemplate.inputs || [],
+            outputs: nodeTemplate.outputs || [],
+            hasInput: nodeTemplate.hasInput || false,
+            hasToggle: nodeTemplate.hasToggle || false,
+            hasDropdown: nodeTemplate.hasDropdown || false,
+            hasColorPicker: nodeTemplate.hasColorPicker || false,
+            hasPropertyDropdown: nodeTemplate.hasPropertyDropdown || false,
+            hasExposeCheckbox: nodeTemplate.hasExposeCheckbox || false,
+            isGroup: nodeTemplate.isGroup || false,
+            value: nodeTemplate.hasInput ? '' : (nodeTemplate.hasToggle ? false : (nodeTemplate.hasColorPicker ? '#ffffff' : null)),
+            dropdownValue: nodeTemplate.dropdownOptions ? (nodeTemplate.defaultValue || nodeTemplate.dropdownOptions[0]) : '==',
+            dropdownOptions: nodeTemplate.dropdownOptions || null,
+            selectedProperty: null,
+            exposeProperty: false,
+            groupName: ''
+        };
+
+        if (newNode.isGroup) {
+            newNode.nodes = [];
+        }
+
+        this.nodes.push(newNode);
+        this.selectedNode = newNode;
+        this.hasUnsavedChanges = true;
+        this.saveState();
+
+        this.showNotification(`Added ${nodeTemplate.label}`, 'success');
     }
 
     // ========================================
