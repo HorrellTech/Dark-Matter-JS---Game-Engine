@@ -73,6 +73,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.isActive = true;
         this.animationFrameId = null;
 
+        // Connection color setting
+        this.connectionColor = localStorage.getItem('vmb_connectionColor') || '#00ffff';
+
         // Store bound event handlers for cleanup
         this.boundHandlers = {
             keydown: null,
@@ -509,6 +512,47 @@ class VisualModuleBuilderWindow extends EditorWindow {
         groupPanelsLabel.appendChild(groupPanelsCheckbox);
         groupPanelsLabel.appendChild(groupPanelsText);
         toolbar.appendChild(groupPanelsLabel);
+
+        toolbar.appendChild(divider());
+
+        // Connection Color Picker
+        const connectionColorLabel = document.createElement('label');
+        connectionColorLabel.style.cssText = `
+        color: #fff;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 8px;
+        background: #444;
+        border: 1px solid #666;
+        border-radius: 4px;
+        transition: all 0.2s;
+    `;
+
+        const connectionColorText = document.createElement('span');
+        connectionColorText.innerHTML = '<i class="fas fa-palette" style="margin-right: 4px;"></i>Connection Color';
+
+        const connectionColorInput = document.createElement('input');
+        connectionColorInput.type = 'color';
+        connectionColorInput.value = this.connectionColor;
+        connectionColorInput.style.cssText = `
+        width: 30px;
+        height: 20px;
+        border: none;
+        cursor: pointer;
+        background: transparent;
+    `;
+
+        connectionColorInput.addEventListener('change', (e) => {
+            this.connectionColor = e.target.value;
+            localStorage.setItem('vmb_connectionColor', this.connectionColor);
+        });
+
+        connectionColorLabel.appendChild(connectionColorText);
+        connectionColorLabel.appendChild(connectionColorInput);
+        toolbar.appendChild(connectionColorLabel);
 
         toolbar.appendChild(divider());
 
@@ -2674,7 +2718,61 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     ctx.fillStyle = '#ccc';
                     ctx.font = '11px Arial';
                     ctx.textAlign = 'left';
-                    ctx.fillText(input, pos.x + 12, pos.y + 4);
+                    
+                    // Check if this input has a connection
+                    const connection = this.connections.find(c =>
+                        c.to.node.id === node.id && c.to.portIndex === index
+                    );
+                    
+                    if (connection) {
+                        // Get the source node and output port
+                        const sourceNode = connection.from.node;
+                        const sourcePortIndex = connection.from.portIndex;
+                        const sourceOutput = sourceNode.outputs[sourcePortIndex];
+                        
+                        // Get the value to display
+                        let displayValue = '';
+                        
+                        // For property reference nodes, show the property name
+                        if (sourceNode.type === 'property' && sourceNode.value) {
+                            displayValue = sourceNode.value;
+                        }
+                        // For method reference nodes, show the method name
+                        else if (sourceNode.type === 'method' && sourceNode.value) {
+                            displayValue = sourceNode.value;
+                        }
+                        // For variable nodes (number, string, boolean, color), show their value
+                        else if (['number', 'string', 'boolean', 'color'].includes(sourceNode.type) && sourceNode.value !== undefined && sourceNode.value !== null) {
+                            displayValue = sourceNode.value;
+                        }
+                        // For const/let variables, show the variable name
+                        else if (['const', 'let'].includes(sourceNode.type) && sourceNode.value) {
+                            displayValue = sourceNode.value;
+                        }
+                        // For other nodes with values
+                        else if (sourceNode.value !== undefined && sourceNode.value !== null) {
+                            displayValue = sourceNode.value;
+                        }
+                        // If no specific value, show the output port name
+                        else if (sourceOutput) {
+                            displayValue = sourceOutput;
+                        }
+                        
+                        // Format the value for display
+                        if (typeof displayValue === 'string' && displayValue.length > 15) {
+                            displayValue = displayValue.substring(0, 12) + '...';
+                        } else if (typeof displayValue === 'boolean') {
+                            displayValue = displayValue ? 'true' : 'false';
+                        } else if (typeof displayValue === 'number') {
+                            displayValue = displayValue.toString();
+                        }
+                        
+                        // Draw input label with value in parentheses
+                        ctx.fillText(`${input} (${displayValue})`, pos.x + 12, pos.y + 4);
+                    } else {
+                        // No connection - just show the input label
+                        ctx.fillText(input, pos.x + 12, pos.y + 4);
+                    }
                 }
             });
         }
@@ -2987,7 +3085,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
             return;
         }
 
-        this.drawNeonBezierConnection(ctx, fromPos, toPos, '#00ffff', this.animationTime);
+        // Use custom connection color instead of hardcoded cyan
+        this.drawNeonBezierConnection(ctx, fromPos, toPos, this.connectionColor, this.animationTime);
     }
 
     /**
@@ -3003,8 +3102,12 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const mouseX = (this.lastMousePos.x - rect.left - this.panOffset.x) / this.zoom;
         const mouseY = (this.lastMousePos.y - rect.top - this.panOffset.y) / this.zoom;
 
-        // Draw with pulsing effect
-        const pulseColor = `rgba(0, 255, 255, ${0.5 + Math.sin(this.animationTime * 5) * 0.3})`;
+        // Convert hex color to rgba with pulsing effect
+        const hexColor = this.connectionColor.startsWith('#') ? this.connectionColor : '#00ffff';
+        const r = parseInt(hexColor.substr(1, 2), 16);
+        const g = parseInt(hexColor.substr(3, 2), 16);
+        const b = parseInt(hexColor.substr(5, 2), 16);
+        const pulseColor = `rgba(${r}, ${g}, ${b}, ${0.5 + Math.sin(this.animationTime * 5) * 0.3})`;
         this.drawNeonBezierConnection(ctx, fromPos, { x: mouseX, y: mouseY }, pulseColor, this.animationTime, true);
     }
 
@@ -4532,7 +4635,7 @@ class ${className} extends Module {
      */
     getInputValueFromContext(node, portName, nodes, connections, removeUnwantedChars = false) {
         const portIndex = node.inputs.indexOf(portName);
-        if (portIndex === -1) return '0';
+        if (portIndex === -1) return null;
 
         // Find connection to this input
         const connection = connections.find(c =>
@@ -4733,7 +4836,7 @@ class ${className} extends Module {
      */
     getInputValue(node, portName, removeUnwantedChars = false) {
         const portIndex = node.inputs.indexOf(portName);
-        if (portIndex === -1) return '0';
+        if (portIndex === -1) return null;
 
         // Find connection to this input
         const connection = this.connections.find(c =>
@@ -4795,11 +4898,11 @@ class ${className} extends Module {
                     }
                     return value;
                 }
-                return sourceNode.value || '0';
+                return sourceNode.value || null;
             }
         }
 
-        return '0';
+        return null;
     }
 
     /**
@@ -4809,7 +4912,7 @@ class ${className} extends Module {
      */
     getOutputValue(node, portName, removeUnwantedChars = false) {
         const portIndex = node.outputs.indexOf(portName);
-        if (portIndex === -1) return '';
+        if (portIndex === -1) return null;
 
         // Find connection from this output
         const connection = this.connections.find(c =>
@@ -4881,7 +4984,7 @@ class ${className} extends Module {
 
                 // Fallback for simple value nodes
                 if (targetNode.type === 'number') {
-                    return targetNode.value || '0';
+                    return targetNode.value || null;
                 } else if (targetNode.type === 'string') {
                     let value = `'${targetNode.value || ''}'`;
                     if (removeUnwantedChars) {
@@ -4894,7 +4997,7 @@ class ${className} extends Module {
             }
         }
 
-        return '';
+        return null;
     }
 
     /**
@@ -6209,6 +6312,15 @@ class ${className} extends Module {
             const bounds = this.calculateGroupBounds(nodeSet);
             const baseColor = this.generateGroupColor(index);
 
+            // Check if any node in this group has a groupPanelName
+            let existingGroupName = null;
+            for (const node of nodeSet) {
+                if (node.groupPanelName) {
+                    existingGroupName = node.groupPanelName;
+                    break;
+                }
+            }
+
             // Check if we already have a panel for this group (by matching nodes)
             const existingPanel = this.groupPanels.find(panel => {
                 // Compare node sets
@@ -6220,13 +6332,21 @@ class ${className} extends Module {
                 return true;
             });
 
+            // Determine the label to use
+            const panelLabel = existingGroupName || existingPanel?.customLabel || `Group ${index + 1}`;
+
+            // Apply the group name to all nodes in this group
+            nodeSet.forEach(node => {
+                node.groupPanelName = panelLabel;
+            });
+
             return {
                 bounds,
                 color: existingPanel?.customColor || baseColor,
-                label: existingPanel?.customLabel || `Group ${index + 1}`,
+                label: panelLabel,
                 nodes: Array.from(nodeSet),
                 customColor: existingPanel?.customColor,
-                customLabel: existingPanel?.customLabel,
+                customLabel: panelLabel,
                 collapsed: existingPanel?.collapsed || false // Preserve collapsed state
             };
         });
@@ -6318,10 +6438,9 @@ class ${className} extends Module {
 
                 panel.grip = { x: gripX, y: gripY, width: gripWidth, height: gripHeight };
 
-                // Draw buttons
+                // Draw buttons (REMOVE colorButton, keep only expand and label)
                 const buttonY = collapsedY + 20;
                 const expandButtonX = collapsedX + 20;
-                const colorButtonX = collapsedX + collapsedWidth - 60;
                 const labelButtonX = collapsedX + collapsedWidth - 30;
 
                 // Expand button (left side)
@@ -6334,15 +6453,7 @@ class ${className} extends Module {
                 ctx.textAlign = 'center';
                 ctx.fillText('▼', expandButtonX, buttonY + 4);
 
-                // Color button
-                ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
-                ctx.beginPath();
-                ctx.arc(colorButtonX, buttonY, 10, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#fff';
-                ctx.fillText('🎨', colorButtonX, buttonY + 4);
-
-                // Label button
+                // Label button (REMOVED COLOR BUTTON)
                 ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
                 ctx.beginPath();
                 ctx.arc(labelButtonX, buttonY, 10, 0, Math.PI * 2);
@@ -6351,8 +6462,8 @@ class ${className} extends Module {
                 ctx.fillText('✎', labelButtonX, buttonY + 4);
 
                 panel.expandButton = { x: expandButtonX, y: buttonY, radius: 10 };
-                panel.colorButton = { x: colorButtonX, y: buttonY, radius: 10 };
                 panel.labelButton = { x: labelButtonX, y: buttonY, radius: 10 };
+                // REMOVED: panel.colorButton
 
                 // Draw label in center
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -6419,10 +6530,9 @@ class ${className} extends Module {
                 height: gripHeight
             };
 
-            // Draw edit buttons in top-right corner
+            // Draw edit buttons in top-right corner (REMOVE colorButton)
             const buttonY = bounds.y + 20;
             const collapseButtonX = bounds.x + 20;
-            const colorButtonX = bounds.x + bounds.width - 60;
             const labelButtonX = bounds.x + bounds.width - 30;
 
             // Collapse button (left side)
@@ -6435,17 +6545,7 @@ class ${className} extends Module {
             ctx.textAlign = 'center';
             ctx.fillText('▲', collapseButtonX, buttonY + 4);
 
-            // Color button
-            ctx.fillStyle = 'rgba(33, 150, 243, 0.8)';
-            ctx.beginPath();
-            ctx.arc(colorButtonX, buttonY, 10, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('🎨', colorButtonX, buttonY + 4);
-
-            // Label button
+            // Label button (REMOVED COLOR BUTTON)
             ctx.fillStyle = 'rgba(156, 39, 176, 0.8)';
             ctx.beginPath();
             ctx.arc(labelButtonX, buttonY, 10, 0, Math.PI * 2);
@@ -6457,14 +6557,14 @@ class ${className} extends Module {
 
             // Store button positions for interaction
             panel.collapseButton = { x: collapseButtonX, y: buttonY, radius: 10 };
-            panel.colorButton = { x: colorButtonX, y: buttonY, radius: 10 };
             panel.labelButton = { x: labelButtonX, y: buttonY, radius: 10 };
+            // REMOVED: panel.colorButton
 
             // Draw label at bottom
             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText(label, bounds.x + bounds.width / 2, bounds.y + bounds.height - 15);
+            ctx.fillText(label, bounds.x + bounds.width / 2, bounds.y + bounds.height - 10);
         });
     }
 
@@ -6501,14 +6601,6 @@ class ${className} extends Module {
                 const dy = y - panel.expandButton.y;
                 if (Math.sqrt(dx * dx + dy * dy) <= panel.expandButton.radius) {
                     return { panel, button: 'expand', index: i };
-                }
-            }
-
-            if (panel.colorButton) {
-                const dx = x - panel.colorButton.x;
-                const dy = y - panel.colorButton.y;
-                if (Math.sqrt(dx * dx + dy * dy) <= panel.colorButton.radius) {
-                    return { panel, button: 'color', index: i };
                 }
             }
 
@@ -6596,8 +6688,16 @@ class ${className} extends Module {
             // Show prompt for new label
             const newLabel = prompt('Enter group label:', panel.label);
             if (newLabel !== null && newLabel.trim() !== '') {
-                panel.label = newLabel.trim();
-                panel.customLabel = newLabel.trim(); // Store as custom label
+                const trimmedLabel = newLabel.trim();
+                panel.label = trimmedLabel;
+                panel.customLabel = trimmedLabel;
+                
+                // Update all nodes in this panel with the new group name
+                panel.nodes.forEach(node => {
+                    node.groupPanelName = trimmedLabel;
+                });
+                
+                this.hasUnsavedChanges = true;
             }
         }
     }

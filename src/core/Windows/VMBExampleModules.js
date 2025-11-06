@@ -1837,7 +1837,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         const cleanTextAlign = textAlign.replace(/^['"]|['"]$/g, '');
                         const cleanTextBaseline = textBaseline.replace(/^['"]|['"]$/g, '');
                         
-                        return `ctx.font = '${cleanFontWeight} ' + ${fontSize} + 'px ${cleanFontFamily}';\n${ctx.indent}ctx.textAlign = '${cleanTextAlign}';\n${ctx.indent}ctx.textBaseline = '${cleanTextBaseline}';\n${ctx.indent}ctx.fillStyle = ${color};\n${ctx.indent}ctx.fillText(${text}, ${x}, ${y});`;
+                        return `ctx.font = '${cleanFontWeight} ${fontSize}px ${cleanFontFamily}';\n${ctx.indent}ctx.textAlign = '${cleanTextAlign}';\n${ctx.indent}ctx.textBaseline = '${cleanTextBaseline}';\n${ctx.indent}ctx.fillStyle = ${color};\n${ctx.indent}ctx.fillText(${text}, ${x}, ${y});`;
                     }
                 },
                 {
