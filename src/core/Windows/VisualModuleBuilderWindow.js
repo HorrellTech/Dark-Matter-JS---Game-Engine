@@ -739,14 +739,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
     }
 
     /**
- * Export custom nodes to a file
- */
+     * Export custom nodes to a file
+     */
     async exportCustomNodes() {
         // Collect custom node definitions from the node library
         const customNodes = [];
         for (const category in this.nodeLibrary) {
             for (const nodeDef of this.nodeLibrary[category]) {
                 if (nodeDef.custom) {
+                    // Save custom node definition (excluding the codeGen function which will be recreated)
                     customNodes.push({
                         category: category,
                         type: nodeDef.type,
@@ -758,6 +759,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         hasInput: nodeDef.hasInput,
                         hasToggle: nodeDef.hasToggle,
                         hasDropdown: nodeDef.hasDropdown,
+                        dropdownOptions: nodeDef.dropdownOptions, 
+                        defaultValue: nodeDef.defaultValue, 
                         hasColorPicker: nodeDef.hasColorPicker,
                         hasExposeCheckbox: nodeDef.hasExposeCheckbox,
                         isGroup: nodeDef.isGroup,
@@ -851,13 +854,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         icon: customNodeData.icon,
                         inputs: customNodeData.inputs || [],
                         outputs: customNodeData.outputs || [],
-                        hasInput: customNodeData.hasInput,
-                        hasToggle: customNodeData.hasToggle,
-                        hasDropdown: customNodeData.hasDropdown,
-                        hasColorPicker: customNodeData.hasColorPicker,
-                        hasExposeCheckbox: customNodeData.hasExposeCheckbox,
-                        isGroup: customNodeData.isGroup,
-                        wrapFlowNode: customNodeData.wrapFlowNode,
+                        hasInput: customNodeData.hasInput || false,
+                        hasToggle: customNodeData.hasToggle || false,
+                        hasDropdown: customNodeData.hasDropdown || false,
+                        dropdownOptions: customNodeData.dropdownOptions || [],  
+                        defaultValue: customNodeData.defaultValue,             
+                        hasColorPicker: customNodeData.hasColorPicker || false,
+                        hasExposeCheckbox: customNodeData.hasExposeCheckbox || false,
+                        isGroup: customNodeData.isGroup || false,
+                        wrapFlowNode: customNodeData.wrapFlowNode !== undefined ? customNodeData.wrapFlowNode : true,
                         codeGen: codeGenFunction,
                         custom: true
                     };
@@ -1656,14 +1661,62 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const portHit = this.getPortAtPosition(x, y);
         const interactiveHit = this.getInteractiveElementAtPosition(x, y);
 
-        // Check if hovering over grip
+        // Check if hovering over any button
+        let isButtonHover = false;
+        
+        // Check panel buttons (grip, collapse, expand, label)
         const panelHit = this.showGroupPanels ? this.getGroupPanelButtonHit(x, y) : null;
         const isGripHover = panelHit?.button === 'grip';
+        
+        if (panelHit && (panelHit.button === 'collapse' || panelHit.button === 'expand' || panelHit.button === 'label')) {
+            isButtonHover = true;
+        }
+        
+        // Check node buttons (delete, open group, edit name)
+        if (!isButtonHover) {
+            for (const node of this.nodes) {
+                // Check delete button
+                if (node.deleteButton) {
+                    const dx = x - node.deleteButton.x;
+                    const dy = y - node.deleteButton.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= node.deleteButton.radius) {
+                        isButtonHover = true;
+                        break;
+                    }
+                }
+                
+                // Check open group button
+                if (node.openGroupButton) {
+                    const dx = x - node.openGroupButton.x;
+                    const dy = y - node.openGroupButton.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= node.openGroupButton.radius) {
+                        isButtonHover = true;
+                        break;
+                    }
+                }
+                
+                // Check edit name button
+                if (node.editNameButton) {
+                    const dx = x - node.editNameButton.x;
+                    const dy = y - node.editNameButton.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= node.editNameButton.radius) {
+                        isButtonHover = true;
+                        break;
+                    }
+                }
+            }
+        }
 
+        // Set cursor based on what's under the mouse
         if (portHit || this.connectingFrom) {
             this.canvas.style.cursor = 'crosshair';
         } else if (interactiveHit) {
             this.canvas.style.cursor = 'text';
+        } else if (isButtonHover) {
+            this.canvas.style.cursor = 'pointer';
         } else if (isGripHover) {
             this.canvas.style.cursor = 'move';
         } else if (nodeHit) {
@@ -3047,19 +3100,47 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.hoveredPort.portIndex === portIndex &&
             this.hoveredPort.isOutput === isOutput;
 
+        // Check if this port is connected
+        const isConnected = isOutput ?
+            this.connections.some(c => c.from.node.id === node.id && c.from.portIndex === portIndex) :
+            this.connections.some(c => c.to.node.id === node.id && c.to.portIndex === portIndex);
+
         // If flow node, use purple glow
         const portLabel = isOutput ? node.outputs[portIndex] : node.inputs[portIndex];
         const isFlowPort = portLabel === 'flow';
-        if (isHovered && isFlowPort) {
-            ctx.shadowColor = '#ff00ff';
-            ctx.shadowBlur = 15;
-        } else if (isHovered) {
-            ctx.shadowColor = '#00ffff';
-            ctx.shadowBlur = 15;
+        
+        // Determine the color to use
+        const lineColor = isFlowPort ? '#ff00ff' : this.connectionColor;
+        
+        // Set shadow/glow based on state
+        if (isHovered) {
+            if (isConnected) {
+                // Connected and hovered: glow white
+                ctx.shadowColor = '#ffffff';
+                ctx.shadowBlur = 15;
+            } else {
+                // Not connected and hovered: glow line color
+                ctx.shadowColor = lineColor;
+                ctx.shadowBlur = 15;
+            }
+        } else if (isConnected) {
+            // Connected but not hovered: subtle line color glow
+            ctx.shadowColor = lineColor;
+            ctx.shadowBlur = 10;
         }
 
-        ctx.fillStyle = isHovered ? '#ffffffff' : '#666';
-        ctx.strokeStyle = isHovered ? '#bbbbbbff' : '#999';
+        // Fill color: white when hovered, line color when connected, gray when disconnected
+        if (isHovered) {
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#bbbbbb';
+        } else if (isConnected) {
+            ctx.fillStyle = lineColor;
+            ctx.strokeStyle = lineColor;
+        } else {
+            ctx.fillStyle = '#666';
+            ctx.strokeStyle = '#999';
+        }
+
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, Math.PI * 2);
@@ -3206,7 +3287,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                     const gradient = ctx.createRadialGradient(ballX, ballY, 0, ballX, ballY, 8);
                     gradient.addColorStop(0, '#ffffff');
                     gradient.addColorStop(0.3, color);
-                    gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+                    gradient.addColorStop(1, color + '00'); // Use line color with transparency
 
                     ctx.shadowColor = color;
                     ctx.shadowBlur = 20;
