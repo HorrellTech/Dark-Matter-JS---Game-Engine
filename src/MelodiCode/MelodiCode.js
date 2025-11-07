@@ -218,3 +218,4 @@ play main
 // Make MelodiCode available globally
 window.MelodiCode = MelodiCode;
 window.melodicode = new MelodiCode();
+window.melodiCode = new MelodiCode();

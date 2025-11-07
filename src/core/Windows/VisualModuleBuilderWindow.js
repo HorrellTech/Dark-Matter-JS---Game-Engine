@@ -4249,6 +4249,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const drawInEditor = this.drawInEditor;
 
         // Find event nodes
+        const constructorNode = this.nodes.find(n => n.type === 'constructor');
         const startNode = this.nodes.find(n => n.type === 'start');
         const loopNode = this.nodes.find(n => n.type === 'loop');
         const drawNode = this.nodes.find(n => n.type === 'draw');
@@ -4299,7 +4300,15 @@ class ${className} extends Module {
     
     constructor() {
         super("${className}");
+
 `;
+
+        if (constructorNode) {
+            code += `        // CONSTRUCTOR EVENT
+`;
+            code += this.generateCodeForFlowNode(constructorNode, '        ');
+            code += `\n`;
+        }
 
         // Add ALL setProperty properties to constructor (both exposed and non-exposed)
         if (Object.keys(groupedAllSetProperty).length > 0) {
@@ -5357,11 +5366,21 @@ class ${className} extends Module {
             moduleColor: this.moduleColor,
             allowMultiple: this.allowMultiple,
             drawInEditor: this.drawInEditor,
-            nodes: this.nodes.map(this.serializeNode.bind(this)),
-            connections: this.connections.map(this.serializeConnection.bind(this)),
+            nodes: this.nodes,
+            connections: this.connections.map(c => ({
+                from: {
+                    nodeId: c.from.node.id,
+                    portIndex: c.from.portIndex
+                },
+                to: {
+                    nodeId: c.to.node.id,
+                    portIndex: c.to.portIndex
+                }
+            })),
             panOffset: this.panOffset,
             zoom: this.zoom,
-            groupPanels: this.groupPanels.map(this.serializeGroupPanel.bind(this)),
+            groupPanels: this.groupPanels,
+            customNodes: customNodes,
             nodeComments: Array.from(this.nodeComments.entries()) // ========== NEW: Save comments ==========
         };
 

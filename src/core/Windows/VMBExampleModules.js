@@ -55,10 +55,10 @@ class VMBExampleModules {
     static getNodeBuilder() {
         if (!this._builder) {
             const nodeLibrary = this._getMinimalNodeLibrary();
-            
+
             this._builder = {
                 nodeLibrary: nodeLibrary,
-                
+
                 getNodeColor(type) {
                     for (const category in this.nodeLibrary) {
                         const node = this.nodeLibrary[category].find(n => n.type === type);
@@ -66,7 +66,7 @@ class VMBExampleModules {
                     }
                     return '#666666';
                 },
-                
+
                 getNodeDefinition(type) {
                     for (const category in this.nodeLibrary) {
                         const node = this.nodeLibrary[category].find(n => n.type === type);
@@ -74,31 +74,31 @@ class VMBExampleModules {
                     }
                     return null;
                 },
-                
+
                 calculateNodeHeight(definition) {
                     const inputCount = definition.inputs ? definition.inputs.filter(i => i !== 'flow').length : 0;
                     const outputCount = definition.outputs ? definition.outputs.filter(o => o !== 'flow').length : 0;
                     const maxDataPorts = Math.max(inputCount, outputCount);
-                    
+
                     let baseHeight = 90;
-                    if (definition.hasInput || definition.hasToggle || definition.hasColorPicker || 
+                    if (definition.hasInput || definition.hasToggle || definition.hasColorPicker ||
                         definition.hasDropdown || definition.hasPropertyDropdown || definition.hasExposeCheckbox) {
                         baseHeight += 30;
                     }
                     if (maxDataPorts > 0) {
                         baseHeight += maxDataPorts * 30;
                     }
-                    
+
                     return baseHeight;
                 },
-                
+
                 createNode(type, x, y, options = {}) {
                     const definition = this.getNodeDefinition(type);
                     if (!definition) {
                         console.error(`Node type "${type}" not found`);
                         return null;
                     }
-                    
+
                     return {
                         id: Date.now() + Math.random(),
                         type: type,
@@ -167,17 +167,17 @@ class VMBExampleModules {
         // Initialize speed property
         const speedNameNode = builder.createNode('string', 100, 100, { value: 'moveSpeed' });
         const speedValueNode = builder.createNode('number', 100, 250, { value: '5' });
-        const speedPropNode = builder.createNode('setProperty', 350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Movement' 
+        const speedPropNode = builder.createNode('setProperty', 350, 150, {
+            exposeProperty: true,
+            groupName: 'Movement'
         });
 
         // Loop event
         const loopNode = builder.createNode('loop', 100, 450, {});
-        
+
         // Get current position
         const getPosNode = builder.createNode('getPosition', 350, 500, {});
-        
+
         // Get speed property
         const getSpeedNameNode = builder.createNode('string', 600, 450, { value: 'moveSpeed' });
         const getSpeedNode = builder.createNode('getProperty', 850, 450, {});
@@ -186,7 +186,7 @@ class VMBExampleModules {
         const wKeyNode = builder.createNode('keySelector', 1100, 650, { dropdownValue: 'w' });
         const wCheckNode = builder.createNode('keyDown', 1350, 700, {});
         const wIfNode = builder.createNode('if', 1600, 700, {});
-        
+
         // Subtract speed from Y
         const wSubtractNode = builder.createNode('subtract', 1850, 750, {});
         const wSetPosNode = builder.createNode('setPosition', 2100, 700, {});
@@ -195,7 +195,7 @@ class VMBExampleModules {
         const sKeyNode = builder.createNode('keySelector', 1100, 1000, { dropdownValue: 's' });
         const sCheckNode = builder.createNode('keyDown', 1350, 1050, {});
         const sIfNode = builder.createNode('if', 1600, 1050, {});
-        
+
         // Add speed to Y
         const sAddNode = builder.createNode('add', 1850, 1100, {});
         const sSetPosNode = builder.createNode('setPosition', 2100, 1050, {});
@@ -204,7 +204,7 @@ class VMBExampleModules {
         const aKeyNode = builder.createNode('keySelector', 1100, 1350, { dropdownValue: 'a' });
         const aCheckNode = builder.createNode('keyDown', 1350, 1400, {});
         const aIfNode = builder.createNode('if', 1600, 1400, {});
-        
+
         // Subtract speed from X
         const aSubtractNode = builder.createNode('subtract', 1850, 1450, {});
         const aSetPosNode = builder.createNode('setPosition', 2100, 1400, {});
@@ -213,7 +213,7 @@ class VMBExampleModules {
         const dKeyNode = builder.createNode('keySelector', 1100, 1700, { dropdownValue: 'd' });
         const dCheckNode = builder.createNode('keyDown', 1350, 1750, {});
         const dIfNode = builder.createNode('if', 1600, 1750, {});
-        
+
         // Add speed to X
         const dAddNode = builder.createNode('add', 1850, 1800, {});
         const dSetPosNode = builder.createNode('setPosition', 2100, 1750, {});
@@ -314,24 +314,24 @@ class VMBExampleModules {
         // Initialize follow speed property
         const speedNameNode = builder.createNode('string', 100, 100, { value: 'followSpeed' });
         const speedValueNode = builder.createNode('number', 100, 250, { value: '0.1' });
-        const speedPropNode = builder.createNode('setProperty', 350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Movement' 
+        const speedPropNode = builder.createNode('setProperty', 350, 150, {
+            exposeProperty: true,
+            groupName: 'Movement'
         });
 
         // Loop event
         const loopNode = builder.createNode('loop', 100, 450, {});
-        
+
         // Get current position
         const getPosNode = builder.createNode('getPosition', 350, 500, {});
-        
+
         // Get mouse position (world space)
         const trueNode = builder.createNode('boolean', 600, 500, { value: true });
         const getMouseNode = builder.createNode('getMousePosition', 850, 500, {});
 
         // Calculate X difference
         const subtractXNode = builder.createNode('subtract', 1100, 550, {});
-        
+
         // Calculate Y difference
         const subtractYNode = builder.createNode('subtract', 1100, 750, {});
 
@@ -341,13 +341,13 @@ class VMBExampleModules {
 
         // Multiply X difference by speed
         const multXNode = builder.createNode('multiply', 1850, 550, {});
-        
+
         // Multiply Y difference by speed
         const multYNode = builder.createNode('multiply', 1850, 750, {});
 
         // Add to current position X
         const addXNode = builder.createNode('add', 2100, 550, {});
-        
+
         // Add to current position Y
         const addYNode = builder.createNode('add', 2100, 750, {});
 
@@ -439,16 +439,16 @@ class VMBExampleModules {
         // Initialize velocity properties
         const vxNameNode = builder.createNode('string', 100, 100, { value: 'velocityX' });
         const vxValueNode = builder.createNode('number', 100, 250, { value: '3' });
-        const vxPropNode = builder.createNode('setProperty', 350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Physics' 
+        const vxPropNode = builder.createNode('setProperty', 350, 150, {
+            exposeProperty: true,
+            groupName: 'Physics'
         });
 
         const vyNameNode = builder.createNode('string', 600, 100, { value: 'velocityY' });
         const vyValueNode = builder.createNode('number', 600, 250, { value: '2' });
-        const vyPropNode = builder.createNode('setProperty', 850, 150, { 
-            exposeProperty: true, 
-            groupName: 'Physics' 
+        const vyPropNode = builder.createNode('setProperty', 850, 150, {
+            exposeProperty: true,
+            groupName: 'Physics'
         });
 
         // Loop event
@@ -620,16 +620,16 @@ class VMBExampleModules {
         // Initialize health properties
         const healthNameNode = builder.createNode('string', 100, 100, { value: 'health' });
         const healthValueNode = builder.createNode('number', 100, 250, { value: '100' });
-        const healthPropNode = builder.createNode('setProperty', 350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Health' 
+        const healthPropNode = builder.createNode('setProperty', 350, 150, {
+            exposeProperty: true,
+            groupName: 'Health'
         });
 
         const maxHealthNameNode = builder.createNode('string', 600, 100, { value: 'maxHealth' });
         const maxHealthValueNode = builder.createNode('number', 600, 250, { value: '100' });
-        const maxHealthPropNode = builder.createNode('setProperty', 850, 150, { 
-            exposeProperty: true, 
-            groupName: 'Health' 
+        const maxHealthPropNode = builder.createNode('setProperty', 850, 150, {
+            exposeProperty: true,
+            groupName: 'Health'
         });
 
         // Draw event
@@ -648,7 +648,7 @@ class VMBExampleModules {
         const getHealthNode = builder.createNode('getProperty', 600, 900, {});
         const getMaxHealthNameNode = builder.createNode('string', 350, 1050, { value: 'maxHealth' });
         const getMaxHealthNode = builder.createNode('getProperty', 600, 1050, {});
-        
+
         const divideNode = builder.createNode('divide', 850, 950, {});
         const barMaxWidthNode = builder.createNode('number', 1100, 900, { value: '100' });
         const multiplyNode = builder.createNode('multiply', 1350, 950, {});
@@ -735,9 +735,9 @@ class VMBExampleModules {
         // Initialize timer properties
         const timeNameNode = builder.createNode('string', 100, 100, { value: 'timeRemaining' });
         const timeValueNode = builder.createNode('number', 100, 250, { value: '60' });
-        const timePropNode = builder.createNode('setProperty', 350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Timer' 
+        const timePropNode = builder.createNode('setProperty', 350, 150, {
+            exposeProperty: true,
+            groupName: 'Timer'
         });
 
         // Loop event
@@ -876,30 +876,30 @@ class VMBExampleModules {
 
         const speedNameNode = builder.createNode('string', 600, 100, { value: 'oscillationSpeed' });
         const speedValueNode = builder.createNode('number', 600, 250, { value: '2' });
-        const speedPropNode = builder.createNode('setProperty', 850, 150, { 
-            exposeProperty: true, 
-            groupName: 'Motion' 
+        const speedPropNode = builder.createNode('setProperty', 850, 150, {
+            exposeProperty: true,
+            groupName: 'Motion'
         });
 
         const amplitudeNameNode = builder.createNode('string', 1100, 100, { value: 'amplitude' });
         const amplitudeValueNode = builder.createNode('number', 1100, 250, { value: '100' });
-        const amplitudePropNode = builder.createNode('setProperty', 1350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Motion' 
+        const amplitudePropNode = builder.createNode('setProperty', 1350, 150, {
+            exposeProperty: true,
+            groupName: 'Motion'
         });
 
         const startXNameNode = builder.createNode('string', 1600, 100, { value: 'startX' });
         const startXValueNode = builder.createNode('number', 1600, 250, { value: '400' });
-        const startXPropNode = builder.createNode('setProperty', 1850, 150, { 
-            exposeProperty: true, 
-            groupName: 'Motion' 
+        const startXPropNode = builder.createNode('setProperty', 1850, 150, {
+            exposeProperty: true,
+            groupName: 'Motion'
         });
 
         const startYNameNode = builder.createNode('string', 2100, 100, { value: 'startY' });
         const startYValueNode = builder.createNode('number', 2100, 250, { value: '300' });
-        const startYPropNode = builder.createNode('setProperty', 2350, 150, { 
-            exposeProperty: true, 
-            groupName: 'Motion' 
+        const startYPropNode = builder.createNode('setProperty', 2350, 150, {
+            exposeProperty: true,
+            groupName: 'Motion'
         });
 
         // Loop event
@@ -1046,41 +1046,41 @@ class VMBExampleModules {
         // Properties Setup - Row 1: X property
         const xNameNode = builder.createNode('string', 350, 50, { value: 'x' });
         const xValueNode = builder.createNode('number', 350, 200, { value: '100' });
-        const xPropNode = builder.createNode('setProperty', 600, 100, { 
-            exposeProperty: true, 
-            groupName: 'Position' 
+        const xPropNode = builder.createNode('setProperty', 600, 100, {
+            exposeProperty: true,
+            groupName: 'Position'
         });
 
         // Row 2: Y property
         const yNameNode = builder.createNode('string', 850, 50, { value: 'y' });
         const yValueNode = builder.createNode('number', 850, 200, { value: '100' });
-        const yPropNode = builder.createNode('setProperty', 1100, 100, { 
-            exposeProperty: true, 
-            groupName: 'Position' 
+        const yPropNode = builder.createNode('setProperty', 1100, 100, {
+            exposeProperty: true,
+            groupName: 'Position'
         });
 
         // Row 3: Width property
         const widthNameNode = builder.createNode('string', 350, 350, { value: 'width' });
         const widthValueNode = builder.createNode('number', 350, 500, { value: '200' });
-        const widthPropNode = builder.createNode('setProperty', 600, 400, { 
-            exposeProperty: true, 
-            groupName: 'Size' 
+        const widthPropNode = builder.createNode('setProperty', 600, 400, {
+            exposeProperty: true,
+            groupName: 'Size'
         });
 
         // Row 4: Height property
         const heightNameNode = builder.createNode('string', 850, 350, { value: 'height' });
         const heightValueNode = builder.createNode('number', 850, 500, { value: '150' });
-        const heightPropNode = builder.createNode('setProperty', 1100, 400, { 
-            exposeProperty: true, 
-            groupName: 'Size' 
+        const heightPropNode = builder.createNode('setProperty', 1100, 400, {
+            exposeProperty: true,
+            groupName: 'Size'
         });
 
         // Row 5: Color property
         const colorNameNode = builder.createNode('string', 350, 650, { value: 'fillColor' });
         const colorValueNode = builder.createNode('color', 350, 800, { value: '#FF5722' });
-        const colorPropNode = builder.createNode('setProperty', 600, 700, { 
-            exposeProperty: true, 
-            groupName: 'Style' 
+        const colorPropNode = builder.createNode('setProperty', 600, 700, {
+            exposeProperty: true,
+            groupName: 'Style'
         });
 
         // Drawing section - Draw event
@@ -1188,48 +1188,48 @@ class VMBExampleModules {
         // Initialize velocityY (exposed property)
         const vyNameNode = builder.createNode('string', 350, 50, { value: 'velocityY' });
         const vyValueNode = builder.createNode('number', 350, 200, { value: '0' });
-        const vyPropNode = builder.createNode('setProperty', 600, 100, { 
-            exposeProperty: true, 
-            groupName: 'Physics' 
+        const vyPropNode = builder.createNode('setProperty', 600, 100, {
+            exposeProperty: true,
+            groupName: 'Physics'
         });
 
         // Initialize gravity (exposed property)
         const gravityNameNode = builder.createNode('string', 850, 50, { value: 'gravity' });
         const gravityValueNode = builder.createNode('number', 850, 200, { value: '0.5' });
-        const gravityPropNode = builder.createNode('setProperty', 1100, 100, { 
-            exposeProperty: true, 
-            groupName: 'Physics' 
+        const gravityPropNode = builder.createNode('setProperty', 1100, 100, {
+            exposeProperty: true,
+            groupName: 'Physics'
         });
 
         // Initialize radius (exposed property) for drawing
         const radiusNameNode = builder.createNode('string', 1350, 50, { value: 'radius' });
         const radiusValueNode = builder.createNode('number', 1350, 200, { value: '20' });
-        const radiusPropNode = builder.createNode('setProperty', 1600, 100, { 
-            exposeProperty: true, 
-            groupName: 'Display' 
+        const radiusPropNode = builder.createNode('setProperty', 1600, 100, {
+            exposeProperty: true,
+            groupName: 'Display'
         });
 
         // Initialize color (exposed property)
         const colorNameNode = builder.createNode('string', 1850, 50, { value: 'ballColor' });
         const colorValueNode = builder.createNode('color', 1850, 200, { value: '#2196F3' });
-        const colorPropNode = builder.createNode('setProperty', 2100, 100, { 
-            exposeProperty: true, 
-            groupName: 'Display' 
+        const colorPropNode = builder.createNode('setProperty', 2100, 100, {
+            exposeProperty: true,
+            groupName: 'Display'
         });
 
         // Loop event
         const loopNode = builder.createNode('loop', 100, 400, {});
-        
+
         // Get current position
         const getPosNode = builder.createNode('getPosition', 350, 450, {});
-        
+
         // Get velocityY property
         const getVYNameNode = builder.createNode('string', 600, 400, { value: 'velocityY' });
         const getVYNode = builder.createNode('getProperty', 850, 400, {});
-        
+
         // Add velocityY to Y position
         const addYNode = builder.createNode('add', 1100, 500, {});
-        
+
         // Set new position with updated Y
         const setPosNode = builder.createNode('setPosition', 1350, 450, {});
 
@@ -1244,13 +1244,13 @@ class VMBExampleModules {
 
         // Draw event
         const drawNode = builder.createNode('draw', 100, 1100, {});
-        
+
         // Get radius and color properties for drawing
         const getRadiusNameNode = builder.createNode('string', 350, 1150, { value: 'radius' });
         const getColorNameNode = builder.createNode('string', 350, 1300, { value: 'ballColor' });
         const getRadiusNode = builder.createNode('getProperty', 600, 1150, {});
         const getColorNode = builder.createNode('getProperty', 600, 1300, {});
-        
+
         // Draw at 0, 0 since draw event draws to game object position
         const xNode = builder.createNode('number', 850, 1150, { value: '0' });
         const yNode = builder.createNode('number', 850, 1300, { value: '0' });
@@ -1262,16 +1262,16 @@ class VMBExampleModules {
             gravityNameNode, gravityValueNode, gravityPropNode,
             radiusNameNode, radiusValueNode, radiusPropNode,
             colorNameNode, colorValueNode, colorPropNode,
-            loopNode, 
+            loopNode,
             getPosNode, getVYNameNode, getVYNode, addYNode, setPosNode,
             getVY2NameNode, getGravityNameNode, getVYNode2, getGravityNode, addGravityNode, setVYNameNode, setVYNode,
-            drawNode, 
+            drawNode,
             getRadiusNameNode, getColorNameNode, getRadiusNode, getColorNode, xNode, yNode, fillCircleNode
         );
 
         // Start flow connections
         connections.push(
-           // { from: startNode.id, fromPort: 0, to: vyPropNode.id, toPort: 0 },
+            // { from: startNode.id, fromPort: 0, to: vyPropNode.id, toPort: 0 },
             { from: vyPropNode.id, fromPort: 0, to: gravityPropNode.id, toPort: 0 },
             { from: gravityPropNode.id, fromPort: 0, to: radiusPropNode.id, toPort: 0 },
             { from: radiusPropNode.id, fromPort: 0, to: colorPropNode.id, toPort: 0 }
@@ -1350,7 +1350,7 @@ class VMBExampleModules {
         const connections = [];
 
         //const startNode = builder.createNode('start', 100, 100, {});
-        
+
         // Initialize rotation
         const rotNameNode = builder.createNode('string', 350, 50, { value: 'rotation' });
         const rotValueNode = builder.createNode('number', 350, 200, { value: '0' });
@@ -1359,22 +1359,22 @@ class VMBExampleModules {
         // Initialize speed
         const speedNameNode = builder.createNode('string', 850, 50, { value: 'rotationSpeed' });
         const speedValueNode = builder.createNode('number', 850, 200, { value: '0.05' });
-        const speedPropNode = builder.createNode('setProperty', 1100, 100, { 
-            exposeProperty: true, 
-            groupName: 'Rotation' 
+        const speedPropNode = builder.createNode('setProperty', 1100, 100, {
+            exposeProperty: true,
+            groupName: 'Rotation'
         });
 
         const loopNode = builder.createNode('loop', 100, 400, {});
-        
+
         // Update rotation - get rotation and speed
         const getRotNameNode = builder.createNode('string', 350, 450, { value: 'rotation' });
         const getSpeedNameNode = builder.createNode('string', 350, 600, { value: 'rotationSpeed' });
         const getRotNode = builder.createNode('getProperty', 600, 450, {});
         const getSpeedNode = builder.createNode('getProperty', 600, 600, {});
-        
+
         // Add them
         const addRotNode = builder.createNode('add', 850, 500, {});
-        
+
         // Set new rotation
         const setRotNameNode = builder.createNode('string', 1100, 450, { value: 'rotation' });
         const setRotNode = builder.createNode('setProperty', 1350, 500, {});
@@ -1388,9 +1388,9 @@ class VMBExampleModules {
             //startNode, 
             rotNameNode, rotValueNode, rotPropNode,
             speedNameNode, speedValueNode, speedPropNode,
-            loopNode, 
+            loopNode,
             getRotNameNode, getSpeedNameNode, getRotNode, getSpeedNode, addRotNode,
-            setRotNameNode, setRotNode, 
+            setRotNameNode, setRotNode,
             getRotForGONameNode, getRotForGONode, gameObjRotNode
         );
 
@@ -1448,21 +1448,21 @@ class VMBExampleModules {
         const connections = [];
 
         //const startNode = builder.createNode('start', 100, 100, {});
-        
+
         // Initialize counter
         const counterNameNode = builder.createNode('string', 350, 50, { value: 'clickCount' });
         const counterValueNode = builder.createNode('number', 350, 200, { value: '0' });
-        const counterPropNode = builder.createNode('setProperty', 600, 100, { 
-            exposeProperty: true, 
-            groupName: 'Display' 
+        const counterPropNode = builder.createNode('setProperty', 600, 100, {
+            exposeProperty: true,
+            groupName: 'Display'
         });
 
         const drawNode = builder.createNode('draw', 100, 400, {});
-        
+
         // Get counter value
         const countPropNameNode = builder.createNode('string', 350, 450, { value: 'clickCount' });
         const getCountNode = builder.createNode('getProperty', 600, 450, {});
-        
+
         // Draw text position and style
         const xPosNode = builder.createNode('number', 850, 400, { value: '10' });
         const yPosNode = builder.createNode('number', 850, 550, { value: '30' });
@@ -1472,14 +1472,14 @@ class VMBExampleModules {
         nodes.push(
             //startNode, 
             counterNameNode, counterValueNode, counterPropNode,
-            drawNode, 
-            countPropNameNode, getCountNode, 
+            drawNode,
+            countPropNameNode, getCountNode,
             xPosNode, yPosNode, colorNode, drawTextNode
         );
 
         // Start flow
         //connections.push(
-            //{ from: startNode.id, fromPort: 0, to: counterPropNode.id, toPort: 0 }
+        //{ from: startNode.id, fromPort: 0, to: counterPropNode.id, toPort: 0 }
         //);
 
         // Start data
@@ -1522,7 +1522,7 @@ class VMBExampleModules {
         const connections = [];
 
         //const startNode = builder.createNode('start', 100, 100, {});
-        
+
         // Initialize hue
         const hueNameNode = builder.createNode('string', 350, 50, { value: 'hue' });
         const hueValueNode = builder.createNode('number', 350, 200, { value: '0' });
@@ -1531,32 +1531,32 @@ class VMBExampleModules {
         // Initialize speed
         const speedNameNode = builder.createNode('string', 850, 50, { value: 'cycleSpeed' });
         const speedValueNode = builder.createNode('number', 850, 200, { value: '1' });
-        const speedPropNode = builder.createNode('setProperty', 1100, 100, { 
-            exposeProperty: true, 
-            groupName: 'Animation' 
+        const speedPropNode = builder.createNode('setProperty', 1100, 100, {
+            exposeProperty: true,
+            groupName: 'Animation'
         });
 
         const loopNode = builder.createNode('loop', 100, 400, {});
-        
+
         // Update hue - get hue and speed
         const getHueNameNode = builder.createNode('string', 350, 450, { value: 'hue' });
         const getSpeedNameNode = builder.createNode('string', 350, 600, { value: 'cycleSpeed' });
         const getHueNode = builder.createNode('getProperty', 600, 450, {});
         const getSpeedNode = builder.createNode('getProperty', 600, 600, {});
-        
+
         // Add them
         const addHueNode = builder.createNode('add', 850, 500, {});
-        
+
         // Modulo to wrap around 360
         const maxHueNode = builder.createNode('number', 1100, 450, { value: '360' });
         const moduloNode = builder.createNode('modulo', 1100, 550, {});
-        
+
         // Set new hue
         const setHueNameNode = builder.createNode('string', 1350, 500, { value: 'hue' });
         const setHueNode = builder.createNode('setProperty', 1600, 550, {});
 
         const drawNode = builder.createNode('draw', 100, 900, {});
-        
+
         // Draw circle with fixed color (simplified - hue-to-color conversion would be more complex)
         const xNode = builder.createNode('number', 350, 950, { value: '0' });
         const yNode = builder.createNode('number', 350, 1100, { value: '0' });
@@ -1568,10 +1568,10 @@ class VMBExampleModules {
             //startNode, 
             hueNameNode, hueValueNode, huePropNode,
             speedNameNode, speedValueNode, speedPropNode,
-            loopNode, 
+            loopNode,
             getHueNameNode, getSpeedNameNode, getHueNode, getSpeedNode, addHueNode,
             maxHueNode, moduloNode, setHueNameNode, setHueNode,
-            drawNode, 
+            drawNode,
             xNode, yNode, radiusNode, colorNode, fillCircleNode
         );
 
@@ -1634,9 +1634,17 @@ class VMBExampleModules {
     /**
      * Build the node library with all available node types
      */
-   static buildNodeLibrary() {
+    static buildNodeLibrary() {
         return {
             'Events': [
+                {
+                    type: 'constructor',
+                    label: 'Constructor',
+                    color: '#263d4a',
+                    icon: 'fas fa-drafting-compass',
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => ''
+                },
                 {
                     type: 'start',
                     label: 'Start',
@@ -1784,17 +1792,17 @@ class VMBExampleModules {
                     codeGen: (node, ctx) => {
                         // Get the raw value without cleaning
                         let propName = ctx.getInputValue(node, 'name', false);
-                        
+
                         // If it's a string literal (wrapped in quotes), extract the content
                         if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
                             propName = propName.slice(1, -1); // Remove quotes
                         }
-                        
+
                         // Validate it's a valid identifier
                         if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
                             propName = 'property'; // fallback to default if invalid
                         }
-                        
+
                         return `this.${propName}`;
                     }
                 },
@@ -1810,17 +1818,17 @@ class VMBExampleModules {
                     codeGen: (node, ctx) => {
                         // Get the raw value without cleaning
                         let propName = ctx.getInputValue(node, 'name', false);
-                        
+
                         // If it's a string literal (wrapped in quotes), extract the content
                         if (typeof propName === 'string' && /^['"].*['"]$/.test(propName)) {
                             propName = propName.slice(1, -1); // Remove quotes
                         }
-                        
+
                         // Validate it's a valid identifier, use default if invalid
                         if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(propName)) {
                             propName = 'property';
                         }
-                        
+
                         const propValue = ctx.getInputValue(node, 'value');
 
                         if (node.exposeProperty) {
@@ -1873,6 +1881,53 @@ class VMBExampleModules {
                     codeGen: (node, ctx) => `'${node.value || '#ffffff'}'`
                 },
                 {
+                    type: 'waveType',
+                    label: 'Wave Type',
+                    color: '#3d4a78',
+                    icon: 'fas fa-wave-square',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: ['sine', 'square', 'triangle', 'sawtooth'],
+                    defaultValue: 'sine',
+                    codeGen: (node, ctx) => {
+                        const waveType = node.dropdownValue || 'sine';
+                        return `'${waveType}'`;
+                    }
+                },
+                {
+                    type: 'randomNumber',
+                    label: 'Random Number',
+                    color: '#4a3678',
+                    icon: 'fas fa-dice',
+                    inputs: [],
+                    outputs: ['value'], 
+                    codeGen: (node, ctx) => 'Math.random()'
+                },
+                {
+                    type: 'randomSeededNumber',
+                    label: 'Random Seeded Number',
+                    color: '#553978',
+                    icon: 'fas fa-dice-six',
+                    inputs: ['seed'],
+                    outputs: ['value'],
+                    codeGen: (node, ctx) => `Math.random(${ctx.getInputValue(node, 'seed') || '0'})`
+                },
+                {
+                    type: 'randomRange',
+                    label: 'Random Range',
+                    color: '#603a78',       
+                    icon: 'fas fa-dice-d20',
+                    inputs: ['min', 'max'],
+                    outputs: ['value'],
+                    hasInput: true,
+                    codeGen: (node, ctx) => {
+                        const min = ctx.getInputValue(node, 'min') || '0';
+                        const max = ctx.getInputValue(node, 'max') || '1';
+                        return `(Math.random() * (${max} - ${min}) + ${min})`;
+                    }
+                }
+                {
                     type: 'randomName',
                     label: 'Random Name',
                     color: '#5a4078',
@@ -1881,22 +1936,22 @@ class VMBExampleModules {
                     outputs: ['value'],
                     hasDropdown: true,
                     dropdownOptions: [
-                        'random', 'medieval', 'fantasy_elf', 'fantasy_dwarf', 'fantasy_orc', 
-                        'scientific', 'alien_species', 'alien_personal', 'cyberpunk', 
-                        'native_american', 'japanese', 'viking', 'roman', 'pirate', 
-                        'steampunk', 'lovecraftian', 'demon', 'angelic', 'egyptian', 
-                        'greek', 'zombie', 'robot', 'superhero', 'dragon', 'witch', 
-                        'werewolf', 'vampire', 'aztec', 'celtic', 'pokemon', 'starwars', 
-                        'cosmic', 'modern_male', 'modern_female', 'caveman', 'cavewoman', 
-                        'mobster', 'cowboy', 'ninja', 'samurai', 'wizard_modern', 
-                        'witch_modern', 'fairy', 'mermaid', 'merman', 'alien_scientist', 
-                        'space_captain', 'demon_hunter', 'ghost', 'frankenstein', 
-                        'serial_killer', 'detective', 'spy', 'gladiator', 'pro_wrestler', 
-                        'rockstar', 'rapper', 'mad_scientist', 'time_traveler', 'kaiju', 
-                        'biblical', 'archangel', 'fallen_angel', 'greek_god', 'norse_god', 
-                        'titan', 'video_game_boss', 'final_fantasy', 'dark_souls', 
-                        'elder_scrolls', 'world_of_warcraft', 'fortnite', 'league_of_legends', 
-                        'minecraft', 'Among_Us', 'tiktok_username', 'twitch_streamer', 
+                        'random', 'medieval', 'fantasy_elf', 'fantasy_dwarf', 'fantasy_orc',
+                        'scientific', 'alien_species', 'alien_personal', 'cyberpunk',
+                        'native_american', 'japanese', 'viking', 'roman', 'pirate',
+                        'steampunk', 'lovecraftian', 'demon', 'angelic', 'egyptian',
+                        'greek', 'zombie', 'robot', 'superhero', 'dragon', 'witch',
+                        'werewolf', 'vampire', 'aztec', 'celtic', 'pokemon', 'starwars',
+                        'cosmic', 'modern_male', 'modern_female', 'caveman', 'cavewoman',
+                        'mobster', 'cowboy', 'ninja', 'samurai', 'wizard_modern',
+                        'witch_modern', 'fairy', 'mermaid', 'merman', 'alien_scientist',
+                        'space_captain', 'demon_hunter', 'ghost', 'frankenstein',
+                        'serial_killer', 'detective', 'spy', 'gladiator', 'pro_wrestler',
+                        'rockstar', 'rapper', 'mad_scientist', 'time_traveler', 'kaiju',
+                        'biblical', 'archangel', 'fallen_angel', 'greek_god', 'norse_god',
+                        'titan', 'video_game_boss', 'final_fantasy', 'dark_souls',
+                        'elder_scrolls', 'world_of_warcraft', 'fortnite', 'league_of_legends',
+                        'minecraft', 'Among_Us', 'tiktok_username', 'twitch_streamer',
                         'esports_player', 'youtube_gamer', 'phoneme_based'
                     ],
                     defaultValue: 'random',
@@ -2699,7 +2754,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     codeGen: (node, ctx) => `this.gameObject.visible = ${ctx.getInputValue(node, 'visible')};`
                 }
             ],
-            
+
             'Drawing': [
                 {
                     type: 'fillRect',
@@ -2745,13 +2800,13 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         const text = ctx.getInputValue(node, 'text');
                         const x = ctx.getInputValue(node, 'x');
                         const y = ctx.getInputValue(node, 'y');
-                        
+
                         // Build font string properly - ensure quotes are stripped and re-added correctly
                         const cleanFontWeight = fontWeight.replace(/^['"]|['"]$/g, '');
                         const cleanFontFamily = fontFamily.replace(/^['"]|['"]$/g, '');
                         const cleanTextAlign = textAlign.replace(/^['"]|['"]$/g, '');
                         const cleanTextBaseline = textBaseline.replace(/^['"]|['"]$/g, '');
-                        
+
                         return `ctx.font = '${cleanFontWeight} ${fontSize}px ${cleanFontFamily}';\n${ctx.indent}ctx.textAlign = '${cleanTextAlign}';\n${ctx.indent}ctx.textBaseline = '${cleanTextBaseline}';\n${ctx.indent}ctx.fillStyle = ${color};\n${ctx.indent}ctx.fillText(${text}, ${x}, ${y});`;
                     }
                 },
@@ -3054,6 +3109,441 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => `// ${node.value || 'Comment'}`
+                }
+            ],
+            'MelodiCode': [
+                // Core Interpreter Node - This accumulates all script commands
+                {
+                    type: 'melodicodeInterpreter',
+                    label: 'MelodiCode Interpreter',
+                    color: '#4a1f4a',
+                    icon: 'fas fa-code',
+                    inputs: ['scriptFlow'],
+                    outputs: ['script'],
+                    codeGen: (node, ctx) => {
+                        // Get the accumulated script from the flow
+                        const script = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        return script;
+                    }
+                },
+                // Core Playback Nodes
+                {
+                    type: 'melodicodePlay',
+                    label: 'Play MelodiCode',
+                    color: '#8b2f8b',
+                    icon: 'fas fa-music',
+                    inputs: ['flow', 'code', 'bpm'],
+                    outputs: ['flow', 'success'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const code = ctx.getInputValue(node, 'code');
+                        const bpm = ctx.getInputValue(node, 'bpm') || '120';
+                        return `window.melodicode.play(${code}, { bpm: ${bpm} })`;
+                    }
+                },
+                {
+                    type: 'melodicodeStop',
+                    label: 'Stop MelodiCode',
+                    color: '#7a1f7a',
+                    icon: 'fas fa-stop',
+                    inputs: ['flow'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => `window.melodicode.stop();`
+                },
+                {
+                    type: 'melodicodeIsPlaying',
+                    label: 'Is Playing',
+                    color: '#6b106b',
+                    icon: 'fas fa-circle-play',
+                    inputs: [],
+                    outputs: ['result'],
+                    codeGen: (node, ctx) => `window.melodicode.getIsPlaying()`
+                },
+                // Simple Playback Methods
+                {
+                    type: 'melodicodePlayBeat',
+                    label: 'Play Beat',
+                    color: '#9b3f9b',
+                    icon: 'fas fa-drum',
+                    inputs: ['flow', 'pattern', 'bpm'],
+                    outputs: ['flow', 'success'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const pattern = ctx.getInputValue(node, 'pattern');
+                        const bpm = ctx.getInputValue(node, 'bpm') || '120';
+                        return `window.melodicode.playBeat(${pattern}, ${bpm})`;
+                    }
+                },
+                {
+                    type: 'melodicodePlayMelody',
+                    label: 'Play Melody',
+                    color: '#ab4fab',
+                    icon: 'fas fa-music',
+                    inputs: ['flow', 'notes', 'duration', 'bpm'],
+                    outputs: ['flow', 'success'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const notes = ctx.getInputValue(node, 'notes');
+                        const duration = ctx.getInputValue(node, 'duration') || '1';
+                        const bpm = ctx.getInputValue(node, 'bpm') || '120';
+                        return `await window.melodicode.playMelody(${notes}, ${duration}, ${bpm})`;
+                    }
+                },
+                {
+                    type: 'melodicodePlaySample',
+                    label: 'Play Sample',
+                    color: '#bb5fbb',
+                    icon: 'fas fa-compact-disc',
+                    inputs: ['flow', 'sample', 'pitch', 'timescale', 'volume', 'pan'],
+                    outputs: ['flow', 'success'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const sample = ctx.getInputValue(node, 'sample');
+                        const pitch = ctx.getInputValue(node, 'pitch') || '1';
+                        const timescale = ctx.getInputValue(node, 'timescale') || '1';
+                        const volume = ctx.getInputValue(node, 'volume') || '0.8';
+                        const pan = ctx.getInputValue(node, 'pan') || '0';
+                        return `window.melodicode.playSample(${sample}, { pitch: ${pitch}, timescale: ${timescale}, volume: ${volume}, pan: ${pan} })`;
+                    }
+                },
+                {
+                    type: 'melodicodePlayTone',
+                    label: 'Play Tone',
+                    color: '#cb6fcb',
+                    icon: 'fas fa-wave-square',
+                    inputs: ['flow', 'frequency', 'duration', 'waveType', 'volume', 'pan', 'bpm'],
+                    outputs: ['flow', 'success'],
+                    wrapFlowNode: false,
+                    hasDropdown: true,
+                    dropdownOptions: ['sine', 'square', 'sawtooth', 'triangle'],
+                    defaultValue: 'sine',
+                    codeGen: (node, ctx) => {
+                        const frequency = ctx.getInputValue(node, 'frequency');
+                        const duration = ctx.getInputValue(node, 'duration') || '1';
+                        const waveType = node.dropdownValue || 'sine';
+                        const volume = ctx.getInputValue(node, 'volume') || '0.8';
+                        const pan = ctx.getInputValue(node, 'pan') || '0';
+                        const bpm = ctx.getInputValue(node, 'bpm') || '120';
+                        return `window.melodicode.playTone(${frequency}, ${duration}, '${waveType}', { volume: ${volume}, pan: ${pan}, bpm: ${bpm} })`;
+                    }
+                },
+            ],
+            'MelodiCode Script Builder': [
+                // MelodiCode Script Builder Nodes (with cascading flow)
+                {
+                    type: 'melodicodeScriptStart',
+                    label: 'Script Start',
+                    color: '#2a1a2a',
+                    icon: 'fas fa-play',
+                    inputs: [],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        return "''";
+                    }
+                },
+                {
+                    type: 'melodicodeScriptTone',
+                    label: 'Add Tone',
+                    color: '#5a2f5a',
+                    icon: 'fas fa-music',
+                    inputs: ['scriptFlow', 'note', 'duration', 'waveType', 'volume', 'pan'],
+                    outputs: ['scriptFlow'],
+                    hasDropdown: true,
+                    dropdownOptions: ['sine', 'square', 'sawtooth', 'triangle'],
+                    defaultValue: 'sine',
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const note = ctx.getInputValue(node, 'note') || "'C4'";
+                        const duration = ctx.getInputValue(node, 'duration') || '1';
+                        const waveType = node.dropdownValue || 'sine';
+                        const volume = ctx.getInputValue(node, 'volume') || '0.8';
+                        const pan = ctx.getInputValue(node, 'pan') || '0';
+                        return `${prevScript} + 'tone ' + ${note} + ' ' + ${duration} + ' ${waveType} ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSample',
+                    label: 'Add Sample',
+                    color: '#6a3f6a',
+                    icon: 'fas fa-drum',
+                    inputs: ['scriptFlow', 'sample', 'pitch', 'timescale', 'volume', 'pan'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const sample = ctx.getInputValue(node, 'sample');
+                        const pitch = ctx.getInputValue(node, 'pitch') || '1';
+                        const timescale = ctx.getInputValue(node, 'timescale') || '1';
+                        const volume = ctx.getInputValue(node, 'volume') || '0.8';
+                        const pan = ctx.getInputValue(node, 'pan') || '0';
+                        return `${prevScript} + 'sample ' + ${sample} + ' ' + ${pitch} + ' ' + ${timescale} + ' ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSlide',
+                    label: 'Add Slide',
+                    color: '#7a4f7a',
+                    icon: 'fas fa-arrow-trend-up',
+                    inputs: ['scriptFlow', 'startNote', 'endNote', 'duration', 'waveType', 'volume', 'pan'],
+                    outputs: ['scriptFlow'],
+                    hasDropdown: true,
+                    dropdownOptions: ['sine', 'square', 'sawtooth', 'triangle'],
+                    defaultValue: 'sine',
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const startNote = ctx.getInputValue(node, 'startNote') || "'C4'";
+                        const endNote = ctx.getInputValue(node, 'endNote') || "'C5'";
+                        const duration = ctx.getInputValue(node, 'duration') || '1';
+                        const waveType = node.dropdownValue || 'sine';
+                        const volume = ctx.getInputValue(node, 'volume') || '0.8';
+                        const pan = ctx.getInputValue(node, 'pan') || '0';
+                        return `${prevScript} + 'slide ' + ${startNote} + ' ' + ${endNote} + ' ' + ${duration} + ' ${waveType} ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptWait',
+                    label: 'Add Wait',
+                    color: '#4a2f4a',
+                    icon: 'fas fa-clock',
+                    inputs: ['scriptFlow', 'duration'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const duration = ctx.getInputValue(node, 'duration') || '1';
+                        return `${prevScript} + 'wait ' + ${duration} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptPattern',
+                    label: 'Add Pattern',
+                    color: '#8a5f8a',
+                    icon: 'fas fa-grid',
+                    inputs: ['scriptFlow', 'sample', 'pattern'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const sample = ctx.getInputValue(node, 'sample');
+                        const pattern = ctx.getInputValue(node, 'pattern');
+                        return `${prevScript} + 'pattern ' + ${sample} + ' ' + ${pattern} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSequence',
+                    label: 'Add Sequence',
+                    color: '#9a6f9a',
+                    icon: 'fas fa-list',
+                    inputs: ['scriptFlow', 'baseName', 'samples'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const baseName = ctx.getInputValue(node, 'baseName');
+                        const samples = ctx.getInputValue(node, 'samples');
+                        return `${prevScript} + 'sequence ' + ${baseName} + ' ' + ${samples} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptTTS',
+                    label: 'Add TTS',
+                    color: '#aa7faa',
+                    icon: 'fas fa-comment',
+                    inputs: ['scriptFlow', 'text', 'speed', 'pitch', 'voice'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const text = ctx.getInputValue(node, 'text');
+                        const speed = ctx.getInputValue(node, 'speed') || '1';
+                        const pitch = ctx.getInputValue(node, 'pitch') || '1';
+                        const voice = ctx.getInputValue(node, 'voice') || '0';
+                        return `${prevScript} + 'tts "' + ${text} + '" ' + ${speed} + ' ' + ${pitch} + ' ' + ${voice} + '\\n'`;
+                    }
+                },
+                // Block Structure Nodes
+                {
+                    type: 'melodicodeScriptBlockStart',
+                    label: 'Start Block',
+                    color: '#ba8fba',
+                    icon: 'fas fa-box-open',
+                    inputs: ['scriptFlow', 'blockName', 'effects'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const blockName = ctx.getInputValue(node, 'blockName');
+                        const effects = ctx.getInputValue(node, 'effects') || "''";
+                        return `${prevScript} + '[' + ${blockName} + '] ' + ${effects} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptBlockEnd',
+                    label: 'End Block',
+                    color: '#ca9fca',
+                    icon: 'fas fa-box',
+                    inputs: ['scriptFlow'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        return `${prevScript} + '[end]\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSampleBlockStart',
+                    label: 'Start Sample Block',
+                    color: '#da8fda',
+                    icon: 'fas fa-layer-group',
+                    inputs: ['scriptFlow', 'blockName'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const blockName = ctx.getInputValue(node, 'blockName');
+                        return `${prevScript} + '<' + ${blockName} + '>\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSampleBlockEnd',
+                    label: 'End Sample Block',
+                    color: '#ea9fea',
+                    icon: 'fas fa-layer-group',
+                    inputs: ['scriptFlow'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        return `${prevScript} + '<end>\\n'`;
+                    }
+                },
+                // Control Commands
+                {
+                    type: 'melodicodeScriptBPM',
+                    label: 'Set BPM',
+                    color: '#3a1f3a',
+                    icon: 'fas fa-gauge',
+                    inputs: ['scriptFlow', 'bpm'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const bpm = ctx.getInputValue(node, 'bpm') || '120';
+                        return `${prevScript} + 'bpm ' + ${bpm} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptPlay',
+                    label: 'Add Play',
+                    color: '#da9fda',
+                    icon: 'fas fa-play',
+                    inputs: ['scriptFlow', 'blocks'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const blocks = ctx.getInputValue(node, 'blocks');
+                        return `${prevScript} + 'play ' + ${blocks} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptLoop',
+                    label: 'Add Loop',
+                    color: '#ea9fea',
+                    icon: 'fas fa-repeat',
+                    inputs: ['scriptFlow', 'count', 'blocks'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const count = ctx.getInputValue(node, 'count');
+                        const blocks = ctx.getInputValue(node, 'blocks');
+                        return `${prevScript} + 'loop ' + ${count} + ' ' + ${blocks} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptSidechain',
+                    label: 'Add Sidechain',
+                    color: '#fa9ffa',
+                    icon: 'fas fa-compress',
+                    inputs: ['scriptFlow', 'block1', 'block2', 'amount'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const block1 = ctx.getInputValue(node, 'block1');
+                        const block2 = ctx.getInputValue(node, 'block2');
+                        const amount = ctx.getInputValue(node, 'amount') || '0.7';
+                        return `${prevScript} + 'sidechain ' + ${block1} + ' ' + ${block2} + ' ' + ${amount} + '\\n'`;
+                    }
+                },
+                {
+                    type: 'melodicodeScriptEffect',
+                    label: 'Effect String',
+                    color: '#1a0f1a',
+                    icon: 'fas fa-wand-magic-sparkles',
+                    inputs: ['effectType', 'params'],
+                    outputs: ['effect'],
+                    hasDropdown: true,
+                    dropdownOptions: ['reverb', 'delay', 'filter', 'distortion', 'chorus'],
+                    defaultValue: 'reverb',
+                    codeGen: (node, ctx) => {
+                        const effectType = node.dropdownValue || 'reverb';
+                        const params = ctx.getInputValue(node, 'params') || '0.3';
+                        return `'(${effectType} ' + ${params} + ')'`;
+                    }
+                },
+                // Utility Nodes
+                {
+                    type: 'melodicodeGetSamples',
+                    label: 'Get Available Samples',
+                    color: '#db7fdb',
+                    icon: 'fas fa-list-ul',
+                    inputs: [],
+                    outputs: ['samples'],
+                    codeGen: (node, ctx) => `window.melodicode.getAvailableSamples()`
+                },
+                {
+                    type: 'melodicodeSetVolume',
+                    label: 'Set Master Volume',
+                    color: '#eb8feb',
+                    icon: 'fas fa-volume-high',
+                    inputs: ['flow', 'volume'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const volume = ctx.getInputValue(node, 'volume') || '1';
+                        return `window.melodicode.setMasterVolume(${volume});`;
+                    }
+                },
+                {
+                    type: 'waveType',
+                    label: 'Wave Type',
+                    color: '#3d4a78',
+                    icon: 'fas fa-wave-square',
+                    inputs: [],
+                    outputs: ['value'],
+                    hasDropdown: true,
+                    dropdownOptions: ['sine', 'square', 'triangle', 'sawtooth'],
+                    defaultValue: 'sine',
+                    codeGen: (node, ctx) => {
+                        const waveType = node.dropdownValue || 'sine';
+                        return `'${waveType}'`;
+                    }
+                },
+                // Note Selector
+                {
+                    type: 'melodicodeNoteSelector',
+                    label: 'Note',
+                    color: '#fb9ffb',
+                    icon: 'fas fa-music',
+                    inputs: [],
+                    outputs: ['note'],
+                    hasDropdown: true,
+                    dropdownOptions: [
+                        'C0', 'C#0', 'D0', 'D#0', 'E0', 'F0', 'F#0', 'G0', 'G#0', 'A0', 'A#0', 'B0',
+                        'C1', 'C#1', 'D1', 'D#1', 'E1', 'F1', 'F#1', 'G1', 'G#1', 'A1', 'A#1', 'B1',
+                        'C2', 'C#2', 'D2', 'D#2', 'E2', 'F2', 'F#2', 'G2', 'G#2', 'A2', 'A#2', 'B2',
+                        'C3', 'C#3', 'D3', 'D#3', 'E3', 'F3', 'F#3', 'G3', 'G#3', 'A3', 'A#3', 'B3',
+                        'C4', 'C#4', 'D4', 'D#4', 'E4', 'F4', 'F#4', 'G4', 'G#4', 'A4', 'A#4', 'B4',
+                        'C5', 'C#5', 'D5', 'D#5', 'E5', 'F5', 'F#5', 'G5', 'G#5', 'A5', 'A#5', 'B5',
+                        'C6', 'C#6', 'D6', 'D#6', 'E6', 'F6', 'F#6', 'G6', 'G#6', 'A6', 'A#6', 'B6',
+                        'C7', 'C#7', 'D7', 'D#7', 'E7', 'F7', 'F#7', 'G7', 'G#7', 'A7', 'A#7', 'B7',
+                        'C8'
+                    ],
+                    defaultValue: 'C4',
+                    codeGen: (node, ctx) => {
+                        const note = node.dropdownValue || 'C4';
+                        return `'${note}'`;
+                    }
                 }
             ]
         };
