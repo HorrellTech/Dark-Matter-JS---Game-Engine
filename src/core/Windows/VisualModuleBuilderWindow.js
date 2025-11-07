@@ -138,6 +138,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // ========== NEW: LIVE PREVIEW/DEBUGGING ==========
         this.livePreviewActive = false;
         this.previewModuleInstance = null;
+        this.previewWindow = null;
 
         this.setupUI();
         this.setupCanvas();
@@ -626,12 +627,13 @@ class VisualModuleBuilderWindow extends EditorWindow {
             { text: 'New', icon: '📄', action: () => this.newProject() },
             { text: 'Save', icon: '💾', action: () => this.saveProject() },
             { text: 'Load', icon: '📂', action: () => this.loadProject() },
+            //{ text: 'Load JS', icon: '📜', action: () => this.loadJavaScriptModule(), title: 'Load JavaScript Module' },
             { text: 'Undo', icon: '↶', action: () => this.undo(), title: 'Undo (Ctrl+Z)' },
             { text: 'Redo', icon: '↷', action: () => this.redo(), title: 'Redo (Ctrl+Shift+Z)' },
             { text: 'Command', icon: '⌘', action: () => this.toggleCommandPalette(), title: 'Command Palette (Ctrl+Space)' },
             { text: 'Export Module', icon: '📤', action: () => this.exportModule(), highlight: true },
             { text: 'Validate', icon: '✓', action: () => this.validateGraph() },
-            { text: 'Test Module', icon: '▶', action: () => this.testModule(), highlight: false, style: 'background: #2196F3; border-color: #42A5F5' },
+            //{ text: 'Test Module', icon: '▶', action: () => this.testModule(), highlight: false, style: 'background: #2196F3; border-color: #42A5F5' },
             { text: 'Clear', icon: '🗑️', action: () => this.clearCanvas() },
             { text: 'Help', icon: '❓', action: () => this.showHelp() }
         ];
@@ -2837,7 +2839,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const commentX = node.x + node.width - 16;
         const commentY = node.y + node.height - 16;
         const hasComment = this.nodeComments.has(node.id);
-        
+
         ctx.fillStyle = hasComment ? 'rgba(255, 152, 0, 0.8)' : 'rgba(100, 100, 100, 0.6)';
         ctx.beginPath();
         ctx.arc(commentX, commentY, 8, 0, Math.PI * 2);
@@ -5801,7 +5803,7 @@ class ${className} extends Module {
 
         // ========== NEW: Stop live preview on close ==========
         this.stopLivePreview();
-        
+
         // Stop animation loop
         this.isActive = false;
         if (this.animationFrameId) {
@@ -6062,7 +6064,7 @@ class ${className} extends Module {
     editNodeComment(node) {
         const currentComment = this.nodeComments.get(node.id) || '';
         const newComment = prompt('Enter comment/annotation for this node:', currentComment);
-        
+
         if (newComment !== null) {
             if (newComment.trim()) {
                 this.nodeComments.set(node.id, newComment.trim());
@@ -6087,13 +6089,13 @@ class ${className} extends Module {
         const padding = 12;
         const maxWidth = 250;
         const lineHeight = 16;
-        
+
         // Measure text and wrap
         ctx.font = '11px Arial';
         const words = comment.split(' ');
         const lines = [];
         let currentLine = '';
-        
+
         words.forEach(word => {
             const testLine = currentLine + (currentLine ? ' ' : '') + word;
             const metrics = ctx.measureText(testLine);
@@ -6108,11 +6110,11 @@ class ${className} extends Module {
 
         const bubbleWidth = Math.min(maxWidth, Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2);
         const bubbleHeight = lines.length * lineHeight + padding * 2;
-        
+
         // Position bubble above and to the left of the button
         const bx = bubbleX - bubbleWidth - 10;
         const by = bubbleY - bubbleHeight / 2;
-        
+
         // Draw speech bubble tail (small triangle)
         ctx.fillStyle = '#2a2a2a';
         ctx.beginPath();
@@ -6152,59 +6154,35 @@ class ${className} extends Module {
         }
 
         this.logToConsole('🔬 Starting live preview...', 'info');
-        
+
         try {
             // Generate module code
             const code = this.generateModuleCode();
-            
+
             // Create a temporary module class
             const tempModuleCode = code.replace(
                 `class ${this.moduleName}`,
-                `class ${this.moduleName}_Preview`
+                `class ${this.moduleName}`
             );
-            
+
             // Execute the code to create the class
-            eval(tempModuleCode);
-            
+            eval(code);
+
             // Get the preview class
-            const PreviewModuleClass = eval(`${this.moduleName}_Preview`);
-            
-            // Check if we already have a preview instance
-            if (this.previewModuleInstance) {
-                // Clean up old instance
-                if (this.previewModuleInstance.onDestroy) {
-                    this.previewModuleInstance.onDestroy();
-                }
-                if (window.engine && window.engine.currentScene) {
-                    const scene = window.engine.currentScene;
-                    const index = scene.modules.indexOf(this.previewModuleInstance);
-                    if (index !== -1) {
-                        scene.modules.splice(index, 1);
-                    }
-                }
+            const PreviewModuleClass = eval(`${this.moduleName}`);
+
+            // Create or update preview window
+            if (!this.previewWindow || !this.previewWindow.isOpen) {
+                this.previewWindow = new ModulePreviewWindow(this);
             }
-            
-            // Create a new instance
-            this.previewModuleInstance = new PreviewModuleClass();
-            
-            // Add to the current scene if engine is available
-            if (window.engine && window.engine.currentScene) {
-                const scene = window.engine.currentScene;
-                scene.modules.push(this.previewModuleInstance);
-                
-                // Call start if it exists
-                if (this.previewModuleInstance.start) {
-                    this.previewModuleInstance.start();
-                }
-                
-                this.livePreviewActive = true;
-                this.logToConsole('✅ Live preview active! Module added to current scene.', 'success');
-                this.showNotification('Live preview started! Check the game canvas.', 'success');
-            } else {
-                this.logToConsole('⚠️ No active scene found. Module created but not added to scene.', 'warning');
-                this.showNotification('Module compiled, but no active scene to test in.', 'warning');
-            }
-            
+
+            // Update the preview with the new module
+            this.previewWindow.updateModule(PreviewModuleClass);
+
+            this.livePreviewActive = true;
+            this.logToConsole('✅ Live preview active! Module running in preview window.', 'success');
+            this.showNotification('Live preview started! Check the preview window.', 'success');
+
         } catch (error) {
             this.logToConsole(`❌ Live preview error: ${error.message}`, 'error');
             console.error('Live preview error:', error);
@@ -6216,25 +6194,13 @@ class ${className} extends Module {
      * Stop live preview
      */
     stopLivePreview() {
-        if (this.previewModuleInstance) {
-            // Clean up
-            if (this.previewModuleInstance.onDestroy) {
-                this.previewModuleInstance.onDestroy();
-            }
-            
-            // Remove from scene
-            if (window.engine && window.engine.currentScene) {
-                const scene = window.engine.currentScene;
-                const index = scene.modules.indexOf(this.previewModuleInstance);
-                if (index !== -1) {
-                    scene.modules.splice(index, 1);
-                }
-            }
-            
-            this.previewModuleInstance = null;
-            this.livePreviewActive = false;
-            this.logToConsole('🛑 Live preview stopped.', 'info');
+        if (this.previewWindow && this.previewWindow.isOpen) {
+            this.previewWindow.close();
+            this.previewWindow = null;
         }
+        
+        this.livePreviewActive = false;
+        this.logToConsole('🛑 Live preview stopped.', 'info');
     }
 
     /**
@@ -7760,6 +7726,391 @@ class ${className} extends Module {
     }
 
     /**
+ * Load a JavaScript module file and convert it to visual nodes
+ */
+    async loadJavaScriptModule() {
+        try {
+            if (this.hasUnsavedChanges) {
+                if (!confirm('You have unsaved changes. Load JavaScript module anyway?')) {
+                    return;
+                }
+            }
+
+            // Get all JavaScript files
+            await window.fileBrowser.ensureDirectoryExists('Visual Modules');
+            const allFiles = await window.fileBrowser.getAllFiles();
+
+            // Filter for .js files that likely contain modules
+            const jsFiles = allFiles
+                .filter(file => {
+                    const normalizedPath = file.path.replace(/\\/g, '/');
+                    return normalizedPath.endsWith('.js');
+                })
+                .map(file => ({
+                    name: file.name,
+                    path: file.path
+                }));
+
+            if (jsFiles.length === 0) {
+                this.showNotification('No JavaScript files found.', 'warning');
+                return;
+            }
+
+            // Show file picker modal
+            const selectedPath = await this.showFilePickerModal(jsFiles, 'Load JavaScript Module');
+
+            if (!selectedPath) {
+                return; // User cancelled
+            }
+
+            // Load the selected file
+            const file = await window.fileBrowser.getFile(selectedPath);
+            if (!file) {
+                this.showNotification('Failed to load JavaScript file.', 'error');
+                return;
+            }
+
+            // Check if it's a module file
+            if (!file.content.includes('extends Module')) {
+                this.showNotification('Selected file does not appear to be a Module.', 'warning');
+                return;
+            }
+
+            // Parse the JavaScript module
+            await this.parseJavaScriptToNodes(file.content);
+
+            this.showNotification('JavaScript module loaded successfully!', 'success');
+        } catch (error) {
+            console.error('Error loading JavaScript module:', error);
+            this.showNotification(`Error loading JavaScript module: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Parse JavaScript module code and convert to visual nodes
+     */
+    async parseJavaScriptToNodes(jsCode) {
+        // Clear existing canvas
+        this.nodes = [];
+        this.connections = [];
+        this.selectedNode = null;
+        this.panOffset = { x: 0, y: 0 };
+        this.zoom = 1.0;
+
+        // Extract module metadata
+        const classMatch = jsCode.match(/class\s+(\w+)\s+extends\s+Module/);
+        const moduleName = classMatch ? classMatch[1] : 'CustomModule';
+
+        const namespaceMatch = jsCode.match(/static\s+namespace\s*=\s*["']([^"']+)["']/);
+        const namespace = namespaceMatch ? namespaceMatch[1] : 'Custom';
+
+        const descriptionMatch = jsCode.match(/static\s+description\s*=\s*["']([^"']+)["']/);
+        const description = descriptionMatch ? descriptionMatch[1] : '';
+
+        const iconMatch = jsCode.match(/static\s+iconClass\s*=\s*["']([^"']+)["']/);
+        const icon = iconMatch ? iconMatch[1] : 'fas fa-cube';
+
+        const colorMatch = jsCode.match(/static\s+color\s*=\s*["']([^"']+)["']/);
+        const color = colorMatch ? colorMatch[1] : '#4CAF50';
+
+        const allowMultipleMatch = jsCode.match(/static\s+allowMultiple\s*=\s*(true|false)/);
+        const allowMultiple = allowMultipleMatch ? allowMultipleMatch[1] === 'true' : true;
+
+        const drawInEditorMatch = jsCode.match(/static\s+drawInEditor\s*=\s*(true|false)/);
+        const drawInEditor = drawInEditorMatch ? drawInEditorMatch[1] === 'true' : true;
+
+        // Set module metadata
+        this.moduleName = moduleName;
+        this.moduleNamespace = namespace;
+        this.moduleDescription = description;
+        this.moduleIcon = icon;
+        this.moduleColor = color;
+        this.allowMultiple = allowMultiple;
+        this.drawInEditor = drawInEditor;
+
+        // Parse methods and create groups
+        const methods = this.extractMethods(jsCode);
+
+        let currentX = 100;
+        let currentY = 100;
+        const groupSpacing = 100;
+        const methodSpacing = 300;
+
+        for (const method of methods) {
+            // Create a group for each method
+            const groupNode = this.createGroupForMethod(method, currentX, currentY);
+            this.nodes.push(groupNode);
+
+            // Collapse the group by default
+            groupNode.collapsed = true;
+
+            // Move to next position
+            currentY += groupNode.height + groupSpacing;
+        }
+
+        // Refresh UI
+        this.setupUI();
+        this.setupCanvas();
+        this.setupCanvasEventListeners();
+
+        this.hasUnsavedChanges = false;
+        this.projectPath = null;
+    }
+
+    /**
+     * Extract methods from JavaScript code
+     */
+    extractMethods(jsCode) {
+        const methods = [];
+
+        // Match all method definitions in the class
+        const methodRegex = /(?:async\s+)?(\w+)\s*\([^)]*\)\s*{/g;
+        const constructorRegex = /constructor\s*\([^)]*\)\s*{/;
+        const startRegex = /start\s*\(\s*\)\s*{/;
+        const loopRegex = /loop\s*\(\s*\)\s*{/;
+        const drawRegex = /draw\s*\([^)]*\)\s*{/;
+        const onDestroyRegex = /onDestroy\s*\(\s*\)\s*{/;
+
+        let match;
+
+        // Find constructor
+        if (constructorRegex.test(jsCode)) {
+            const constructorContent = this.extractMethodContent(jsCode, 'constructor');
+            methods.push({
+                name: 'constructor',
+                type: 'constructor',
+                content: constructorContent,
+                properties: this.extractPropertiesFromConstructor(constructorContent)
+            });
+        }
+
+        // Find start method
+        if (startRegex.test(jsCode)) {
+            const startContent = this.extractMethodContent(jsCode, 'start');
+            methods.push({
+                name: 'start',
+                type: 'start',
+                content: startContent
+            });
+        }
+
+        // Find loop method
+        if (loopRegex.test(jsCode)) {
+            const loopContent = this.extractMethodContent(jsCode, 'loop');
+            methods.push({
+                name: 'loop',
+                type: 'loop',
+                content: loopContent
+            });
+        }
+
+        // Find draw method
+        if (drawRegex.test(jsCode)) {
+            const drawContent = this.extractMethodContent(jsCode, 'draw');
+            methods.push({
+                name: 'draw',
+                type: 'draw',
+                content: drawContent
+            });
+        }
+
+        // Find onDestroy method
+        if (onDestroyRegex.test(jsCode)) {
+            const onDestroyContent = this.extractMethodContent(jsCode, 'onDestroy');
+            methods.push({
+                name: 'onDestroy',
+                type: 'onDestroy',
+                content: onDestroyContent
+            });
+        }
+
+        // Find custom methods
+        while ((match = methodRegex.exec(jsCode)) !== null) {
+            const methodName = match[1];
+
+            // Skip lifecycle methods and constructor
+            if (['constructor', 'start', 'loop', 'draw', 'onDestroy', 'preload', 'beginLoop', 'endLoop'].includes(methodName)) {
+                continue;
+            }
+
+            const methodContent = this.extractMethodContent(jsCode, methodName);
+            methods.push({
+                name: methodName,
+                type: 'custom',
+                content: methodContent
+            });
+        }
+
+        return methods;
+    }
+
+    /**
+     * Extract method content from code
+     */
+    extractMethodContent(jsCode, methodName) {
+        const regex = new RegExp(`(?:async\\s+)?${methodName}\\s*\\([^)]*\\)\\s*{`, 'g');
+        const match = regex.exec(jsCode);
+
+        if (!match) return '';
+
+        const startIndex = match.index + match[0].length;
+        let braceCount = 1;
+        let endIndex = startIndex;
+
+        for (let i = startIndex; i < jsCode.length; i++) {
+            if (jsCode[i] === '{') braceCount++;
+            if (jsCode[i] === '}') braceCount--;
+
+            if (braceCount === 0) {
+                endIndex = i;
+                break;
+            }
+        }
+
+        return jsCode.substring(startIndex, endIndex).trim();
+    }
+
+    /**
+     * Extract properties from constructor code
+     */
+    extractPropertiesFromConstructor(constructorContent) {
+        const properties = [];
+        const propertyRegex = /this\.(\w+)\s*=\s*(.+?);/g;
+
+        let match;
+        while ((match = propertyRegex.exec(constructorContent)) !== null) {
+            const propName = match[1];
+            const propValue = match[2].trim();
+
+            // Determine property type from value
+            let propType = 'string';
+            let parsedValue = propValue;
+
+            if (propValue === 'true' || propValue === 'false') {
+                propType = 'boolean';
+                parsedValue = propValue === 'true';
+            } else if (!isNaN(propValue) && propValue !== '') {
+                propType = 'number';
+                parsedValue = parseFloat(propValue);
+            } else if (propValue.startsWith('"') || propValue.startsWith("'")) {
+                propType = 'string';
+                parsedValue = propValue.replace(/["']/g, '');
+            } else if (propValue.startsWith('#')) {
+                propType = 'color';
+            } else if (propValue.includes('new Vector2')) {
+                propType = 'vector2';
+            }
+
+            properties.push({
+                name: propName,
+                type: propType,
+                value: parsedValue
+            });
+        }
+
+        return properties;
+    }
+
+    /**
+     * Create a collapsed group node for a method
+     */
+    createGroupForMethod(method, x, y) {
+        const groupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Create inner nodes based on method type
+        const innerNodes = [];
+        const innerConnections = [];
+
+        let nodeX = 20;
+        let nodeY = 20;
+        const nodeSpacing = 150;
+
+        // Create event node (start, loop, draw, etc.)
+        let eventNode = null;
+
+        if (method.type === 'start') {
+            eventNode = this.createNode('start', nodeX, nodeY);
+            innerNodes.push(eventNode);
+        } else if (method.type === 'loop') {
+            eventNode = this.createNode('loop', nodeX, nodeY);
+            innerNodes.push(eventNode);
+        } else if (method.type === 'draw') {
+            eventNode = this.createNode('draw', nodeX, nodeY);
+            innerNodes.push(eventNode);
+        } else if (method.type === 'onDestroy') {
+            eventNode = this.createNode('onDestroy', nodeX, nodeY);
+            innerNodes.push(eventNode);
+        } else if (method.type === 'custom') {
+            eventNode = this.createNode('method', nodeX, nodeY);
+            eventNode.value = method.name;
+            innerNodes.push(eventNode);
+        }
+
+        // For constructor, create property nodes
+        if (method.type === 'constructor' && method.properties) {
+            nodeY = 20;
+            for (const prop of method.properties) {
+                // Create setProperty node
+                const setPropNode = this.createNode('setProperty', nodeX, nodeY);
+                setPropNode.exposeProperty = true;
+                innerNodes.push(setPropNode);
+
+                // Create property name node
+                const nameNode = this.createNode('string', nodeX + nodeSpacing, nodeY);
+                nameNode.value = prop.name;
+                innerNodes.push(nameNode);
+
+                // Create property value node
+                const valueNode = this.createNode(prop.type === 'boolean' ? 'boolean' :
+                    prop.type === 'number' ? 'number' :
+                        prop.type === 'color' ? 'color' : 'string',
+                    nodeX + nodeSpacing * 2, nodeY);
+                valueNode.value = prop.value;
+                innerNodes.push(valueNode);
+
+                // Connect nodes
+                innerConnections.push({
+                    from: { node: nameNode, portIndex: 0 },
+                    to: { node: setPropNode, portIndex: setPropNode.inputs.indexOf('name') }
+                });
+                innerConnections.push({
+                    from: { node: valueNode, portIndex: 0 },
+                    to: { node: setPropNode, portIndex: setPropNode.inputs.indexOf('value') }
+                });
+
+                nodeY += 100;
+            }
+        }
+
+        // Create group node
+        const groupNode = {
+            id: groupId,
+            type: 'group',
+            label: method.name.charAt(0).toUpperCase() + method.name.slice(1),
+            x: x,
+            y: y,
+            width: 400,
+            height: 300,
+            inputs: ['flow'],
+            outputs: ['flow'],
+            color: method.type === 'start' ? '#4CAF50' :
+                method.type === 'loop' ? '#2196F3' :
+                    method.type === 'draw' ? '#FF9800' :
+                        method.type === 'onDestroy' ? '#f44336' :
+                            method.type === 'constructor' ? '#9C27B0' : '#607D8B',
+            nodes: innerNodes,
+            connections: innerConnections,
+            collapsed: true,
+            groupData: {
+                nodes: innerNodes,
+                connections: innerConnections
+            }
+        };
+
+        return groupNode;
+    }
+
+    /**
      * Create a new node of the specified type
      * @param {string} type - The node type (e.g., 'start', 'number', 'add')
      * @param {number} x - X position
@@ -7782,7 +8133,7 @@ class ${className} extends Module {
         const height = this.snapToGridValue(this.calculateNodeHeight(definition));
 
         const node = {
-            id: Date.now() + Math.random(),
+            id: `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             type: type,
             label: options.label || definition.label,
             color: this.getNodeColor(type),

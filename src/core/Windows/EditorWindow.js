@@ -443,6 +443,10 @@ class EditorWindow {
         }
     }
 
+    open() {
+        this.show();
+    }
+
     /**
      * Hide the window
      */

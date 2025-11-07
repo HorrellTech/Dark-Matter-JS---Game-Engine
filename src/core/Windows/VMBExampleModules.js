@@ -3,7 +3,10 @@
  * These modules demonstrate various features and provide starting templates
  * 
  * NOW USES PUBLIC API METHODS FOR PROPER COLOR AND NODE CREATION
- */
+ *
+ * DO NOT connect setProperty to Start method to initialize. setProperty declares automatically. Use setProperty to set initial value or to change later.
+ * Draw method automatically draws at game object position
+*/
 class VMBExampleModules {
     /**
      * Get all available example modules
@@ -15,6 +18,12 @@ class VMBExampleModules {
             'rotating-sprite': this.createRotatingSprite(),
             'click-counter': this.createClickCounter(),
             'color-cycler': this.createColorCycler(),
+            'keyboard-movement': this.createKeyboardMovement(),
+            'mouse-follower': this.createMouseFollower(),
+            'boundary-bounce': this.createBoundaryBounce(),
+            'health-system': this.createHealthSystem(),
+            'timer-countdown': this.createTimerCountdown(),
+            'oscillating-motion': this.createOscillatingMotion(),
             'empty': this.createEmpty()
         };
     }
@@ -30,7 +39,13 @@ class VMBExampleModules {
             { value: 'basic-physics', label: 'Basic Physics' },
             { value: 'rotating-sprite', label: 'Rotating Sprite' },
             { value: 'click-counter', label: 'Click Counter' },
-            { value: 'color-cycler', label: 'Color Cycler' }
+            { value: 'color-cycler', label: 'Color Cycler' },
+            { value: 'keyboard-movement', label: 'Keyboard Movement (WASD)' },
+            { value: 'mouse-follower', label: 'Mouse Follower' },
+            { value: 'boundary-bounce', label: 'Boundary Bounce' },
+            { value: 'health-system', label: 'Health System' },
+            { value: 'timer-countdown', label: 'Timer Countdown' },
+            { value: 'oscillating-motion', label: 'Oscillating Motion' }
         ];
     }
 
@@ -142,6 +157,882 @@ class VMBExampleModules {
     }
 
     /**
+     * Keyboard Movement - WASD controls for moving objects
+     */
+    static createKeyboardMovement() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize speed property
+        const speedNameNode = builder.createNode('string', 100, 100, { value: 'moveSpeed' });
+        const speedValueNode = builder.createNode('number', 100, 250, { value: '5' });
+        const speedPropNode = builder.createNode('setProperty', 350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Movement' 
+        });
+
+        // Loop event
+        const loopNode = builder.createNode('loop', 100, 450, {});
+        
+        // Get current position
+        const getPosNode = builder.createNode('getPosition', 350, 500, {});
+        
+        // Get speed property
+        const getSpeedNameNode = builder.createNode('string', 600, 450, { value: 'moveSpeed' });
+        const getSpeedNode = builder.createNode('getProperty', 850, 450, {});
+
+        // === W Key (Up) ===
+        const wKeyNode = builder.createNode('keySelector', 1100, 650, { dropdownValue: 'w' });
+        const wCheckNode = builder.createNode('keyDown', 1350, 700, {});
+        const wIfNode = builder.createNode('if', 1600, 700, {});
+        
+        // Subtract speed from Y
+        const wSubtractNode = builder.createNode('subtract', 1850, 750, {});
+        const wSetPosNode = builder.createNode('setPosition', 2100, 700, {});
+
+        // === S Key (Down) ===
+        const sKeyNode = builder.createNode('keySelector', 1100, 1000, { dropdownValue: 's' });
+        const sCheckNode = builder.createNode('keyDown', 1350, 1050, {});
+        const sIfNode = builder.createNode('if', 1600, 1050, {});
+        
+        // Add speed to Y
+        const sAddNode = builder.createNode('add', 1850, 1100, {});
+        const sSetPosNode = builder.createNode('setPosition', 2100, 1050, {});
+
+        // === A Key (Left) ===
+        const aKeyNode = builder.createNode('keySelector', 1100, 1350, { dropdownValue: 'a' });
+        const aCheckNode = builder.createNode('keyDown', 1350, 1400, {});
+        const aIfNode = builder.createNode('if', 1600, 1400, {});
+        
+        // Subtract speed from X
+        const aSubtractNode = builder.createNode('subtract', 1850, 1450, {});
+        const aSetPosNode = builder.createNode('setPosition', 2100, 1400, {});
+
+        // === D Key (Right) ===
+        const dKeyNode = builder.createNode('keySelector', 1100, 1700, { dropdownValue: 'd' });
+        const dCheckNode = builder.createNode('keyDown', 1350, 1750, {});
+        const dIfNode = builder.createNode('if', 1600, 1750, {});
+        
+        // Add speed to X
+        const dAddNode = builder.createNode('add', 1850, 1800, {});
+        const dSetPosNode = builder.createNode('setPosition', 2100, 1750, {});
+
+        nodes.push(
+            speedNameNode, speedValueNode, speedPropNode,
+            loopNode, getPosNode, getSpeedNameNode, getSpeedNode,
+            wKeyNode, wCheckNode, wIfNode, wSubtractNode, wSetPosNode,
+            sKeyNode, sCheckNode, sIfNode, sAddNode, sSetPosNode,
+            aKeyNode, aCheckNode, aIfNode, aSubtractNode, aSetPosNode,
+            dKeyNode, dCheckNode, dIfNode, dAddNode, dSetPosNode
+        );
+
+        // Property initialization
+        connections.push(
+            { from: speedNameNode.id, fromPort: 0, to: speedPropNode.id, toPort: 1 },
+            { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 }
+        );
+
+        // Loop flow chain: W -> S -> A -> D
+        connections.push(
+            { from: loopNode.id, fromPort: 0, to: wCheckNode.id, toPort: 0 },
+            { from: wCheckNode.id, fromPort: 0, to: sCheckNode.id, toPort: 0 },
+            { from: sCheckNode.id, fromPort: 0, to: aCheckNode.id, toPort: 0 },
+            { from: aCheckNode.id, fromPort: 0, to: dCheckNode.id, toPort: 0 }
+        );
+
+        // W key logic
+        connections.push(
+            { from: wKeyNode.id, fromPort: 0, to: wCheckNode.id, toPort: 1 },
+            { from: wCheckNode.id, fromPort: 1, to: wIfNode.id, toPort: 1 },
+            { from: wIfNode.id, fromPort: 0, to: wSetPosNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: wSetPosNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: wSubtractNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: wSubtractNode.id, toPort: 1 },
+            { from: wSubtractNode.id, fromPort: 0, to: wSetPosNode.id, toPort: 2 }
+        );
+
+        // S key logic
+        connections.push(
+            { from: sKeyNode.id, fromPort: 0, to: sCheckNode.id, toPort: 1 },
+            { from: sCheckNode.id, fromPort: 1, to: sIfNode.id, toPort: 1 },
+            { from: sIfNode.id, fromPort: 0, to: sSetPosNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: sSetPosNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: sAddNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: sAddNode.id, toPort: 1 },
+            { from: sAddNode.id, fromPort: 0, to: sSetPosNode.id, toPort: 2 }
+        );
+
+        // A key logic
+        connections.push(
+            { from: aKeyNode.id, fromPort: 0, to: aCheckNode.id, toPort: 1 },
+            { from: aCheckNode.id, fromPort: 1, to: aIfNode.id, toPort: 1 },
+            { from: aIfNode.id, fromPort: 0, to: aSetPosNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: aSubtractNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: aSubtractNode.id, toPort: 1 },
+            { from: aSubtractNode.id, fromPort: 0, to: aSetPosNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: aSetPosNode.id, toPort: 2 }
+        );
+
+        // D key logic
+        connections.push(
+            { from: dKeyNode.id, fromPort: 0, to: dCheckNode.id, toPort: 1 },
+            { from: dCheckNode.id, fromPort: 1, to: dIfNode.id, toPort: 1 },
+            { from: dIfNode.id, fromPort: 0, to: dSetPosNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: dAddNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: dAddNode.id, toPort: 1 },
+            { from: dAddNode.id, fromPort: 0, to: dSetPosNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: dSetPosNode.id, toPort: 2 }
+        );
+
+        // Connect speed property name
+        connections.push(
+            { from: getSpeedNameNode.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 }
+        );
+
+        return {
+            moduleName: 'KeyboardMovement',
+            moduleNamespace: 'Input',
+            moduleDescription: 'WASD keyboard controls for moving the game object',
+            moduleIcon: 'fas fa-keyboard',
+            moduleColor: '#1a3847',
+            allowMultiple: true,
+            drawInEditor: false,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
+     * Mouse Follower - Makes object follow mouse cursor
+     */
+    static createMouseFollower() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize follow speed property
+        const speedNameNode = builder.createNode('string', 100, 100, { value: 'followSpeed' });
+        const speedValueNode = builder.createNode('number', 100, 250, { value: '0.1' });
+        const speedPropNode = builder.createNode('setProperty', 350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Movement' 
+        });
+
+        // Loop event
+        const loopNode = builder.createNode('loop', 100, 450, {});
+        
+        // Get current position
+        const getPosNode = builder.createNode('getPosition', 350, 500, {});
+        
+        // Get mouse position (world space)
+        const trueNode = builder.createNode('boolean', 600, 500, { value: true });
+        const getMouseNode = builder.createNode('getMousePosition', 850, 500, {});
+
+        // Calculate X difference
+        const subtractXNode = builder.createNode('subtract', 1100, 550, {});
+        
+        // Calculate Y difference
+        const subtractYNode = builder.createNode('subtract', 1100, 750, {});
+
+        // Get follow speed
+        const getSpeedNameNode = builder.createNode('string', 1350, 500, { value: 'followSpeed' });
+        const getSpeedNode = builder.createNode('getProperty', 1600, 500, {});
+
+        // Multiply X difference by speed
+        const multXNode = builder.createNode('multiply', 1850, 550, {});
+        
+        // Multiply Y difference by speed
+        const multYNode = builder.createNode('multiply', 1850, 750, {});
+
+        // Add to current position X
+        const addXNode = builder.createNode('add', 2100, 550, {});
+        
+        // Add to current position Y
+        const addYNode = builder.createNode('add', 2100, 750, {});
+
+        // Set new position
+        const setPosNode = builder.createNode('setPosition', 2350, 650, {});
+
+        nodes.push(
+            speedNameNode, speedValueNode, speedPropNode,
+            loopNode, getPosNode, trueNode, getMouseNode,
+            subtractXNode, subtractYNode,
+            getSpeedNameNode, getSpeedNode,
+            multXNode, multYNode,
+            addXNode, addYNode,
+            setPosNode
+        );
+
+        // Property initialization
+        connections.push(
+            { from: speedNameNode.id, fromPort: 0, to: speedPropNode.id, toPort: 1 },
+            { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 }
+        );
+
+        // Loop flow
+        connections.push(
+            { from: loopNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 }
+        );
+
+        // Get mouse position
+        connections.push(
+            { from: trueNode.id, fromPort: 0, to: getMouseNode.id, toPort: 0 }
+        );
+
+        // Calculate differences
+        connections.push(
+            { from: getMouseNode.id, fromPort: 0, to: subtractXNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: subtractXNode.id, toPort: 1 },
+            { from: getMouseNode.id, fromPort: 1, to: subtractYNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 1, to: subtractYNode.id, toPort: 1 }
+        );
+
+        // Get speed property
+        connections.push(
+            { from: getSpeedNameNode.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 }
+        );
+
+        // Apply speed
+        connections.push(
+            { from: subtractXNode.id, fromPort: 0, to: multXNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: multXNode.id, toPort: 1 },
+            { from: subtractYNode.id, fromPort: 0, to: multYNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: multYNode.id, toPort: 1 }
+        );
+
+        // Add to current position
+        connections.push(
+            { from: getPosNode.id, fromPort: 0, to: addXNode.id, toPort: 0 },
+            { from: multXNode.id, fromPort: 0, to: addXNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: addYNode.id, toPort: 0 },
+            { from: multYNode.id, fromPort: 0, to: addYNode.id, toPort: 1 }
+        );
+
+        // Set position
+        connections.push(
+            { from: addXNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 },
+            { from: addYNode.id, fromPort: 0, to: setPosNode.id, toPort: 2 }
+        );
+
+        return {
+            moduleName: 'MouseFollower',
+            moduleNamespace: 'Input',
+            moduleDescription: 'Makes the game object smoothly follow the mouse cursor',
+            moduleIcon: 'fas fa-computer-mouse',
+            moduleColor: '#326b89',
+            allowMultiple: true,
+            drawInEditor: false,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
+     * Boundary Bounce - Bounces off screen edges
+     */
+    static createBoundaryBounce() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize velocity properties
+        const vxNameNode = builder.createNode('string', 100, 100, { value: 'velocityX' });
+        const vxValueNode = builder.createNode('number', 100, 250, { value: '3' });
+        const vxPropNode = builder.createNode('setProperty', 350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Physics' 
+        });
+
+        const vyNameNode = builder.createNode('string', 600, 100, { value: 'velocityY' });
+        const vyValueNode = builder.createNode('number', 600, 250, { value: '2' });
+        const vyPropNode = builder.createNode('setProperty', 850, 150, { 
+            exposeProperty: true, 
+            groupName: 'Physics' 
+        });
+
+        // Loop event
+        const loopNode = builder.createNode('loop', 100, 450, {});
+
+        // Get current position
+        const getPosNode = builder.createNode('getPosition', 350, 500, {});
+
+        // Get velocities
+        const getVxNameNode = builder.createNode('string', 600, 550, { value: 'velocityX' });
+        const getVxNode = builder.createNode('getProperty', 850, 550, {});
+        const getVyNameNode = builder.createNode('string', 600, 700, { value: 'velocityY' });
+        const getVyNode = builder.createNode('getProperty', 850, 700, {});
+
+        // Add velocity to position
+        const addXNode = builder.createNode('add', 1100, 550, {});
+        const addYNode = builder.createNode('add', 1100, 700, {});
+
+        // Set new position
+        const setPosNode = builder.createNode('setPosition', 1350, 600, {});
+
+        // Check left boundary (X < 0)
+        const zeroNode1 = builder.createNode('number', 1600, 900, { value: '0' });
+        const checkLeftNode = builder.createNode('lessThan', 1850, 950, {});
+        const ifLeftNode = builder.createNode('if', 2100, 950, {});
+        const negateVxNode1 = builder.createNode('multiply', 2350, 950, {});
+        const negOneNode1 = builder.createNode('number', 2350, 800, { value: '-1' });
+        const setVxNameNode1 = builder.createNode('string', 2600, 900, { value: 'velocityX' });
+        const setVxNode1 = builder.createNode('setProperty', 2850, 950, {});
+
+        // Check right boundary (X > canvas width)
+        const canvasWidthNode = builder.createNode('number', 1600, 1250, { value: '800' });
+        const checkRightNode = builder.createNode('greaterThan', 1850, 1300, {});
+        const ifRightNode = builder.createNode('if', 2100, 1300, {});
+        const negateVxNode2 = builder.createNode('multiply', 2350, 1300, {});
+        const negOneNode2 = builder.createNode('number', 2350, 1150, { value: '-1' });
+        const setVxNameNode2 = builder.createNode('string', 2600, 1250, { value: 'velocityX' });
+        const setVxNode2 = builder.createNode('setProperty', 2850, 1300, {});
+
+        // Check top boundary (Y < 0)
+        const zeroNode2 = builder.createNode('number', 1600, 1600, { value: '0' });
+        const checkTopNode = builder.createNode('lessThan', 1850, 1650, {});
+        const ifTopNode = builder.createNode('if', 2100, 1650, {});
+        const negateVyNode1 = builder.createNode('multiply', 2350, 1650, {});
+        const negOneNode3 = builder.createNode('number', 2350, 1500, { value: '-1' });
+        const setVyNameNode1 = builder.createNode('string', 2600, 1600, { value: 'velocityY' });
+        const setVyNode1 = builder.createNode('setProperty', 2850, 1650, {});
+
+        // Check bottom boundary (Y > canvas height)
+        const canvasHeightNode = builder.createNode('number', 1600, 1950, { value: '600' });
+        const checkBottomNode = builder.createNode('greaterThan', 1850, 2000, {});
+        const ifBottomNode = builder.createNode('if', 2100, 2000, {});
+        const negateVyNode2 = builder.createNode('multiply', 2350, 2000, {});
+        const negOneNode4 = builder.createNode('number', 2350, 1850, { value: '-1' });
+        const setVyNameNode2 = builder.createNode('string', 2600, 1950, { value: 'velocityY' });
+        const setVyNode2 = builder.createNode('setProperty', 2850, 2000, {});
+
+        nodes.push(
+            vxNameNode, vxValueNode, vxPropNode,
+            vyNameNode, vyValueNode, vyPropNode,
+            loopNode, getPosNode,
+            getVxNameNode, getVxNode, getVyNameNode, getVyNode,
+            addXNode, addYNode, setPosNode,
+            zeroNode1, checkLeftNode, ifLeftNode, negateVxNode1, negOneNode1, setVxNameNode1, setVxNode1,
+            canvasWidthNode, checkRightNode, ifRightNode, negateVxNode2, negOneNode2, setVxNameNode2, setVxNode2,
+            zeroNode2, checkTopNode, ifTopNode, negateVyNode1, negOneNode3, setVyNameNode1, setVyNode1,
+            canvasHeightNode, checkBottomNode, ifBottomNode, negateVyNode2, negOneNode4, setVyNameNode2, setVyNode2
+        );
+
+        // Property initialization
+        connections.push(
+            { from: vxNameNode.id, fromPort: 0, to: vxPropNode.id, toPort: 1 },
+            { from: vxValueNode.id, fromPort: 0, to: vxPropNode.id, toPort: 2 },
+            { from: vxPropNode.id, fromPort: 0, to: vyPropNode.id, toPort: 0 },
+            { from: vyNameNode.id, fromPort: 0, to: vyPropNode.id, toPort: 1 },
+            { from: vyValueNode.id, fromPort: 0, to: vyPropNode.id, toPort: 2 }
+        );
+
+        // Main loop flow
+        connections.push(
+            { from: loopNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 },
+            { from: setPosNode.id, fromPort: 0, to: ifLeftNode.id, toPort: 0 },
+            { from: ifLeftNode.id, fromPort: 1, to: ifRightNode.id, toPort: 0 },
+            { from: ifRightNode.id, fromPort: 1, to: ifTopNode.id, toPort: 0 },
+            { from: ifTopNode.id, fromPort: 1, to: ifBottomNode.id, toPort: 0 }
+        );
+
+        // Get velocities and update position
+        connections.push(
+            { from: getVxNameNode.id, fromPort: 0, to: getVxNode.id, toPort: 0 },
+            { from: getVyNameNode.id, fromPort: 0, to: getVyNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: addXNode.id, toPort: 0 },
+            { from: getVxNode.id, fromPort: 0, to: addXNode.id, toPort: 1 },
+            { from: getPosNode.id, fromPort: 1, to: addYNode.id, toPort: 0 },
+            { from: getVyNode.id, fromPort: 0, to: addYNode.id, toPort: 1 },
+            { from: addXNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 },
+            { from: addYNode.id, fromPort: 0, to: setPosNode.id, toPort: 2 }
+        );
+
+        // Left boundary check
+        connections.push(
+            { from: addXNode.id, fromPort: 0, to: checkLeftNode.id, toPort: 0 },
+            { from: zeroNode1.id, fromPort: 0, to: checkLeftNode.id, toPort: 1 },
+            { from: checkLeftNode.id, fromPort: 0, to: ifLeftNode.id, toPort: 1 },
+            { from: ifLeftNode.id, fromPort: 0, to: setVxNode1.id, toPort: 0 },
+            { from: getVxNode.id, fromPort: 0, to: negateVxNode1.id, toPort: 0 },
+            { from: negOneNode1.id, fromPort: 0, to: negateVxNode1.id, toPort: 1 },
+            { from: setVxNameNode1.id, fromPort: 0, to: setVxNode1.id, toPort: 1 },
+            { from: negateVxNode1.id, fromPort: 0, to: setVxNode1.id, toPort: 2 }
+        );
+
+        // Right boundary check
+        connections.push(
+            { from: addXNode.id, fromPort: 0, to: checkRightNode.id, toPort: 0 },
+            { from: canvasWidthNode.id, fromPort: 0, to: checkRightNode.id, toPort: 1 },
+            { from: checkRightNode.id, fromPort: 0, to: ifRightNode.id, toPort: 1 },
+            { from: ifRightNode.id, fromPort: 0, to: setVxNode2.id, toPort: 0 },
+            { from: getVxNode.id, fromPort: 0, to: negateVxNode2.id, toPort: 0 },
+            { from: negOneNode2.id, fromPort: 0, to: negateVxNode2.id, toPort: 1 },
+            { from: setVxNameNode2.id, fromPort: 0, to: setVxNode2.id, toPort: 1 },
+            { from: negateVxNode2.id, fromPort: 0, to: setVxNode2.id, toPort: 2 }
+        );
+
+        // Top boundary check
+        connections.push(
+            { from: addYNode.id, fromPort: 0, to: checkTopNode.id, toPort: 0 },
+            { from: zeroNode2.id, fromPort: 0, to: checkTopNode.id, toPort: 1 },
+            { from: checkTopNode.id, fromPort: 0, to: ifTopNode.id, toPort: 1 },
+            { from: ifTopNode.id, fromPort: 0, to: setVyNode1.id, toPort: 0 },
+            { from: getVyNode.id, fromPort: 0, to: negateVyNode1.id, toPort: 0 },
+            { from: negOneNode3.id, fromPort: 0, to: negateVyNode1.id, toPort: 1 },
+            { from: setVyNameNode1.id, fromPort: 0, to: setVyNode1.id, toPort: 1 },
+            { from: negateVyNode1.id, fromPort: 0, to: setVyNode1.id, toPort: 2 }
+        );
+
+        // Bottom boundary check
+        connections.push(
+            { from: addYNode.id, fromPort: 0, to: checkBottomNode.id, toPort: 0 },
+            { from: canvasHeightNode.id, fromPort: 0, to: checkBottomNode.id, toPort: 1 },
+            { from: checkBottomNode.id, fromPort: 0, to: ifBottomNode.id, toPort: 1 },
+            { from: ifBottomNode.id, fromPort: 0, to: setVyNode2.id, toPort: 0 },
+            { from: getVyNode.id, fromPort: 0, to: negateVyNode2.id, toPort: 0 },
+            { from: negOneNode4.id, fromPort: 0, to: negateVyNode2.id, toPort: 1 },
+            { from: setVyNameNode2.id, fromPort: 0, to: setVyNode2.id, toPort: 1 },
+            { from: negateVyNode2.id, fromPort: 0, to: setVyNode2.id, toPort: 2 }
+        );
+
+        return {
+            moduleName: 'BoundaryBounce',
+            moduleNamespace: 'Physics',
+            moduleDescription: 'Bounces object off screen boundaries by reversing velocity',
+            moduleIcon: 'fas fa-border-all',
+            moduleColor: '#522d5c',
+            allowMultiple: true,
+            drawInEditor: false,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
+     * Health System - Simple health bar with damage visualization
+     */
+    static createHealthSystem() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize health properties
+        const healthNameNode = builder.createNode('string', 100, 100, { value: 'health' });
+        const healthValueNode = builder.createNode('number', 100, 250, { value: '100' });
+        const healthPropNode = builder.createNode('setProperty', 350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Health' 
+        });
+
+        const maxHealthNameNode = builder.createNode('string', 600, 100, { value: 'maxHealth' });
+        const maxHealthValueNode = builder.createNode('number', 600, 250, { value: '100' });
+        const maxHealthPropNode = builder.createNode('setProperty', 850, 150, { 
+            exposeProperty: true, 
+            groupName: 'Health' 
+        });
+
+        // Draw event
+        const drawNode = builder.createNode('draw', 100, 450, {});
+
+        // Background bar (red)
+        const bgXNode = builder.createNode('number', 350, 500, { value: '-50' });
+        const bgYNode = builder.createNode('number', 350, 650, { value: '-60' });
+        const bgWidthNode = builder.createNode('number', 600, 500, { value: '100' });
+        const bgHeightNode = builder.createNode('number', 600, 650, { value: '10' });
+        const bgColorNode = builder.createNode('color', 850, 550, { value: '#8B0000' });
+        const bgRectNode = builder.createNode('fillRect', 1100, 600, {});
+
+        // Calculate health bar width
+        const getHealthNameNode = builder.createNode('string', 350, 900, { value: 'health' });
+        const getHealthNode = builder.createNode('getProperty', 600, 900, {});
+        const getMaxHealthNameNode = builder.createNode('string', 350, 1050, { value: 'maxHealth' });
+        const getMaxHealthNode = builder.createNode('getProperty', 600, 1050, {});
+        
+        const divideNode = builder.createNode('divide', 850, 950, {});
+        const barMaxWidthNode = builder.createNode('number', 1100, 900, { value: '100' });
+        const multiplyNode = builder.createNode('multiply', 1350, 950, {});
+
+        // Foreground bar (green)
+        const fgXNode = builder.createNode('number', 1600, 950, { value: '-50' });
+        const fgYNode = builder.createNode('number', 1600, 1100, { value: '-60' });
+        const fgHeightNode = builder.createNode('number', 1850, 1050, { value: '10' });
+        const fgColorNode = builder.createNode('color', 2100, 1000, { value: '#00FF00' });
+        const fgRectNode = builder.createNode('fillRect', 2350, 1050, {});
+
+        nodes.push(
+            healthNameNode, healthValueNode, healthPropNode,
+            maxHealthNameNode, maxHealthValueNode, maxHealthPropNode,
+            drawNode,
+            bgXNode, bgYNode, bgWidthNode, bgHeightNode, bgColorNode, bgRectNode,
+            getHealthNameNode, getHealthNode, getMaxHealthNameNode, getMaxHealthNode,
+            divideNode, barMaxWidthNode, multiplyNode,
+            fgXNode, fgYNode, fgHeightNode, fgColorNode, fgRectNode
+        );
+
+        // Property initialization
+        connections.push(
+            { from: healthNameNode.id, fromPort: 0, to: healthPropNode.id, toPort: 1 },
+            { from: healthValueNode.id, fromPort: 0, to: healthPropNode.id, toPort: 2 },
+            { from: healthPropNode.id, fromPort: 0, to: maxHealthPropNode.id, toPort: 0 },
+            { from: maxHealthNameNode.id, fromPort: 0, to: maxHealthPropNode.id, toPort: 1 },
+            { from: maxHealthValueNode.id, fromPort: 0, to: maxHealthPropNode.id, toPort: 2 }
+        );
+
+        // Draw background bar
+        connections.push(
+            { from: drawNode.id, fromPort: 0, to: bgRectNode.id, toPort: 0 },
+            { from: drawNode.id, fromPort: 1, to: bgRectNode.id, toPort: 1 },
+            { from: bgXNode.id, fromPort: 0, to: bgRectNode.id, toPort: 2 },
+            { from: bgYNode.id, fromPort: 0, to: bgRectNode.id, toPort: 3 },
+            { from: bgWidthNode.id, fromPort: 0, to: bgRectNode.id, toPort: 4 },
+            { from: bgHeightNode.id, fromPort: 0, to: bgRectNode.id, toPort: 5 },
+            { from: bgColorNode.id, fromPort: 0, to: bgRectNode.id, toPort: 6 }
+        );
+
+        // Calculate health percentage and bar width
+        connections.push(
+            { from: getHealthNameNode.id, fromPort: 0, to: getHealthNode.id, toPort: 0 },
+            { from: getMaxHealthNameNode.id, fromPort: 0, to: getMaxHealthNode.id, toPort: 0 },
+            { from: getHealthNode.id, fromPort: 0, to: divideNode.id, toPort: 0 },
+            { from: getMaxHealthNode.id, fromPort: 0, to: divideNode.id, toPort: 1 },
+            { from: divideNode.id, fromPort: 0, to: multiplyNode.id, toPort: 0 },
+            { from: barMaxWidthNode.id, fromPort: 0, to: multiplyNode.id, toPort: 1 }
+        );
+
+        // Draw foreground bar (must draw after background)
+        connections.push(
+            { from: bgRectNode.id, fromPort: 0, to: fgRectNode.id, toPort: 0 },
+            { from: drawNode.id, fromPort: 1, to: fgRectNode.id, toPort: 1 },
+            { from: fgXNode.id, fromPort: 0, to: fgRectNode.id, toPort: 2 },
+            { from: fgYNode.id, fromPort: 0, to: fgRectNode.id, toPort: 3 },
+            { from: multiplyNode.id, fromPort: 0, to: fgRectNode.id, toPort: 4 },
+            { from: fgHeightNode.id, fromPort: 0, to: fgRectNode.id, toPort: 5 },
+            { from: fgColorNode.id, fromPort: 0, to: fgRectNode.id, toPort: 6 }
+        );
+
+        return {
+            moduleName: 'HealthSystem',
+            moduleNamespace: 'UI',
+            moduleDescription: 'Visual health bar that displays current/max health ratio',
+            moduleIcon: 'fas fa-heart',
+            moduleColor: '#F44336',
+            allowMultiple: true,
+            drawInEditor: true,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
+     * Timer Countdown - Countdown timer with visual display
+     */
+    static createTimerCountdown() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize timer properties
+        const timeNameNode = builder.createNode('string', 100, 100, { value: 'timeRemaining' });
+        const timeValueNode = builder.createNode('number', 100, 250, { value: '60' });
+        const timePropNode = builder.createNode('setProperty', 350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Timer' 
+        });
+
+        // Loop event
+        const loopNode = builder.createNode('loop', 100, 450, {});
+
+        // Get time remaining
+        const getTimeNameNode = builder.createNode('string', 350, 500, { value: 'timeRemaining' });
+        const getTimeNode = builder.createNode('getProperty', 600, 500, {});
+
+        // Check if time > 0
+        const zeroNode = builder.createNode('number', 850, 450, { value: '0' });
+        const checkTimeNode = builder.createNode('greaterThan', 1100, 500, {});
+        const ifTimeNode = builder.createNode('if', 1350, 500, {});
+
+        // Get delta time
+        const getDeltaNode = builder.createNode('getDeltaTime', 1600, 500, {});
+
+        // Subtract delta from time
+        const subtractNode = builder.createNode('subtract', 1850, 550, {});
+
+        // Clamp to 0
+        const maxNode = builder.createNode('max', 2100, 550, {});
+        const zeroNode2 = builder.createNode('number', 2100, 400, { value: '0' });
+
+        // Set new time
+        const setTimeNameNode = builder.createNode('string', 2350, 500, { value: 'timeRemaining' });
+        const setTimeNode = builder.createNode('setProperty', 2600, 550, {});
+
+        // Draw event
+        const drawNode = builder.createNode('draw', 100, 900, {});
+
+        // Get time for display
+        const getTimeNameNode2 = builder.createNode('string', 350, 950, { value: 'timeRemaining' });
+        const getTimeNode2 = builder.createNode('getProperty', 600, 950, {});
+
+        // Round to integer
+        const roundNode = builder.createNode('round', 850, 950, {});
+
+        // Draw text
+        const xPosNode = builder.createNode('number', 1100, 900, { value: '0' });
+        const yPosNode = builder.createNode('number', 1100, 1050, { value: '-40' });
+        const colorNode = builder.createNode('color', 1350, 950, { value: '#FFFF00' });
+        const fontSizeNode = builder.createNode('number', 1350, 1100, { value: '24' });
+        const drawTextNode = builder.createNode('drawText', 1600, 1000, {});
+
+        nodes.push(
+            timeNameNode, timeValueNode, timePropNode,
+            loopNode,
+            getTimeNameNode, getTimeNode,
+            zeroNode, checkTimeNode, ifTimeNode,
+            getDeltaNode, subtractNode,
+            maxNode, zeroNode2,
+            setTimeNameNode, setTimeNode,
+            drawNode,
+            getTimeNameNode2, getTimeNode2,
+            roundNode,
+            xPosNode, yPosNode, colorNode, fontSizeNode, drawTextNode
+        );
+
+        // Property initialization
+        connections.push(
+            { from: timeNameNode.id, fromPort: 0, to: timePropNode.id, toPort: 1 },
+            { from: timeValueNode.id, fromPort: 0, to: timePropNode.id, toPort: 2 }
+        );
+
+        // Loop logic
+        connections.push(
+            { from: loopNode.id, fromPort: 0, to: ifTimeNode.id, toPort: 0 }
+        );
+
+        // Check if time > 0 and countdown
+        connections.push(
+            { from: getTimeNameNode.id, fromPort: 0, to: getTimeNode.id, toPort: 0 },
+            { from: getTimeNode.id, fromPort: 0, to: checkTimeNode.id, toPort: 0 },
+            { from: zeroNode.id, fromPort: 0, to: checkTimeNode.id, toPort: 1 },
+            { from: checkTimeNode.id, fromPort: 0, to: ifTimeNode.id, toPort: 1 },
+            { from: ifTimeNode.id, fromPort: 0, to: setTimeNode.id, toPort: 0 }
+        );
+
+        // Subtract delta time
+        connections.push(
+            { from: getTimeNode.id, fromPort: 0, to: subtractNode.id, toPort: 0 },
+            { from: getDeltaNode.id, fromPort: 0, to: subtractNode.id, toPort: 1 }
+        );
+
+        // Clamp to 0
+        connections.push(
+            { from: subtractNode.id, fromPort: 0, to: maxNode.id, toPort: 0 },
+            { from: zeroNode2.id, fromPort: 0, to: maxNode.id, toPort: 1 },
+            { from: setTimeNameNode.id, fromPort: 0, to: setTimeNode.id, toPort: 1 },
+            { from: maxNode.id, fromPort: 0, to: setTimeNode.id, toPort: 2 }
+        );
+
+        // Draw display
+        connections.push(
+            { from: drawNode.id, fromPort: 0, to: drawTextNode.id, toPort: 0 },
+            { from: drawNode.id, fromPort: 1, to: drawTextNode.id, toPort: 1 }
+        );
+
+        // Get and format time
+        connections.push(
+            { from: getTimeNameNode2.id, fromPort: 0, to: getTimeNode2.id, toPort: 0 },
+            { from: getTimeNode2.id, fromPort: 0, to: roundNode.id, toPort: 0 },
+            { from: roundNode.id, fromPort: 0, to: drawTextNode.id, toPort: 2 },
+            { from: xPosNode.id, fromPort: 0, to: drawTextNode.id, toPort: 3 },
+            { from: yPosNode.id, fromPort: 0, to: drawTextNode.id, toPort: 4 },
+            { from: colorNode.id, fromPort: 0, to: drawTextNode.id, toPort: 5 },
+            { from: fontSizeNode.id, fromPort: 0, to: drawTextNode.id, toPort: 6 }
+        );
+
+        return {
+            moduleName: 'TimerCountdown',
+            moduleNamespace: 'Gameplay',
+            moduleDescription: 'Countdown timer that decreases each frame and displays time remaining',
+            moduleIcon: 'fas fa-stopwatch',
+            moduleColor: '#FFC107',
+            allowMultiple: true,
+            drawInEditor: true,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
+     * Oscillating Motion - Smooth back-and-forth motion using sine wave
+     */
+    static createOscillatingMotion() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Initialize properties
+        const timeNameNode = builder.createNode('string', 100, 100, { value: 'oscillationTime' });
+        const timeValueNode = builder.createNode('number', 100, 250, { value: '0' });
+        const timePropNode = builder.createNode('setProperty', 350, 150, {});
+
+        const speedNameNode = builder.createNode('string', 600, 100, { value: 'oscillationSpeed' });
+        const speedValueNode = builder.createNode('number', 600, 250, { value: '2' });
+        const speedPropNode = builder.createNode('setProperty', 850, 150, { 
+            exposeProperty: true, 
+            groupName: 'Motion' 
+        });
+
+        const amplitudeNameNode = builder.createNode('string', 1100, 100, { value: 'amplitude' });
+        const amplitudeValueNode = builder.createNode('number', 1100, 250, { value: '100' });
+        const amplitudePropNode = builder.createNode('setProperty', 1350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Motion' 
+        });
+
+        const startXNameNode = builder.createNode('string', 1600, 100, { value: 'startX' });
+        const startXValueNode = builder.createNode('number', 1600, 250, { value: '400' });
+        const startXPropNode = builder.createNode('setProperty', 1850, 150, { 
+            exposeProperty: true, 
+            groupName: 'Motion' 
+        });
+
+        const startYNameNode = builder.createNode('string', 2100, 100, { value: 'startY' });
+        const startYValueNode = builder.createNode('number', 2100, 250, { value: '300' });
+        const startYPropNode = builder.createNode('setProperty', 2350, 150, { 
+            exposeProperty: true, 
+            groupName: 'Motion' 
+        });
+
+        // Loop event
+        const loopNode = builder.createNode('loop', 100, 450, {});
+
+        // Get oscillation time
+        const getTimeNameNode = builder.createNode('string', 350, 500, { value: 'oscillationTime' });
+        const getTimeNode = builder.createNode('getProperty', 600, 500, {});
+
+        // Get delta time
+        const getDeltaNode = builder.createNode('getDeltaTime', 850, 500, {});
+
+        // Get speed
+        const getSpeedNameNode = builder.createNode('string', 1100, 450, { value: 'oscillationSpeed' });
+        const getSpeedNode = builder.createNode('getProperty', 1350, 450, {});
+
+        // Multiply delta by speed
+        const multDeltaNode = builder.createNode('multiply', 1600, 500, {});
+
+        // Add to time
+        const addTimeNode = builder.createNode('add', 1850, 550, {});
+
+        // Set new time
+        const setTimeNameNode = builder.createNode('string', 2100, 500, { value: 'oscillationTime' });
+        const setTimeNode = builder.createNode('setProperty', 2350, 550, {});
+
+        // Calculate sine wave
+        const sinNode = builder.createNode('sin', 2600, 550, {});
+
+        // Get amplitude
+        const getAmpNameNode = builder.createNode('string', 2850, 500, { value: 'amplitude' });
+        const getAmpNode = builder.createNode('getProperty', 3100, 500, {});
+
+        // Multiply sine by amplitude
+        const multSineNode = builder.createNode('multiply', 3350, 550, {});
+
+        // Get start position
+        const getStartXNameNode = builder.createNode('string', 3600, 500, { value: 'startX' });
+        const getStartXNode = builder.createNode('getProperty', 3850, 500, {});
+        const getStartYNameNode = builder.createNode('string', 3600, 650, { value: 'startY' });
+        const getStartYNode = builder.createNode('getProperty', 3850, 650, {});
+
+        // Add offset to start X
+        const addXNode = builder.createNode('add', 4100, 550, {});
+
+        // Set position
+        const setPosNode = builder.createNode('setPosition', 4350, 600, {});
+
+        nodes.push(
+            timeNameNode, timeValueNode, timePropNode,
+            speedNameNode, speedValueNode, speedPropNode,
+            amplitudeNameNode, amplitudeValueNode, amplitudePropNode,
+            startXNameNode, startXValueNode, startXPropNode,
+            startYNameNode, startYValueNode, startYPropNode,
+            loopNode,
+            getTimeNameNode, getTimeNode,
+            getDeltaNode,
+            getSpeedNameNode, getSpeedNode,
+            multDeltaNode, addTimeNode,
+            setTimeNameNode, setTimeNode,
+            sinNode,
+            getAmpNameNode, getAmpNode,
+            multSineNode,
+            getStartXNameNode, getStartXNode,
+            getStartYNameNode, getStartYNode,
+            addXNode,
+            setPosNode
+        );
+
+        // Property initialization
+        connections.push(
+            { from: timeNameNode.id, fromPort: 0, to: timePropNode.id, toPort: 1 },
+            { from: timeValueNode.id, fromPort: 0, to: timePropNode.id, toPort: 2 },
+            { from: timePropNode.id, fromPort: 0, to: speedPropNode.id, toPort: 0 },
+            { from: speedNameNode.id, fromPort: 0, to: speedPropNode.id, toPort: 1 },
+            { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 },
+            { from: speedPropNode.id, fromPort: 0, to: amplitudePropNode.id, toPort: 0 },
+            { from: amplitudeNameNode.id, fromPort: 0, to: amplitudePropNode.id, toPort: 1 },
+            { from: amplitudeValueNode.id, fromPort: 0, to: amplitudePropNode.id, toPort: 2 },
+            { from: amplitudePropNode.id, fromPort: 0, to: startXPropNode.id, toPort: 0 },
+            { from: startXNameNode.id, fromPort: 0, to: startXPropNode.id, toPort: 1 },
+            { from: startXValueNode.id, fromPort: 0, to: startXPropNode.id, toPort: 2 },
+            { from: startXPropNode.id, fromPort: 0, to: startYPropNode.id, toPort: 0 },
+            { from: startYNameNode.id, fromPort: 0, to: startYPropNode.id, toPort: 1 },
+            { from: startYValueNode.id, fromPort: 0, to: startYPropNode.id, toPort: 2 }
+        );
+
+        // Loop flow
+        connections.push(
+            { from: loopNode.id, fromPort: 0, to: setTimeNode.id, toPort: 0 },
+            { from: setTimeNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 }
+        );
+
+        // Update time
+        connections.push(
+            { from: getTimeNameNode.id, fromPort: 0, to: getTimeNode.id, toPort: 0 },
+            { from: getSpeedNameNode.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 },
+            { from: getDeltaNode.id, fromPort: 0, to: multDeltaNode.id, toPort: 0 },
+            { from: getSpeedNode.id, fromPort: 0, to: multDeltaNode.id, toPort: 1 },
+            { from: getTimeNode.id, fromPort: 0, to: addTimeNode.id, toPort: 0 },
+            { from: multDeltaNode.id, fromPort: 0, to: addTimeNode.id, toPort: 1 },
+            { from: setTimeNameNode.id, fromPort: 0, to: setTimeNode.id, toPort: 1 },
+            { from: addTimeNode.id, fromPort: 0, to: setTimeNode.id, toPort: 2 }
+        );
+
+        // Calculate position
+        connections.push(
+            { from: addTimeNode.id, fromPort: 0, to: sinNode.id, toPort: 0 },
+            { from: getAmpNameNode.id, fromPort: 0, to: getAmpNode.id, toPort: 0 },
+            { from: sinNode.id, fromPort: 0, to: multSineNode.id, toPort: 0 },
+            { from: getAmpNode.id, fromPort: 0, to: multSineNode.id, toPort: 1 },
+            { from: getStartXNameNode.id, fromPort: 0, to: getStartXNode.id, toPort: 0 },
+            { from: getStartYNameNode.id, fromPort: 0, to: getStartYNode.id, toPort: 0 },
+            { from: getStartXNode.id, fromPort: 0, to: addXNode.id, toPort: 0 },
+            { from: multSineNode.id, fromPort: 0, to: addXNode.id, toPort: 1 },
+            { from: addXNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 },
+            { from: getStartYNode.id, fromPort: 0, to: setPosNode.id, toPort: 2 }
+        );
+
+        return {
+            moduleName: 'OscillatingMotion',
+            moduleNamespace: 'Animation',
+            moduleDescription: 'Smooth back-and-forth horizontal motion using sine wave',
+            moduleIcon: 'fas fa-wave-square',
+            moduleColor: '#9C27B0',
+            allowMultiple: true,
+            drawInEditor: false,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
      * Rectangle Drawer - Demonstrates basic drawing with exposed properties
      */
     static createRectangleDrawer() {
@@ -150,7 +1041,7 @@ class VMBExampleModules {
         const connections = [];
 
         // Start event to initialize properties
-        const startNode = builder.createNode('start', 100, 100, {});
+        //const startNode = builder.createNode('start', 100, 100, {});
 
         // Properties Setup - Row 1: X property
         const xNameNode = builder.createNode('string', 350, 50, { value: 'x' });
@@ -214,7 +1105,7 @@ class VMBExampleModules {
 
         // Add all nodes
         nodes.push(
-            startNode,
+            //startNode,
             xNameNode, xValueNode, xPropNode,
             yNameNode, yValueNode, yPropNode,
             widthNameNode, widthValueNode, widthPropNode,
@@ -228,7 +1119,7 @@ class VMBExampleModules {
 
         // Flow connections - start -> properties chain
         connections.push(
-            { from: startNode.id, fromPort: 0, to: xPropNode.id, toPort: 0 },
+            //{ from: startNode.id, fromPort: 0, to: xPropNode.id, toPort: 0 },
             { from: xPropNode.id, fromPort: 0, to: yPropNode.id, toPort: 0 },
             { from: yPropNode.id, fromPort: 0, to: widthPropNode.id, toPort: 0 },
             { from: widthPropNode.id, fromPort: 0, to: heightPropNode.id, toPort: 0 },
@@ -292,110 +1183,134 @@ class VMBExampleModules {
         const connections = [];
 
         // Start event
-        const startNode = builder.createNode('start', 100, 100, {});
+        //const startNode = builder.createNode('start', 100, 100, {});
 
-        // Initialize X
-        const xNameNode = builder.createNode('string', 350, 50, { value: 'x' });
-        const xValueNode = builder.createNode('number', 350, 200, { value: '400' });
-        const xPropNode = builder.createNode('setProperty', 600, 100, {});
+        // Initialize velocityY (exposed property)
+        const vyNameNode = builder.createNode('string', 350, 50, { value: 'velocityY' });
+        const vyValueNode = builder.createNode('number', 350, 200, { value: '0' });
+        const vyPropNode = builder.createNode('setProperty', 600, 100, { 
+            exposeProperty: true, 
+            groupName: 'Physics' 
+        });
 
-        // Initialize Y
-        const yNameNode = builder.createNode('string', 850, 50, { value: 'y' });
-        const yValueNode = builder.createNode('number', 850, 200, { value: '100' });
-        const yPropNode = builder.createNode('setProperty', 1100, 100, {});
+        // Initialize gravity (exposed property)
+        const gravityNameNode = builder.createNode('string', 850, 50, { value: 'gravity' });
+        const gravityValueNode = builder.createNode('number', 850, 200, { value: '0.5' });
+        const gravityPropNode = builder.createNode('setProperty', 1100, 100, { 
+            exposeProperty: true, 
+            groupName: 'Physics' 
+        });
 
-        // Initialize velocityY
-        const vyNameNode = builder.createNode('string', 1350, 50, { value: 'velocityY' });
-        const vyValueNode = builder.createNode('number', 1350, 200, { value: '0' });
-        const vyPropNode = builder.createNode('setProperty', 1600, 100, {});
+        // Initialize radius (exposed property) for drawing
+        const radiusNameNode = builder.createNode('string', 1350, 50, { value: 'radius' });
+        const radiusValueNode = builder.createNode('number', 1350, 200, { value: '20' });
+        const radiusPropNode = builder.createNode('setProperty', 1600, 100, { 
+            exposeProperty: true, 
+            groupName: 'Display' 
+        });
+
+        // Initialize color (exposed property)
+        const colorNameNode = builder.createNode('string', 1850, 50, { value: 'ballColor' });
+        const colorValueNode = builder.createNode('color', 1850, 200, { value: '#2196F3' });
+        const colorPropNode = builder.createNode('setProperty', 2100, 100, { 
+            exposeProperty: true, 
+            groupName: 'Display' 
+        });
 
         // Loop event
         const loopNode = builder.createNode('loop', 100, 400, {});
         
-        // Update Y position - get current Y and velocityY
-        const getYNameNode = builder.createNode('string', 350, 450, { value: 'y' });
-        const getVYNameNode = builder.createNode('string', 350, 600, { value: 'velocityY' });
-        const getYNode = builder.createNode('getProperty', 600, 450, {});
-        const getVYNode = builder.createNode('getProperty', 600, 600, {});
+        // Get current position
+        const getPosNode = builder.createNode('getPosition', 350, 450, {});
         
-        // Add them together
-        const addYNode = builder.createNode('add', 850, 500, {});
+        // Get velocityY property
+        const getVYNameNode = builder.createNode('string', 600, 400, { value: 'velocityY' });
+        const getVYNode = builder.createNode('getProperty', 850, 400, {});
         
-        // Set new Y
-        const setYNameNode = builder.createNode('string', 1100, 450, { value: 'y' });
-        const setYNode = builder.createNode('setProperty', 1350, 500, {});
+        // Add velocityY to Y position
+        const addYNode = builder.createNode('add', 1100, 500, {});
+        
+        // Set new position with updated Y
+        const setPosNode = builder.createNode('setPosition', 1350, 450, {});
 
-        // Apply gravity - get velocityY, add gravity, set velocityY
+        // Apply gravity - get velocityY and gravity, add them
         const getVY2NameNode = builder.createNode('string', 350, 750, { value: 'velocityY' });
+        const getGravityNameNode = builder.createNode('string', 350, 900, { value: 'gravity' });
         const getVYNode2 = builder.createNode('getProperty', 600, 750, {});
-        const gravityNode = builder.createNode('number', 850, 750, { value: '0.5' });
-        const addGravityNode = builder.createNode('add', 1100, 750, {});
-        const setVYNameNode = builder.createNode('string', 1350, 700, { value: 'velocityY' });
-        const setVYNode = builder.createNode('setProperty', 1600, 750, {});
+        const getGravityNode = builder.createNode('getProperty', 600, 900, {});
+        const addGravityNode = builder.createNode('add', 850, 800, {});
+        const setVYNameNode = builder.createNode('string', 1100, 750, { value: 'velocityY' });
+        const setVYNode = builder.createNode('setProperty', 1350, 800, {});
 
         // Draw event
         const drawNode = builder.createNode('draw', 100, 1100, {});
         
-        // Get draw properties
-        const getXDrawNameNode = builder.createNode('string', 350, 1150, { value: 'x' });
-        const getYDrawNameNode = builder.createNode('string', 350, 1300, { value: 'y' });
-        const getDrawXNode = builder.createNode('getProperty', 600, 1150, {});
-        const getDrawYNode = builder.createNode('getProperty', 600, 1300, {});
-        const sizeNode = builder.createNode('number', 850, 1200, { value: '20' });
-        const drawColorNode = builder.createNode('color', 850, 1350, { value: '#2196F3' });
+        // Get radius and color properties for drawing
+        const getRadiusNameNode = builder.createNode('string', 350, 1150, { value: 'radius' });
+        const getColorNameNode = builder.createNode('string', 350, 1300, { value: 'ballColor' });
+        const getRadiusNode = builder.createNode('getProperty', 600, 1150, {});
+        const getColorNode = builder.createNode('getProperty', 600, 1300, {});
+        
+        // Draw at 0, 0 since draw event draws to game object position
+        const xNode = builder.createNode('number', 850, 1150, { value: '0' });
+        const yNode = builder.createNode('number', 850, 1300, { value: '0' });
         const fillCircleNode = builder.createNode('fillCircle', 1100, 1250, {});
 
         nodes.push(
-            startNode, 
-            xNameNode, xValueNode, xPropNode,
-            yNameNode, yValueNode, yPropNode,
+            //startNode, 
             vyNameNode, vyValueNode, vyPropNode,
+            gravityNameNode, gravityValueNode, gravityPropNode,
+            radiusNameNode, radiusValueNode, radiusPropNode,
+            colorNameNode, colorValueNode, colorPropNode,
             loopNode, 
-            getYNameNode, getVYNameNode, getYNode, getVYNode, addYNode, setYNameNode, setYNode,
-            getVY2NameNode, getVYNode2, gravityNode, addGravityNode, setVYNameNode, setVYNode,
+            getPosNode, getVYNameNode, getVYNode, addYNode, setPosNode,
+            getVY2NameNode, getGravityNameNode, getVYNode2, getGravityNode, addGravityNode, setVYNameNode, setVYNode,
             drawNode, 
-            getXDrawNameNode, getYDrawNameNode, getDrawXNode, getDrawYNode, sizeNode, drawColorNode, fillCircleNode
+            getRadiusNameNode, getColorNameNode, getRadiusNode, getColorNode, xNode, yNode, fillCircleNode
         );
 
         // Start flow connections
         connections.push(
-            { from: startNode.id, fromPort: 0, to: xPropNode.id, toPort: 0 },
-            { from: xPropNode.id, fromPort: 0, to: yPropNode.id, toPort: 0 },
-            { from: yPropNode.id, fromPort: 0, to: vyPropNode.id, toPort: 0 }
+           // { from: startNode.id, fromPort: 0, to: vyPropNode.id, toPort: 0 },
+            { from: vyPropNode.id, fromPort: 0, to: gravityPropNode.id, toPort: 0 },
+            { from: gravityPropNode.id, fromPort: 0, to: radiusPropNode.id, toPort: 0 },
+            { from: radiusPropNode.id, fromPort: 0, to: colorPropNode.id, toPort: 0 }
         );
 
-        // Start data connections
+        // Start data connections for exposed properties
         connections.push(
-            { from: xNameNode.id, fromPort: 0, to: xPropNode.id, toPort: 1 },
-            { from: xValueNode.id, fromPort: 0, to: xPropNode.id, toPort: 2 },
-            { from: yNameNode.id, fromPort: 0, to: yPropNode.id, toPort: 1 },
-            { from: yValueNode.id, fromPort: 0, to: yPropNode.id, toPort: 2 },
             { from: vyNameNode.id, fromPort: 0, to: vyPropNode.id, toPort: 1 },
-            { from: vyValueNode.id, fromPort: 0, to: vyPropNode.id, toPort: 2 }
+            { from: vyValueNode.id, fromPort: 0, to: vyPropNode.id, toPort: 2 },
+            { from: gravityNameNode.id, fromPort: 0, to: gravityPropNode.id, toPort: 1 },
+            { from: gravityValueNode.id, fromPort: 0, to: gravityPropNode.id, toPort: 2 },
+            { from: radiusNameNode.id, fromPort: 0, to: radiusPropNode.id, toPort: 1 },
+            { from: radiusValueNode.id, fromPort: 0, to: radiusPropNode.id, toPort: 2 },
+            { from: colorNameNode.id, fromPort: 0, to: colorPropNode.id, toPort: 1 },
+            { from: colorValueNode.id, fromPort: 0, to: colorPropNode.id, toPort: 2 }
         );
 
         // Loop flow connections
         connections.push(
-            { from: loopNode.id, fromPort: 0, to: setYNode.id, toPort: 0 },
-            { from: setYNode.id, fromPort: 0, to: setVYNode.id, toPort: 0 }
+            { from: loopNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 },
+            { from: setPosNode.id, fromPort: 0, to: setVYNode.id, toPort: 0 }
         );
 
-        // Loop data connections - update Y
-        // add inputs: ['a', 'b'], outputs: ['result']
+        // Loop data connections - update Y position
+        // getPosition outputs: ['x', 'y'], setPosition inputs: ['flow', 'x', 'y']
         connections.push(
-            { from: getYNameNode.id, fromPort: 0, to: getYNode.id, toPort: 0 },
+            { from: getPosNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 }, // x stays same
+            { from: getPosNode.id, fromPort: 1, to: addYNode.id, toPort: 0 }, // current y to add
             { from: getVYNameNode.id, fromPort: 0, to: getVYNode.id, toPort: 0 },
-            { from: getYNode.id, fromPort: 0, to: addYNode.id, toPort: 0 }, // a
-            { from: getVYNode.id, fromPort: 0, to: addYNode.id, toPort: 1 }, // b
-            { from: setYNameNode.id, fromPort: 0, to: setYNode.id, toPort: 1 },
-            { from: addYNode.id, fromPort: 0, to: setYNode.id, toPort: 2 }
+            { from: getVYNode.id, fromPort: 0, to: addYNode.id, toPort: 1 }, // velocityY to add
+            { from: addYNode.id, fromPort: 0, to: setPosNode.id, toPort: 2 } // new y to setPosition
         );
 
-        // Loop data connections - apply gravity
+        // Loop data connections - apply gravity to velocity
         connections.push(
             { from: getVY2NameNode.id, fromPort: 0, to: getVYNode2.id, toPort: 0 },
-            { from: getVYNode2.id, fromPort: 0, to: addGravityNode.id, toPort: 0 }, // a
-            { from: gravityNode.id, fromPort: 0, to: addGravityNode.id, toPort: 1 }, // b
+            { from: getGravityNameNode.id, fromPort: 0, to: getGravityNode.id, toPort: 0 },
+            { from: getVYNode2.id, fromPort: 0, to: addGravityNode.id, toPort: 0 }, // current velocity
+            { from: getGravityNode.id, fromPort: 0, to: addGravityNode.id, toPort: 1 }, // gravity
             { from: setVYNameNode.id, fromPort: 0, to: setVYNode.id, toPort: 1 },
             { from: addGravityNode.id, fromPort: 0, to: setVYNode.id, toPort: 2 }
         );
@@ -405,18 +1320,18 @@ class VMBExampleModules {
         connections.push(
             { from: drawNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 0 }, // flow
             { from: drawNode.id, fromPort: 1, to: fillCircleNode.id, toPort: 1 }, // ctx
-            { from: getXDrawNameNode.id, fromPort: 0, to: getDrawXNode.id, toPort: 0 },
-            { from: getYDrawNameNode.id, fromPort: 0, to: getDrawYNode.id, toPort: 0 },
-            { from: getDrawXNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 2 }, // x
-            { from: getDrawYNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 3 }, // y
-            { from: sizeNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 4 }, // radius
-            { from: drawColorNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 5 } // color
+            { from: xNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 2 }, // x = 0
+            { from: yNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 3 }, // y = 0
+            { from: getRadiusNameNode.id, fromPort: 0, to: getRadiusNode.id, toPort: 0 },
+            { from: getRadiusNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 4 }, // radius
+            { from: getColorNameNode.id, fromPort: 0, to: getColorNode.id, toPort: 0 },
+            { from: getColorNode.id, fromPort: 0, to: fillCircleNode.id, toPort: 5 } // color
         );
 
         return {
-            moduleName: 'BasicPhysics',
+            moduleName: 'BasicPhysicsNodes',
             moduleNamespace: 'Physics',
-            moduleDescription: 'A simple physics object with gravity',
+            moduleDescription: 'A simple physics object with gravity using GameObject position',
             moduleIcon: 'fas fa-atom',
             moduleColor: '#9C27B0',
             allowMultiple: true,
@@ -434,7 +1349,7 @@ class VMBExampleModules {
         const nodes = [];
         const connections = [];
 
-        const startNode = builder.createNode('start', 100, 100, {});
+        //const startNode = builder.createNode('start', 100, 100, {});
         
         // Initialize rotation
         const rotNameNode = builder.createNode('string', 350, 50, { value: 'rotation' });
@@ -470,7 +1385,7 @@ class VMBExampleModules {
         const gameObjRotNode = builder.createNode('setAngle', 2100, 500, {});
 
         nodes.push(
-            startNode, 
+            //startNode, 
             rotNameNode, rotValueNode, rotPropNode,
             speedNameNode, speedValueNode, speedPropNode,
             loopNode, 
@@ -481,7 +1396,7 @@ class VMBExampleModules {
 
         // Start flow
         connections.push(
-            { from: startNode.id, fromPort: 0, to: rotPropNode.id, toPort: 0 },
+            //{ from: startNode.id, fromPort: 0, to: rotPropNode.id, toPort: 0 },
             { from: rotPropNode.id, fromPort: 0, to: speedPropNode.id, toPort: 0 }
         );
 
@@ -532,7 +1447,7 @@ class VMBExampleModules {
         const nodes = [];
         const connections = [];
 
-        const startNode = builder.createNode('start', 100, 100, {});
+        //const startNode = builder.createNode('start', 100, 100, {});
         
         // Initialize counter
         const counterNameNode = builder.createNode('string', 350, 50, { value: 'clickCount' });
@@ -555,7 +1470,7 @@ class VMBExampleModules {
         const drawTextNode = builder.createNode('drawText', 1350, 500, {});
 
         nodes.push(
-            startNode, 
+            //startNode, 
             counterNameNode, counterValueNode, counterPropNode,
             drawNode, 
             countPropNameNode, getCountNode, 
@@ -563,9 +1478,9 @@ class VMBExampleModules {
         );
 
         // Start flow
-        connections.push(
-            { from: startNode.id, fromPort: 0, to: counterPropNode.id, toPort: 0 }
-        );
+        //connections.push(
+            //{ from: startNode.id, fromPort: 0, to: counterPropNode.id, toPort: 0 }
+        //);
 
         // Start data
         connections.push(
@@ -606,7 +1521,7 @@ class VMBExampleModules {
         const nodes = [];
         const connections = [];
 
-        const startNode = builder.createNode('start', 100, 100, {});
+        //const startNode = builder.createNode('start', 100, 100, {});
         
         // Initialize hue
         const hueNameNode = builder.createNode('string', 350, 50, { value: 'hue' });
@@ -650,7 +1565,7 @@ class VMBExampleModules {
         const fillCircleNode = builder.createNode('fillCircle', 850, 1000, {});
 
         nodes.push(
-            startNode, 
+            //startNode, 
             hueNameNode, hueValueNode, huePropNode,
             speedNameNode, speedValueNode, speedPropNode,
             loopNode, 
@@ -662,7 +1577,7 @@ class VMBExampleModules {
 
         // Start flow
         connections.push(
-            { from: startNode.id, fromPort: 0, to: huePropNode.id, toPort: 0 },
+            //{ from: startNode.id, fromPort: 0, to: huePropNode.id, toPort: 0 },
             { from: huePropNode.id, fromPort: 0, to: speedPropNode.id, toPort: 0 }
         );
 

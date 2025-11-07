@@ -114,10 +114,7 @@ user will be able to manipulate the spline in the editor, updating its values.
     Based on current implementation, I'd prioritize:
 
     Multi-select & Copy/Paste (essential for productivity)
-    Undo/Redo (currently missing, very important)
-    Minimap (helps with navigation in large graphs)
-    Command Palette (faster node addition)
     Connection type validation (prevent errors)
-    Comments/Annotations (document complex logic)
+    Comments/Annotations (document complex logic with a button on bottom right of node, hover over node shows the hint from a speech bubble fron the bottom right of the node, , looks nice and fitting to the theme)
     Live preview/debugging (test without exporting)
     Auto-alignment tools (cleaner graphs)
