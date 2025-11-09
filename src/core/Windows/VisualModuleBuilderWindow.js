@@ -51,6 +51,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.isPanning = false;
         this.lastMousePos = { x: 0, y: 0 };
 
+        this.isBoxSelecting = false;
+        this.boxSelectStart = { x: 0, y: 0 };
+        this.boxSelectEnd = { x: 0, y: 0 };
+
         // Grid settings
         this.gridSize = 20;
         this.snapToGrid = true;
@@ -1664,8 +1668,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // Handle canvas resize
         const resizeCanvas = () => {
             const rect = this.canvas.getBoundingClientRect();
+            // NEW: Store old dimensions for scaling
+            const oldWidth = this.canvas.width || rect.width;
+            const oldHeight = this.canvas.height || rect.height;
+            
+            // Set canvas internal resolution to match display size
             this.canvas.width = rect.width;
             this.canvas.height = rect.height;
+            
+            // Re-render to avoid stretched canvas
             this.render();
         };
 
@@ -1676,6 +1687,18 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Start render loop
         this.renderLoop();
+    }
+
+    /**
+     * Called when the window is resized
+     * @param {number} width - New width
+     * @param {number} height - New height
+     */
+    onResize(width, height) {
+        // Trigger canvas resize when window is resized
+        if (this.canvas && this.boundHandlers.resize) {
+            this.boundHandlers.resize();
+        }
     }
 
     /**
@@ -1887,8 +1910,23 @@ class VisualModuleBuilderWindow extends EditorWindow {
             return;
         }
 
+        // Check for box selection BEFORE panning
+        if ((e.ctrlKey || e.metaKey) && e.button === 0) {
+            // Start box selection instead of panning
+            this.isBoxSelecting = true;
+            this.boxSelectStart = { x, y };
+            this.boxSelectEnd = { x, y };
+            
+            // Clear selection if not holding shift as well
+            if (!e.shiftKey) {
+                this.selectedNode = null;
+                this.selectedNodes.clear();
+            }
+            return;
+        }
+
         // Start panning with middle mouse, right-click, OR holding shift+left-click, OR just left-click on empty space
-        if (e.button === 1 || e.button === 2 || e.shiftKey || e.button === 0) {
+        if (e.button === 1 || e.button === 2 || (e.shiftKey && e.button === 0) || e.button === 0) {
             e.preventDefault(); // Prevent default behavior
             this.isPanning = true;
             this.canvas.style.cursor = 'grabbing';
@@ -1957,6 +1995,35 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 );
             }
 
+            return;
+        }
+
+        // ========== NEW: HANDLE BOX SELECTION ==========
+        if (this.isBoxSelecting) {
+            this.boxSelectEnd = { x, y };
+            
+            // Select all nodes within the rectangle
+            const minX = Math.min(this.boxSelectStart.x, this.boxSelectEnd.x);
+            const maxX = Math.max(this.boxSelectStart.x, this.boxSelectEnd.x);
+            const minY = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
+            const maxY = Math.max(this.boxSelectStart.y, this.boxSelectEnd.y);
+            
+            // If shift is held, add to selection, otherwise replace
+            if (!e.shiftKey) {
+                this.selectedNodes.clear();
+            }
+            
+            this.nodes.forEach(node => {
+                // Check if node center is within selection box
+                const nodeCenterX = node.x + node.width / 2;
+                const nodeCenterY = node.y + node.height / 2;
+                
+                if (nodeCenterX >= minX && nodeCenterX <= maxX &&
+                    nodeCenterY >= minY && nodeCenterY <= maxY) {
+                    this.selectedNodes.add(node);
+                }
+            });
+            
             return;
         }
 
@@ -2106,6 +2173,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.draggedNodes.clear();
         this.draggedGroupPanel = null;
         this.isPanning = false;
+        this.isBoxSelecting = false;
         this.canvas.style.cursor = 'grab';
     }
 
@@ -3316,6 +3384,24 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 this.drawNode(ctx, node);
             }
         });
+
+        // ========== NEW: DRAW BOX SELECTION RECTANGLE ==========
+        if (this.isBoxSelecting) {
+            const minX = Math.min(this.boxSelectStart.x, this.boxSelectEnd.x);
+            const maxX = Math.max(this.boxSelectStart.x, this.boxSelectEnd.x);
+            const minY = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
+            const maxY = Math.max(this.boxSelectStart.y, this.boxSelectEnd.y);
+            
+            ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
+            ctx.fillStyle = 'rgba(100, 150, 255, 0.1)';
+            ctx.lineWidth = 2 / this.zoom; // Adjust line width based on zoom
+            ctx.setLineDash([5 / this.zoom, 5 / this.zoom]); // Dashed line
+            
+            ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
+            ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+            
+            ctx.setLineDash([]); // Reset line dash
+        }
 
         ctx.restore();
 
@@ -8149,6 +8235,17 @@ class ${className} extends Module {
         // Stop test module
         this.stopTestModule();
 
+        // NEW: Remove event listeners
+        if (this.boundHandlers.resize) {
+            window.removeEventListener('resize', this.boundHandlers.resize);
+        }
+        if (this.boundHandlers.keydown) {
+            document.removeEventListener('keydown', this.boundHandlers.keydown);
+        }
+        if (this.boundHandlers.mouseup) {
+            document.removeEventListener('mouseup', this.boundHandlers.mouseup);
+        }
+
         // Clear references
         this.nodes = [];
         this.connections = [];
@@ -8166,8 +8263,8 @@ class ${className} extends Module {
     }
 
     /**
- * ========== NEW: UNDO/REDO SYSTEM ==========
- */
+     * ========== NEW: UNDO/REDO SYSTEM ==========
+     */
 
     /**
      * Save current state to undo stack

@@ -17,6 +17,39 @@
  *     this.setupUI();
  *   }
  * }
+ * 
+    // Standalone window
+    const vmb = new MyEditorWindow();
+    vmb.show();
+
+    // Docked window
+    const vmb = new MyEditorWindow();
+    vmb.options.docked = true;
+    vmb.options.container = document.getElementById('editor-container');
+    vmb.show();
+
+    // Docked in iframe
+    // First create an iframe in your page
+    const iframe = document.createElement('iframe');
+    iframe.style.width = '100%';
+    iframe.style.height = '600px';
+    document.body.appendChild(iframe);
+
+    // Then dock the window in the iframe's document
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+    const container = iframeDoc.createElement('div');
+    container.style.cssText = 'width: 100%; height: 100%;';
+    iframeDoc.body.appendChild(container);
+
+    const vmb = new MyEditorWindow();
+    vmb.options.docked = true;
+    vmb.options.container = container;
+    vmb.show();
+
+    // Easy integration with selector string
+    const vmb = new MyEditorWindow();
+    vmb.options.container = '#my-editor-container'; // Or any CSS selector
+    vmb.show();
  */
 class EditorWindow {
     // Static z-index counter for layering windows
@@ -33,6 +66,8 @@ class EditorWindow {
      * @param {boolean} options.modal - Whether window is modal (default: false)
      * @param {boolean} options.closable - Whether window can be closed (default: true)
      * @param {string} options.className - Additional CSS class for styling
+     * @param {HTMLElement|string} options.container - Container element to dock into (null for standalone)
+     * @param {boolean} options.docked - Whether to dock the window in a container (default: false)
      */
     constructor(title = "Editor Window", options = {}) {
         this.title = title;
@@ -40,11 +75,23 @@ class EditorWindow {
             width: 600,
             height: 400,
             resizable: true,
-            modal: false, // Changed default to false for better UX
+            modal: false,
             closable: true,
             className: '',
+            container: null, // Custom container for docking
+            docked: false,   // Whether to dock in container
             ...options
         };
+
+        // Handle container as selector string
+        if (typeof this.options.container === 'string') {
+            this.options.container = document.querySelector(this.options.container);
+        }
+
+        // Auto-detect docked mode if container provided
+        if (this.options.container && !('docked' in options)) {
+            this.options.docked = true;
+        }
 
         // Error handling
         this.hasError = false;
@@ -53,6 +100,7 @@ class EditorWindow {
         // State management
         this.isOpen = false;
         this.isMinimized = false;
+        this.isDocked = this.options.docked;
         this.properties = new Map(); // Exposed properties
         this.components = new Map(); // UI components
         this.eventHandlers = new Map(); // Event handlers
@@ -63,6 +111,7 @@ class EditorWindow {
         this.header = null;
         this.content = null;
         this.footer = null;
+        this.containerElement = this.options.container; // Store container reference
 
         // Position and size
         this.position = { x: 0, y: 0 };
@@ -81,8 +130,8 @@ class EditorWindow {
      */
     createWindow() {
         try {
-            // Create overlay if modal
-            if (this.options.modal) {
+            // Create overlay if modal (only for non-docked windows)
+            if (this.options.modal && !this.isDocked) {
                 this.overlay = document.createElement('div');
                 this.overlay.className = 'editor-window-overlay';
                 this.overlay.style.cssText = `
@@ -102,24 +151,42 @@ class EditorWindow {
             // Create main window
             this.window = document.createElement('div');
             this.window.className = `editor-window ${this.options.className}`;
-            this.window.style.cssText = `
-            position: ${this.options.modal ? 'relative' : 'fixed'};
-            width: ${this.size.width}px;
-            height: ${this.size.height}px;
-            background: #2d2d2d;
-            border: 1px solid #555;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            z-index: ${this.zIndex};
-        `;
+            
+            // Different styling for docked vs standalone windows
+            if (this.isDocked) {
+                this.window.style.cssText = `
+                position: relative;
+                width: 100%;
+                height: 100%;
+                background: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            `;
+            } else {
+                this.window.style.cssText = `
+                position: ${this.options.modal ? 'relative' : 'fixed'};
+                width: ${this.size.width}px;
+                height: ${this.size.height}px;
+                background: #2d2d2d;
+                border: 1px solid #555;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                z-index: ${this.zIndex};
+            `;
 
-            if (!this.options.modal) {
-                this.window.style.left = `${this.position.x}px`;
-                this.window.style.top = `${this.position.y}px`;
+                if (!this.options.modal) {
+                    this.window.style.left = `${this.position.x}px`;
+                    this.window.style.top = `${this.position.y}px`;
+                }
             }
 
             // Create header
@@ -151,7 +218,10 @@ class EditorWindow {
             this.window.appendChild(this.content);
             this.window.appendChild(this.footer);
 
-            if (this.options.modal && this.overlay) {
+            // Append to appropriate container
+            if (this.isDocked && this.containerElement) {
+                this.containerElement.appendChild(this.window);
+            } else if (this.options.modal && this.overlay) {
                 this.overlay.appendChild(this.window);
                 document.body.appendChild(this.overlay);
             } else {
@@ -180,7 +250,7 @@ class EditorWindow {
             padding: 12px 16px;
             background: #3d3d3d;
             border-bottom: 1px solid #555;
-            cursor: move;
+            cursor: ${this.isDocked ? 'default' : 'move'};
             user-select: none;
         `;
 
@@ -203,8 +273,8 @@ class EditorWindow {
             gap: 8px;
         `;
 
-            // Minimize button
-            if (!this.options.modal) {
+            // Minimize button (only for non-docked, non-modal windows)
+            if (!this.options.modal && !this.isDocked) {
                 const minimizeBtn = this.createControlButton('−', 'Minimize');
                 minimizeBtn.addEventListener('click', () => this.minimize());
                 controls.appendChild(minimizeBtn);
@@ -220,7 +290,7 @@ class EditorWindow {
             this.header.appendChild(titleElement);
             this.header.appendChild(controls);
         } catch (error) {
-            this.handleError(error, 'Failed to setup event listeners');
+            this.handleError(error, 'Failed to create header');
         }
     }
 
@@ -265,63 +335,67 @@ class EditorWindow {
      */
     setupEventListeners() {
         try {
-            // Window dragging - works for both modal and non-modal
-            let isDragging = false;
-            let dragStart = { x: 0, y: 0 };
+            // Window dragging - only for non-docked windows
+            if (!this.isDocked) {
+                let isDragging = false;
+                let dragStart = { x: 0, y: 0 };
 
-            this.header.addEventListener('mousedown', (e) => {
-                // Don't drag if clicking on buttons
-                if (e.target.tagName === 'BUTTON') return;
+                this.header.addEventListener('mousedown', (e) => {
+                    // Don't drag if clicking on buttons
+                    if (e.target.tagName === 'BUTTON') return;
 
-                isDragging = true;
-                this.bringToFront();
+                    isDragging = true;
+                    this.bringToFront();
 
-                // Get current position
-                const rect = this.window.getBoundingClientRect();
-                dragStart = {
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top
-                };
+                    // Get current position
+                    const rect = this.window.getBoundingClientRect();
+                    dragStart = {
+                        x: e.clientX - rect.left,
+                        y: e.clientY - rect.top
+                    };
 
-                document.body.style.cursor = 'move';
-                e.preventDefault();
-            });
+                    document.body.style.cursor = 'move';
+                    e.preventDefault();
+                });
 
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
 
-                const newX = e.clientX - dragStart.x;
-                const newY = e.clientY - dragStart.y;
+                    const newX = e.clientX - dragStart.x;
+                    const newY = e.clientY - dragStart.y;
 
-                // Keep window within viewport bounds
-                const maxX = window.innerWidth - this.size.width;
-                const maxY = window.innerHeight - this.size.height;
+                    // Keep window within viewport bounds
+                    const maxX = window.innerWidth - this.size.width;
+                    const maxY = window.innerHeight - this.size.height;
 
-                this.position.x = Math.max(0, Math.min(maxX, newX));
-                this.position.y = Math.max(0, Math.min(maxY, newY));
+                    this.position.x = Math.max(0, Math.min(maxX, newX));
+                    this.position.y = Math.max(0, Math.min(maxY, newY));
 
-                if (this.options.modal && this.overlay) {
-                    // For modal windows, position relative to overlay
-                    this.window.style.position = 'fixed';
-                    this.window.style.left = `${this.position.x}px`;
-                    this.window.style.top = `${this.position.y}px`;
-                } else {
-                    this.window.style.left = `${this.position.x}px`;
-                    this.window.style.top = `${this.position.y}px`;
-                }
-            });
+                    if (this.options.modal && this.overlay) {
+                        // For modal windows, position relative to overlay
+                        this.window.style.position = 'fixed';
+                        this.window.style.left = `${this.position.x}px`;
+                        this.window.style.top = `${this.position.y}px`;
+                    } else {
+                        this.window.style.left = `${this.position.x}px`;
+                        this.window.style.top = `${this.position.y}px`;
+                    }
+                });
 
-            document.addEventListener('mouseup', () => {
-                if (isDragging) {
-                    isDragging = false;
-                    document.body.style.cursor = '';
-                }
-            });
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        document.body.style.cursor = '';
+                    }
+                });
+            }
 
-            // Click to bring to front
-            this.window.addEventListener('mousedown', () => {
-                this.bringToFront();
-            });
+            // Click to bring to front (only for non-docked)
+            if (!this.isDocked) {
+                this.window.addEventListener('mousedown', () => {
+                    this.bringToFront();
+                });
+            }
 
             // Window resizing
             if (this.options.resizable) {
@@ -355,6 +429,8 @@ class EditorWindow {
      * Bring this window to the front
      */
     bringToFront() {
+        if (this.isDocked) return; // Docked windows don't need z-index management
+        
         this.zIndex = EditorWindow.zIndexCounter++;
 
         if (this.options.modal && this.overlay) {
@@ -368,6 +444,21 @@ class EditorWindow {
      * @private
      */
     setupResizing() {
+        // Don't add resize handle for docked windows (they resize with container)
+        if (this.isDocked) {
+            // NEW: Add ResizeObserver for docked windows
+            if (typeof ResizeObserver !== 'undefined') {
+                this.resizeObserver = new ResizeObserver(() => {
+                    const rect = this.window.getBoundingClientRect();
+                    this.size.width = rect.width;
+                    this.size.height = rect.height;
+                    this.onResize(rect.width, rect.height);
+                });
+                this.resizeObserver.observe(this.window);
+            }
+            return;
+        }
+
         const resizeHandle = document.createElement('div');
         resizeHandle.className = 'editor-window-resize-handle';
         resizeHandle.style.cssText = `
@@ -512,8 +603,12 @@ class EditorWindow {
     resize(width, height) {
         this.size.width = width;
         this.size.height = height;
-        this.window.style.width = `${width}px`;
-        this.window.style.height = `${height}px`;
+        
+        // Only set pixel dimensions for non-docked windows
+        if (!this.isDocked) {
+            this.window.style.width = `${width}px`;
+            this.window.style.height = `${height}px`;
+        }
 
         this.onResize(width, height);
     }
@@ -522,6 +617,8 @@ class EditorWindow {
      * Center the window in the viewport
      */
     centerWindow() {
+        if (this.isDocked) return; // Docked windows don't need centering
+
         this.position.x = (window.innerWidth - this.size.width) / 2;
         this.position.y = (window.innerHeight - this.size.height) / 2;
 
@@ -541,10 +638,18 @@ class EditorWindow {
     destroy() {
         this.hide();
 
-        if (this.overlay) {
+        // NEW: Clean up ResizeObserver
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
+        }
+
+        if (this.isDocked && this.containerElement && this.window.parentElement === this.containerElement) {
+            this.containerElement.removeChild(this.window);
+        } else if (this.overlay) {
             document.body.removeChild(this.overlay);
-        } else {
-            document.body.removeChild(this.window);
+        } else if (this.window.parentElement) {
+            this.window.parentElement.removeChild(this.window);
         }
 
         this.onDestroy();
