@@ -46,7 +46,7 @@
      * ============================================================================
 */
 class Engine {
-    constructor(canvas, options = { useOffscreenRendering: true }) {
+    constructor(canvas, options = { useOffscreenRendering: true, makeGlobal: true, useWebGL: false }) {
         this.canvas = canvas;
         this.useWebGL = options.useWebGL || false; // New option to enable WebGLCanvas
 
@@ -242,7 +242,9 @@ class Engine {
         //    window.prefabManager = new PrefabManager();
         //}
 
-        window.engine = this; // Global reference for easy access
+        if (options.makeGlobal) {
+            window.engine = this; // Global reference for easy access
+        }
 
         // Initialize MelodiCode if available
         if (window.MelodiCode) {

@@ -24,13 +24,11 @@ class VMBExampleModules {
             'health-system': this.createHealthSystem(),
             'timer-countdown': this.createTimerCountdown(),
             'oscillating-motion': this.createOscillatingMotion(),
+            //'melodicode-audio': this.createMelodiCodeAudio(),
             'empty': this.createEmpty()
         };
     }
 
-    /**
-     * Get example module names for dropdown
-     */
     static getExampleNames() {
         return [
             { value: '', label: 'Select an example...' },
@@ -45,7 +43,8 @@ class VMBExampleModules {
             { value: 'boundary-bounce', label: 'Boundary Bounce' },
             { value: 'health-system', label: 'Health System' },
             { value: 'timer-countdown', label: 'Timer Countdown' },
-            { value: 'oscillating-motion', label: 'Oscillating Motion' }
+            { value: 'oscillating-motion', label: 'Oscillating Motion' },
+            //{ value: 'melodicode-audio', label: 'MelodiCode Audio Example' },
         ];
     }
 
@@ -1632,6 +1631,208 @@ class VMBExampleModules {
     }
 
     /**
+ * MelodiCode Audio - Example showing how to create music with MelodiCode nodes
+ */
+    static createMelodiCodeAudio() {
+        const builder = this.getNodeBuilder();
+        const nodes = [];
+        const connections = [];
+
+        // Set BPM
+        const bpmValueNode = builder.createNode('number', 100, 100, { value: '120' });
+        const setBPMNode = builder.createNode('melodicodeScriptBPM', 350, 100, {});
+
+        // Start main block
+        const mainBlockNameNode = builder.createNode('string', 600, 100, { value: 'main' });
+        const startMainBlockNode = builder.createNode('melodicodeScriptBlockStart', 850, 100, {});
+
+        // Create a melody section
+        // Note 1: C4
+        const note1Node = builder.createNode('melodicodeNoteSelector', 1100, 150, { dropdownValue: 'C4' });
+        const duration1Node = builder.createNode('number', 1100, 300, { value: '0.5' });
+        const addTone1Node = builder.createNode('melodicodeScriptTone', 1350, 200, { dropdownValue: 'sine' });
+
+        // Wait
+        const wait1Node = builder.createNode('number', 1600, 250, { value: '0.25' });
+        const addWait1Node = builder.createNode('melodicodeScriptWait', 1850, 250, {});
+
+        // Note 2: E4
+        const note2Node = builder.createNode('melodicodeNoteSelector', 2100, 300, { dropdownValue: 'E4' });
+        const duration2Node = builder.createNode('number', 2100, 450, { value: '0.5' });
+        const addTone2Node = builder.createNode('melodicodeScriptTone', 2350, 350, { dropdownValue: 'sine' });
+
+        // Wait
+        const wait2Node = builder.createNode('number', 2600, 400, { value: '0.25' });
+        const addWait2Node = builder.createNode('melodicodeScriptWait', 2850, 400, {});
+
+        // Note 3: G4
+        const note3Node = builder.createNode('melodicodeNoteSelector', 3100, 450, { dropdownValue: 'G4' });
+        const duration3Node = builder.createNode('number', 3100, 600, { value: '0.5' });
+        const addTone3Node = builder.createNode('melodicodeScriptTone', 3350, 500, { dropdownValue: 'sine' });
+
+        // Wait
+        const wait3Node = builder.createNode('number', 3600, 550, { value: '0.5' });
+        const addWait3Node = builder.createNode('melodicodeScriptWait', 3850, 550, {});
+
+        // Slide from G4 to C5
+        const slideStartNode = builder.createNode('melodicodeNoteSelector', 4100, 600, { dropdownValue: 'G4' });
+        const slideEndNode = builder.createNode('melodicodeNoteSelector', 4100, 750, { dropdownValue: 'C5' });
+        const slideDurationNode = builder.createNode('number', 4100, 900, { value: '1' });
+        const addSlideNode = builder.createNode('melodicodeScriptSlide', 4350, 700, { dropdownValue: 'sawtooth' });
+
+        // End main block
+        const endMainBlockNode = builder.createNode('melodicodeScriptBlockEnd', 4600, 750, {});
+
+        // Create drums block
+        const drumsBlockNameNode = builder.createNode('string', 100, 1100, { value: 'drums' });
+        const startDrumsBlockNode = builder.createNode('melodicodeScriptBlockStart', 350, 1100, {});
+
+        // Kick drum
+        const kickSampleNode = builder.createNode('string', 600, 1150, { value: 'kick' });
+        const addKickNode = builder.createNode('melodicodeScriptSample', 850, 1150, {});
+
+        // Wait
+        const waitDrum1Node = builder.createNode('number', 1100, 1200, { value: '0.5' });
+        const addWaitDrum1Node = builder.createNode('melodicodeScriptWait', 1350, 1200, {});
+
+        // Snare
+        const snareSampleNode = builder.createNode('string', 1600, 1250, { value: 'snare' });
+        const addSnareNode = builder.createNode('melodicodeScriptSample', 1850, 1250, {});
+
+        // Wait
+        const waitDrum2Node = builder.createNode('number', 2100, 1300, { value: '0.5' });
+        const addWaitDrum2Node = builder.createNode('melodicodeScriptWait', 2350, 1300, {});
+
+        // End drums block
+        const endDrumsBlockNode = builder.createNode('melodicodeScriptBlockEnd', 2600, 1300, {});
+
+        // Play command - play both blocks together and loop drums 4 times
+        const playBlocksNode = builder.createNode('string', 2850, 1350, { value: 'main' });
+        const loopCountNode = builder.createNode('number', 2850, 1500, { value: '4' });
+        const loopBlockNameNode = builder.createNode('string', 2850, 1650, { value: 'drums' });
+        const addLoopNode = builder.createNode('melodicodeScriptLoop', 3100, 1500, {});
+
+        // Final play command
+        const finalPlayBlockNode = builder.createNode('string', 3350, 1550, { value: 'main' });
+        const finalPlayNode = builder.createNode('melodicodeScriptPlay', 3600, 1550, {});
+
+        // Start event to execute the MelodiCode script
+        const startNode = builder.createNode('start', 3850, 1600, {});
+
+        // Play the MelodiCode script
+        const playMelodiCodeNode = builder.createNode('melodicodePlay', 4100, 1600, {});
+
+        nodes.push(
+            bpmValueNode, setBPMNode,
+            mainBlockNameNode, startMainBlockNode,
+            note1Node, duration1Node, addTone1Node,
+            wait1Node, addWait1Node,
+            note2Node, duration2Node, addTone2Node,
+            wait2Node, addWait2Node,
+            note3Node, duration3Node, addTone3Node,
+            wait3Node, addWait3Node,
+            slideStartNode, slideEndNode, slideDurationNode, addSlideNode,
+            endMainBlockNode,
+            drumsBlockNameNode, startDrumsBlockNode,
+            kickSampleNode, addKickNode,
+            waitDrum1Node, addWaitDrum1Node,
+            snareSampleNode, addSnareNode,
+            waitDrum2Node, addWaitDrum2Node,
+            endDrumsBlockNode,
+            playBlocksNode, loopCountNode, loopBlockNameNode, addLoopNode,
+            finalPlayBlockNode, finalPlayNode,
+            startNode, playMelodiCodeNode
+        );
+
+        // Build the MelodiCode script from top to bottom
+        // BPM -> Main Block Start
+        connections.push(
+            { from: bpmValueNode.id, fromPort: 0, to: setBPMNode.id, toPort: 1 },
+            { from: setBPMNode.id, fromPort: 0, to: startMainBlockNode.id, toPort: 0 },
+            { from: mainBlockNameNode.id, fromPort: 0, to: startMainBlockNode.id, toPort: 1 }
+        );
+
+        // Main block melody sequence
+        connections.push(
+            { from: startMainBlockNode.id, fromPort: 0, to: addTone1Node.id, toPort: 0 },
+            { from: note1Node.id, fromPort: 0, to: addTone1Node.id, toPort: 1 },
+            { from: duration1Node.id, fromPort: 0, to: addTone1Node.id, toPort: 2 },
+
+            { from: addTone1Node.id, fromPort: 0, to: addWait1Node.id, toPort: 0 },
+            { from: wait1Node.id, fromPort: 0, to: addWait1Node.id, toPort: 1 },
+
+            { from: addWait1Node.id, fromPort: 0, to: addTone2Node.id, toPort: 0 },
+            { from: note2Node.id, fromPort: 0, to: addTone2Node.id, toPort: 1 },
+            { from: duration2Node.id, fromPort: 0, to: addTone2Node.id, toPort: 2 },
+
+            { from: addTone2Node.id, fromPort: 0, to: addWait2Node.id, toPort: 0 },
+            { from: wait2Node.id, fromPort: 0, to: addWait2Node.id, toPort: 1 },
+
+            { from: addWait2Node.id, fromPort: 0, to: addTone3Node.id, toPort: 0 },
+            { from: note3Node.id, fromPort: 0, to: addTone3Node.id, toPort: 1 },
+            { from: duration3Node.id, fromPort: 0, to: addTone3Node.id, toPort: 2 },
+
+            { from: addTone3Node.id, fromPort: 0, to: addWait3Node.id, toPort: 0 },
+            { from: wait3Node.id, fromPort: 0, to: addWait3Node.id, toPort: 1 },
+
+            { from: addWait3Node.id, fromPort: 0, to: addSlideNode.id, toPort: 0 },
+            { from: slideStartNode.id, fromPort: 0, to: addSlideNode.id, toPort: 1 },
+            { from: slideEndNode.id, fromPort: 0, to: addSlideNode.id, toPort: 2 },
+            { from: slideDurationNode.id, fromPort: 0, to: addSlideNode.id, toPort: 3 },
+
+            { from: addSlideNode.id, fromPort: 0, to: endMainBlockNode.id, toPort: 0 }
+        );
+
+        // Drums block sequence
+        connections.push(
+            { from: endMainBlockNode.id, fromPort: 0, to: startDrumsBlockNode.id, toPort: 0 },
+            { from: drumsBlockNameNode.id, fromPort: 0, to: startDrumsBlockNode.id, toPort: 1 },
+
+            { from: startDrumsBlockNode.id, fromPort: 0, to: addKickNode.id, toPort: 0 },
+            { from: kickSampleNode.id, fromPort: 0, to: addKickNode.id, toPort: 1 },
+
+            { from: addKickNode.id, fromPort: 0, to: addWaitDrum1Node.id, toPort: 0 },
+            { from: waitDrum1Node.id, fromPort: 0, to: addWaitDrum1Node.id, toPort: 1 },
+
+            { from: addWaitDrum1Node.id, fromPort: 0, to: addSnareNode.id, toPort: 0 },
+            { from: snareSampleNode.id, fromPort: 0, to: addSnareNode.id, toPort: 1 },
+
+            { from: addSnareNode.id, fromPort: 0, to: addWaitDrum2Node.id, toPort: 0 },
+            { from: waitDrum2Node.id, fromPort: 0, to: addWaitDrum2Node.id, toPort: 1 },
+
+            { from: addWaitDrum2Node.id, fromPort: 0, to: endDrumsBlockNode.id, toPort: 0 }
+        );
+
+        // Add loop and play commands
+        connections.push(
+            { from: endDrumsBlockNode.id, fromPort: 0, to: addLoopNode.id, toPort: 0 },
+            { from: loopCountNode.id, fromPort: 0, to: addLoopNode.id, toPort: 1 },
+            { from: loopBlockNameNode.id, fromPort: 0, to: addLoopNode.id, toPort: 2 },
+
+            { from: addLoopNode.id, fromPort: 0, to: finalPlayNode.id, toPort: 0 },
+            { from: finalPlayBlockNode.id, fromPort: 0, to: finalPlayNode.id, toPort: 1 }
+        );
+
+        // Execute on start
+        connections.push(
+            { from: startNode.id, fromPort: 0, to: playMelodiCodeNode.id, toPort: 0 },
+            { from: finalPlayNode.id, fromPort: 0, to: playMelodiCodeNode.id, toPort: 1 }
+        );
+
+        return {
+            moduleName: 'MelodiCodeAudio',
+            moduleNamespace: 'Audio',
+            moduleDescription: 'Example showing how to create music using MelodiCode script building nodes with melody, drums, and slides',
+            moduleIcon: 'fas fa-music',
+            moduleColor: '#9B59B6',
+            allowMultiple: true,
+            drawInEditor: false,
+            nodes: nodes,
+            connections: connections
+        };
+    }
+
+    /**
      * Build the node library with all available node types
      */
     static buildNodeLibrary() {
@@ -1901,7 +2102,7 @@ class VMBExampleModules {
                     color: '#4a3678',
                     icon: 'fas fa-dice',
                     inputs: [],
-                    outputs: ['value'], 
+                    outputs: ['value'],
                     codeGen: (node, ctx) => 'Math.random()'
                 },
                 {
@@ -1916,7 +2117,7 @@ class VMBExampleModules {
                 {
                     type: 'randomRange',
                     label: 'Random Range',
-                    color: '#603a78',       
+                    color: '#603a78',
                     icon: 'fas fa-dice-d20',
                     inputs: ['min', 'max'],
                     outputs: ['value'],
@@ -1926,7 +2127,7 @@ class VMBExampleModules {
                         const max = ctx.getInputValue(node, 'max') || '1';
                         return `(Math.random() * (${max} - ${min}) + ${min})`;
                     }
-                }
+                },
                 {
                     type: 'randomName',
                     label: 'Random Name',
@@ -2474,6 +2675,7 @@ class VMBExampleModules {
                     inputs: ['flow', 'array'],
                     outputs: ['flow', 'value'],
                     wrapFlowNode: false,
+                    directOutput: true,
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'array')}.pop()`
                 },
                 {
@@ -2615,7 +2817,7 @@ class VMBExampleModules {
                     outputs: ['flow'],
                     wrapFlowNode: false,
                     codeGen: (node, ctx) => `this.gameObject.position.x = ${ctx.getInputValue(node, 'x')};
-${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
+    ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                 },
                 {
                     type: 'getScale',
@@ -2762,8 +2964,11 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#5c0a28',
                     icon: 'fas fa-square',
                     inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => `ctx.fillStyle = 
+                    ${ctx.getInputValue(node, 'color') || "'#000000'"};
+                    \n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x') || 0}, ${ctx.getInputValue(node, 'y') || 0}, 
+                    ${ctx.getInputValue(node, 'w') || 32}, ${ctx.getInputValue(node, 'h') || 32});`
                 },
                 {
                     type: 'strokeRect',
@@ -2771,8 +2976,10 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#63162f',
                     icon: 'fas fa-square-full',
                     inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'w')}, ${ctx.getInputValue(node, 'h')});`
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color') || "'#000000'"};
+                    \n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x') || 0}, ${ctx.getInputValue(node, 'y') || 0}, 
+                    ${ctx.getInputValue(node, 'w') || 32}, ${ctx.getInputValue(node, 'h') || 32});`
                 },
                 {
                     type: 'fillCircle',
@@ -2780,8 +2987,10 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#6a2236',
                     icon: 'fas fa-circle',
                     inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x')}, ${ctx.getInputValue(node, 'y')}, ${ctx.getInputValue(node, 'radius')}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color') || "'#000000'"};\n
+                    ${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x') || 0}, 
+                    ${ctx.getInputValue(node, 'y') || 0}, ${ctx.getInputValue(node, 'radius') || 16}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
                 },
                 {
                     type: 'drawText',
@@ -2789,17 +2998,17 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#712e3d',
                     icon: 'fas fa-font',
                     inputs: ['flow', 'ctx', 'text', 'x', 'y', 'color', 'fontSize', 'fontFamily', 'fontWeight', 'textAlign', 'textBaseline'],
-                    outputs: [],
+                    outputs: ['flow'],
                     codeGen: (node, ctx) => {
                         const fontSize = ctx.getInputValue(node, 'fontSize') || '16';
                         const fontFamily = ctx.getInputValue(node, 'fontFamily') || "'Arial'";
                         const fontWeight = ctx.getInputValue(node, 'fontWeight') || "'normal'";
                         const textAlign = ctx.getInputValue(node, 'textAlign') || "'left'";
                         const textBaseline = ctx.getInputValue(node, 'textBaseline') || "'alphabetic'";
-                        const color = ctx.getInputValue(node, 'color');
-                        const text = ctx.getInputValue(node, 'text');
-                        const x = ctx.getInputValue(node, 'x');
-                        const y = ctx.getInputValue(node, 'y');
+                        const color = ctx.getInputValue(node, 'color') || "'#000000'";
+                        const text = ctx.getInputValue(node, 'text') || "''";
+                        const x = ctx.getInputValue(node, 'x') || 0;
+                        const y = ctx.getInputValue(node, 'y') || 0;
 
                         // Build font string properly - ensure quotes are stripped and re-added correctly
                         const cleanFontWeight = fontWeight.replace(/^['"]|['"]$/g, '');
@@ -2816,8 +3025,11 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#783a44',
                     icon: 'fas fa-slash',
                     inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color')};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1')}, ${ctx.getInputValue(node, 'y1')});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2')}, ${ctx.getInputValue(node, 'y2')});\n${ctx.indent}ctx.stroke();`
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color') || "'#000'"};\n
+                    ${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1') || 0}, 
+                    ${ctx.getInputValue(node, 'y1') || 0});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2') || 0}, 
+                    ${ctx.getInputValue(node, 'y2') || 32});\n${ctx.indent}ctx.stroke();`
                 },
                 {
                     type: 'setLineWidth',
@@ -2825,8 +3037,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     color: '#520824',
                     icon: 'fas fa-ruler-horizontal',
                     inputs: ['flow', 'ctx', 'width'],
-                    outputs: [],
-                    codeGen: (node, ctx) => `ctx.lineWidth = ${ctx.getInputValue(node, 'width')};`
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => `ctx.lineWidth = ${ctx.getInputValue(node, 'width') || 1};`
                 }
             ],
             'Debug': [
@@ -2877,11 +3089,11 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     inputs: [],
                     outputs: ['value'],
                     hasDropdown: true,
-                    dropdownOptions: Object.keys(InputManager.key),
+                    dropdownOptions: Object.keys(window.key),
                     defaultValue: 'a',
                     codeGen: (node, ctx) => {
                         const key = node.dropdownValue || 'a';
-                        return `window.input.key.${key}`;
+                        return `window.key.${key}`;
                     }
                 },
                 // Mouse Button Selector Node
@@ -2908,7 +3120,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-keyboard',
                     inputs: ['flow', 'key'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyDown(${ctx.getInputValue(node, 'key')})`
+                    directOutput: true, // <=== NEW FLAG: codeGen returns complete value
+                    codeGen: (node, ctx) => `window.input.keyDown(${ctx.getInputValue(node, 'key') || 'a'})`
                 },
                 {
                     type: 'keyPressed',
@@ -2917,7 +3130,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-keyboard',
                     inputs: ['flow', 'key'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyPressed(${ctx.getInputValue(node, 'key')})`
+                    directOutput: true, // <=== NEW FLAG: codeGen returns complete value
+                    codeGen: (node, ctx) => `window.input.keyPressed(${ctx.getInputValue(node, 'key') || 'a'})`
                 },
                 {
                     type: 'keyReleased',
@@ -2926,7 +3140,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-keyboard',
                     inputs: ['flow', 'key'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.keyReleased(${ctx.getInputValue(node, 'key')})`
+                    directOutput: true, // <=== NEW FLAG: codeGen returns complete value
+                    codeGen: (node, ctx) => `window.input.keyReleased(${ctx.getInputValue(node, 'key') || 'a'})`
                 },
                 // Mouse Input Nodes
                 {
@@ -2936,7 +3151,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-computer-mouse',
                     inputs: ['flow', 'button'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mouseDown(${ctx.getInputValue(node, 'button')})`
+                    directOutput: true,
+                    codeGen: (node, ctx) => `window.input.mouseDown(${ctx.getInputValue(node, 'button') || 'left'})`
                 },
                 {
                     type: 'mousePressed',
@@ -2945,7 +3161,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-computer-mouse',
                     inputs: ['flow', 'button'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mousePressed(${ctx.getInputValue(node, 'button')})`
+                    directOutput: true,
+                    codeGen: (node, ctx) => `window.input.mousePressed(${ctx.getInputValue(node, 'button') || 'left'})`
                 },
                 {
                     type: 'mouseReleased',
@@ -2954,7 +3171,8 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-computer-mouse',
                     inputs: ['flow', 'button'],
                     outputs: ['flow', 'result'],
-                    codeGen: (node, ctx) => `window.input.mouseReleased(${ctx.getInputValue(node, 'button')})`
+                    directOutput: true,
+                    codeGen: (node, ctx) => `window.input.mouseReleased(${ctx.getInputValue(node, 'button') || 'left'})`
                 },
                 {
                     type: 'getMousePosition',
@@ -2975,6 +3193,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-left-right',
                     inputs: ['worldSpace'],
                     outputs: ['value'],
+                    directOutput: true,
                     codeGen: (node, ctx) => {
                         const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
                         return `window.input.getMousePosition(${worldSpace}).x`;
@@ -2987,6 +3206,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-up-down',
                     inputs: ['worldSpace'],
                     outputs: ['value'],
+                    directOutput: true,
                     codeGen: (node, ctx) => {
                         const worldSpace = ctx.getInputValue(node, 'worldSpace') || 'false';
                         return `window.input.getMousePosition(${worldSpace}).y`;
@@ -2999,6 +3219,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-arrows',
                     inputs: [],
                     outputs: ['result'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.didMouseMove()`
                 },
                 {
@@ -3008,6 +3229,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-circle-dot',
                     inputs: [],
                     outputs: ['value'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.getMouseWheelDelta()`
                 },
                 // Touch Input Nodes
@@ -3018,6 +3240,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-hand-pointer',
                     inputs: [],
                     outputs: ['value'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.getTouchCount()`
                 },
                 {
@@ -3027,6 +3250,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-hand-point-up',
                     inputs: [],
                     outputs: ['result'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.isTapped()`
                 },
                 {
@@ -3036,6 +3260,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-hand-back-fist',
                     inputs: [],
                     outputs: ['result'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.isLongPressed()`
                 },
                 {
@@ -3045,6 +3270,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-hands',
                     inputs: [],
                     outputs: ['result'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.isPinching()`
                 },
                 {
@@ -3054,6 +3280,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-expand',
                     inputs: [],
                     outputs: ['value'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `(window.input.getPinchData()?.scale || 1)`
                 },
                 {
@@ -3063,6 +3290,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     icon: 'fas fa-hand-pointer',
                     inputs: [],
                     outputs: ['direction'],
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.getSwipeDirection()`
                 },
                 // Input State Control
@@ -3074,6 +3302,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     inputs: ['flow'],
                     outputs: ['flow'],
                     wrapFlowNode: false,
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.enable();`
                 },
                 {
@@ -3084,6 +3313,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     inputs: ['flow'],
                     outputs: ['flow'],
                     wrapFlowNode: false,
+                    directOutput: true,
                     codeGen: (node, ctx) => `window.input.disable();`
                 }
             ],
@@ -3109,6 +3339,46 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     wrapFlowNode: false,
                     hasInput: true,
                     codeGen: (node, ctx) => `// ${node.value || 'Comment'}`
+                },
+                {
+                    type: 'commentBlock',
+                    label: 'Comment Block',
+                    color: '#3d4549',
+                    icon: 'fas fa-comments',
+                    inputs: ['flow', 'line1', 'line2', 'line3', 'line4', 'line5'],
+                    outputs: ['flow'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const lines = [];
+                        for (let i = 1; i <= 5; i++) {
+                            const line = ctx.getInputValue(node, `line${i}`);
+                            if (line) {
+                                lines.push(line);
+                            }
+                        }
+                        return `/* 
+    ${node.value || 'Comment Block'}
+    ${lines.join('\n    ')}
+                        */`;
+                    }
+                },
+                {
+                    type: 'divider',
+                    label: 'Divider',
+                    color: '#40474b',
+                    icon: 'fas fa-arrows-alt-h',
+                    inputs: ['flow', 'input'],
+                    outputs: ['flow', 'value'],
+                    wrapFlowNode: false,
+                    codeGen: (node, ctx) => {
+                        const inputValue = ctx.getInputValue(node, 'input');
+                        if (inputValue) {
+                            return `/* ------------------------ */
+${ctx.indent}${inputValue}
+${ctx.indent}/* ------------------------ */`
+                        }
+                        return `/* ------------------------ */`;
+                    }
                 }
             ],
             'MelodiCode': [
@@ -3232,7 +3502,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
             'MelodiCode Script Builder': [
                 // MelodiCode Script Builder Nodes (with cascading flow)
                 {
-                    type: 'melodicodeScriptStart',
+                    type: 'melodicodeScriptInit',
                     label: 'Script Start',
                     color: '#2a1a2a',
                     icon: 'fas fa-play',
@@ -3357,8 +3627,24 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         return `${prevScript} + 'tts "' + ${text} + '" ' + ${speed} + ' ' + ${pitch} + ' ' + ${voice} + '\\n'`;
                     }
                 },
-                // Block Structure Nodes
+                // CONSOLIDATED NODE: Complete Block (Start + Content + End)
                 {
+                    type: 'melodicodeScriptCompleteBlock',
+                    label: 'Complete Block',
+                    color: '#ca8fca',
+                    icon: 'fas fa-cube',
+                    inputs: ['scriptFlow', 'blockName', 'effects', 'content'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const blockName = ctx.getInputValue(node, 'blockName');
+                        const effects = ctx.getInputValue(node, 'effects') || "''";
+                        const content = ctx.getInputValue(node, 'content') || "''";
+                        return `${prevScript} + '[' + ${blockName} + '] ' + ${effects} + '\\n' + ${content} + '[end]\\n'`;
+                    }
+                },
+                // Block Structure Nodes
+                /*{
                     type: 'melodicodeScriptBlockStart',
                     label: 'Start Block',
                     color: '#ba8fba',
@@ -3383,8 +3669,22 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
                         return `${prevScript} + '[end]\\n'`;
                     }
-                },
+                },*/
                 {
+                    type: 'melodicodeScriptCompleteSampleBlock',
+                    label: 'Complete Sample Block',
+                    color: '#da7fda',
+                    icon: 'fas fa-drum-steelpan',
+                    inputs: ['scriptFlow', 'blockName', 'content'],
+                    outputs: ['scriptFlow'],
+                    codeGen: (node, ctx) => {
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const blockName = ctx.getInputValue(node, 'blockName');
+                        const content = ctx.getInputValue(node, 'content') || "''";
+                        return `${prevScript} + '<' + ${blockName} + '>\\n' + ${content} + '<end>\\n'`;
+                    }
+                },
+                /*{
                     type: 'melodicodeScriptSampleBlockStart',
                     label: 'Start Sample Block',
                     color: '#da8fda',
@@ -3408,7 +3708,7 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                         const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
                         return `${prevScript} + '<end>\\n'`;
                     }
-                },
+                },*/
                 // Control Commands
                 {
                     type: 'melodicodeScriptBPM',
@@ -3543,6 +3843,35 @@ ${ctx.indent}this.gameObject.position.y = ${ctx.getInputValue(node, 'y')};`
                     codeGen: (node, ctx) => {
                         const note = node.dropdownValue || 'C4';
                         return `'${note}'`;
+                    }
+                },
+                {
+                    type: 'melodicodeSampleSelector',
+                    label: 'Sample',
+                    color: '#8a5f8a',
+                    icon: 'fas fa-drum',
+                    inputs: [],
+                    outputs: ['sample'],
+                    hasDropdown: true,
+                    dropdownOptions: [
+                        // Drums
+                        'kick', 'snare', 'hihat', 'hihat_open', 'crash', 'ride',
+                        'tom_high', 'tom_mid', 'tom_low', 'clap', 'triangle',
+                        // Bass
+                        'bass_low', 'bass_mid', 'bass_high', 'sub_bass', 'bass_pluck',
+                        // Synth Leads
+                        'lead_1', 'lead_2', 'lead_bright', 'lead_soft',
+                        // Pads
+                        'pad_1', 'pad_warm', 'pad_strings', 'pad_choir',
+                        // Percussion
+                        'shaker', 'tambourine', 'cowbell', 'woodblock',
+                        // FX
+                        'whoosh', 'zap', 'drop', 'rise'
+                    ],
+                    defaultValue: 'kick',
+                    codeGen: (node, ctx) => {
+                        const sample = node.dropdownValue || 'kick';
+                        return `'${sample}'`;
                     }
                 }
             ]

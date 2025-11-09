@@ -730,9 +730,418 @@ function showVisualModuleBuilderHelp() {
                         <div class="vmb-help-warning">
                             <strong>⚠️ Important:</strong> Drawing nodes only work inside a Draw event. They won't do anything in Start or Loop events.
                         </div>
-                    `
+                    `,
+                    'Input Nodes': `
+                        <h3>Input Nodes</h3>
+                        <p>Access player input from keyboard, mouse, and touch devices.</p>
+                        
+                        <h4>Key Down</h4>
+                        <p>Checks if a specific key is currently pressed.</p>
+                        <ul>
+                            <li>Input: Key name (string, e.g., "w", "Space", "ArrowUp")</li>
+                            <li>Output: Boolean (true if key is down)</li>
+                            <li>Example: Move character while "w" is held</li>
+                        </ul>
+                        
+                        <h4>Key Pressed</h4>
+                        <p>Detects the moment a key is pressed (one-time trigger).</p>
+                        <ul>
+                            <li>Input: Key name</li>
+                            <li>Output: Boolean (true on the frame the key was pressed)</li>
+                            <li>Example: Jump when spacebar is pressed</li>
+                        </ul>
+                        
+                        <h4>Mouse Position</h4>
+                        <p>Gets the current mouse cursor position in the game world.</p>
+                        <ul>
+                            <li>Outputs: X and Y coordinates</li>
+                            <li>Coordinates are in world space</li>
+                            <li>Example: Aim at mouse position, follow cursor</li>
+                        </ul>
+                        
+                        <h4>Mouse Button</h4>
+                        <p>Checks if a mouse button is pressed.</p>
+                        <ul>
+                            <li>Input: Button number (0=left, 1=middle, 2=right)</li>
+                            <li>Output: Boolean</li>
+                            <li>Example: Shoot on left click</li>
+                        </ul>
+                        
+                        <div class="vmb-help-tip">
+                            <strong>💡 Tip:</strong> Combine key inputs with If nodes to create responsive controls!
+                        </div>
+                    `,
             }
         },
+            'MelodiCode Audio': {
+                icon: '🎵',
+                topics: {
+                    'Introduction to MelodiCode': `
+                        <h3>Introduction to MelodiCode</h3>
+                        <p>MelodiCode is a code-based music generation system integrated into the Visual Module Builder. Create dynamic music, sound effects, and audio that responds to gameplay using a powerful script-based approach.</p>
+                        
+                        <h4>What is MelodiCode?</h4>
+                        <p>MelodiCode allows you to generate audio programmatically by building scripts that describe musical patterns, melodies, drum beats, and effects. Instead of pre-recorded audio files, you create music through code that can be dynamic and responsive.</p>
+                        
+                        <h4>Key Features</h4>
+                        <ul>
+                            <li><strong>Real-time Generation:</strong> Create music on-the-fly</li>
+                            <li><strong>Procedural Audio:</strong> Generate unique sounds each time</li>
+                            <li><strong>Block-Based Structure:</strong> Organize music into reusable blocks</li>
+                            <li><strong>Built-in Samples:</strong> Extensive drum and synth library</li>
+                            <li><strong>Visual Scripting:</strong> Build MelodiCode scripts with nodes</li>
+                        </ul>
+                        
+                        <h4>How It Works</h4>
+                        <p>You build a MelodiCode script using Script Builder nodes, then play it with the Play MelodiCode node. Scripts define blocks of music that can be played, looped, and combined.</p>
+                        
+                        <div class="vmb-help-tip">
+                            <strong>💡 Tip:</strong> Check out the MelodiCode Audio example module to see a complete working example!
+                        </div>
+                    `,
+                    'Script Builder Basics': `
+                        <h3>Script Builder Basics</h3>
+                        <p>The Script Builder nodes let you construct MelodiCode scripts visually by chaining nodes together.</p>
+                        
+                        <h4>How Script Building Works</h4>
+                        <p>Script Builder nodes use a special "scriptFlow" connection type that passes the accumulated script from node to node. Each node adds its command to the script string.</p>
+                        
+                        <h4>Basic Workflow</h4>
+                        <ol>
+                            <li><strong>Set BPM:</strong> Start by setting the tempo</li>
+                            <li><strong>Create Blocks:</strong> Define named sections of music</li>
+                            <li><strong>Add Commands:</strong> Add tones, samples, waits, slides</li>
+                            <li><strong>End Blocks:</strong> Close each block</li>
+                            <li><strong>Add Play Command:</strong> Tell which blocks to play</li>
+                            <li><strong>Execute:</strong> Connect to Play MelodiCode node</li>
+                        </ol>
+                        
+                        <h4>Script Flow Connection</h4>
+                        <p>The purple "scriptFlow" connections are special - they carry the entire script being built. Always connect them in sequence from top to bottom.</p>
+                        
+                        <div class="vmb-help-note">
+                            <strong>📌 Note:</strong> Script Builder nodes must be connected in the order you want commands to appear in the final script.
+                        </div>
+                    `,
+                    'Blocks and Structure': `
+                        <h3>Blocks and Structure</h3>
+                        <p>MelodiCode uses blocks to organize music into reusable sections.</p>
+                        
+                        <h4>What are Blocks?</h4>
+                        <p>Blocks are named containers that hold a sequence of musical commands. Think of them like functions in programming - they group related actions together.</p>
+                        
+                        <h4>Complete Block Node</h4>
+                        <p>Creates a full block with start, content, and end.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> scriptFlow, blockName, effects, content</li>
+                            <li>Automatically wraps content in <code>[blockName] ... [end]</code></li>
+                            <li>Can include effects like reverb or delay</li>
+                        </ul>
+                        
+                        <h4>The [main] Block</h4>
+                        <p>The <code>main</code> block is special - it's typically your entry point where you orchestrate other blocks.</p>
+                        
+                        <h4>Example Structure</h4>
+                        <p>Typical MelodiCode script structure:</p>
+                        <pre><code>bpm 120
+        [melody]
+            tone C4 0.5
+            tone E4 0.5
+        [end]
+
+        [drums]
+            sample kick
+            wait 0.5
+        [end]
+
+        [main]
+            play melody drums
+        [end]
+
+        play main</code></pre>
+                        
+                        <h4>Sample Blocks</h4>
+                        <p>Complete Sample Block nodes create custom sounds where all tones play simultaneously.</p>
+                        <ul>
+                            <li>Use angle brackets <code>&lt;name&gt; ... &lt;end&gt;</code></li>
+                            <li>All commands inside play at once (layered)</li>
+                            <li>Perfect for custom drum sounds or synth patches</li>
+                        </ul>
+                    `,
+                    'Musical Commands': `
+                        <h3>Musical Commands</h3>
+                        <p>These nodes add musical elements to your script.</p>
+                        
+                        <h4>Add Tone</h4>
+                        <p>Generates a musical note or tone.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> note (e.g., C4), duration, waveType, volume, pan</li>
+                            <li><strong>Wave Types:</strong> sine, square, sawtooth, triangle</li>
+                            <li>Creates sustained tones for melodies</li>
+                            <li>Example: <code>tone C4 0.5 sine 0.8 0</code></li>
+                        </ul>
+                        
+                        <h4>Add Sample</h4>
+                        <p>Plays a built-in or custom sample.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> sample name, pitch, timescale, volume, pan</li>
+                            <li><strong>Built-in samples:</strong> kick, snare, hihat, bass_low, lead_1, etc.</li>
+                            <li>Pitch: 1=normal, 2=double speed/higher pitch</li>
+                            <li>Example: <code>sample kick 1 1 0.8 0</code></li>
+                        </ul>
+                        
+                        <h4>Add Slide</h4>
+                        <p>Creates a pitch-sliding tone from one note to another.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> startNote, endNote, duration, waveType, volume, pan</li>
+                            <li>Great for swooshes, sirens, bass drops</li>
+                            <li>Example: <code>slide G4 C5 1 sawtooth 0.8 0</code></li>
+                        </ul>
+                        
+                        <h4>Add Wait</h4>
+                        <p>Adds a pause/rest in the music.</p>
+                        <ul>
+                            <li><strong>Input:</strong> duration (in seconds)</li>
+                            <li>Creates timing between notes</li>
+                            <li>Example: <code>wait 0.5</code> for half-second pause</li>
+                        </ul>
+                        
+                        <div class="vmb-help-tip">
+                            <strong>💡 Tip:</strong> Use the Note Selector node to easily choose musical notes without typing!
+                        </div>
+                    `,
+                    'Control Commands': `
+                        <h3>Control Commands</h3>
+                        <p>These nodes control playback and structure.</p>
+                        
+                        <h4>Set BPM</h4>
+                        <p>Sets the tempo (beats per minute) for the entire script.</p>
+                        <ul>
+                            <li><strong>Input:</strong> BPM value (e.g., 120)</li>
+                            <li>Typically the first command in your script</li>
+                            <li>Affects timing of all musical elements</li>
+                            <li>Example: <code>bpm 140</code> for faster tempo</li>
+                        </ul>
+                        
+                        <h4>Add Play</h4>
+                        <p>Tells MelodiCode which blocks to play simultaneously.</p>
+                        <ul>
+                            <li><strong>Input:</strong> Block name(s) to play</li>
+                            <li>Can play multiple blocks at once (separated by spaces)</li>
+                            <li>Example: <code>play melody drums bass</code></li>
+                        </ul>
+                        
+                        <h4>Add Loop</h4>
+                        <p>Repeats a block multiple times.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> count (number of repeats), block name(s)</li>
+                            <li>Useful for drum patterns and repetitive sections</li>
+                            <li>Can loop multiple blocks together</li>
+                            <li>Example: <code>loop 4 drums</code></li>
+                        </ul>
+                        
+                        <h4>Add Sidechain</h4>
+                        <p>Creates a ducking effect where one block affects another's volume.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> block1 (trigger), block2 (affected), amount</li>
+                            <li>Classic EDM pumping effect</li>
+                            <li>Example: Kick drum ducks the bass</li>
+                        </ul>
+                        
+                        <h4>Add TTS (Text-to-Speech)</h4>
+                        <p>Adds spoken text to your music.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> text, speed, pitch, voice</li>
+                            <li>Note: TTS does NOT export to WAV</li>
+                            <li>Great for game announcements or lyrics</li>
+                        </ul>
+                    `,
+                    'Playback Nodes': `
+                        <h3>Playback Nodes</h3>
+                        <p>Execute and control MelodiCode scripts.</p>
+                        
+                        <h4>Play MelodiCode</h4>
+                        <p>Executes a MelodiCode script you've built.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> Execution flow, script code, BPM (optional)</li>
+                            <li>Connects to the end of your Script Builder chain</li>
+                            <li>Starts audio playback immediately</li>
+                            <li>Use in Start event for music that plays on load</li>
+                        </ul>
+                        
+                        <h4>Stop MelodiCode</h4>
+                        <p>Stops the currently playing MelodiCode audio.</p>
+                        <ul>
+                            <li>Immediately halts all audio</li>
+                            <li>Use when switching scenes or game states</li>
+                        </ul>
+                        
+                        <h4>Is Playing</h4>
+                        <p>Checks if MelodiCode is currently playing.</p>
+                        <ul>
+                            <li>Output: Boolean (true if playing)</li>
+                            <li>Useful for conditional logic</li>
+                            <li>Example: Don't start new music if already playing</li>
+                        </ul>
+                        
+                        <div class="vmb-help-note">
+                            <strong>📌 Note:</strong> Only one MelodiCode script can play at a time. Starting a new script stops the previous one.
+                        </div>
+                    `,
+                    'Helper Nodes': `
+                        <h3>Helper Nodes</h3>
+                        <p>Utility nodes to make building easier.</p>
+                        
+                        <h4>Note Selector</h4>
+                        <p>Visual note picker with dropdown.</p>
+                        <ul>
+                            <li>Dropdown with all musical notes from C0 to C8</li>
+                            <li>Includes sharps (C#, D#, etc.)</li>
+                            <li>Outputs note as string (e.g., "C4")</li>
+                            <li>Much easier than typing note names!</li>
+                        </ul>
+                        
+                        <h4>Sample Selector</h4>
+                        <p>Dropdown list of all built-in samples.</p>
+                        <ul>
+                            <li><strong>Drums:</strong> kick, snare, hihat, crash, tom_high, etc.</li>
+                            <li><strong>Bass:</strong> bass_low, bass_mid, sub_bass, bass_pluck</li>
+                            <li><strong>Leads:</strong> lead_1, lead_2, lead_bright, lead_soft</li>
+                            <li><strong>Pads:</strong> pad_1, pad_warm, pad_strings, pad_choir</li>
+                            <li><strong>Percussion:</strong> shaker, tambourine, cowbell, woodblock</li>
+                            <li><strong>FX:</strong> whoosh, zap, drop, rise</li>
+                        </ul>
+                        
+                        <h4>Wave Type Selector</h4>
+                        <p>Choose synthesizer waveform.</p>
+                        <ul>
+                            <li><strong>sine:</strong> Smooth, pure tone (good for bass, subs)</li>
+                            <li><strong>square:</strong> Hollow, retro game sound</li>
+                            <li><strong>sawtooth:</strong> Bright, buzzy (good for leads)</li>
+                            <li><strong>triangle:</strong> Mellow, flute-like</li>
+                        </ul>
+                        
+                        <h4>Effect String</h4>
+                        <p>Creates effect parameters for blocks.</p>
+                        <ul>
+                            <li>Dropdown: reverb, delay, filter, distortion, chorus</li>
+                            <li>Input: Effect parameters</li>
+                            <li>Output: Formatted effect string</li>
+                            <li>Example: <code>(reverb 0.3)</code></li>
+                        </ul>
+                        
+                        <h4>Get Available Samples</h4>
+                        <p>Returns array of all sample names.</p>
+                        <ul>
+                            <li>Useful for dynamic sample selection</li>
+                            <li>Can be used with random selection</li>
+                        </ul>
+                        
+                        <h4>Set Master Volume</h4>
+                        <p>Adjusts the overall MelodiCode volume.</p>
+                        <ul>
+                            <li>Input: Volume (0-1)</li>
+                            <li>Affects all MelodiCode audio</li>
+                        </ul>
+                    `,
+                    'Quick Playback Methods': `
+                        <h3>Quick Playback Methods</h3>
+                        <p>Simplified nodes for quick audio without building full scripts.</p>
+                        
+                        <h4>Play Beat</h4>
+                        <p>Quickly play a drum pattern.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> Pattern string, BPM</li>
+                            <li>Simple way to add drums</li>
+                            <li>Example: <code>"x--x--x-"</code> for kick pattern</li>
+                        </ul>
+                        
+                        <h4>Play Melody</h4>
+                        <p>Play a sequence of notes.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> Note array, duration, BPM</li>
+                            <li>Quick melodies without building blocks</li>
+                            <li>Example: <code>["C4", "E4", "G4"]</code></li>
+                        </ul>
+                        
+                        <h4>Play Sample</h4>
+                        <p>Play a single sample immediately.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> Sample name, pitch, timescale, volume, pan</li>
+                            <li>Great for one-shot sound effects</li>
+                            <li>Example: Play kick drum on collision</li>
+                        </ul>
+                        
+                        <h4>Play Tone</h4>
+                        <p>Play a single tone immediately.</p>
+                        <ul>
+                            <li><strong>Inputs:</strong> Frequency/note, duration, waveType, volume, pan, BPM</li>
+                            <li>Simple beeps and alerts</li>
+                            <li>Example: Play C4 for 1 second</li>
+                        </ul>
+                        
+                        <div class="vmb-help-tip">
+                            <strong>💡 Tip:</strong> Use these quick methods for UI sounds and simple effects. Use Script Builder for complex music!
+                        </div>
+                    `,
+                    'Complete Example': `
+                        <h3>Complete MelodiCode Example</h3>
+                        <p>Here's how to build a complete musical piece step by step.</p>
+                        
+                        <h4>The Goal</h4>
+                        <p>Create a song with a melody and drum beat that loops 4 times.</p>
+                        
+                        <h4>Node Setup</h4>
+                        <ol>
+                            <li><strong>Start Event</strong> - Triggers when module loads</li>
+                            <li><strong>Number (120)</strong> → <strong>Set BPM</strong> - Set tempo to 120 BPM</li>
+                            <li><strong>String ("melody")</strong> → <strong>Start Block</strong> - Begin melody block</li>
+                            <li><strong>Note Selector (C4)</strong> + <strong>Number (0.5)</strong> → <strong>Add Tone</strong></li>
+                            <li><strong>Number (0.25)</strong> → <strong>Add Wait</strong></li>
+                            <li><strong>Note Selector (E4)</strong> + <strong>Number (0.5)</strong> → <strong>Add Tone</strong></li>
+                            <li><strong>Number (0.25)</strong> → <strong>Add Wait</strong></li>
+                            <li><strong>Note Selector (G4)</strong> + <strong>Number (0.5)</strong> → <strong>Add Tone</strong></li>
+                            <li><strong>End Block</strong> - Close melody block</li>
+                            <li><strong>String ("drums")</strong> → <strong>Start Block</strong> - Begin drums block</li>
+                            <li><strong>Sample Selector (kick)</strong> → <strong>Add Sample</strong></li>
+                            <li><strong>Number (0.5)</strong> → <strong>Add Wait</strong></li>
+                            <li><strong>Sample Selector (snare)</strong> → <strong>Add Sample</strong></li>
+                            <li><strong>Number (0.5)</strong> → <strong>Add Wait</strong></li>
+                            <li><strong>End Block</strong> - Close drums block</li>
+                            <li><strong>Number (4)</strong> + <strong>String ("drums")</strong> → <strong>Add Loop</strong></li>
+                            <li><strong>String ("melody")</strong> → <strong>Add Play</strong></li>
+                            <li><strong>Play MelodiCode</strong> - Execute the script</li>
+                        </ol>
+                        
+                        <h4>Connection Pattern</h4>
+                        <p>All Script Builder nodes connect via <code>scriptFlow</code> ports (purple). The final <code>scriptFlow</code> output connects to the <code>code</code> input of Play MelodiCode.</p>
+                        
+                        <h4>Generated Script</h4>
+                        <pre><code>bpm 120
+        [melody]
+        tone C4 0.5 sine 0.8 0
+        wait 0.25
+        tone E4 0.5 sine 0.8 0
+        wait 0.25
+        tone G4 0.5 sine 0.8 0
+        [end]
+        [drums]
+        sample kick 1 1 0.8 0
+        wait 0.5
+        sample snare 1 1 0.8 0
+        wait 0.5
+        [end]
+        loop 4 drums
+        play melody
+
+        play melody</code></pre>
+                        
+                        <div class="vmb-help-tip">
+                            <strong>💡 Tip:</strong> Load the "MelodiCode Audio" example module from the Examples menu to see this in action!
+                        </div>
+                    `
+                }
+            },
         'Advanced Features': {
             icon: '⚙️',
             topics: {

@@ -37,6 +37,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.draggedNode = null;
         this.dragOffset = { x: 0, y: 0 };
 
+        // ========== NEW: MULTI-SELECTION ==========
+        this.selectedNodes = new Set(); // Track multiple selected nodes
+        this.draggedNodes = new Set(); // Track nodes being dragged together
+
         // Connection state
         this.connectingFrom = null;
         this.hoveredPort = null;
@@ -54,9 +58,16 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // Animation
         this.animationTime = 0;
 
+        // ========== NEW: SIMPLIFIED CONNECTOR OPTION ==========
+        this.simplifiedConnectors = localStorage.getItem('vmb_simplifiedConnectors') === 'true' || false;
+
         // Text editing state
         this.editingNode = null;
         this.editingElement = null;
+
+        // ========== NEW: CLIPBOARD SYSTEM ==========
+        this.clipboard = null; // Store copied node(s)
+        this.clipboardOffset = { x: 20, y: 20 }; // Offset for pasted nodes
 
         this.iconList = this.setupIconDropdown();
 
@@ -75,6 +86,13 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Connection color setting
         this.connectionColor = localStorage.getItem('vmb_connectionColor') || '#00ffff';
+
+        // ========== NEW: TEST PANEL ==========
+        this.testPanelVisible = false;
+        this.testEngine = null;
+        this.testGameObject = null;
+        this.testCanvas = null;
+        this.testCtx = null;
 
         // Store bound event handlers for cleanup
         this.boundHandlers = {
@@ -495,7 +513,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         snapCheckbox.style.cssText = 'cursor: pointer;';
 
         const snapText = document.createElement('span');
-        snapText.innerHTML = '<i class="fas fa-border-all" style="margin-right: 4px;"></i>Snap to Grid';
+        snapText.innerHTML = '<i class="fas fa-border-all" style="margin-right: 4px;" title="Snap to Grid"></i>';
 
         snapCheckbox.addEventListener('change', (e) => {
             this.snapToGrid = e.target.checked;
@@ -529,7 +547,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         groupPanelsCheckbox.style.cssText = 'cursor: pointer;';
 
         const groupPanelsText = document.createElement('span');
-        groupPanelsText.innerHTML = '<i class="fas fa-layer-group" style="margin-right: 4px;"></i>Group Panels';
+        groupPanelsText.innerHTML = '<i class="fas fa-layer-group" style="margin-right: 4px;" title="Group Panels"></i>';
 
         groupPanelsCheckbox.addEventListener('change', (e) => {
             this.showGroupPanels = e.target.checked;
@@ -563,7 +581,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         minimapCheckbox.style.cssText = 'cursor: pointer;';
 
         const minimapText = document.createElement('span');
-        minimapText.innerHTML = '<i class="fas fa-map" style="margin-right: 4px;"></i>Minimap';
+        minimapText.innerHTML = '<i class="fas fa-map" style="margin-right: 4px;" title="Minimap"></i>';
 
         minimapCheckbox.addEventListener('change', (e) => {
             this.showMinimap = e.target.checked;
@@ -578,6 +596,41 @@ class VisualModuleBuilderWindow extends EditorWindow {
         minimapLabel.appendChild(minimapCheckbox);
         minimapLabel.appendChild(minimapText);
         toolbar.appendChild(minimapLabel);
+
+        // ========== NEW: SIMPLIFIED CONNECTORS TOGGLE ==========
+        const simplifiedLabel = document.createElement('label');
+        simplifiedLabel.style.cssText = `
+        color: #fff;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 4px 8px;
+        background: ${this.simplifiedConnectors ? '#4CAF50' : '#444'};
+        border: 1px solid ${this.simplifiedConnectors ? '#66BB6A' : '#666'};
+        border-radius: 4px;
+        transition: all 0.2s;
+    `;
+
+        const simplifiedCheckbox = document.createElement('input');
+        simplifiedCheckbox.type = 'checkbox';
+        simplifiedCheckbox.checked = this.simplifiedConnectors;
+        simplifiedCheckbox.style.cssText = 'cursor: pointer;';
+
+        const simplifiedText = document.createElement('span');
+        simplifiedText.innerHTML = '<i class="fas fa-minus" style="margin-right: 4px;" title="Simplified Connectors"></i>';
+
+        simplifiedCheckbox.addEventListener('change', (e) => {
+            this.simplifiedConnectors = e.target.checked;
+            localStorage.setItem('vmb_simplifiedConnectors', e.target.checked.toString());
+            simplifiedLabel.style.background = this.simplifiedConnectors ? '#4CAF50' : '#444';
+            simplifiedLabel.style.borderColor = this.simplifiedConnectors ? '#66BB6A' : '#666';
+        });
+
+        simplifiedLabel.appendChild(simplifiedCheckbox);
+        simplifiedLabel.appendChild(simplifiedText);
+        toolbar.appendChild(simplifiedLabel);
 
         toolbar.appendChild(divider());
 
@@ -598,7 +651,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
     `;
 
         const connectionColorText = document.createElement('span');
-        connectionColorText.innerHTML = '<i class="fas fa-palette" style="margin-right: 4px;"></i>Connection Color';
+        connectionColorText.innerHTML = '<i class="fas fa-palette" style="margin-right: 4px;" title="Connection Color"></i>';
 
         const connectionColorInput = document.createElement('input');
         connectionColorInput.type = 'color';
@@ -624,18 +677,18 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Action buttons
         const buttons = [
-            { text: 'New', icon: '📄', action: () => this.newProject() },
-            { text: 'Save', icon: '💾', action: () => this.saveProject() },
-            { text: 'Load', icon: '📂', action: () => this.loadProject() },
-            //{ text: 'Load JS', icon: '📜', action: () => this.loadJavaScriptModule(), title: 'Load JavaScript Module' },
-            { text: 'Undo', icon: '↶', action: () => this.undo(), title: 'Undo (Ctrl+Z)' },
-            { text: 'Redo', icon: '↷', action: () => this.redo(), title: 'Redo (Ctrl+Shift+Z)' },
-            { text: 'Command', icon: '⌘', action: () => this.toggleCommandPalette(), title: 'Command Palette (Ctrl+Space)' },
-            { text: 'Export Module', icon: '📤', action: () => this.exportModule(), highlight: true },
-            { text: 'Validate', icon: '✓', action: () => this.validateGraph() },
-            //{ text: 'Test Module', icon: '▶', action: () => this.testModule(), highlight: false, style: 'background: #2196F3; border-color: #42A5F5' },
-            { text: 'Clear', icon: '🗑️', action: () => this.clearCanvas() },
-            { text: 'Help', icon: '❓', action: () => this.showHelp() }
+            { text: '', icon: '📄', action: () => this.newProject(), title: 'New Project' },
+            { text: '', icon: '💾', action: () => this.saveProject(), title: 'Save Project' },
+            { text: '', icon: '📂', action: () => this.loadProject(), title: 'Load Project' },
+            { text: '', icon: '⬇️', action: () => this.saveProjectToDesktop(), title: 'Save to Desktop' },
+            { text: '', icon: '⬆️', action: () => this.loadProjectFromDesktop(), title: 'Load from Desktop' },
+            { text: '', icon: '↶', action: () => this.undo(), title: 'Undo (Ctrl+Z)' },
+            { text: '', icon: '↷', action: () => this.redo(), title: 'Redo (Ctrl+Shift+Z)' },
+            //{ text: 'Command', icon: '⌘', action: () => this.toggleCommandPalette(), title: 'Command Palette (Ctrl+Space)' },
+            { text: '', icon: '📤', action: () => this.exportModule(), highlight: true, title: 'Export Module' },
+            { text: '', icon: '✓', action: () => this.validateGraph(), title: 'Validate Graph (check for errors)' },
+            { text: '', icon: '🗑️', action: () => this.clearCanvas(), title: 'Clear Canvas' },
+            { text: '', icon: '❓', action: () => this.showHelp(), title: 'Show Documentation' }
         ];
 
         buttons.forEach(btn => {
@@ -1450,10 +1503,12 @@ class VisualModuleBuilderWindow extends EditorWindow {
         overflow-y: auto;
         font-family: monospace;
         font-size: 11px;
+        display: flex;
+        flex-direction: column;
     `;
 
-        const title = document.createElement('div');
-        title.style.cssText = `
+        const header = document.createElement('div');
+        header.style.cssText = `
         color: #fff;
         font-weight: bold;
         margin-bottom: 8px;
@@ -1467,7 +1522,29 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         const titleText = document.createElement('span');
         titleText.textContent = 'Console';
-        title.appendChild(titleText);
+        header.appendChild(titleText);
+
+        const buttonGroup = document.createElement('div');
+        buttonGroup.style.cssText = 'display: flex; gap: 4px;';
+
+        // ========== NEW: TEST MODULE BUTTON ==========
+        const testBtn = document.createElement('button');
+        testBtn.textContent = 'Test Module';
+        testBtn.title = 'Test the module in a live preview (Ctrl+T)';
+        testBtn.style.cssText = `
+        padding: 2px 8px;
+        background: #2196F3;
+        border: 1px solid #42A5F5;
+        border-radius: 3px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 10px;
+        transition: all 0.2s;
+    `;
+        testBtn.addEventListener('mouseenter', () => testBtn.style.background = '#42A5F5');
+        testBtn.addEventListener('mouseleave', () => testBtn.style.background = '#2196F3');
+        testBtn.addEventListener('click', () => this.toggleTestPanel());
+        //buttonGroup.appendChild(testBtn);
 
         const clearBtn = document.createElement('button');
         clearBtn.textContent = 'Clear';
@@ -1484,15 +1561,90 @@ class VisualModuleBuilderWindow extends EditorWindow {
             const messages = panel.querySelector('.console-messages');
             if (messages) messages.innerHTML = '';
         });
-        title.appendChild(clearBtn);
+        buttonGroup.appendChild(clearBtn);
 
-        panel.appendChild(title);
+        header.appendChild(buttonGroup);
+        panel.appendChild(header);
 
+        // ========== NEW: SPLIT CONTAINER FOR CONSOLE AND TEST PANEL ==========
+        const splitContainer = document.createElement('div');
+        splitContainer.style.cssText = `
+        display: flex;
+        flex: 1;
+        gap: 8px;
+        min-height: 0;
+    `;
+
+        // Console messages
+        const messagesContainer = document.createElement('div');
+        messagesContainer.style.cssText = 'flex: 1; overflow-y: auto;';
         const messagesDiv = document.createElement('div');
         messagesDiv.className = 'console-messages';
-        panel.appendChild(messagesDiv);
+        messagesContainer.appendChild(messagesDiv);
+        splitContainer.appendChild(messagesContainer);
+
+        // ========== NEW: TEST PANEL CANVAS ==========
+        const testPanelContainer = document.createElement('div');
+        testPanelContainer.id = 'test-panel-container';
+        testPanelContainer.style.cssText = `
+        flex: 1;
+        background: #000;
+        border-radius: 4px;
+        border: 2px solid #2196F3;
+        display: none;
+        flex-direction: column;
+        overflow: hidden;
+    `;
+
+        const testPanelHeader = document.createElement('div');
+        testPanelHeader.style.cssText = `
+        background: #2196F3;
+        color: #fff;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: bold;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+
+        const testPanelTitle = document.createElement('span');
+        testPanelTitle.textContent = 'Module Test Preview';
+        testPanelHeader.appendChild(testPanelTitle);
+
+        const refreshTestBtn = document.createElement('button');
+        refreshTestBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+        refreshTestBtn.title = 'Refresh the test module';
+        refreshTestBtn.style.cssText = `
+        padding: 2px 6px;
+        background: rgba(255,255,255,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 3px;
+        color: #fff;
+        cursor: pointer;
+        font-size: 9px;
+    `;
+        refreshTestBtn.addEventListener('click', () => this.refreshTestModule());
+        testPanelHeader.appendChild(refreshTestBtn);
+
+        testPanelContainer.appendChild(testPanelHeader);
+
+        const testCanvasWrapper = document.createElement('div');
+        testCanvasWrapper.style.cssText = 'flex: 1; position: relative; overflow: hidden;';
+
+        this.testCanvas = document.createElement('canvas');
+        this.testCanvas.width = 400;
+        this.testCanvas.height = 300;
+        this.testCanvas.style.cssText = 'width: 100%; height: 100%; image-rendering: pixelated;';
+        testCanvasWrapper.appendChild(this.testCanvas);
+
+        testPanelContainer.appendChild(testCanvasWrapper);
+        splitContainer.appendChild(testPanelContainer);
+
+        panel.appendChild(splitContainer);
 
         this.consolePanel = messagesDiv;
+        this.testPanelContainer = testPanelContainer;
         return panel;
     }
 
@@ -1560,27 +1712,66 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Keyboard shortcuts
         this.boundHandlers.keydown = (e) => {
-            // DELETE key - delete selected node
-            if (e.key === 'Delete' && this.selectedNode) {
-                this.deleteNode(this.selectedNode);
+            // Ctrl+C / Cmd+C - Copy
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c' && (this.selectedNode || this.selectedNodes.size > 0)) {
+                e.preventDefault();
+                const nodeToCopy = this.selectedNode || Array.from(this.selectedNodes)[0];
+                this.copyNode(nodeToCopy);
             }
+            // Ctrl+V / Cmd+V - Paste
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'v' && this.clipboard) {
+                e.preventDefault();
+                const rect = this.canvas.getBoundingClientRect();
+                const centerX = (rect.width / 2 - this.panOffset.x) / this.zoom;
+                const centerY = (rect.height / 2 - this.panOffset.y) / this.zoom;
+                this.pasteNode(centerX, centerY);
+            }
+            // Ctrl+D / Cmd+D - Duplicate
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && (this.selectedNode || this.selectedNodes.size > 0)) {
+                e.preventDefault();
+                const nodeToDuplicate = this.selectedNode || Array.from(this.selectedNodes)[0];
+                this.duplicateNode(nodeToDuplicate);
+            }
+            // Delete / Backspace - Delete node(s)
+            else if ((e.key === 'Delete') && (this.selectedNode || this.selectedNodes.size > 0)) {
+                // Don't delete if we're editing text
+                if (this.editingElement) return;
+                e.preventDefault();
 
-            // CTRL+Z - Undo
-            if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                if (this.selectedNodes.size > 0) {
+                    const nodesToDelete = Array.from(this.selectedNodes);
+                    nodesToDelete.forEach(node => this.deleteNode(node));
+                } else if (this.selectedNode) {
+                    this.deleteNode(this.selectedNode);
+                }
+
+                this.selectedNode = null;
+                this.selectedNodes.clear();
+                this.saveState();
+            }
+            // Ctrl+T / Cmd+T - Toggle test panel
+            else if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+                e.preventDefault();
+                this.toggleTestPanel();
+            }
+            // Ctrl+Z / Cmd+Z - Undo
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 this.undo();
             }
-
-            // CTRL+SHIFT+Z or CTRL+Y - Redo
-            if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || (e.ctrlKey && e.key === 'y')) {
+            // Ctrl+Shift+Z / Cmd+Shift+Z or Ctrl+Y / Cmd+Y - Redo
+            else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') ||
+                ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
                 e.preventDefault();
                 this.redo();
             }
-
-            // CTRL+SPACE - Command Palette
-            if (e.ctrlKey && e.code === 'Space') {
+            // Ctrl+A / Cmd+A - Select all nodes
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
                 e.preventDefault();
-                this.toggleCommandPalette();
+                this.selectedNodes.clear();
+                this.nodes.forEach(node => this.selectedNodes.add(node));
+                this.selectedNode = this.nodes[0];
+                this.showNotification(`Selected ${this.nodes.length} nodes`, 'info');
             }
         };
         document.addEventListener('keydown', this.boundHandlers.keydown);
@@ -1617,7 +1808,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
                 }
             }
 
-            // ========== NEW: Check for comment button click ==========
+            // Check for comment button click
             if (node.commentButton) {
                 const dx = x - node.commentButton.x;
                 const dy = y - node.commentButton.y;
@@ -1664,12 +1855,35 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         const clickedNode = this.getNodeAtPosition(x, y);
         if (clickedNode) {
-            this.selectedNode = clickedNode;
-            this.draggedNode = clickedNode;
-            this.dragOffset = {
-                x: x - clickedNode.x,
-                y: y - clickedNode.y
-            };
+            // ========== NEW: MULTI-SELECTION WITH CTRL+CLICK ==========
+            if (e.ctrlKey || e.metaKey) {
+                // Toggle node in selection
+                if (this.selectedNodes.has(clickedNode)) {
+                    this.selectedNodes.delete(clickedNode);
+                } else {
+                    this.selectedNodes.add(clickedNode);
+                }
+                this.selectedNode = clickedNode; // Keep for backwards compatibility
+            } else {
+                // If clicking on an already selected node, prepare to drag all selected
+                if (!this.selectedNodes.has(clickedNode)) {
+                    // Clear selection and select only this node
+                    this.selectedNodes.clear();
+                    this.selectedNodes.add(clickedNode);
+                }
+                this.selectedNode = clickedNode;
+            }
+
+            // Prepare for dragging all selected nodes
+            this.draggedNodes.clear();
+            this.selectedNodes.forEach(node => {
+                this.draggedNodes.add({
+                    node: node,
+                    offsetX: x - node.x,
+                    offsetY: y - node.y
+                });
+            });
+
             return;
         }
 
@@ -1679,7 +1893,12 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.isPanning = true;
             this.canvas.style.cursor = 'grabbing';
             this.lastMousePos = { x: e.clientX, y: e.clientY };
-            this.selectedNode = null;
+
+            // Clear selection if not holding Ctrl
+            if (!(e.ctrlKey || e.metaKey)) {
+                this.selectedNode = null;
+                this.selectedNodes.clear();
+            }
             return;
         }
     }
@@ -1747,15 +1966,17 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // Update hovered port
         this.hoveredPort = this.getPortAtPosition(x, y);
 
-        // Handle node dragging
-        if (this.draggedNode && !this.isPanning) {
-            const newX = x - this.dragOffset.x;
-            const newY = y - this.dragOffset.y;
+        // ========== NEW: HANDLE MULTI-NODE DRAGGING ==========
+        if (this.draggedNodes.size > 0 && !this.isPanning) {
+            this.draggedNodes.forEach(dragInfo => {
+                const newX = x - dragInfo.offsetX;
+                const newY = y - dragInfo.offsetY;
 
-            // Apply snap to grid
-            const snapped = this.snapPositionToGrid(newX, newY);
-            this.draggedNode.x = snapped.x;
-            this.draggedNode.y = snapped.y;
+                // Apply snap to grid
+                const snapped = this.snapPositionToGrid(newX, newY);
+                dragInfo.node.x = snapped.x;
+                dragInfo.node.y = snapped.y;
+            });
 
             this.hasUnsavedChanges = true;
             return;
@@ -1848,7 +2069,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Handle canvas mouse up
      */
     handleCanvasMouseUp(e) {
-        const hadChanges = this.draggedNode !== null || this.draggedGroupPanel !== null;
+        const hadChanges = this.draggedNodes.size > 0 || this.draggedGroupPanel !== null;
 
         if (this.connectingFrom) {
             const rect = this.canvas.getBoundingClientRect();
@@ -1882,6 +2103,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         }
 
         this.draggedNode = null;
+        this.draggedNodes.clear();
         this.draggedGroupPanel = null;
         this.isPanning = false;
         this.canvas.style.cursor = 'grab';
@@ -1924,6 +2146,324 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.showPortContextMenu(e, portHit);
             return;
         }
+
+        const nodeHit = this.getNodeAtPosition(x, y);
+        if (nodeHit) {
+            this.showNodeContextMenu(e, nodeHit, x, y);
+            return;
+        }
+
+        // Show canvas context menu for paste
+        this.showCanvasContextMenu(e, x, y);
+    }
+
+    /**
+ * Show context menu for a node
+ */
+    showNodeContextMenu(event, node, canvasX, canvasY) {
+        const menu = document.createElement('div');
+        menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: #2a2a2a;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px;
+        z-index: 10001;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        min-width: 150px;
+    `;
+
+        // Copy option
+        const copyOption = this.createContextMenuItem('Copy', 'fas fa-copy', () => {
+            this.copyNode(node);
+            menu.remove();
+        });
+
+        // Duplicate option
+        const duplicateOption = this.createContextMenuItem('Duplicate', 'fas fa-clone', () => {
+            this.duplicateNode(node);
+            menu.remove();
+        });
+
+        // Delete option
+        const deleteOption = this.createContextMenuItem('Delete', 'fas fa-trash', () => {
+            this.deleteNode(node);
+            this.saveState();
+            menu.remove();
+        }, '#f44336');
+
+        // Separator
+        const separator = document.createElement('div');
+        separator.style.cssText = `
+        height: 1px;
+        background: #555;
+        margin: 4px 0;
+    `;
+
+        // Comment option
+        const commentOption = this.createContextMenuItem('Add Comment', 'fas fa-comment', () => {
+            this.editNodeComment(node);
+            menu.remove();
+        });
+
+        menu.appendChild(copyOption);
+        menu.appendChild(duplicateOption);
+        menu.appendChild(separator.cloneNode());
+        menu.appendChild(commentOption);
+        menu.appendChild(separator);
+        menu.appendChild(deleteOption);
+
+        document.body.appendChild(menu);
+
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('mousedown', closeMenu);
+            }
+        };
+
+        setTimeout(() => {
+            document.addEventListener('mousedown', closeMenu);
+        }, 100);
+    }
+
+    /**
+     * Show context menu for canvas (empty space)
+     */
+    showCanvasContextMenu(event, canvasX, canvasY) {
+        if (!this.clipboard) return; // Only show if we have something to paste
+
+        const menu = document.createElement('div');
+        menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: #2a2a2a;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px;
+        z-index: 10001;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        min-width: 150px;
+    `;
+
+        // Paste option
+        const pasteOption = this.createContextMenuItem('Paste', 'fas fa-paste', () => {
+            this.pasteNode(canvasX, canvasY);
+            menu.remove();
+        });
+
+        menu.appendChild(pasteOption);
+
+        document.body.appendChild(menu);
+
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('mousedown', closeMenu);
+            }
+        };
+
+        setTimeout(() => {
+            document.addEventListener('mousedown', closeMenu);
+        }, 100);
+    }
+
+    /**
+     * Create a context menu item
+     */
+    createContextMenuItem(label, icon, onClick, color = '#fff') {
+        const item = document.createElement('div');
+        item.style.cssText = `
+        padding: 8px 12px;
+        color: ${color};
+        cursor: pointer;
+        font-size: 12px;
+        border-radius: 4px;
+        transition: background 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    `;
+
+        if (icon) {
+            const iconEl = document.createElement('i');
+            iconEl.className = icon;
+            iconEl.style.width = '14px';
+            item.appendChild(iconEl);
+        }
+
+        const textEl = document.createElement('span');
+        textEl.textContent = label;
+        item.appendChild(textEl);
+
+        item.addEventListener('mouseenter', () => item.style.background = '#444');
+        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+        item.addEventListener('click', onClick);
+
+        return item;
+    }
+
+    /**
+     * Copy a node to clipboard
+     */
+    copyNode(node) {
+        // ========== NEW: COPY MULTIPLE NODES ==========
+        if (this.selectedNodes.size > 1) {
+            // Copy all selected nodes
+            const nodesToCopy = Array.from(this.selectedNodes);
+            this.clipboard = {
+                nodes: nodesToCopy.map(n => JSON.parse(JSON.stringify(n))),
+                connections: this.connections.filter(conn =>
+                    nodesToCopy.includes(conn.from.node) && nodesToCopy.includes(conn.to.node)
+                ).map(conn => ({
+                    fromNodeId: conn.from.node.id,
+                    fromPortIndex: conn.from.portIndex,
+                    toNodeId: conn.to.node.id,
+                    toPortIndex: conn.to.portIndex
+                }))
+            };
+            this.showNotification(`Copied ${nodesToCopy.length} nodes`, 'success');
+        } else {
+            // Copy single node (original behavior)
+            this.clipboard = JSON.parse(JSON.stringify({
+                node: node,
+                connections: this.connections.filter(conn =>
+                    conn.from.node.id === node.id
+                ).map(conn => ({
+                    fromPortIndex: conn.from.portIndex,
+                    toNodeOffset: {
+                        x: conn.to.node.x - node.x,
+                        y: conn.to.node.y - node.y
+                    },
+                    toNodeId: conn.to.node.id,
+                    toPortIndex: conn.to.portIndex
+                }))
+            }));
+            this.showNotification(`Copied node: ${node.label}`, 'success');
+        }
+    }
+
+    /**
+     * Paste a node from clipboard
+     */
+    pasteNode(x, y) {
+        if (!this.clipboard) {
+            this.showNotification('Nothing to paste', 'warning');
+            return;
+        }
+
+        // ========== NEW: PASTE MULTIPLE NODES ==========
+        if (this.clipboard.nodes) {
+            // Pasting multiple nodes
+            const oldToNewIdMap = new Map();
+            const newNodes = [];
+
+            // Calculate center of clipboard nodes
+            let centerX = 0, centerY = 0;
+            this.clipboard.nodes.forEach(n => {
+                centerX += n.x;
+                centerY += n.y;
+            });
+            centerX /= this.clipboard.nodes.length;
+            centerY /= this.clipboard.nodes.length;
+
+            // Create new nodes
+            this.clipboard.nodes.forEach(nodeToPaste => {
+                const offsetX = nodeToPaste.x - centerX;
+                const offsetY = nodeToPaste.y - centerY;
+
+                const newNode = {
+                    ...JSON.parse(JSON.stringify(nodeToPaste)),
+                    id: this.generateNodeId(),
+                    x: x + offsetX,
+                    y: y + offsetY
+                };
+
+                oldToNewIdMap.set(nodeToPaste.id, newNode.id);
+                this.nodes.push(newNode);
+                newNodes.push(newNode);
+            });
+
+            // Recreate connections between pasted nodes
+            this.clipboard.connections.forEach(conn => {
+                const fromNodeId = oldToNewIdMap.get(conn.fromNodeId);
+                const toNodeId = oldToNewIdMap.get(conn.toNodeId);
+
+                if (fromNodeId && toNodeId) {
+                    const fromNode = this.nodes.find(n => n.id === fromNodeId);
+                    const toNode = this.nodes.find(n => n.id === toNodeId);
+
+                    if (fromNode && toNode) {
+                        this.connections.push({
+                            from: {
+                                node: fromNode,
+                                portIndex: conn.fromPortIndex,
+                                isOutput: true
+                            },
+                            to: {
+                                node: toNode,
+                                portIndex: conn.toPortIndex,
+                                isOutput: false
+                            }
+                        });
+                    }
+                }
+            });
+
+            // Select the pasted nodes
+            this.selectedNodes.clear();
+            newNodes.forEach(n => this.selectedNodes.add(n));
+            this.selectedNode = newNodes[0];
+
+            this.hasUnsavedChanges = true;
+            this.saveState();
+            this.showNotification(`Pasted ${newNodes.length} nodes`, 'success');
+        } else {
+            // Pasting single node (original behavior)
+            const clipData = JSON.parse(JSON.stringify(this.clipboard));
+            const nodeToPaste = clipData.node;
+
+            const newNode = {
+                ...nodeToPaste,
+                id: this.generateNodeId(),
+                x: x,
+                y: y
+            };
+
+            if (newNode.groupData) {
+                newNode.groupData = JSON.parse(JSON.stringify(nodeToPaste.groupData));
+                const idMap = new Map();
+                newNode.groupData.nodes.forEach(n => {
+                    const oldId = n.id;
+                    n.id = this.generateNodeId();
+                    idMap.set(oldId, n.id);
+                });
+                newNode.groupData.connections.forEach(conn => {
+                    conn.from.node.id = idMap.get(conn.from.node.id);
+                    conn.to.node.id = idMap.get(conn.to.node.id);
+                });
+            }
+
+            this.nodes.push(newNode);
+            this.selectedNode = newNode;
+            this.selectedNodes.clear();
+            this.selectedNodes.add(newNode);
+            this.hasUnsavedChanges = true;
+            this.saveState();
+
+            this.showNotification(`Pasted node: ${newNode.label}`, 'success');
+        }
+    }
+
+    /**
+     * Duplicate a node (copy + paste at offset)
+     */
+    duplicateNode(node) {
+        this.copyNode(node);
+        this.pasteNode(node.x + this.clipboardOffset.x, node.y + this.clipboardOffset.y);
     }
 
     showPortContextMenu(event, port) {
@@ -2644,6 +3184,28 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Delete a node and its connections
      */
     deleteNode(node) {
+        // ========== NEW: DELETE MULTIPLE NODES ==========
+        if (this.selectedNodes.size > 1 && this.selectedNodes.has(node)) {
+            // Delete all selected nodes
+            const nodesToDelete = Array.from(this.selectedNodes);
+            nodesToDelete.forEach(n => {
+                if (n.isGroupInput || n.isGroupOutput) {
+                    this.showNotification('Cannot delete group input/output nodes!', 'warning');
+                    return;
+                }
+                this.nodes = this.nodes.filter(nd => nd.id !== n.id);
+                this.connections = this.connections.filter(c =>
+                    c.from.node.id !== n.id && c.to.node.id !== n.id
+                );
+            });
+            this.selectedNodes.clear();
+            this.selectedNode = null;
+            this.showNotification(`Deleted ${nodesToDelete.length} nodes`, 'success');
+            this.hasUnsavedChanges = true;
+            this.saveState();
+            return;
+        }
+
         // Prevent deletion of special group input/output nodes
         if (node.isGroupInput || node.isGroupOutput) {
             this.showNotification('Cannot delete group input/output nodes!', 'warning');
@@ -2655,8 +3217,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
             c.from.node.id !== node.id && c.to.node.id !== node.id
         );
         this.selectedNode = null;
+        this.selectedNodes.delete(node);
         this.hasUnsavedChanges = true;
-        this.saveState(); // Save state after deletion
+        this.saveState();
     }
 
     /**
@@ -2797,7 +3360,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Draw a node
      */
     drawNode(ctx, node) {
-        const isSelected = this.selectedNode === node;
+        // ========== NEW: HIGHLIGHT MULTI-SELECTED NODES ==========
+        const isSelected = this.selectedNodes.has(node) || this.selectedNode === node;
 
         if (isSelected) {
             ctx.shadowColor = 'rgba(255, 255, 255, 0.5)';
@@ -3306,13 +3870,62 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const fromPortLabel = conn.from.node.outputs[conn.from.portIndex];
         const toPortLabel = conn.to.node.inputs[conn.to.portIndex];
         const isFlowConnection = (fromPortLabel === 'flow' && toPortLabel === 'flow');
-        if (isFlowConnection) {
-            this.drawNeonBezierConnection(ctx, fromPos, toPos, '#ff00ff', this.animationTime);
+
+        const color = isFlowConnection ? '#ff00ff' : this.connectionColor;
+
+        // ========== NEW: SIMPLIFIED CONNECTOR OPTION ==========
+        if (this.simplifiedConnectors) {
+            this.drawSimpleConnection(ctx, fromPos, toPos, color);
+        } else {
+            this.drawNeonBezierConnection(ctx, fromPos, toPos, color, this.animationTime);
+        }
+    }
+
+    /**
+     * Draw a simple straight/bezier line connection (no animation)
+     */
+    drawSimpleConnection(ctx, from, to, color) {
+        // Defensive checks
+        if (!from || !to) return;
+        if (!isFinite(from.x) || !isFinite(from.y) || !isFinite(to.x) || !isFinite(to.y)) {
             return;
         }
 
-        // Use custom connection color instead of hardcoded cyan
-        this.drawNeonBezierConnection(ctx, fromPos, toPos, this.connectionColor, this.animationTime);
+        const isFlowConnection = (color === '#ff00ff');
+
+        let cp1x, cp1y, cp2x, cp2y;
+
+        if (isFlowConnection) {
+            // Flow connections: vertical bezier curves
+            const verticalOffset = Math.min(Math.abs(to.y - from.y) * 0.5, 100);
+            cp1x = from.x;
+            cp1y = from.y + verticalOffset;
+            cp2x = to.x;
+            cp2y = to.y - verticalOffset;
+        } else {
+            // Data connections: horizontal bezier curves
+            const distance = Math.abs(to.x - from.x);
+            const cpOffset = Math.min(distance * 0.5, 100);
+            cp1x = from.x + cpOffset;
+            cp1y = from.y;
+            cp2x = to.x - cpOffset;
+            cp2y = to.y;
+        }
+
+        // If control points are not finite, bail out
+        if (!isFinite(cp1x) || !isFinite(cp1y) || !isFinite(cp2x) || !isFinite(cp2y)) {
+            return;
+        }
+
+        // Draw single smooth line
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
     }
 
     /**
@@ -3516,6 +4129,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
             groupNode.groupData = {
                 nodes: [],
                 connections: [],
+                groupInputConnections: [],
+                groupOutputConnections: [],
                 panOffset: { x: 0, y: 0 },
                 zoom: 1.0
             };
@@ -3572,6 +4187,53 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Add a special "Group Input" node if it doesn't exist
         this.ensureGroupInputNode(groupNode);
+
+        // IMPORTANT FIX: Restore connections to/from groupInput and groupOutput nodes
+        // After creating the special nodes, restore their connections
+        const groupInputNode = this.nodes.find(n => n.isGroupInput);
+        const groupOutputNode = this.nodes.find(n => n.isGroupOutput);
+
+        // Restore groupInput connections
+        if (groupInputNode && groupNode.groupData.groupInputConnections) {
+            groupNode.groupData.groupInputConnections.forEach(conn => {
+                const toNode = nodeMap.get(conn.toNodeId);
+                if (toNode) {
+                    this.connections.push({
+                        from: {
+                            node: groupInputNode,
+                            portIndex: conn.portIndex,
+                            isOutput: true
+                        },
+                        to: {
+                            node: toNode,
+                            portIndex: conn.toPortIndex,
+                            isOutput: false
+                        }
+                    });
+                }
+            });
+        }
+
+        // Restore groupOutput connections
+        if (groupOutputNode && groupNode.groupData.groupOutputConnections) {
+            groupNode.groupData.groupOutputConnections.forEach(conn => {
+                const fromNode = nodeMap.get(conn.fromNodeId);
+                if (fromNode) {
+                    this.connections.push({
+                        from: {
+                            node: fromNode,
+                            portIndex: conn.fromPortIndex,
+                            isOutput: true
+                        },
+                        to: {
+                            node: groupOutputNode,
+                            portIndex: conn.portIndex,
+                            isOutput: false
+                        }
+                    });
+                }
+            });
+        }
 
         this.showNotification(`Opened group: ${groupNode.label}`, 'info');
         this.updateGroupBreadcrumb();
@@ -3665,20 +4327,44 @@ class VisualModuleBuilderWindow extends EditorWindow {
     exitGroup() {
         if (this.groupHistory.length === 0) return;
 
-        // Save current group state (but remove special group input/output nodes first)
+        // Save current group state
         if (this.currentGroup) {
             // Filter out the special group input/output nodes before saving
             const filteredNodes = this.nodes.filter(n => !n.isGroupInput && !n.isGroupOutput);
-            const filteredConnections = this.connections.filter(c => {
-                const fromNodeValid = filteredNodes.find(n => n.id === c.from.node.id);
-                const toNodeValid = filteredNodes.find(n => n.id === c.to.node.id);
-                return fromNodeValid && toNodeValid;
+
+            // IMPORTANT FIX: We need to keep connections that involve groupInput/groupOutput nodes
+            // but we need to save them in a way that preserves the connection to internal nodes
+            const internalConnections = this.connections.filter(c => {
+                // Keep connections where BOTH nodes are internal (not groupInput/groupOutput)
+                const fromIsInternal = filteredNodes.find(n => n.id === c.from.node.id);
+                const toIsInternal = filteredNodes.find(n => n.id === c.to.node.id);
+                return fromIsInternal && toIsInternal;
             });
 
-            // FIX: Save connections in a serializable format that preserves node references
+            // Save connections FROM groupInput TO internal nodes
+            const groupInputConnections = this.connections.filter(c => {
+                return c.from.node.isGroupInput && filteredNodes.find(n => n.id === c.to.node.id);
+            }).map(c => ({
+                type: 'groupInput',
+                portIndex: c.from.portIndex,
+                toNodeId: c.to.node.id,
+                toPortIndex: c.to.portIndex
+            }));
+
+            // Save connections FROM internal nodes TO groupOutput
+            const groupOutputConnections = this.connections.filter(c => {
+                return c.to.node.isGroupOutput && filteredNodes.find(n => n.id === c.from.node.id);
+            }).map(c => ({
+                type: 'groupOutput',
+                portIndex: c.to.portIndex,
+                fromNodeId: c.from.node.id,
+                fromPortIndex: c.from.portIndex
+            }));
+
+            // Save state with all connection types
             this.currentGroup.groupData = {
                 nodes: filteredNodes,
-                connections: filteredConnections.map(c => ({
+                connections: internalConnections.map(c => ({
                     from: {
                         nodeId: c.from.node.id,
                         portIndex: c.from.portIndex,
@@ -3690,6 +4376,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
                         node: c.to.node  // Keep reference for immediate re-entry
                     }
                 })),
+                groupInputConnections: groupInputConnections,
+                groupOutputConnections: groupOutputConnections,
                 panOffset: this.panOffset,
                 zoom: this.zoom
             };
@@ -5101,6 +5789,24 @@ class ${className} extends Module {
                 if (sourceNode.outputs && sourceNode.outputs.length > 1) {
                     const outputPortName = sourceNode.outputs[sourcePortIndex];
 
+                    // ========== NEW: AUTO-DETECT FLOW + SINGLE VALUE PATTERN ==========
+                    // Count non-flow outputs
+                    const nonFlowOutputs = sourceNode.outputs.filter(out => out !== 'flow');
+
+                    // If node has flow + exactly one data output, treat as single output
+                    // (e.g., ['flow', 'result'] or ['flow', 'value', 'x', 'y'])
+                    const hasFlow = sourceNode.outputs.includes('flow');
+                    const isSingleValueWithFlow = hasFlow && nonFlowOutputs.length === 1;
+
+                    // If it's a flow + single value pattern OR has directOutput flag, return directly
+                    if (isSingleValueWithFlow || nodeTemplate.directOutput) {
+                        // Return the base value directly without appending .portName
+                        if (removeUnwantedChars && typeof baseValue === 'string') {
+                            return this.cleanupString(baseValue);
+                        }
+                        return baseValue;
+                    }
+
                     // Check if this node has a multiOutputAccess function or if we should auto-append
                     if (nodeTemplate.multiOutputAccess) {
                         let result = nodeTemplate.multiOutputAccess(baseValue, outputPortName, sourceNode, ctx);
@@ -5551,6 +6257,258 @@ class ${className} extends Module {
             console.error('Error loading project:', error);
             this.showNotification(`Error loading project: ${error.message}`, 'error');
         }
+    }
+
+    /**
+ * Save project to desktop as downloadable file
+ */
+    async saveProjectToDesktop() {
+        // **Save the current state and return to main canvas before saving**
+        const wasInGroup = this.currentGroup !== null;
+        const savedCurrentGroup = this.currentGroup;
+        const savedNodes = this.nodes;
+        const savedConnections = this.connections;
+        const savedPanOffset = this.panOffset;
+        const savedZoom = this.zoom;
+        const savedHistory = [...this.groupHistory];
+
+        // If we're in a group, save its state and exit all groups to get to the root
+        if (wasInGroup) {
+            // Save current group state first
+            if (this.currentGroup) {
+                // Filter out the special group input/output nodes before saving
+                const filteredNodes = this.nodes.filter(n => !n.isGroupInput && !n.isGroupOutput);
+                const filteredConnections = this.connections.filter(c => {
+                    const fromNodeValid = filteredNodes.find(n => n.id === c.from.node.id);
+                    const toNodeValid = filteredNodes.find(n => n.id === c.to.node.id);
+                    return fromNodeValid && toNodeValid;
+                });
+
+                this.currentGroup.groupData = {
+                    nodes: filteredNodes,
+                    connections: filteredConnections.map(c => ({
+                        from: {
+                            nodeId: c.from.node.id,
+                            portIndex: c.from.portIndex,
+                            node: c.from.node
+                        },
+                        to: {
+                            nodeId: c.to.node.id,
+                            portIndex: c.to.portIndex,
+                            node: c.to.node
+                        }
+                    })),
+                    panOffset: this.panOffset,
+                    zoom: this.zoom
+                };
+            }
+
+            // Exit all groups to get to root
+            while (this.groupHistory.length > 0) {
+                const previousState = this.groupHistory.pop();
+                this.nodes = previousState.nodes;
+                this.connections = previousState.connections;
+                this.panOffset = previousState.panOffset;
+                this.zoom = previousState.zoom;
+                this.currentGroup = previousState.currentGroup;
+            }
+        }
+
+        // Collect custom node definitions
+        const customNodes = [];
+        for (const category in this.nodeLibrary) {
+            for (const nodeDef of this.nodeLibrary[category]) {
+                if (nodeDef.custom) {
+                    customNodes.push({
+                        category: category,
+                        type: nodeDef.type,
+                        label: nodeDef.label,
+                        color: nodeDef.color,
+                        icon: nodeDef.icon,
+                        inputs: nodeDef.inputs,
+                        outputs: nodeDef.outputs,
+                        hasInput: nodeDef.hasInput,
+                        hasToggle: nodeDef.hasToggle,
+                        hasDropdown: nodeDef.hasDropdown,
+                        hasColorPicker: nodeDef.hasColorPicker,
+                        hasExposeCheckbox: nodeDef.hasExposeCheckbox,
+                        isGroup: nodeDef.isGroup,
+                        wrapFlowNode: nodeDef.wrapFlowNode,
+                        codeGenString: nodeDef.codeGen ? nodeDef.codeGen.toString() : null
+                    });
+                }
+            }
+        }
+
+        const projectData = {
+            version: '1.0',
+            moduleName: this.moduleName,
+            moduleNamespace: this.moduleNamespace,
+            moduleDescription: this.moduleDescription,
+            moduleIcon: this.moduleIcon,
+            moduleColor: this.moduleColor,
+            allowMultiple: this.allowMultiple,
+            drawInEditor: this.drawInEditor,
+            nodes: this.nodes,
+            connections: this.connections.map(c => ({
+                from: {
+                    nodeId: c.from.node.id,
+                    portIndex: c.from.portIndex
+                },
+                to: {
+                    nodeId: c.to.node.id,
+                    portIndex: c.to.portIndex
+                }
+            })),
+            panOffset: this.panOffset,
+            zoom: this.zoom,
+            groupPanels: this.groupPanels,
+            customNodes: customNodes,
+            nodeComments: Array.from(this.nodeComments.entries())
+        };
+
+        try {
+            // Create blob and download
+            const jsonString = JSON.stringify(projectData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${this.moduleName || 'VMB_Project'}_${Date.now()}.vmb`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.hasUnsavedChanges = false;
+            this.showNotification(`Project downloaded to desktop!`, 'success');
+        } catch (error) {
+            this.showNotification(`Error saving to desktop: ${error.message}`, 'error');
+        }
+
+        // **Restore the group state if we were in a group**
+        if (wasInGroup) {
+            this.groupHistory = savedHistory;
+            this.nodes = savedNodes;
+            this.connections = savedConnections;
+            this.panOffset = savedPanOffset;
+            this.zoom = savedZoom;
+            this.currentGroup = savedCurrentGroup;
+            this.updateGroupBreadcrumb();
+        }
+    }
+
+    /**
+     * Load project from desktop file
+     */
+    async loadProjectFromDesktop() {
+        // Create file input
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.vmb,.json';
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const projectData = JSON.parse(text);
+
+                // Restore custom nodes first
+                if (projectData.customNodes && Array.isArray(projectData.customNodes)) {
+                    for (const customNodeData of projectData.customNodes) {
+                        let codeGenFunction = null;
+                        if (customNodeData.codeGenString) {
+                            try {
+                                codeGenFunction = eval(`(${customNodeData.codeGenString})`);
+                            } catch (e) {
+                                console.error(`Failed to restore codeGen for custom node ${customNodeData.type}:`, e);
+                            }
+                        }
+
+                        const nodeDef = {
+                            type: customNodeData.type,
+                            label: customNodeData.label,
+                            color: customNodeData.color,
+                            icon: customNodeData.icon,
+                            inputs: customNodeData.inputs || [],
+                            outputs: customNodeData.outputs || [],
+                            hasInput: customNodeData.hasInput || false,
+                            hasToggle: customNodeData.hasToggle || false,
+                            hasDropdown: customNodeData.hasDropdown || false,
+                            hasColorPicker: customNodeData.hasColorPicker || false,
+                            hasExposeCheckbox: customNodeData.hasExposeCheckbox || false,
+                            isGroup: customNodeData.isGroup || false,
+                            wrapFlowNode: customNodeData.wrapFlowNode !== undefined ? customNodeData.wrapFlowNode : true,
+                            codeGen: codeGenFunction,
+                            custom: true
+                        };
+
+                        if (!this.nodeLibrary[customNodeData.category]) {
+                            this.nodeLibrary[customNodeData.category] = [];
+                        }
+
+                        const existingIndex = this.nodeLibrary[customNodeData.category].findIndex(n => n.type === customNodeData.type);
+                        if (existingIndex >= 0) {
+                            this.nodeLibrary[customNodeData.category][existingIndex] = nodeDef;
+                        } else {
+                            this.nodeLibrary[customNodeData.category].push(nodeDef);
+                        }
+                    }
+                }
+
+                this.moduleName = projectData.moduleName;
+                this.moduleNamespace = projectData.moduleNamespace;
+                this.moduleDescription = projectData.moduleDescription;
+                this.moduleIcon = projectData.moduleIcon;
+                this.moduleColor = projectData.moduleColor || '#4CAF50';
+                this.allowMultiple = projectData.allowMultiple;
+                this.drawInEditor = projectData.drawInEditor;
+                this.nodes = projectData.nodes.map(node => this.sanitizeNode(node));
+
+                this.connections = projectData.connections.map(c => ({
+                    from: {
+                        node: this.nodes.find(n => n.id === c.from.nodeId),
+                        portIndex: c.from.portIndex,
+                        isOutput: true
+                    },
+                    to: {
+                        node: this.nodes.find(n => n.id === c.to.nodeId),
+                        portIndex: c.to.portIndex,
+                        isOutput: false
+                    }
+                }));
+
+                // Restore comments
+                this.nodeComments = new Map();
+                if (projectData.nodeComments && Array.isArray(projectData.nodeComments)) {
+                    projectData.nodeComments.forEach(([nodeId, comment]) => {
+                        this.nodeComments.set(nodeId, comment);
+                    });
+                }
+
+                // Restore group panels
+                if (projectData.groupPanels) {
+                    this.groupPanels = projectData.groupPanels;
+                }
+
+                this.panOffset = projectData.panOffset || { x: 0, y: 0 };
+                this.zoom = projectData.zoom || 1.0;
+                this.hasUnsavedChanges = false;
+                this.projectPath = null; // Clear internal path since loaded from desktop
+
+                this.setupUI();
+                this.setupCanvas();
+                this.setupCanvasEventListeners();
+                this.showNotification(`Project loaded from desktop successfully!`, 'success');
+            } catch (error) {
+                console.error('Error loading project from desktop:', error);
+                this.showNotification(`Error loading project: ${error.message}`, 'error');
+            }
+        };
+
+        input.click();
     }
 
     /**
@@ -6217,7 +7175,7 @@ class ${className} extends Module {
             this.previewWindow.close();
             this.previewWindow = null;
         }
-        
+
         this.livePreviewActive = false;
         this.logToConsole('🛑 Live preview stopped.', 'info');
     }
@@ -7152,6 +8110,9 @@ class ${className} extends Module {
             this.animationFrameId = null;
         }
 
+        // Stop test module
+        this.stopTestModule();
+
         // Remove event listeners
         if (this.boundHandlers.resize) {
             window.removeEventListener('resize', this.boundHandlers.resize);
@@ -7185,11 +8146,18 @@ class ${className} extends Module {
             cancelAnimationFrame(this.animationFrameId);
         }
 
+        // Stop test module
+        this.stopTestModule();
+
         // Clear references
         this.nodes = [];
         this.connections = [];
+        this.selectedNodes.clear();
+        this.draggedNodes.clear();
         this.canvas = null;
         this.ctx = null;
+        this.testCanvas = null;
+        this.testCtx = null;
 
         // Call parent destroy if it exists
         if (super.destroy) {
@@ -7745,8 +8713,185 @@ class ${className} extends Module {
     }
 
     /**
- * Load a JavaScript module file and convert it to visual nodes
- */
+     * Toggle test panel visibility
+     */
+    toggleTestPanel() {
+        this.testPanelVisible = !this.testPanelVisible;
+
+        if (this.testPanelContainer) {
+            this.testPanelContainer.style.display = this.testPanelVisible ? 'flex' : 'none';
+        }
+
+        if (this.testPanelVisible) {
+            this.refreshTestModule();
+        } else {
+            this.stopTestModule();
+        }
+    }
+
+    /**
+     * Refresh/reload the test module
+     */
+    refreshTestModule() {
+        if (!this.moduleName) {
+            this.showNotification('Please enter a module name first!', 'warning');
+            return;
+        }
+
+        this.logToConsole('🔬 Refreshing test module...', 'info');
+
+        try {
+            // Stop existing test
+            this.stopTestModule();
+
+            // Generate module code
+            const code = this.generateModuleCode();
+
+            // Execute the code to create the class
+            eval(code);
+
+            // Get the module class
+            const TestModuleClass = eval(`${this.moduleName}`);
+
+            // Create a minimal engine instance
+            this.testEngine = this.createTestEngine();
+
+            // Create test game object
+            this.testGameObject = new GameObject('TestObject', this.testEngine);
+
+            this.testEngine.addGameObject(this.testGameObject);
+
+            this.testGameObject.x = this.testCanvas.width / 2;
+            this.testGameObject.y = this.testCanvas.height / 2;
+            this.testGameObject.width = 50;
+            this.testGameObject.height = 50;
+
+            // Add the test module to the game object
+            const moduleInstance = this.testGameObject.addModule(TestModuleClass);
+
+            // Call start if it exists
+            if (moduleInstance.start) {
+                moduleInstance.start();
+            }
+
+            // Start test loop
+            this.startTestLoop();
+
+            this.logToConsole('✅ Test module loaded successfully!', 'success');
+            this.showNotification('Test module loaded!', 'success');
+
+        } catch (error) {
+            this.logToConsole(`❌ Test error: ${error.message}`, 'error');
+            console.error('Test module error:', error);
+            this.showNotification('Test failed! Check console for details.', 'error');
+        }
+    }
+
+    /**
+     * Create a minimal test engine
+     */
+    createTestEngine() {
+        const testCanvas = this.testCanvas;
+        const testCtx = testCanvas.getContext('2d');
+
+        const testEngine = new Engine(testCanvas, { makeGlobal: false });
+        const testInput = new InputManager();
+
+        testEngine.input = testInput;
+
+        return testEngine
+    }
+
+    /**
+     * Start the test render loop
+     */
+    startTestLoop() {
+        let lastTime = performance.now();
+
+        const testLoop = () => {
+            if (!this.testPanelVisible || !this.testGameObject) {
+                return;
+            }
+
+            const currentTime = performance.now();
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            this.testEngine.deltaTime = deltaTime;
+            this.testEngine.time += deltaTime;
+
+            // Clear canvas
+            const ctx = this.testEngine.ctx;
+            ctx.fillStyle = '#27272bff';
+            ctx.fillRect(0, 0, this.testCanvas.width, this.testCanvas.height);
+
+            // Update module
+            const moduleInstance = Object.values(this.testGameObject.modules)[0];
+            if (moduleInstance) {
+                if (moduleInstance.beginLoop) {
+                    moduleInstance.beginLoop();
+                }
+
+                if (moduleInstance.loop) {
+                    moduleInstance.loop(this.testEngine.deltaTime);
+                }
+
+                if (moduleInstance.update) {
+                    moduleInstance.update();
+                }
+
+                if (moduleInstance.endLoop) {
+                    moduleInstance.endLoop();
+                }
+
+                if (moduleInstance.draw) {
+                    ctx.save();
+                    moduleInstance.draw(ctx);
+                    ctx.restore();
+                }
+            }
+
+            // Draw game object
+            ctx.save();
+            ctx.translate(this.testGameObject.x, this.testGameObject.y);
+            ctx.rotate(this.testGameObject.angle * Math.PI / 180);
+            ctx.fillStyle = '#4CAF50';
+            ctx.fillRect(-this.testGameObject.width / 2, -this.testGameObject.height / 2,
+                this.testGameObject.width, this.testGameObject.height);
+            ctx.restore();
+
+            // Draw info
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px monospace';
+            ctx.fillText(`FPS: ${(1 / deltaTime).toFixed(0)}`, 10, 20);
+            ctx.fillText(`Time: ${this.testEngine.time.toFixed(2)}s`, 10, 35);
+
+            requestAnimationFrame(testLoop);
+        };
+
+        testLoop();
+    }
+
+    /**
+     * Stop the test module
+     */
+    stopTestModule() {
+        if (this.testGameObject) {
+            this.testGameObject.destroy();
+        }
+
+        this.testEngine = null;
+        this.testGameObject = null;
+
+        // Clear canvas
+        if (this.testCanvas && this.testCtx) {
+            this.testCtx.clearRect(0, 0, this.testCanvas.width, this.testCanvas.height);
+        }
+    }
+
+    /**
+     * Load a JavaScript module file and convert it to visual nodes
+     */
     async loadJavaScriptModule() {
         try {
             if (this.hasUnsavedChanges) {

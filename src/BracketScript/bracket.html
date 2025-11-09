@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BracketScript IDE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/mode/simple.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #667eea;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 15px;
+            padding: 15px;
+            overflow: hidden;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .editor-panel {
+            flex: 1;
+        }
+
+        .output-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+
+        .CodeMirror {
+            height: 100%;
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        .output-tabs {
+            display: flex;
+            background: #f5f5f5;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #f5f5f5;
+            border: none;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            margin-bottom: -2px;
+        }
+
+        .tab:hover {
+            background: #e8e8e8;
+        }
+
+        .output-content {
+            flex: 1;
+            overflow: auto;
+            display: none;
+        }
+
+        .output-content.active {
+            display: block;
+        }
+
+        #jsOutput, #consoleOutput {
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #jsOutput {
+            background: #f8f8f8;
+            color: #333;
+        }
+
+        #consoleOutput {
+            background: #1e1e1e;
+            color: #00ff00;
+        }
+
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px 15px;
+            border-left: 4px solid #c62828;
+            margin: 10px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+        }
+
+        .success-message {
+            background: #e8f5e9;
+            color: #2e7d32;
+            padding: 10px 15px;
+            border-left: 4px solid #2e7d32;
+            margin: 10px;
+            border-radius: 4px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            font-size: 13px;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+
+        .btn-primary:hover {
+            background: #f0f0f0;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .console-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-bottom: 1px solid #333;
+        }
+
+        .console-log {
+            color: #00ff00;
+        }
+
+        .console-error {
+            color: #ff4444;
+        }
+
+        .console-warn {
+            color: #ffaa00;
+        }
+
+        .line-error {
+            background: rgba(255, 0, 0, 0.1);
+            border-left: 3px solid #c62828;
+        }
+
+        /* Documentation Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 1200px;
+            height: 80%;
+            border-radius: 12px;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 25px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-modal {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .close-modal:hover {
+            background: rgba(255,255,255,0.3);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .doc-sidebar {
+            width: 280px;
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .doc-category {
+            margin-bottom: 25px;
+        }
+
+        .category-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #667eea;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .doc-topic {
+            padding: 10px 15px;
+            margin: 5px 0;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .doc-topic:hover {
+            background: #e9ecef;
+            color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .doc-topic.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        .doc-content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .doc-content h3 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+
+        .doc-content h4 {
+            color: #764ba2;
+            font-size: 20px;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+
+        .doc-content p {
+            line-height: 1.7;
+            color: #495057;
+            margin-bottom: 15px;
+        }
+
+        .doc-content code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #e83e8c;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+        }
+
+        .doc-content pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .doc-content pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        .doc-example {
+            border-left: 4px solid #667eea;
+            padding-left: 15px;
+            margin: 20px 0;
+        }
+
+        .doc-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .doc-note strong {
+            color: #856404;
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .help-icon {
+            cursor: pointer;
+            font-size: 24px;
+            padding: 5px;
+            transition: transform 0.3s;
+        }
+
+        .help-icon:hover {
+            transform: scale(1.2);
+        }
+
+        /* BracketScript Syntax Highlighting */
+        .cm-s-monokai .cm-bracket {
+            color: #f92672 !important;
+            font-weight: bold;
+        }
+
+        .cm-s-monokai .cm-type {
+            color: #66d9ef !important;
+            font-weight: bold;
+        }
+
+        .cm-s-monokai .cm-builtin {
+            color: #a6e22e !important;
+        }
+
+        .cm-s-monokai .cm-property {
+            color: #fd971f !important;
+        }
+
+        .cm-s-monokai .cm-atom {
+            color: #ae81ff !important;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            🚀 BracketScript IDE
+            <span class="help-icon" onclick="showDocumentation()" title="Documentation">📚</span>
+        </h1>
+        <p>A clean, intuitive language that transpiles to JavaScript - Write less, do more!</p>
+    </div>
+
+    <div class="container">
+        <div class="panel editor-panel">
+            <div class="panel-header">
+                <span>BracketScript Editor</span>
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="transpileCode()">▶ Transpile</button>
+                    <button class="btn btn-secondary" onclick="runCode()">⚡ Run</button>
+                    <button class="btn btn-secondary" onclick="loadExample()">📝 Example</button>
+                </div>
+            </div>
+            <div class="panel-content">
+                <textarea id="editor"></textarea>
+            </div>
+        </div>
+
+        <div class="panel output-panel">
+            <div class="panel-header">
+                <span>Output</span>
+                <button class="btn btn-secondary" onclick="clearOutputs()">🗑 Clear</button>
+            </div>
+            <div class="output-tabs">
+                <button class="tab active" onclick="switchTab('js')">JavaScript</button>
+                <button class="tab" onclick="switchTab('console')">Console</button>
+            </div>
+            <div class="panel-content output-content active" id="jsOutputPanel">
+                <div id="jsOutput"></div>
+            </div>
+            <div class="panel-content output-content" id="consoleOutputPanel">
+                <div id="consoleOutput"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documentation Modal -->
+    <div id="docModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📚 BracketScript Documentation</h2>
+                <button class="close-modal" onclick="hideDocumentation()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="doc-sidebar" id="docSidebar"></div>
+                <div class="doc-content" id="docContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="bracket-script.js"></script>
+    <script src="bracket-script-docs.js"></script>
+    <script>
+        let editor;
+        let consoleEntries = [];
+
+        // Define BracketScript syntax highlighting mode
+        CodeMirror.defineSimpleMode("bracketscript", {
+            start: [
+                // Comments
+                { regex: /\/\/.*/, token: "comment" },
+                { regex: /\/\*/, token: "comment", next: "comment" },
+                
+                // Brackets (highlighting block delimiters)
+                { regex: /[\[\]]/, token: "bracket" },
+                
+                // Strings
+                { regex: /"(?:[^\\]|\\.)*?"/, token: "string" },
+                { regex: /'(?:[^\\]|\\.)*?'/, token: "string" },
+                { regex: /`(?:[^\\]|\\.)*?`/, token: "string" },
+                
+                // Numbers
+                { regex: /\b\d+(\.\d+)?\b/, token: "number" },
+                
+                // Class names (start with capital letter)
+                { regex: /\b[A-Z][a-zA-Z0-9]*\b/, token: "type" },
+                
+                // Core keywords
+                {
+                    regex: /\b(prop|var|init|new|set|call|log|return|if|else|elseif|while|for|each|in|func|extends|super|this|let|const|break|continue|try|catch|throw|await|async|switch|case|default|do|finally|of|with|static|get|getter|set|setter|export|import|from|as|default|delete|null|undefined)\b/,
+                    token: "keyword"
+                },
+                
+                // Console operations
+                {
+                    regex: /\b(warn|error|info|debug|table|clear)\b/,
+                    token: "builtin"
+                },
+                
+                // Array methods
+                {
+                    regex: /\b(push|pop|shift|unshift|splice|slice|concat|join|map|filter|reduce|find|findIndex|includes|indexOf|forEach|some|every|sort|reverse)\b/,
+                    token: "builtin"
+                },
+                
+                // Object operations
+                {
+                    regex: /\b(keys|values|entries|assign|freeze|seal)\b/,
+                    token: "builtin"
+                },
+                
+                // Math operations
+                {
+                    regex: /\b(math|abs|ceil|floor|round|max|min|random|sqrt|pow)\b/,
+                    token: "builtin"
+                },
+                
+                // String operations
+                {
+                    regex: /\b(split|replace|trim|toLowerCase|toUpperCase|charAt|substring)\b/,
+                    token: "builtin"
+                },
+                
+                // Type checking
+                {
+                    regex: /\b(typeof|instanceof|isArray|isNaN|isFinite)\b/,
+                    token: "builtin"
+                },
+                
+                // Special keywords
+                {
+                    regex: /\b(true|false|constructor|start)\b/,
+                    token: "atom"
+                },
+                
+                // Operators
+                { regex: /[+\-*\/=<>!&|%^]+/, token: "operator" },
+                
+                // Method calls and properties (something.something)
+                { regex: /[a-zA-Z_$][a-zA-Z0-9_$]*(?=\.)/, token: "variable" },
+                { regex: /\.([a-zA-Z_$][a-zA-Z0-9_$]*)/, token: "property" },
+                
+                // Variables and identifiers
+                { regex: /[a-z_$][a-zA-Z0-9_$]*/, token: "variable" }
+            ],
+            
+            comment: [
+                { regex: /.*?\*\//, token: "comment", next: "start" },
+                { regex: /.*/, token: "comment" }
+            ],
+            
+            meta: {
+                lineComment: "//",
+                blockCommentStart: "/*",
+                blockCommentEnd: "*/"
+            }
+        });
+
+        // Update the editor initialization to use the new mode
+        window.onload = function() {
+            editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+                mode: 'bracketscript',  // Changed from 'javascript' to 'bracketscript'
+                theme: 'monokai',
+                lineNumbers: true,
+                indentUnit: 4,
+                tabSize: 4,
+                lineWrapping: true,
+                autoCloseBrackets: false,
+                matchBrackets: true,
+                extraKeys: {
+                    'Ctrl-Enter': transpileCode,
+                    'Cmd-Enter': transpileCode,
+                    '[': handleOpenBracket,
+                    'Enter': handleEnter
+                }
+            });
+
+            loadExample();
+            
+            // Auto-transpile on change (debounced)
+            let timeout;
+            editor.on('change', () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(transpileCode, 1000);
+            });
+
+            loadDocumentation();
+        };
+
+        // Custom bracket handling
+        function handleOpenBracket(cm) {
+            const cursor = cm.getCursor();
+            const line = cursor.line;
+            const ch = cursor.ch;
+            
+            cm.replaceRange('[', cursor);
+            
+            // Insert closing bracket on new line with proper indentation
+            const currentLine = cm.getLine(line);
+            const indent = currentLine.match(/^\s*/)[0];
+            
+            cm.replaceRange('\n' + indent + ']', {line: line, ch: ch + 1});
+            
+            // Move cursor to inside the bracket
+            cm.setCursor({line: line, ch: ch + 1});
+        }
+
+        // Enhanced enter key handling
+        function handleEnter(cm) {
+            const cursor = cm.getCursor();
+            const line = cursor.line;
+            const currentLine = cm.getLine(line);
+            const indent = currentLine.match(/^\s*/)[0];
+            
+            // Check if we're inside brackets
+            const beforeCursor = currentLine.substring(0, cursor.ch);
+            const afterCursor = currentLine.substring(cursor.ch);
+            
+            if (beforeCursor.includes('[') && !beforeCursor.includes(']')) {
+                // We're at the end of an opening bracket line
+                cm.replaceRange('\n' + indent + '    ', cursor);
+                cm.setCursor({line: line + 1, ch: indent.length + 4});
+            } else {
+                // Normal enter
+                cm.replaceRange('\n' + indent, cursor);
+                cm.setCursor({line: line + 1, ch: indent.length});
+            }
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.output-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'js') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('jsOutputPanel').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('consoleOutputPanel').classList.add('active');
+            }
+        }
+
+        function transpileCode() {
+            const code = editor.getValue();
+            const outputDiv = document.getElementById('jsOutput');
+            
+            try {
+                const transpiler = new BracketScriptTranspiler();
+                const result = transpiler.transpile(code);
+                
+                if (result.success) {
+                    let output = '<div class="success-message">✓ Transpilation successful!</div>';
+                    if (result.warnings && result.warnings.length > 0) {
+                        output += '<div class="doc-note"><strong>Warnings:</strong><br>' + 
+                                  result.warnings.join('<br>') + '</div>';
+                    }
+                    output += '<pre>' + escapeHtml(result.code) + '</pre>';
+                    outputDiv.innerHTML = output;
+                } else {
+                    outputDiv.innerHTML = `<div class="error-message">${escapeHtml(result.error)}</div>`;
+                }
+            } catch (error) {
+                outputDiv.innerHTML = `<div class="error-message">Transpilation Error: ${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        function runCode() {
+            const code = editor.getValue();
+            const consoleDiv = document.getElementById('consoleOutput');
+            consoleEntries = [];
+            
+            // Override console methods
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            
+            console.log = (...args) => {
+                consoleEntries.push({type: 'log', content: args.join(' ')});
+                originalLog.apply(console, args);
+            };
+            console.error = (...args) => {
+                consoleEntries.push({type: 'error', content: args.join(' ')});
+                originalError.apply(console, args);
+            };
+            console.warn = (...args) => {
+                consoleEntries.push({type: 'warn', content: args.join(' ')});
+                originalWarn.apply(console, args);
+            };
+            
+            try {
+                const transpiler = new BracketScriptTranspiler();
+                const result = transpiler.transpile(code);
+                
+                if (result.success) {
+                    eval(result.code);
+                    displayConsole();
+                    switchTab('console');
+                } else {
+                    consoleDiv.innerHTML = `<div class="error-message">${escapeHtml(result.error)}</div>`;
+                    switchTab('console');
+                }
+            } catch (error) {
+                consoleEntries.push({type: 'error', content: `Runtime Error: ${error.message}`});
+                displayConsole();
+                switchTab('console');
+            }
+            
+            // Restore console methods
+            console.log = originalLog;
+            console.error = originalError;
+            console.warn = originalWarn;
+        }
+
+        function displayConsole() {
+            const consoleDiv = document.getElementById('consoleOutput');
+            if (consoleEntries.length === 0) {
+                consoleDiv.innerHTML = '<div class="console-entry console-log">No output</div>';
+                return;
+            }
+            
+            consoleDiv.innerHTML = consoleEntries.map(entry => 
+                `<div class="console-entry console-${entry.type}">${escapeHtml(entry.content)}</div>`
+            ).join('');
+        }
+
+        function clearOutputs() {
+            document.getElementById('jsOutput').innerHTML = '';
+            document.getElementById('consoleOutput').innerHTML = '';
+            consoleEntries = [];
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function loadExample() {
+            const example = `[Calculator
+    [constructor
+        prop result
+        var history []
+    ]
+    
+    [add
+        var a 5
+        var b 10
+        
+        [addNumbers
+            set this.result a + b
+            log "Result: " + this.result
+        ]
+        
+        call addNumbers
+    ]
+    
+    [multiply
+        var x 3
+        var y 4
+        
+        [multiplyNumbers
+            set this.result x * y
+            
+            [logResult
+                log "Multiplied: " + this.result
+            ]
+            
+            call logResult
+        ]
+        
+        call multiplyNumbers
+    ]
+]
+
+[start
+    new calc Calculator
+    call calc.add
+    call calc.multiply
+]`;
+            editor.setValue(example);
+            transpileCode();
+        }
+
+        function loadDocumentation() {
+            const sidebar = document.getElementById('docSidebar');
+            const content = document.getElementById('docContent');
+            const docs = BracketScriptDocumentation; // Changed from BracketScriptDocumentation
+            
+            // Build sidebar
+            for (const category in docs) {
+                const catDiv = document.createElement('div');
+                catDiv.classList.add('doc-category');
+                
+                const catTitle = document.createElement('div');
+                catTitle.classList.add('category-title');
+                catTitle.textContent = category;
+                catDiv.appendChild(catTitle);
+                
+                for (const topic in docs[category]) {
+                    const topicDiv = document.createElement('div');
+                    topicDiv.classList.add('doc-topic');
+                    topicDiv.textContent = topic;
+                    topicDiv.onclick = () => {
+                        document.querySelectorAll('.doc-topic').forEach(t => t.classList.remove('active'));
+                        topicDiv.classList.add('active');
+                        loadDocContent(docs[category][topic]); // Fixed: pass the topic data
+                    };
+                    catDiv.appendChild(topicDiv);
+                }
+                
+                sidebar.appendChild(catDiv);
+            }
+            
+            // Load first topic by default
+            const firstTopic = sidebar.querySelector('.doc-topic');
+            if (firstTopic) {
+                firstTopic.click();
+            }
+        }
+
+        function loadDocContent(topicData) {
+            const content = document.getElementById('docContent');
+            
+            let html = `<h3>${topicData.title}</h3>`;
+            
+            // Add content with preserved formatting
+            if (topicData.content) {
+                // Convert markdown-style formatting to HTML
+                const formattedContent = topicData.content
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/`(.+?)`/g, '<code>$1</code>')
+                    .replace(/\n\n/g, '</p><p>')
+                    .replace(/\n/g, '<br>');
+                
+                html += `<p>${formattedContent}</p>`;
+            }
+            
+            // Add example if exists
+            if (topicData.example) {
+                html += `<div class="doc-example">
+                    <h4>Example:</h4>
+                    <pre><code>${escapeHtml(topicData.example)}</code></pre>
+                </div>`;
+            }
+            
+            content.innerHTML = html;
+        }
+
+        // Documentation Modal Functions
+        function showDocumentation() {
+            document.getElementById('docModal').classList.add('active');
+        }
+
+        function hideDocumentation() {
+            document.getElementById('docModal').classList.remove('active');
+        }
+
+        // Close modal on outside click
+        document.getElementById('docModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideDocumentation();
+            }
+        });
+
+        // ESC key closes modal
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                hideDocumentation();
+            }
+        });
+    </script>
+</body>
+</html>
