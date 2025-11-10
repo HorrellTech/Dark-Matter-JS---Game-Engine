@@ -884,10 +884,13 @@ const nodes = {};
                     varName = 'node_' + varName;
                 }
 
+                // Escape the node type properly - use JSON.stringify to handle quotes/special chars
+                const escapedType = JSON.stringify(nodeDef.type);
+
                 if (nodeDef.options && Object.keys(nodeDef.options).length > 0) {
-                    code += `nodes.${varName} = vmb.createAndAddNode('${nodeDef.type}', ${nodeDef.x}, ${nodeDef.y}, ${JSON.stringify(nodeDef.options, null, 4)});\n`;
+                    code += `nodes.${varName} = vmb.createAndAddNode(${escapedType}, ${nodeDef.x}, ${nodeDef.y}, ${JSON.stringify(nodeDef.options, null, 4)});\n`;
                 } else {
-                    code += `nodes.${varName} = vmb.createAndAddNode('${nodeDef.type}', ${nodeDef.x}, ${nodeDef.y});\n`;
+                    code += `nodes.${varName} = vmb.createAndAddNode(${escapedType}, ${nodeDef.x}, ${nodeDef.y});\n`;
                 }
             });
 
@@ -7200,6 +7203,10 @@ class ${className} extends Module {
             this.hasUnsavedChanges = false;
             this.projectPath = selectedPath;
 
+            // Reset to nodes tab and clear CodeMirror
+            this.currentTab = 'nodes';
+            this.codeMirrorEditor = null;
+
             this.setupUI();
             this.setupCanvas(); // Add this line to reinitialize canvas
             this.setupCanvasEventListeners(); // Add this line to reattach event listeners
@@ -7449,6 +7456,10 @@ class ${className} extends Module {
                 this.hasUnsavedChanges = false;
                 this.projectPath = null; // Clear internal path since loaded from desktop
 
+                // Reset to nodes tab and clear CodeMirror
+                this.currentTab = 'nodes';
+                this.codeMirrorEditor = null;
+
                 this.setupUI();
                 this.setupCanvas();
                 this.setupCanvasEventListeners();
@@ -7558,6 +7569,9 @@ class ${className} extends Module {
         this.hasUnsavedChanges = false;
         this.panOffset = { x: 0, y: 0 };
         this.zoom = 1.0;
+
+        this.currentTab = 'nodes';
+        this.codeMirrorEditor = null;
 
         // Refresh UI
         this.setupUI();
