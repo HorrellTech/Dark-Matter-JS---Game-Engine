@@ -3254,6 +3254,10 @@ const nodes = {};
             return;
         }
 
+        // Prevent concurrent paste operations
+        if (this.isPasting) return;
+        this.isPasting = true;
+
         // ========== NEW: PASTE MULTIPLE NODES ==========
         if (this.clipboard.nodes) {
             // Pasting multiple nodes
@@ -3355,6 +3359,9 @@ const nodes = {};
 
             this.showNotification(`Pasted node: ${newNode.label}`, 'success');
         }
+
+        // Reset the paste flag
+        this.isPasting = false;
     }
 
     /**
@@ -6353,7 +6360,11 @@ class ${className} extends Module {
      */
 `;
             methodNodes.forEach(methodNode => {
-                const methodSignature = methodNode.value || 'customMethod()';
+                let methodSignature = methodNode.value.toString() || 'customMethod()';
+                if (methodSignature.includes('(') === false) {
+                    // Ensure parentheses for no-arg methods
+                    methodSignature += '()';
+                }
                 code += `    ${methodSignature} {\n`;
                 code += this.generateMethodBlockCode(methodNode, '        ');
                 code += `    }\n\n`;
@@ -6582,7 +6593,7 @@ class ${className} extends Module {
             }
         }
 
-        return '0';
+        return null;
     }
 
     /**

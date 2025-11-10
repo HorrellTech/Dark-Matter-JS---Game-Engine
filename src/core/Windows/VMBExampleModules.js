@@ -1855,12 +1855,33 @@ class VMBExampleModules {
                     label: 'Method Block',
                     color: '#3d4026',
                     icon: 'fas fa-cube',
-                    inputs: [],
+                    inputs: ['flow'],
                     outputs: ['flow'],
                     hasInput: true,
                     isGroup: true,
                     codeGen: (node, ctx) => ''
                 },
+                {
+                    type: 'callMethod',
+                    label: 'Call Method',
+                    color: '#26403d',
+                    icon: 'fas fa-cube',
+                    inputs: ['flow', 'methodName', 'params'],
+                    outputs: ['flow'],
+                    codeGen: (node, ctx) => {
+                        let methodName = ctx.getInputValue(node, 'methodName', false) || 'myMethod';
+                        methodName = methodName.toString().trim();
+                        methodName = methodName.replaceAll("'", '').replaceAll('"', '');
+                        if (methodName.includes('(')) {
+                            return `${methodName};`;
+                        }
+                        let params = ctx.getInputValue(node, 'params', false) || '';
+                        params = params.toString().trim();
+                        params = params.replaceAll(',', ' ');
+                        params = params.replaceAll("'", '').replaceAll(' ', ',');
+                        return `this.${methodName}(${params});`;
+                    }
+                }
             ],
             'Variables': [
                 {
@@ -3386,7 +3407,8 @@ ${ctx.indent}/* ------------------------ */`
                     codeGen: (node, ctx) => {
                         const code = ctx.getInputValue(node, 'code');
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.play(\`${code}\`, ${bpm});`;
+                        return `window.melodicode.play(\`${code}\`, ${bpm}
+    );`;
                     }
                 },
                 {
@@ -3644,33 +3666,6 @@ tts "${text}" ${speed} ${pitch} ${voice}`;
 [end]`;
                     }
                 },
-                // Block Structure Nodes
-                /*{
-                    type: 'melodicodeScriptBlockStart',
-                    label: 'Start Block',
-                    color: '#ba8fba',
-                    icon: 'fas fa-box-open',
-                    inputs: ['scriptFlow', 'blockName', 'effects'],
-                    outputs: ['scriptFlow'],
-                    codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const blockName = ctx.getInputValue(node, 'blockName');
-                        const effects = ctx.getInputValue(node, 'effects') || "''";
-                        return `${prevScript} + '[' + ${blockName} + '] ' + ${effects} + '\\n'`;
-                    }
-                },
-                {
-                    type: 'melodicodeScriptBlockEnd',
-                    label: 'End Block',
-                    color: '#ca9fca',
-                    icon: 'fas fa-box',
-                    inputs: ['scriptFlow'],
-                    outputs: ['scriptFlow'],
-                    codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        return `${prevScript} + '[end]\\n'`;
-                    }
-                },*/
                 {
                     type: 'melodicodeScriptCompleteSampleBlock',
                     label: 'Complete Sample Block',
@@ -3688,31 +3683,6 @@ tts "${text}" ${speed} ${pitch} ${voice}`;
 <end>`;
                     }
                 },
-                /*{
-                    type: 'melodicodeScriptSampleBlockStart',
-                    label: 'Start Sample Block',
-                    color: '#da8fda',
-                    icon: 'fas fa-layer-group',
-                    inputs: ['scriptFlow', 'blockName'],
-                    outputs: ['scriptFlow'],
-                    codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const blockName = ctx.getInputValue(node, 'blockName');
-                        return `${prevScript} + '<' + ${blockName} + '>\\n'`;
-                    }
-                },
-                {
-                    type: 'melodicodeScriptSampleBlockEnd',
-                    label: 'End Sample Block',
-                    color: '#ea9fea',
-                    icon: 'fas fa-layer-group',
-                    inputs: ['scriptFlow'],
-                    outputs: ['scriptFlow'],
-                    codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        return `${prevScript} + '<end>\\n'`;
-                    }
-                },*/
                 // Control Commands
                 {
                     type: 'melodicodeScriptBPM',
@@ -3866,7 +3836,7 @@ sidechain ${block1} ${block2} ${amount}`;
                     label: 'Sample',
                     color: '#8a5f8a',
                     icon: 'fas fa-drum',
-                    inputs: [],
+                    inputs: ['sampleBlockName'],
                     outputs: ['sample'],
                     hasDropdown: true,
                     dropdownOptions: [
@@ -3887,6 +3857,11 @@ sidechain ${block1} ${block2} ${amount}`;
                     defaultValue: 'kick',
                     codeGen: (node, ctx) => {
                         const sample = node.dropdownValue || 'kick';
+                        const sampleBlock = ctx.getInputValue(node, 'sampleBlockName');
+                        if(sampleBlock) {
+                            return `${sampleBlock}`;
+                        }
+
                         return `${sample}`;
                     }
                 }
