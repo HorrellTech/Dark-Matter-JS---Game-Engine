@@ -68,6 +68,9 @@ class MelodiCode {
             if (options.bpm) {
                 this.codeInterpreter.bpm = options.bpm;
                 this.codeInterpreter.beatDuration = 60 / options.bpm;
+            } else if (this.codeInterpreter.bpm === 0) {
+                this.codeInterpreter.bpm = 120;
+                this.codeInterpreter.beatDuration = 60 / 120;
             }
 
             // Execute the code

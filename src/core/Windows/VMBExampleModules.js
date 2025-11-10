@@ -3368,8 +3368,10 @@ ${ctx.indent}/* ------------------------ */`
                     outputs: ['script'],
                     codeGen: (node, ctx) => {
                         // Get the accumulated script from the flow
-                        const script = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        return script;
+                        const script = ctx.getInputValue(node, 'scriptFlow') || "";
+
+                        let fixedScript = script.replaceAll("'", ''); // Remove any single quotes
+                        return fixedScript;
                     }
                 },
                 // Core Playback Nodes
@@ -3384,7 +3386,7 @@ ${ctx.indent}/* ------------------------ */`
                     codeGen: (node, ctx) => {
                         const code = ctx.getInputValue(node, 'code');
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.play(${code}, { bpm: ${bpm} })`;
+                        return `window.melodicode.play(\`${code}\`, ${bpm});`;
                     }
                 },
                 {
@@ -3418,7 +3420,7 @@ ${ctx.indent}/* ------------------------ */`
                     codeGen: (node, ctx) => {
                         const pattern = ctx.getInputValue(node, 'pattern');
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.playBeat(${pattern}, ${bpm})`;
+                        return `window.melodicode.playBeat(${pattern}, ${bpm});`;
                     }
                 },
                 {
@@ -3433,7 +3435,7 @@ ${ctx.indent}/* ------------------------ */`
                         const notes = ctx.getInputValue(node, 'notes');
                         const duration = ctx.getInputValue(node, 'duration') || '1';
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `await window.melodicode.playMelody(${notes}, ${duration}, ${bpm})`;
+                        return `await window.melodicode.playMelody(${notes}, ${duration}, ${bpm});`;
                     }
                 },
                 {
@@ -3450,7 +3452,12 @@ ${ctx.indent}/* ------------------------ */`
                         const timescale = ctx.getInputValue(node, 'timescale') || '1';
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
-                        return `window.melodicode.playSample(${sample}, { pitch: ${pitch}, timescale: ${timescale}, volume: ${volume}, pan: ${pan} })`;
+                        return `window.melodicode.playSample(${sample}, { 
+    pitch: ${pitch}, 
+    timescale: ${timescale}, 
+    volume: ${volume}, 
+    pan: ${pan} 
+});`;
                     }
                 },
                 {
@@ -3471,7 +3478,14 @@ ${ctx.indent}/* ------------------------ */`
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.playTone(${frequency}, ${duration}, '${waveType}', { volume: ${volume}, pan: ${pan}, bpm: ${bpm} })`;
+                        return `window.melodicode.playTone(${frequency}, 
+    ${duration}, 
+    '${waveType}', 
+    { 
+        volume: ${volume}, 
+        pan: ${pan}, 
+        bpm: ${bpm} 
+    });`;
                     }
                 },
             ],
@@ -3485,7 +3499,7 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: [],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        return "''";
+                        return "";
                     }
                 },
                 {
@@ -3499,13 +3513,14 @@ ${ctx.indent}/* ------------------------ */`
                     dropdownOptions: ['sine', 'square', 'sawtooth', 'triangle'],
                     defaultValue: 'sine',
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const note = ctx.getInputValue(node, 'note') || "'C4'";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
+                        const note = ctx.getInputValue(node, 'note') || "C4";
                         const duration = ctx.getInputValue(node, 'duration') || '1';
                         const waveType = node.dropdownValue || 'sine';
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
-                        return `${prevScript} + 'tone ' + ${note} + ' ' + ${duration} + ' ${waveType} ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                        return `${prevScript} 
+tone ${note} ${duration} ${waveType} ${volume} ${pan}`;
                     }
                 },
                 {
@@ -3516,13 +3531,14 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'sample', 'pitch', 'timescale', 'volume', 'pan'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const sample = ctx.getInputValue(node, 'sample');
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
+                        const sample = ctx.getInputValue(node, 'sample') || "kick";
                         const pitch = ctx.getInputValue(node, 'pitch') || '1';
                         const timescale = ctx.getInputValue(node, 'timescale') || '1';
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
-                        return `${prevScript} + 'sample ' + ${sample} + ' ' + ${pitch} + ' ' + ${timescale} + ' ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                        return `${prevScript}
+sample ${sample} ${pitch} ${timescale} ${volume} ${pan}`;
                     }
                 },
                 {
@@ -3536,14 +3552,15 @@ ${ctx.indent}/* ------------------------ */`
                     dropdownOptions: ['sine', 'square', 'sawtooth', 'triangle'],
                     defaultValue: 'sine',
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const startNote = ctx.getInputValue(node, 'startNote') || "'C4'";
-                        const endNote = ctx.getInputValue(node, 'endNote') || "'C5'";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
+                        const startNote = ctx.getInputValue(node, 'startNote') || "C4";
+                        const endNote = ctx.getInputValue(node, 'endNote') || "C5";
                         const duration = ctx.getInputValue(node, 'duration') || '1';
                         const waveType = node.dropdownValue || 'sine';
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
-                        return `${prevScript} + 'slide ' + ${startNote} + ' ' + ${endNote} + ' ' + ${duration} + ' ${waveType} ' + ${volume} + ' ' + ${pan} + '\\n'`;
+                        return `${prevScript}
+slide ${startNote} ${endNote} ${duration} ${waveType} ${volume} ${pan}`;
                     }
                 },
                 {
@@ -3554,9 +3571,10 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'duration'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const duration = ctx.getInputValue(node, 'duration') || '1';
-                        return `${prevScript} + 'wait ' + ${duration} + '\\n'`;
+                        return `${prevScript}
+wait ${duration}`;
                     }
                 },
                 {
@@ -3567,10 +3585,11 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'sample', 'pattern'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const sample = ctx.getInputValue(node, 'sample');
                         const pattern = ctx.getInputValue(node, 'pattern');
-                        return `${prevScript} + 'pattern ' + ${sample} + ' ' + ${pattern} + '\\n'`;
+                        return `${prevScript}
+pattern ${sample} ${pattern}`;
                     }
                 },
                 {
@@ -3581,10 +3600,11 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'baseName', 'samples'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const baseName = ctx.getInputValue(node, 'baseName');
                         const samples = ctx.getInputValue(node, 'samples');
-                        return `${prevScript} + 'sequence ' + ${baseName} + ' ' + ${samples} + '\\n'`;
+                        return `${prevScript}
+sequence ${baseName} ${samples}`;
                     }
                 },
                 {
@@ -3595,12 +3615,13 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'text', 'speed', 'pitch', 'voice'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const text = ctx.getInputValue(node, 'text');
                         const speed = ctx.getInputValue(node, 'speed') || '1';
                         const pitch = ctx.getInputValue(node, 'pitch') || '1';
                         const voice = ctx.getInputValue(node, 'voice') || '0';
-                        return `${prevScript} + 'tts "' + ${text} + '" ' + ${speed} + ' ' + ${pitch} + ' ' + ${voice} + '\\n'`;
+                        return `${prevScript}
+tts "${text}" ${speed} ${pitch} ${voice}`;
                     }
                 },
                 // CONSOLIDATED NODE: Complete Block (Start + Content + End)
@@ -3609,14 +3630,18 @@ ${ctx.indent}/* ------------------------ */`
                     label: 'Complete Block',
                     color: '#ca8fca',
                     icon: 'fas fa-cube',
-                    inputs: ['scriptFlow', 'blockName', 'effects', 'content'],
+                    inputs: ['scriptFlow', 'effectChain', 'blockName', 'content'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
-                        const blockName = ctx.getInputValue(node, 'blockName');
-                        const effects = ctx.getInputValue(node, 'effects') || "''";
-                        const content = ctx.getInputValue(node, 'content') || "''";
-                        return `${prevScript} + '[' + ${blockName} + '] ' + ${effects} + '\\n' + ${content} + '[end]\\n'`;
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
+                        const blockName = ctx.getInputValue(node, 'blockName') || "main";
+                        const effects = ctx.getInputValue(node, 'effectChain') || "";
+                        const content = ctx.getInputValue(node, 'content') || "";
+
+                        return `${prevScript} 
+[${blockName}] ${effects}
+    ${content}
+[end]`;
                     }
                 },
                 // Block Structure Nodes
@@ -3654,10 +3679,13 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'blockName', 'content'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const blockName = ctx.getInputValue(node, 'blockName');
-                        const content = ctx.getInputValue(node, 'content') || "''";
-                        return `${prevScript} + '<' + ${blockName} + '>\\n' + ${content} + '<end>\\n'`;
+                        const content = ctx.getInputValue(node, 'content') || "";
+                        return `${prevScript}
+<${blockName}>
+    ${content}
+<end>`;
                     }
                 },
                 /*{
@@ -3694,9 +3722,10 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'bpm'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `${prevScript} + 'bpm ' + ${bpm} + '\\n'`;
+                        return `${prevScript}
+bpm ${bpm}`;
                     }
                 },
                 {
@@ -3707,9 +3736,10 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'blocks'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const blocks = ctx.getInputValue(node, 'blocks');
-                        return `${prevScript} + 'play ' + ${blocks} + '\\n'`;
+                        return `${prevScript}
+play ${blocks}`;
                     }
                 },
                 {
@@ -3720,10 +3750,11 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'count', 'blocks'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const count = ctx.getInputValue(node, 'count');
                         const blocks = ctx.getInputValue(node, 'blocks');
-                        return `${prevScript} + 'loop ' + ${count} + ' ' + ${blocks} + '\\n'`;
+                        return `${prevScript}
+loop ${count} ${blocks}`;
                     }
                 },
                 {
@@ -3734,11 +3765,12 @@ ${ctx.indent}/* ------------------------ */`
                     inputs: ['scriptFlow', 'block1', 'block2', 'amount'],
                     outputs: ['scriptFlow'],
                     codeGen: (node, ctx) => {
-                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "''";
+                        const prevScript = ctx.getInputValue(node, 'scriptFlow') || "";
                         const block1 = ctx.getInputValue(node, 'block1');
                         const block2 = ctx.getInputValue(node, 'block2');
                         const amount = ctx.getInputValue(node, 'amount') || '0.7';
-                        return `${prevScript} + 'sidechain ' + ${block1} + ' ' + ${block2} + ' ' + ${amount} + '\\n'`;
+                        return `${prevScript}
+sidechain ${block1} ${block2} ${amount}`;
                     }
                 },
                 {
@@ -3746,15 +3778,23 @@ ${ctx.indent}/* ------------------------ */`
                     label: 'Effect String',
                     color: '#1a0f1a',
                     icon: 'fas fa-wand-magic-sparkles',
-                    inputs: ['effectType', 'params'],
-                    outputs: ['effect'],
+                    inputs: ['effectChain', 'params'],
+                    outputs: ['effectChain'],
                     hasDropdown: true,
                     dropdownOptions: ['reverb', 'delay', 'filter', 'distortion', 'chorus'],
                     defaultValue: 'reverb',
                     codeGen: (node, ctx) => {
                         const effectType = node.dropdownValue || 'reverb';
-                        const params = ctx.getInputValue(node, 'params') || '0.3';
-                        return `'(${effectType} ' + ${params} + ')'`;
+                        const params = (ctx.getInputValue(node, 'params')) || '0.3';
+                        const previousChain = ctx.getInputValue(node, 'effectChain') || '';
+
+                        let par = params;
+
+                        if(par.includes("'")) {
+                            par = par.replaceAll("'", '');
+                        }
+                            
+                        return (previousChain + `(${effectType} ${par})`);
                     }
                 },
                 // Utility Nodes
@@ -3792,7 +3832,7 @@ ${ctx.indent}/* ------------------------ */`
                     defaultValue: 'sine',
                     codeGen: (node, ctx) => {
                         const waveType = node.dropdownValue || 'sine';
-                        return `'${waveType}'`;
+                        return `${waveType}`;
                     }
                 },
                 // Note Selector
@@ -3818,7 +3858,7 @@ ${ctx.indent}/* ------------------------ */`
                     defaultValue: 'C4',
                     codeGen: (node, ctx) => {
                         const note = node.dropdownValue || 'C4';
-                        return `'${note}'`;
+                        return `${note}`;
                     }
                 },
                 {
@@ -3847,7 +3887,7 @@ ${ctx.indent}/* ------------------------ */`
                     defaultValue: 'kick',
                     codeGen: (node, ctx) => {
                         const sample = node.dropdownValue || 'kick';
-                        return `'${sample}'`;
+                        return `${sample}`;
                     }
                 }
             ]
