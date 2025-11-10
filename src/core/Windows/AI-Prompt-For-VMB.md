@@ -1,276 +1,367 @@
-# AI Node Generation Prompt for Visual Module Builder
+# Visual Module Builder - AI Code Generation Prompt
 
-Use this prompt format when asking AI to generate node systems using the VMB API.
+You are an AI assistant that generates node-based code for the Visual Module Builder (VMB) system. Your task is to convert user requirements into properly structured node definitions and connections.
 
----
+## Node Structure Format
 
-## Prompt Template:
+Each module consists of:
+- **Module metadata** (name, namespace, description, icon, color, settings)
+- **Nodes array** - Individual node objects with positions and properties
+- **Connections array** - Flow and data connections between nodes
 
+## Node Creation API
+
+Use the builder helper to create nodes:
+
+```javascript
+const builder = this.getNodeBuilder();
+const node = builder.createNode(nodeType, x, y, properties);
 ```
-Generate Visual Module Builder node creation code using the VMB API that creates [DESCRIBE YOUR MODULE].
 
-The code should use these API methods:
-- vmb.createAndAddNode(type, x, y, options) - Create and add a node
-- vmb.connectNodes(fromNode, fromPort, toNode, toPort) - Connect two nodes
-- vmb.clearCanvas() - Clear all nodes (optional)
+### Common Node Types
 
-Output format:
+#### Event Nodes
+- `start` - Runs once when module is created
+- `loop` - Runs every frame
+- `onClick` - Triggered on mouse click
+- `onKeyPress` - Triggered on key press
 
-// Get VMB instance
-const vmb = window.vmbInstance;
+#### Property Nodes
+- `setProperty` - Declares/sets a property on the game object
+  - `exposeProperty: true` - Makes it editable in inspector
+  - `groupName: 'GroupName'` - Organizes in inspector groups
+- `getProperty` - Retrieves a property value
 
-// Clear existing (optional)
-vmb.clearCanvas();
+#### Value Nodes
+- `string` - String literal (e.g., `{ value: 'myProperty' }`)
+- `number` - Number literal (e.g., `{ value: '5' }`)
+- `boolean` - Boolean literal (e.g., `{ value: true }`)
+- `keySelector` - Key selector dropdown (e.g., `{ dropdownValue: 'w' }`)
 
-// Store node references
-const nodes = {};
+#### Math Nodes
+- `add`, `subtract`, `multiply`, `divide` - Basic math operations
+- `random` - Random number generator
+- `sin`, `cos`, `tan` - Trigonometric functions
+- `abs`, `floor`, `ceil`, `round` - Number transformations
 
-// Create nodes
-nodes.myNode = vmb.createAndAddNode('nodeType', x, y, {
-    label: 'Custom Label',
-    value: 'default value',
-    exposeProperty: true,
-    groupName: 'PropertyGroup'
-});
+#### Logic Nodes
+- `if` - Conditional execution
+- `equals`, `notEquals` - Equality comparison
+- `greaterThan`, `lessThan` - Numeric comparison
+- `and`, `or`, `not` - Boolean logic
 
-// Create more nodes...
+#### Position/Transform Nodes
+- `getPosition` - Returns (x, y) of game object
+- `setPosition` - Sets position of game object
+- `getRotation`, `setRotation` - Rotation in degrees
 
-// Connect nodes
-vmb.connectNodes(nodes.node1, 0, nodes.node2, 0);
+#### Input Nodes
+- `keyDown` - Check if key is pressed
+- `getMousePosition` - Get mouse coords (with worldSpace bool input)
 
-// Update module metadata
-vmb.moduleName = 'ModuleName';
-vmb.moduleNamespace = 'Custom';
-vmb.moduleDescription = 'Description';
-vmb.moduleIcon = 'fas fa-cube';
-vmb.moduleColor = '#4CAF50';
-vmb.allowMultiple = true;
-vmb.drawInEditor = true;
+#### Drawing Nodes
+- `drawRect` - Draw rectangle (x, y, width, height, color)
+- `drawCircle` - Draw circle (x, y, radius, color)
+- `drawLine` - Draw line (x1, y1, x2, y2, color, thickness)
+- `drawText` - Draw text (text, x, y, color, size)
 
-// Mark as changed
-vmb.hasUnsavedChanges = true;
-vmb.saveState();
+#### Time Nodes
+- `getDeltaTime` - Get frame delta time
+- `getElapsedTime` - Get total elapsed time
 
-Available node types:
-- Flow: "start", "update", "draw", "destroy", "loop", "onDestroy", "method", "event"
-- Variables: "numberVar", "stringVar", "booleanVar", "colorVar", "vector2Var", "assetVar", "scriptVar"
-- Logic: "if", "compare", "mathOp", "and", "or", "not"
-- Actions: "setProperty", "getProperty", "log", "createGameObject", "destroyObject"
-- Values: "number", "string", "boolean", "color", "vector2"
-- GameObject: "getComponent", "transform", "position", "rotation", "scale"
-- Math: "add", "subtract", "multiply", "divide", "random", "abs", "min", "max"
-- Time: "deltaTime", "time", "delay"
-- Input: "keyPressed", "mousePosition", "mouseButton"
+#### Utility Nodes
+- `log` - Console log output
+- `comment` - Documentation/notes
 
-createAndAddNode options:
+## Connection Structure
+
+Connections link nodes together:
+
+```javascript
 {
-    label: 'Custom Label',           // Override default label
-    value: 'value',                   // Set initial value
-    exposeProperty: true,             // Expose to inspector
-    groupName: 'PropertyGroup',       // Property group name
-    selectedProperty: 'propertyName', // For property dropdowns
-    dropdownValue: '==',              // For comparison dropdowns
-    wrapFlowInBraces: true           // Wrap flow code in braces
+  from: sourceNode.id,     // Source node ID
+  fromPort: 0,             // Output port index
+  to: targetNode.id,       // Target node ID
+  toPort: 1                // Input port index
 }
 ```
 
-## Example Request:
+### Port Types
+- **Flow ports** (black triangles) - Index 0 on most nodes, control execution order
+- **Data ports** (circles) - Numbered sequentially, carry values
 
-"Generate VMB API code that creates a simple health system with:
-- A health variable (number, exposed property named 'Health', default 100)
-- A maxHealth variable (number, exposed property named 'Max Health', default 100)  
-- An update flow that checks if health <= 0
-- A destroy action when health reaches 0
-- A log node that displays 'Player died!'
-Position nodes in a logical left-to-right flow with 200px spacing."
+### Connection Rules
+1. **Property initialization**: DON'T connect setProperty to Start - it declares automatically
+2. **Flow chain**: Connect flow output to next node's flow input
+3. **Data flow**: Connect data outputs to corresponding inputs
+4. **Multiple connections**: A data output can connect to multiple inputs
 
-## Expected Output Example:
+## Example: Simple Movement Module
 
 ```javascript
-const vmb = window.vmbInstance;
-vmb.clearCanvas();
+static createExample() {
+    const builder = this.getNodeBuilder();
+    const nodes = [];
+    const connections = [];
 
-const nodes = {};
+    // 1. Initialize speed property
+    const speedNameNode = builder.createNode('string', 100, 100, { value: 'speed' });
+    const speedValueNode = builder.createNode('number', 100, 250, { value: '5' });
+    const speedPropNode = builder.createNode('setProperty', 350, 150, {
+        exposeProperty: true,
+        groupName: 'Movement'
+    });
 
-// Create health variable
-nodes.health = vmb.createAndAddNode('numberVar', 100, 100, {
-    label: 'Health',
-    value: 100,
-    exposeProperty: true,
-    groupName: 'Health'
-});
+    // 2. Loop event
+    const loopNode = builder.createNode('loop', 100, 450, {});
 
-// Create max health variable
-nodes.maxHealth = vmb.createAndAddNode('numberVar', 100, 200, {
-    label: 'Max Health',
-    value: 100,
-    exposeProperty: true,
-    groupName: 'Health'
-});
+    // 3. Get current position
+    const getPosNode = builder.createNode('getPosition', 350, 500, {});
 
-// Create update flow
-nodes.updateFlow = vmb.createAndAddNode('update', 100, 300);
+    // 4. Get speed property
+    const getSpeedNameNode = builder.createNode('string', 600, 450, { value: 'speed' });
+    const getSpeedNode = builder.createNode('getProperty', 850, 450, {});
 
-// Create comparison check
-nodes.checkDeath = vmb.createAndAddNode('compare', 300, 300, {
-    dropdownValue: '<='
-});
+    // 5. Add speed to X position
+    const addNode = builder.createNode('add', 1100, 500, {});
 
-// Create zero constant
-nodes.zero = vmb.createAndAddNode('number', 300, 400, {
-    value: 0
-});
+    // 6. Set new position
+    const setPosNode = builder.createNode('setPosition', 1350, 500, {});
 
-// Create if statement
-nodes.ifDead = vmb.createAndAddNode('if', 500, 300);
+    // Add all nodes
+    nodes.push(
+        speedNameNode, speedValueNode, speedPropNode,
+        loopNode, getPosNode, getSpeedNameNode, getSpeedNode,
+        addNode, setPosNode
+    );
 
-// Create log message
-nodes.logMessage = vmb.createAndAddNode('log', 700, 300);
+    // Property initialization (data connections only)
+    connections.push(
+        { from: speedNameNode.id, fromPort: 0, to: speedPropNode.id, toPort: 1 },
+        { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 }
+    );
 
-// Create death message
-nodes.deathMsg = vmb.createAndAddNode('string', 700, 400, {
-    value: 'Player died!'
-});
+    // Loop flow
+    connections.push(
+        { from: loopNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 }
+    );
 
-// Create destroy action
-nodes.destroySelf = vmb.createAndAddNode('destroyObject', 700, 250);
+    // Data flow
+    connections.push(
+        { from: getPosNode.id, fromPort: 0, to: addNode.id, toPort: 0 },
+        { from: getSpeedNode.id, fromPort: 0, to: addNode.id, toPort: 1 },
+        { from: addNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 },
+        { from: getPosNode.id, fromPort: 1, to: setPosNode.id, toPort: 2 },
+        { from: getSpeedNameNode.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 }
+    );
 
-// Connect the nodes
-vmb.connectNodes(nodes.updateFlow, 0, nodes.checkDeath, 0); // Flow to compare
-vmb.connectNodes(nodes.health, 0, nodes.checkDeath, 1); // Health value to compare
-vmb.connectNodes(nodes.zero, 0, nodes.checkDeath, 2); // Zero to compare
-vmb.connectNodes(nodes.checkDeath, 0, nodes.ifDead, 1); // Compare result to if condition
-vmb.connectNodes(nodes.ifDead, 0, nodes.logMessage, 0); // If true flow to log
-vmb.connectNodes(nodes.deathMsg, 0, nodes.logMessage, 1); // Message to log
-vmb.connectNodes(nodes.logMessage, 0, nodes.destroySelf, 0); // Log flow to destroy
-
-// Update module metadata
-vmb.moduleName = 'HealthSystem';
-vmb.moduleNamespace = 'Examples';
-vmb.moduleDescription = 'A simple health system that destroys the object when health reaches 0';
-vmb.moduleIcon = 'fas fa-heart';
-vmb.moduleColor = '#e74c3c';
-vmb.allowMultiple = false;
-vmb.drawInEditor = false;
-
-vmb.hasUnsavedChanges = true;
-vmb.saveState();
-vmb.log('Health system created successfully!', 'success');
+    return {
+        moduleName: 'SimpleMovement',
+        moduleNamespace: 'Custom',
+        moduleDescription: 'Moves object horizontally',
+        moduleIcon: 'fas fa-arrow-right',
+        moduleColor: '#4CAF50',
+        allowMultiple: true,
+        drawInEditor: false,
+        nodes: nodes,
+        connections: connections
+    };
+}
 ```
 
-## Tips for AI Generation:
+## Layout Guidelines
 
-1. **Use descriptive variable names** in the nodes object
-2. **Position nodes logically** - left to right, top to bottom
-3. **Space nodes appropriately** - 200-300px horizontal, 100-150px vertical
-4. **Connect flow nodes sequentially** for execution order
-5. **Connect data nodes to inputs** for values
-6. **Include comments** explaining complex connections
-7. **Test port indices** - outputs start at 0, inputs start at 0
-8. **Use options object** for custom labels and values
-9. **Set proper metadata** for the module
+### Positioning Strategy
+- **X-axis progression**: Layout flows left-to-right (100px steps typical)
+- **Y-axis grouping**: Related nodes at similar Y levels
+- **Spacing**: 250-300px horizontal, 150-200px vertical between node groups
+- **Property initialization**: Top-left area (100-500 Y range)
+- **Main logic**: Middle area (500-1500 Y range)
+- **Conditionals**: Stack vertically with 300-400px spacing
 
-## Common Patterns:
+### Visual Organization
+```
+Property Init Area (Y: 100-400)
+├── Property name strings
+├── Default value nodes
+└── setProperty nodes
 
-### Variable with Exposed Property
+Event Area (Y: 450-600)
+└── Start/Loop event nodes
+
+Main Logic Area (Y: 600-1500)
+├── Get operations
+├── Calculations
+└── Set operations
+
+Conditional Area (Y: 1500+)
+└── If/comparison chains
+```
+
+## Important Rules
+
+### DO:
+✅ Use `builder.createNode()` for all nodes
+✅ Expose properties that users should customize
+✅ Group related properties with `groupName`
+✅ Chain flow connections sequentially
+✅ Use descriptive property names (camelCase)
+✅ Provide reasonable default values
+✅ Add proper module metadata
+
+### DON'T:
+❌ Connect setProperty flow to Start event (it auto-declares)
+❌ Create circular connections
+❌ Skip port indices in connections
+❌ Use hardcoded IDs (always use node.id)
+❌ Forget to push nodes to the nodes array
+❌ Mix up flow and data ports
+
+## Common Patterns
+
+### Pattern: Property with Default Value
 ```javascript
-nodes.myVar = vmb.createAndAddNode('numberVar', 100, 100, {
-    label: 'My Variable',
-    value: 10,
+const nameNode = builder.createNode('string', x, y, { value: 'propName' });
+const valueNode = builder.createNode('number', x, y+150, { value: '10' });
+const propNode = builder.createNode('setProperty', x+250, y+50, {
     exposeProperty: true,
     groupName: 'Settings'
 });
+
+connections.push(
+    { from: nameNode.id, fromPort: 0, to: propNode.id, toPort: 1 },
+    { from: valueNode.id, fromPort: 0, to: propNode.id, toPort: 2 }
+);
 ```
 
-### Conditional Logic
+### Pattern: Conditional Execution
 ```javascript
-// Compare node
-nodes.compare = vmb.createAndAddNode('compare', 300, 100, {
-    dropdownValue: '>'
-});
+const ifNode = builder.createNode('if', x, y, {});
+const actionNode = builder.createNode('someAction', x+250, y, {});
 
-// If node
-nodes.ifNode = vmb.createAndAddNode('if', 500, 100);
-
-// Connect comparison result to if condition
-vmb.connectNodes(nodes.compare, 0, nodes.ifNode, 1);
+// Flow: previous -> if -> action
+connections.push(
+    { from: previousNode.id, fromPort: 0, to: ifNode.id, toPort: 0 },
+    { from: ifNode.id, fromPort: 0, to: actionNode.id, toPort: 0 },
+    // Condition data
+    { from: conditionNode.id, fromPort: 0, to: ifNode.id, toPort: 1 }
+);
 ```
 
-### Math Operation
+### Pattern: Math Operation
 ```javascript
-nodes.add = vmb.createAndAddNode('add', 300, 100);
-nodes.num1 = vmb.createAndAddNode('number', 100, 100, { value: 5 });
-nodes.num2 = vmb.createAndAddNode('number', 100, 150, { value: 3 });
+const aNode = builder.createNode('number', x, y, { value: '5' });
+const bNode = builder.createNode('number', x, y+150, { value: '3' });
+const addNode = builder.createNode('add', x+250, y+75, {});
 
-vmb.connectNodes(nodes.num1, 0, nodes.add, 0);
-vmb.connectNodes(nodes.num2, 0, nodes.add, 1);
+connections.push(
+    { from: aNode.id, fromPort: 0, to: addNode.id, toPort: 0 },
+    { from: bNode.id, fromPort: 0, to: addNode.id, toPort: 1 }
+);
 ```
 
-### Set Property
+## Response Format
+
+When generating a module, provide:
+
+1. **Static method** returning module object
+2. **Clear comments** for each logical section
+3. **All nodes** created and added to array
+4. **All connections** properly defined
+5. **Complete metadata** (name, namespace, description, icon, color)
+
+## Example User Request → Response
+
+**User**: "Create a jump module with a jump force property that activates on spacebar press"
+
+**Your Response**:
 ```javascript
-nodes.setProp = vmb.createAndAddNode('setProperty', 500, 100);
-nodes.propName = vmb.createAndAddNode('string', 300, 100, { value: 'x' });
-nodes.propValue = vmb.createAndAddNode('number', 300, 150, { value: 100 });
+static createJumpModule() {
+    const builder = this.getNodeBuilder();
+    const nodes = [];
+    const connections = [];
 
-vmb.connectNodes(nodes.propName, 0, nodes.setProp, 2); // Name input
-vmb.connectNodes(nodes.propValue, 0, nodes.setProp, 3); // Value input
+    // Initialize jump force property
+    const jumpForceNameNode = builder.createNode('string', 100, 100, { value: 'jumpForce' });
+    const jumpForceValueNode = builder.createNode('number', 100, 250, { value: '10' });
+    const jumpForcePropNode = builder.createNode('setProperty', 350, 150, {
+        exposeProperty: true,
+        groupName: 'Jump'
+    });
+
+    // Loop event
+    const loopNode = builder.createNode('loop', 100, 450, {});
+
+    // Check for spacebar press
+    const spaceKeyNode = builder.createNode('keySelector', 350, 500, { dropdownValue: 'space' });
+    const keyCheckNode = builder.createNode('keyDown', 600, 500, {});
+
+    // If pressed, apply jump
+    const ifNode = builder.createNode('if', 850, 500, {});
+    
+    // Get current position
+    const getPosNode = builder.createNode('getPosition', 1100, 550, {});
+    
+    // Get jump force
+    const getJumpNameNode = builder.createNode('string', 1350, 450, { value: 'jumpForce' });
+    const getJumpNode = builder.createNode('getProperty', 1600, 450, {});
+    
+    // Subtract from Y (up is negative)
+    const subtractNode = builder.createNode('subtract', 1850, 550, {});
+    
+    // Set new position
+    const setPosNode = builder.createNode('setPosition', 2100, 550, {});
+
+    nodes.push(
+        jumpForceNameNode, jumpForceValueNode, jumpForcePropNode,
+        loopNode, spaceKeyNode, keyCheckNode, ifNode,
+        getPosNode, getJumpNameNode, getJumpNode,
+        subtractNode, setPosNode
+    );
+
+    // Property initialization
+    connections.push(
+        { from: jumpForceNameNode.id, fromPort: 0, to: jumpForcePropNode.id, toPort: 1 },
+        { from: jumpForceValueNode.id, fromPort: 0, to: jumpForcePropNode.id, toPort: 2 }
+    );
+
+    // Flow chain
+    connections.push(
+        { from: loopNode.id, fromPort: 0, to: keyCheckNode.id, toPort: 0 },
+        { from: keyCheckNode.id, fromPort: 0, to: ifNode.id, toPort: 0 },
+        { from: ifNode.id, fromPort: 0, to: setPosNode.id, toPort: 0 }
+    );
+
+    // Data connections
+    connections.push(
+        { from: spaceKeyNode.id, fromPort: 0, to: keyCheckNode.id, toPort: 1 },
+        { from: keyCheckNode.id, fromPort: 1, to: ifNode.id, toPort: 1 },
+        { from: getPosNode.id, fromPort: 0, to: setPosNode.id, toPort: 1 },
+        { from: getPosNode.id, fromPort: 1, to: subtractNode.id, toPort: 0 },
+        { from: getJumpNameNode.id, fromPort: 0, to: getJumpNode.id, toPort: 0 },
+        { from: getJumpNode.id, fromPort: 0, to: subtractNode.id, toPort: 1 },
+        { from: subtractNode.id, fromPort: 0, to: setPosNode.id, toPort: 2 }
+    );
+
+    return {
+        moduleName: 'JumpModule',
+        moduleNamespace: 'Input',
+        moduleDescription: 'Makes the game object jump when spacebar is pressed',
+        moduleIcon: 'fas fa-arrow-up',
+        moduleColor: '#FF5722',
+        allowMultiple: true,
+        drawInEditor: false,
+        nodes: nodes,
+        connections: connections
+    };
+}
 ```
 
-## Port Index Reference:
+## Ready to Generate
 
-Most nodes follow these patterns:
-
-**Flow Nodes** (start, update, draw, etc.):
-- Output 0: Flow out
-
-**Variable Nodes**:
-- Output 0: Value
-
-**Logic Nodes** (if):
-- Input 0: Flow in
-- Input 1: Condition (boolean)
-- Output 0: True flow
-- Output 1: False flow
-
-**Comparison Nodes**:
-- Input 0: Value A
-- Input 1: Value B
-- Output 0: Result (boolean)
-
-**Math Nodes** (add, subtract, etc.):
-- Input 0: Value A
-- Input 1: Value B
-- Output 0: Result
-
-**Action Nodes** (setProperty):
-- Input 0: Flow in
-- Input 1: Object (gameObject)
-- Input 2: Property name (string)
-- Input 3: Value (any)
-- Output 0: Flow out
-
-## Debugging:
-
-If nodes don't appear:
-1. Check node type is valid
-2. Verify positions are reasonable (not negative, not too large)
-3. Ensure node variable names are unique
-4. Check that connections reference existing nodes
-
-If connections fail:
-1. Verify port indices are correct
-2. Ensure nodes are created before connecting
-3. Check that from/to nodes exist in nodes object
-
-If execution fails:
-1. Check syntax with vmb.log() statements
-2. Verify all required properties are set
-3. Use try-catch blocks for complex code
-
----
-
-**Pro Tip**: After generating code, you can:
-1. Paste it into the Code tab
-2. Click "Validate" to check for errors
-3. Switch to Nodes tab to see the visual result
-4. Make adjustments and switch back to see updated code
+Now you're ready to convert user requirements into Visual Module Builder code! Remember:
+- Follow the structure exactly
+- Use proper node types
+- Connect flow and data correctly
+- Provide complete, working code
+- Comment your sections clearly

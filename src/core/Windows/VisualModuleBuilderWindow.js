@@ -183,6 +183,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.loadAvailableModules();
         this.setupModuleRefreshListener();
 
+        this.newProject();
+
         // Save initial state for undo/redo
         this.saveState();
     }
@@ -631,6 +633,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
                 this.logToConsole('Switched to nodes view', 'info');
                 this.updateTabButtons();
+                
+                // Force canvas to resize and render after switching tabs
+                setTimeout(() => {
+                    if (this.boundHandlers.resize) {
+                        this.boundHandlers.resize();
+                    }
+                    this.render();
+                }, 50);
                 return;
             }
 
@@ -661,6 +671,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
                 this.logToConsole('Code parsed successfully and nodes updated!', 'success');
                 this.updateTabButtons();
+
+                // Force canvas to resize and render after switching tabs
+                setTimeout(() => {
+                    if (this.boundHandlers.resize) {
+                        this.boundHandlers.resize();
+                    }
+                    this.render();
+                }, 50);
 
             } catch (error) {
                 // If there's an error, restore backup and stay in code view
@@ -2489,7 +2507,7 @@ const nodes = {};
      * Setup event listeners for canvas interaction
      */
     setupCanvasEventListeners() {
-        if (!this.isOpen) return;
+        //if (!this.isOpen) return;
 
         // Add null check to prevent errors
         if (!this.canvas) {
@@ -5899,8 +5917,32 @@ const nodes = {};
         );
 
         // Group ALL setProperty nodes for constructor initialization
+        // Use a Set to track property names and prevent duplicates
         const groupedAllSetProperty = {};
+        const seenPropertyNames = new Set();
+
         allSetPropertyNodes.forEach(node => {
+            const nameConn = this.connections.find(c =>
+                c.to.node.id === node.id && c.to.portIndex === node.inputs.indexOf('name')
+            );
+
+            let propName = null;
+            if (nameConn && nameConn.from.node.type === 'string') {
+                propName = nameConn.from.node.value || 'property';
+            } else {
+                // No connection - use a safe default name based on node ID
+                propName = `property_${node.id.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+            }
+
+            // Sanitize property name
+            propName = this.sanitizePropertyName(propName);
+
+            // Skip if we've already seen this property name
+            if (seenPropertyNames.has(propName)) {
+                return;
+            }
+            seenPropertyNames.add(propName);
+
             const groupName = node.groupName || 'General';
             if (!groupedAllSetProperty[groupName]) {
                 groupedAllSetProperty[groupName] = [];
@@ -6905,6 +6947,8 @@ class ${className} extends Module {
             }
         }
 
+        this.clearCanvas();
+
         this.nodes = [];
         this.connections = [];
         this.selectedNode = null;
@@ -6913,6 +6957,10 @@ class ${className} extends Module {
         this.moduleName = "CustomModule";
         this.moduleNamespace = "Custom";
         this.moduleDescription = "A custom visual module";
+
+        // Reset to nodes tab and clear CodeMirror
+        this.currentTab = 'nodes';
+        this.codeMirrorEditor = null;
 
         // Refresh UI
         this.setupUI();
@@ -7218,8 +7266,8 @@ class ${className} extends Module {
     }
 
     /**
- * Save project to desktop as downloadable file
- */
+     * Save project to desktop as downloadable file
+     */
     async saveProjectToDesktop() {
         // **Save the current state and return to main canvas before saving**
         const wasInGroup = this.currentGroup !== null;
