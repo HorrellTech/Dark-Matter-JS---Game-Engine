@@ -2537,7 +2537,7 @@ const nodes = {};
                 this.copyNode(nodeToCopy);
             }
             // Ctrl+V / Cmd+V - Paste
-            else if ((e.ctrlKey || e.metaKey) && e.key === 'v' && this.clipboard) {
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'v' && this.clipboard && !e.repeat) {
                 e.preventDefault();
                 const rect = this.canvas.getBoundingClientRect();
                 const centerX = (rect.width / 2 - this.panOffset.x) / this.zoom;
@@ -2545,7 +2545,7 @@ const nodes = {};
                 this.pasteNode(centerX, centerY);
             }
             // Ctrl+D / Cmd+D - Duplicate
-            else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && (this.selectedNode || this.selectedNodes.size > 0)) {
+            else if ((e.ctrlKey || e.metaKey) && e.key === 'd' && (this.selectedNode || this.selectedNodes.size > 0) && !e.repeat) {
                 e.preventDefault();
                 const nodeToDuplicate = this.selectedNode || Array.from(this.selectedNodes)[0];
                 this.duplicateNode(nodeToDuplicate);

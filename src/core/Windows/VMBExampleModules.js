@@ -3440,9 +3440,12 @@ ${ctx.indent}/* ------------------------ */`
                     outputs: ['flow', 'success'],
                     wrapFlowNode: false,
                     codeGen: (node, ctx) => {
-                        const pattern = ctx.getInputValue(node, 'pattern');
+                        let pattern = ctx.getInputValue(node, 'pattern');
+                        if (pattern.includes("'")) {
+                            pattern = pattern.replaceAll("'", ""); // Remove single quotes
+                        }
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.playBeat(${pattern}, ${bpm});`;
+                        return `window.melodicode.playBeat('${pattern}', ${bpm});`;
                     }
                 },
                 {
@@ -3457,7 +3460,7 @@ ${ctx.indent}/* ------------------------ */`
                         const notes = ctx.getInputValue(node, 'notes');
                         const duration = ctx.getInputValue(node, 'duration') || '1';
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `await window.melodicode.playMelody(${notes}, ${duration}, ${bpm});`;
+                        return `await window.melodicode.playMelody('${notes}', ${duration}, ${bpm});`;
                     }
                 },
                 {
@@ -3474,7 +3477,7 @@ ${ctx.indent}/* ------------------------ */`
                         const timescale = ctx.getInputValue(node, 'timescale') || '1';
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
-                        return `window.melodicode.playSample(${sample}, { 
+                        return `window.melodicode.playSample('${sample}', { 
     pitch: ${pitch}, 
     timescale: ${timescale}, 
     volume: ${volume}, 
@@ -3500,7 +3503,7 @@ ${ctx.indent}/* ------------------------ */`
                         const volume = ctx.getInputValue(node, 'volume') || '0.8';
                         const pan = ctx.getInputValue(node, 'pan') || '0';
                         const bpm = ctx.getInputValue(node, 'bpm') || '120';
-                        return `window.melodicode.playTone(${frequency}, 
+                        return `window.melodicode.playTone('${frequency}', 
     ${duration}, 
     '${waveType}', 
     { 
