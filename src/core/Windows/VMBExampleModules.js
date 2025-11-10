@@ -1343,86 +1343,58 @@ class VMBExampleModules {
     /**
      * Rotating Sprite - Demonstrates continuous rotation
      */
-    static createRotatingSprite() {
+        static createRotatingSprite() {
         const builder = this.getNodeBuilder();
         const nodes = [];
         const connections = [];
 
-        //const startNode = builder.createNode('start', 100, 100, {});
-
-        // Initialize rotation
-        const rotNameNode = builder.createNode('string', 350, 50, { value: 'rotation' });
-        const rotValueNode = builder.createNode('number', 350, 200, { value: '0' });
-        const rotPropNode = builder.createNode('setProperty', 600, 100, {});
-
-        // Initialize speed
-        const speedNameNode = builder.createNode('string', 850, 50, { value: 'rotationSpeed' });
-        const speedValueNode = builder.createNode('number', 850, 200, { value: '0.05' });
-        const speedPropNode = builder.createNode('setProperty', 1100, 100, {
+        // Initialize rotation speed
+        const speedNameNode = builder.createNode('string', 350, 50, { value: 'rotationSpeed' });
+        const speedValueNode = builder.createNode('number', 350, 200, { value: '0.05' });
+        const speedPropNode = builder.createNode('setProperty', 600, 100, {
             exposeProperty: true,
             groupName: 'Rotation'
         });
 
         const loopNode = builder.createNode('loop', 100, 400, {});
 
-        // Update rotation - get rotation and speed
-        const getRotNameNode = builder.createNode('string', 350, 450, { value: 'rotation' });
+        // Get current angle from game object
+        const getAngleNode = builder.createNode('getAngle', 350, 450, {});
+
+        // Get rotation speed
         const getSpeedNameNode = builder.createNode('string', 350, 600, { value: 'rotationSpeed' });
-        const getRotNode = builder.createNode('getProperty', 600, 450, {});
         const getSpeedNode = builder.createNode('getProperty', 600, 600, {});
 
-        // Add them
+        // Add speed to current angle
         const addRotNode = builder.createNode('add', 850, 500, {});
 
-        // Set new rotation
-        const setRotNameNode = builder.createNode('string', 1100, 450, { value: 'rotation' });
-        const setRotNode = builder.createNode('setProperty', 1350, 500, {});
-
-        // Apply to game object - get rotation and set angle
-        const getRotForGONameNode = builder.createNode('string', 1600, 500, { value: 'rotation' });
-        const getRotForGONode = builder.createNode('getProperty', 1850, 500, {});
-        const gameObjRotNode = builder.createNode('setAngle', 2100, 500, {});
+        // Set new angle to game object
+        const setAngleNode = builder.createNode('setAngle', 1100, 500, {});
 
         nodes.push(
-            //startNode, 
-            rotNameNode, rotValueNode, rotPropNode,
             speedNameNode, speedValueNode, speedPropNode,
             loopNode,
-            getRotNameNode, getSpeedNameNode, getRotNode, getSpeedNode, addRotNode,
-            setRotNameNode, setRotNode,
-            getRotForGONameNode, getRotForGONode, gameObjRotNode
+            getAngleNode, getSpeedNameNode, getSpeedNode, addRotNode,
+            setAngleNode
         );
 
-        // Start flow
+        // Initialize rotation speed
         connections.push(
-            //{ from: startNode.id, fromPort: 0, to: rotPropNode.id, toPort: 0 },
-            { from: rotPropNode.id, fromPort: 0, to: speedPropNode.id, toPort: 0 }
-        );
-
-        // Start data
-        connections.push(
-            { from: rotNameNode.id, fromPort: 0, to: rotPropNode.id, toPort: 1 },
-            { from: rotValueNode.id, fromPort: 0, to: rotPropNode.id, toPort: 2 },
             { from: speedNameNode.id, fromPort: 0, to: speedPropNode.id, toPort: 1 },
             { from: speedValueNode.id, fromPort: 0, to: speedPropNode.id, toPort: 2 }
         );
 
         // Loop flow
         connections.push(
-            { from: loopNode.id, fromPort: 0, to: setRotNode.id, toPort: 0 },
-            { from: setRotNode.id, fromPort: 0, to: gameObjRotNode.id, toPort: 0 }
+            { from: loopNode.id, fromPort: 0, to: setAngleNode.id, toPort: 0 }
         );
 
-        // Loop data
+        // Loop data - get angle, add speed, set angle
         connections.push(
-            { from: getRotNameNode.id, fromPort: 0, to: getRotNode.id, toPort: 0 },
+            { from: getAngleNode.id, fromPort: 0, to: addRotNode.id, toPort: 0 },
             { from: getSpeedNameNode.id, fromPort: 0, to: getSpeedNode.id, toPort: 0 },
-            { from: getRotNode.id, fromPort: 0, to: addRotNode.id, toPort: 0 },
             { from: getSpeedNode.id, fromPort: 0, to: addRotNode.id, toPort: 1 },
-            { from: setRotNameNode.id, fromPort: 0, to: setRotNode.id, toPort: 1 },
-            { from: addRotNode.id, fromPort: 0, to: setRotNode.id, toPort: 2 },
-            { from: getRotForGONameNode.id, fromPort: 0, to: getRotForGONode.id, toPort: 0 },
-            { from: getRotForGONode.id, fromPort: 0, to: gameObjRotNode.id, toPort: 1 }
+            { from: addRotNode.id, fromPort: 0, to: setAngleNode.id, toPort: 1 }
         );
 
         return {
@@ -2965,10 +2937,14 @@ class VMBExampleModules {
                     icon: 'fas fa-square',
                     inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
                     outputs: ['flow'],
-                    codeGen: (node, ctx) => `ctx.fillStyle = 
-                    ${ctx.getInputValue(node, 'color') || "'#000000'"};
-                    \n${ctx.indent}ctx.fillRect(${ctx.getInputValue(node, 'x') || 0}, ${ctx.getInputValue(node, 'y') || 0}, 
-                    ${ctx.getInputValue(node, 'w') || 32}, ${ctx.getInputValue(node, 'h') || 32});`
+                    codeGen: (node, ctx) => {
+                        const x = ctx.getInputValue(node, 'x') || 0;
+                        const y = ctx.getInputValue(node, 'y') || 0;
+                        const w = ctx.getInputValue(node, 'w') || 32;
+                        const h = ctx.getInputValue(node, 'h') || 32;
+                        const color = ctx.getInputValue(node, 'color') || "'#000000'";
+                        return `ctx.fillStyle = ${color};\n${ctx.indent}ctx.fillRect(${x} - ${w}/2, ${y} - ${h}/2, ${w}, ${h});`;
+                    }
                 },
                 {
                     type: 'strokeRect',
@@ -2977,9 +2953,14 @@ class VMBExampleModules {
                     icon: 'fas fa-square-full',
                     inputs: ['flow', 'ctx', 'x', 'y', 'w', 'h', 'color'],
                     outputs: ['flow'],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color') || "'#000000'"};
-                    \n${ctx.indent}ctx.strokeRect(${ctx.getInputValue(node, 'x') || 0}, ${ctx.getInputValue(node, 'y') || 0}, 
-                    ${ctx.getInputValue(node, 'w') || 32}, ${ctx.getInputValue(node, 'h') || 32});`
+                    codeGen: (node, ctx) => {
+                        const x = ctx.getInputValue(node, 'x') || 0;
+                        const y = ctx.getInputValue(node, 'y') || 0;
+                        const w = ctx.getInputValue(node, 'w') || 32;
+                        const h = ctx.getInputValue(node, 'h') || 32;
+                        const color = ctx.getInputValue(node, 'color') || "'#000000'";
+                        return `ctx.strokeStyle = ${color};\n${ctx.indent}ctx.strokeRect(${x} - ${w}/2, ${y} - ${h}/2, ${w}, ${h});`;
+                    }
                 },
                 {
                     type: 'fillCircle',
@@ -2988,9 +2969,7 @@ class VMBExampleModules {
                     icon: 'fas fa-circle',
                     inputs: ['flow', 'ctx', 'x', 'y', 'radius', 'color'],
                     outputs: ['flow'],
-                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color') || "'#000000'"};\n
-                    ${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x') || 0}, 
-                    ${ctx.getInputValue(node, 'y') || 0}, ${ctx.getInputValue(node, 'radius') || 16}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
+                    codeGen: (node, ctx) => `ctx.fillStyle = ${ctx.getInputValue(node, 'color') || "'#000000'"};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.arc(${ctx.getInputValue(node, 'x') || 0}, ${ctx.getInputValue(node, 'y') || 0}, ${ctx.getInputValue(node, 'radius') || 16}, 0, Math.PI * 2);\n${ctx.indent}ctx.fill();`
                 },
                 {
                     type: 'drawText',
@@ -3003,8 +2982,8 @@ class VMBExampleModules {
                         const fontSize = ctx.getInputValue(node, 'fontSize') || '16';
                         const fontFamily = ctx.getInputValue(node, 'fontFamily') || "'Arial'";
                         const fontWeight = ctx.getInputValue(node, 'fontWeight') || "'normal'";
-                        const textAlign = ctx.getInputValue(node, 'textAlign') || "'left'";
-                        const textBaseline = ctx.getInputValue(node, 'textBaseline') || "'alphabetic'";
+                        const textAlign = ctx.getInputValue(node, 'textAlign') || "'center'";
+                        const textBaseline = ctx.getInputValue(node, 'textBaseline') || "'middle'";
                         const color = ctx.getInputValue(node, 'color') || "'#000000'";
                         const text = ctx.getInputValue(node, 'text') || "''";
                         const x = ctx.getInputValue(node, 'x') || 0;
@@ -3026,10 +3005,7 @@ class VMBExampleModules {
                     icon: 'fas fa-slash',
                     inputs: ['flow', 'ctx', 'x1', 'y1', 'x2', 'y2', 'color'],
                     outputs: ['flow'],
-                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color') || "'#000'"};\n
-                    ${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1') || 0}, 
-                    ${ctx.getInputValue(node, 'y1') || 0});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2') || 0}, 
-                    ${ctx.getInputValue(node, 'y2') || 32});\n${ctx.indent}ctx.stroke();`
+                    codeGen: (node, ctx) => `ctx.strokeStyle = ${ctx.getInputValue(node, 'color') || "'#000'"};\n${ctx.indent}ctx.beginPath();\n${ctx.indent}ctx.moveTo(${ctx.getInputValue(node, 'x1') || 0}, ${ctx.getInputValue(node, 'y1') || 0});\n${ctx.indent}ctx.lineTo(${ctx.getInputValue(node, 'x2') || 0}, ${ctx.getInputValue(node, 'y2') || 32});\n${ctx.indent}ctx.stroke();`
                 },
                 {
                     type: 'setLineWidth',

@@ -1,0 +1,201 @@
+{
+  "system_context": {
+    "tool_name": "Visual Module Builder (VMB)",
+    "description": "A node-based visual programming system for creating game modules with flow-based logic",
+    "key_concepts": {
+      "nodes": "Individual operations or values that can be connected together",
+      "connections": "Links between node outputs and inputs that determine data/execution flow",
+      "flow_ports": "Special ports that control execution order (typically port index 0)",
+      "data_ports": "Ports that pass values between nodes",
+      "modules": "Complete systems built from connected nodes that can be attached to game objects",
+      "properties": "Values that can be exposed to the inspector for runtime modification"
+    }
+  },
+  
+  "critical_rules": {
+    "property_initialization": [
+      "NEVER connect setProperty nodes to Start events for initialization",
+      "setProperty nodes automatically declare and initialize properties",
+      "Only use setProperty in Start if you need to set an initial value OR change it later",
+      "Properties set with exposeProperty:true appear in the inspector"
+    ],
+    "drawing": [
+      "Draw event automatically draws at game object position",
+      "Use relative coordinates (0,0) in drawing nodes, not absolute positions",
+      "Drawing nodes need both flow and ctx inputs from Draw event"
+    ],
+    "flow_connections": [
+      "Flow connections determine execution order",
+      "Connect flow output (port 0) to flow input (port 0) of next node",
+      "Data connections can be made independently of flow",
+      "Some nodes output data without requiring flow input"
+    ],
+    "node_creation": [
+      "Use builder.createNode(type, x, y, options) for all nodes",
+      "Position nodes left-to-right in logical execution order",
+      "Space nodes adequately (200-250px horizontally, 150-200px vertically)",
+      "Group related nodes together visually"
+    ]
+  },
+
+  "common_patterns": {
+    "property_setup": {
+      "description": "How to create an exposed property",
+      "pattern": [
+        "1. Create a string node with property name",
+        "2. Create a value node (number, color, etc.) with default value",
+        "3. Create setProperty node with exposeProperty:true",
+        "4. Connect name string to port 1, value to port 2",
+        "5. DO NOT connect to Start event - it initializes automatically"
+      ],
+      "example": {
+        "nodes": [
+          "const nameNode = builder.createNode('string', 100, 100, { value: 'speed' })",
+          "const valueNode = builder.createNode('number', 100, 250, { value: '5' })",
+          "const propNode = builder.createNode('setProperty', 350, 150, { exposeProperty: true, groupName: 'Movement' })"
+        ],
+        "connections": [
+          "{ from: nameNode.id, fromPort: 0, to: propNode.id, toPort: 1 }",
+          "{ from: valueNode.id, fromPort: 0, to: propNode.id, toPort: 2 }"
+        ]
+      }
+    },
+    
+    "reading_properties": {
+      "description": "How to read a property value during execution",
+      "pattern": [
+        "1. Create a string node with property name",
+        "2. Create getProperty node",
+        "3. Connect name string to getProperty's port 0",
+        "4. Use getProperty's output in calculations"
+      ]
+    },
+    
+    "drawing_shapes": {
+      "description": "How to draw shapes relative to game object",
+      "pattern": [
+        "1. Create Draw event node",
+        "2. Create shape parameters (position relative to center, size, color)",
+        "3. Create drawing node (fillRect, fillCircle, etc.)",
+        "4. Connect Draw's flow (port 0) to drawing node's flow (port 0)",
+        "5. Connect Draw's ctx (port 1) to drawing node's ctx (port 1)",
+        "6. Connect parameters to remaining ports"
+      ]
+    },
+    
+    "loop_with_state": {
+      "description": "How to update state every frame",
+      "pattern": [
+        "1. Create Loop event node",
+        "2. Get current property value",
+        "3. Perform calculation",
+        "4. Set new property value",
+        "5. Connect loop flow through the sequence"
+      ]
+    },
+    
+    "conditional_execution": {
+      "description": "How to execute code conditionally",
+      "pattern": [
+        "1. Create comparison nodes for condition",
+        "2. Create if node",
+        "3. Connect condition result to if's port 1",
+        "4. Connect if's true output (port 0) to nodes that should execute when true",
+        "5. Connect if's false output (port 1) to alternative path or next flow"
+      ]
+    }
+  },
+
+  "node_library_summary": {
+    "Events": ["constructor", "start", "loop", "draw", "onDestroy", "method"],
+    "Variables": ["const", "let", "var", "getVariable", "setVariable", "getProperty", "setProperty"],
+    "Values": ["number", "string", "boolean", "color", "waveType", "randomNumber", "randomName", "null", "undefined"],
+    "Logic": ["if", "compare", "and", "or", "not", "return"],
+    "Math": ["add", "subtract", "multiply", "divide", "modulo", "random", "abs", "sqrt", "pow", "sin", "cos", "min", "max", "clamp", "floor", "ceil", "round", "lerp"],
+    "GameObject": ["getPosition", "setPosition", "getScale", "setScale", "getAngle", "setAngle", "getName", "setName"],
+    "Drawing": ["fillRect", "strokeRect", "fillCircle", "drawText", "drawLine", "setLineWidth"],
+    "Input": ["keyDown", "keyPressed", "keyReleased", "mouseDown", "mousePressed", "mouseReleased", "getMousePosition"],
+    "Time": ["getDeltaTime", "getTimeScale", "setTimeScale", "isPaused", "pauseGame", "resumeGame"]
+  },
+
+  "task_instructions": {
+    "when_creating_examples": [
+      "Start by understanding the desired functionality",
+      "Identify required properties and their initial values",
+      "Map out the flow of execution (events -> operations -> state changes)",
+      "Position nodes in logical left-to-right, top-to-bottom order",
+      "Create all nodes first, then create connections",
+      "Ensure all flow paths are connected properly",
+      "Test logic mentally: trace execution from event nodes through to end",
+      "Add helpful grouping with groupName for related properties"
+    ],
+    
+    "positioning_guidelines": {
+      "horizontal_spacing": "200-250px between columns of nodes",
+      "vertical_spacing": "150-200px between rows",
+      "event_nodes": "Place at x=100, spaced vertically by 300-400px",
+      "property_setup": "Group at top (y=50-400) before any events",
+      "execution_logic": "Flow left-to-right starting after events (x=350+)"
+    },
+    
+    "connection_guidelines": {
+      "flow_connections": "Always connect flow output (port 0) to flow input (port 0)",
+      "data_connections": "Connect output port to corresponding input port by index",
+      "property_names": "Connect string nodes to port 1 of get/setProperty",
+      "property_values": "Connect value nodes to port 2 of setProperty",
+      "multi_output_nodes": "getPosition outputs x (port 0) and y (port 1) separately"
+    }
+  },
+
+  "example_request_format": {
+    "user_provides": {
+      "functionality": "Description of what the module should do",
+      "optional_details": ["specific properties needed", "interaction methods", "visual appearance"]
+    },
+    "ai_should_provide": {
+      "module_metadata": {
+        "moduleName": "PascalCase name",
+        "moduleNamespace": "Category for organization",
+        "moduleDescription": "Clear description of functionality",
+        "moduleIcon": "FontAwesome icon class",
+        "moduleColor": "Hex color code",
+        "allowMultiple": "boolean - can multiple instances exist?",
+        "drawInEditor": "boolean - should it draw in editor preview?"
+      },
+      "implementation": {
+        "nodes": "Array of all nodes with positions and settings",
+        "connections": "Array of all connections between nodes"
+      },
+      "explanation": "Brief explanation of how the module works"
+    }
+  },
+
+  "quality_checklist": {
+    "before_submitting": [
+      "All nodes have unique IDs (use Date.now() + Math.random())",
+      "All connections reference valid node IDs",
+      "Flow connections form complete paths from events to end",
+      "Property initialization doesn't use Start event unless necessary",
+      "Drawing code uses relative coordinates (0,0 = object center)",
+      "Node positions are well-spaced and logical",
+      "All required inputs have connections",
+      "Exposed properties have meaningful names and groupNames",
+      "Module metadata is complete and accurate"
+    ]
+  },
+
+  "common_mistakes_to_avoid": [
+    "DON'T: Connect setProperty to Start for initialization - it's automatic",
+    "DON'T: Use absolute canvas coordinates in Draw event - use relative",
+    "DON'T: Forget to connect flow between sequential operations",
+    "DON'T: Create connections before creating all nodes",
+    "DON'T: Use property names with spaces or special characters",
+    "DON'T: Connect flow outputs to data inputs or vice versa",
+    "DON'T: Forget ctx input for drawing nodes",
+    "DON'T: Place nodes too close together (hard to read)",
+    "DO: Chain property initialization with flow connections between setProperty nodes",
+    "DO: Use getProperty to read values, not direct property access",
+    "DO: Group related properties with groupName",
+    "DO: Test execution flow mentally before finalizing"
+  ]
+}

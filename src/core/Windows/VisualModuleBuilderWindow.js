@@ -37,13 +37,20 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.draggedNode = null;
         this.dragOffset = { x: 0, y: 0 };
 
+        this.useRoundConnectors = false; // Set to false for triangular connectors
+
         // ========== NEW: MULTI-SELECTION ==========
         this.selectedNodes = new Set(); // Track multiple selected nodes
         this.draggedNodes = new Set(); // Track nodes being dragged together
 
+        this.libraryDragStart = null; // Track where library node drag started
+        this.isLibraryDragging = false;
+
         // Connection state
         this.connectingFrom = null;
         this.hoveredPort = null;
+
+        this.codeMirrorEditor = null;
 
         // Pan and zoom
         this.panOffset = { x: 0, y: 0 };
@@ -97,6 +104,14 @@ class VisualModuleBuilderWindow extends EditorWindow {
         this.testGameObject = null;
         this.testCanvas = null;
         this.testCtx = null;
+
+        // ========== NEW: CODE/NODE TAB SYSTEM ==========
+        this.currentTab = 'nodes'; // 'nodes' or 'code'
+        this.codeEditor = null;
+        this.codeEditorContent = '';
+        this.lastValidNodeState = null; // Store last valid state
+        this.codeTabContainer = null;
+        this.nodeTabContainer = null;
 
         // Store bound event handlers for cleanup
         this.boundHandlers = {
@@ -330,7 +345,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
         const toolbar = this.createToolbar();
         mainContainer.appendChild(toolbar);
 
-        // Middle section: sidebar + canvas
+        // ========== NEW: TAB BAR ==========
+        const tabBar = this.createTabBar();
+        mainContainer.appendChild(tabBar);
+
+        // Middle section: sidebar + canvas/code container
         const middleSection = document.createElement('div');
         middleSection.style.cssText = `
             display: flex;
@@ -339,18 +358,29 @@ class VisualModuleBuilderWindow extends EditorWindow {
             overflow: hidden;
         `;
 
-        // Left sidebar - Node library
+        // Left sidebar - Node library (only visible in nodes tab)
         const sidebar = this.createSidebar();
+        sidebar.id = 'vmb-sidebar';
         middleSection.appendChild(sidebar);
 
-        // Canvas container
-        const canvasContainer = document.createElement('div');
-        canvasContainer.style.cssText = `
+        // Main content area container (canvas or code editor)
+        const contentContainer = document.createElement('div');
+        contentContainer.style.cssText = `
             flex: 1;
             background: #1a1a1a;
             border-radius: 4px;
             position: relative;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        `;
+
+        // ========== NODE TAB CONTAINER ==========
+        this.nodeTabContainer = document.createElement('div');
+        this.nodeTabContainer.style.cssText = `
+            width: 100%;
+            height: 100%;
+            display: ${this.currentTab === 'nodes' ? 'block' : 'none'};
         `;
 
         this.canvas = document.createElement('canvas');
@@ -359,9 +389,85 @@ class VisualModuleBuilderWindow extends EditorWindow {
             height: 100%;
             cursor: grab;
         `;
-        canvasContainer.appendChild(this.canvas);
+        this.nodeTabContainer.appendChild(this.canvas);
+        contentContainer.appendChild(this.nodeTabContainer);
 
-        middleSection.appendChild(canvasContainer);
+        // ========== CODE TAB CONTAINER ==========
+        this.codeTabContainer = document.createElement('div');
+        this.codeTabContainer.style.cssText = `
+            width: 100%;
+            height: 100%;
+            display: ${this.currentTab === 'code' ? 'flex' : 'none'};
+            flex-direction: column;
+            background: #1e1e1e;
+            padding: 10px;
+            overflow: hidden;
+        `;
+
+        // Code editor toolbar
+        const codeToolbar = document.createElement('div');
+        codeToolbar.style.cssText = `
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        `;
+
+        const copyCodeBtn = this.createButton('Copy Code', 'fas fa-copy', () => {
+            const code = this.codeMirrorEditor ? this.codeMirrorEditor.getValue() : this.codeEditor.value;
+            navigator.clipboard.writeText(code);
+            this.logToConsole('Code copied to clipboard!', 'success');
+        });
+        codeToolbar.appendChild(copyCodeBtn);
+
+        const formatCodeBtn = this.createButton('Format Code', 'fas fa-magic', () => {
+            if (this.codeMirrorEditor) {
+                try {
+                    const formatted = this.formatJavaScript(this.codeMirrorEditor.getValue());
+                    this.codeMirrorEditor.setValue(formatted);
+                    this.logToConsole('Code formatted!', 'success');
+                } catch (e) {
+                    this.logToConsole('Failed to format code: ' + e.message, 'error');
+                }
+            }
+        });
+        codeToolbar.appendChild(formatCodeBtn);
+
+        const validateCodeBtn = this.createButton('Validate', 'fas fa-check-circle', () => {
+            this.validateCodeSyntax();
+        });
+        codeToolbar.appendChild(validateCodeBtn);
+
+        this.codeTabContainer.appendChild(codeToolbar);
+
+        // Code editor container for CodeMirror
+        const editorContainer = document.createElement('div');
+        editorContainer.id = 'vmb-code-editor-container';
+        editorContainer.style.cssText = `
+            flex: 1;
+            width: 100%;
+            background: #1e1e1e;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            overflow: hidden;
+        `;
+
+        // Create textarea for CodeMirror
+        this.codeEditor = document.createElement('textarea');
+        this.codeEditor.id = 'vmb-code-editor';
+        this.codeEditor.style.cssText = `
+            width: 100%;
+            height: 100%;
+            display: none; // Will be replaced by CodeMirror
+        `;
+
+        editorContainer.appendChild(this.codeEditor);
+        this.codeTabContainer.appendChild(editorContainer);
+        contentContainer.appendChild(this.codeTabContainer);
+
+        middleSection.appendChild(contentContainer);
         mainContainer.appendChild(middleSection);
 
         // Bottom section: properties panel + console panel side by side
@@ -374,17 +480,681 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Properties panel at bottom left
         const propertiesPanel = this.createPropertiesPanel();
-        propertiesPanel.style.height = '100%'; // Override height to fill container
+        propertiesPanel.style.height = '100%';
         bottomSection.appendChild(propertiesPanel);
 
         // Console panel at bottom right
         const consolePanel = this.createConsolePanel();
-        consolePanel.style.height = '100%'; // Override height to fill container
+        consolePanel.style.height = '100%';
         bottomSection.appendChild(consolePanel);
 
         mainContainer.appendChild(bottomSection);
 
         this.addContent(mainContainer);
+    }
+
+    /**
+     * Create the tab bar for switching between nodes and code view
+     */
+    createTabBar() {
+        const tabBar = document.createElement('div');
+        tabBar.className = 'vmb-tab-bar';
+        tabBar.style.cssText = `
+            display: flex;
+            gap: 4px;
+            padding: 0 8px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        `;
+
+        const createTab = (name, label, icon) => {
+            const tab = document.createElement('div');
+            tab.className = 'vmb-tab';
+            tab.dataset.tabName = name; // Add data attribute for easy selection
+            tab.style.cssText = `
+                padding: 8px 16px;
+                background: ${this.currentTab === name ? '#4CAF50' : '#333'};
+                border: 1px solid ${this.currentTab === name ? '#66BB6A' : '#555'};
+                border-radius: 4px 4px 0 0;
+                color: #fff;
+                font-size: 13px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                transition: all 0.2s;
+                user-select: none;
+            `;
+
+            const iconEl = document.createElement('i');
+            iconEl.className = icon;
+            tab.appendChild(iconEl);
+
+            const labelEl = document.createElement('span');
+            labelEl.textContent = label;
+            tab.appendChild(labelEl);
+
+            tab.addEventListener('click', () => this.switchTab(name));
+
+            tab.addEventListener('mouseenter', () => {
+                if (this.currentTab !== name) {
+                    tab.style.background = '#444';
+                }
+            });
+
+            tab.addEventListener('mouseleave', () => {
+                if (this.currentTab !== name) {
+                    tab.style.background = '#333';
+                }
+            });
+
+            return tab;
+        };
+
+        const nodesTab = createTab('nodes', 'Nodes', 'fas fa-project-diagram');
+        const codeTab = createTab('code', 'Code', 'fas fa-code');
+
+        tabBar.appendChild(nodesTab);
+        tabBar.appendChild(codeTab);
+
+        return tabBar;
+    }
+
+    /**
+     * Switch between nodes and code tabs
+     */
+    async switchTab(tabName) {
+        if (this.currentTab === tabName) return;
+
+        const previousTab = this.currentTab;
+
+        if (tabName === 'code') {
+            // Switching TO code view - generate code from nodes
+            try {
+                // Generate code FIRST
+                this.generateNodeDefinitionCode();
+
+                console.log('Generated code length:', this.codeEditor.value.length);
+                console.log('Code preview:', this.codeEditor.value.substring(0, 200));
+
+                // Update tab state
+                this.currentTab = tabName;
+                this.nodeTabContainer.style.display = 'none';
+                this.codeTabContainer.style.display = 'flex';
+
+                // Hide sidebar in code view
+                const sidebar = document.getElementById('vmb-sidebar');
+                if (sidebar) sidebar.style.display = 'none';
+
+                // Initialize CodeMirror if not already done
+                if (!this.codeMirrorEditor && this.codeEditor) {
+                    console.log('Initializing CodeMirror...');
+                    await this.initCodeMirrorForVMB();
+                }
+
+                // Set the generated code in CodeMirror
+                if (this.codeMirrorEditor) {
+                    const generatedCode = this.codeEditor.value || '// No code generated';
+                    console.log('Setting CodeMirror value, length:', generatedCode.length);
+                    this.codeMirrorEditor.setValue(generatedCode);
+                    setTimeout(() => {
+                        this.codeMirrorEditor.refresh();
+                    }, 50);
+                } else {
+                    console.error('CodeMirror editor not initialized!');
+                }
+
+                this.logToConsole('Switched to code view', 'info');
+
+                // DON'T call setupUI() here - it will destroy the CodeMirror instance!
+                // Instead just update the tab buttons
+                this.updateTabButtons();
+
+            } catch (error) {
+                this.logToConsole(`Failed to generate code: ${error.message}`, 'error');
+                console.error('Code generation error:', error);
+            }
+
+        } else if (tabName === 'nodes') {
+            // Switching TO nodes view - parse code and update nodes
+            const codeValue = this.codeMirrorEditor ? this.codeMirrorEditor.getValue().trim() : this.codeEditor?.value?.trim() || '';
+
+            // Failsafe: If code is empty or unchanged from last generation, just switch without parsing
+            if (!codeValue || codeValue === this.codeEditorContent.trim()) {
+                this.currentTab = tabName;
+                this.nodeTabContainer.style.display = 'block';
+                this.codeTabContainer.style.display = 'none';
+
+                // Show sidebar in nodes view
+                const sidebar = document.getElementById('vmb-sidebar');
+                if (sidebar) sidebar.style.display = 'block';
+
+                this.logToConsole('Switched to nodes view', 'info');
+                this.updateTabButtons();
+                return;
+            }
+
+            // Code has changed, try to parse it
+            try {
+                // Save current state before attempting to parse
+                const backupNodes = JSON.parse(JSON.stringify(this.nodes));
+                const backupConnections = JSON.parse(JSON.stringify(this.connections));
+                const backupMetadata = {
+                    moduleName: this.moduleName,
+                    moduleNamespace: this.moduleNamespace,
+                    moduleDescription: this.moduleDescription,
+                    moduleIcon: this.moduleIcon,
+                    moduleColor: this.moduleColor,
+                    allowMultiple: this.allowMultiple,
+                    drawInEditor: this.drawInEditor
+                };
+
+                this.parseNodeDefinitionCode(codeValue);
+
+                this.currentTab = tabName;
+                this.nodeTabContainer.style.display = 'block';
+                this.codeTabContainer.style.display = 'none';
+
+                // Show sidebar in nodes view
+                const sidebar = document.getElementById('vmb-sidebar');
+                if (sidebar) sidebar.style.display = 'block';
+
+                this.logToConsole('Code parsed successfully and nodes updated!', 'success');
+                this.updateTabButtons();
+
+            } catch (error) {
+                // If there's an error, restore backup and stay in code view
+                this.logToConsole(`Code parsing error: ${error.message}. Fix the code before switching to nodes view.`, 'error');
+                console.error('Parse error:', error);
+                alert(`Cannot switch to nodes view due to errors:\n\n${error.message}\n\nPlease fix the code and try again.`);
+                // Stay in code view - don't switch
+                return;
+            }
+        }
+    }
+
+    /**
+     * Update tab button styling without recreating the entire UI
+     */
+    updateTabButtons() {
+        // Use this.content (from EditorWindow) instead of this.modal
+        if (!this.content) {
+            console.warn('Content element not available yet');
+            return;
+        }
+
+        const tabBar = this.content.querySelector('.vmb-tab-bar');
+        if (!tabBar) {
+            console.warn('Tab bar not found in content');
+            return;
+        }
+
+        const tabs = tabBar.querySelectorAll('.vmb-tab');
+        tabs.forEach(tab => {
+            const tabName = tab.dataset.tabName;
+            if (tabName === this.currentTab) {
+                tab.style.background = '#4CAF50';
+                tab.style.borderColor = '#66BB6A';
+            } else {
+                tab.style.background = '#333';
+                tab.style.borderColor = '#555';
+            }
+        });
+    }
+
+    /**
+     * Initialize CodeMirror for the Visual Module Builder code editor
+     */
+    async initCodeMirrorForVMB() {
+        console.log('initCodeMirrorForVMB called');
+
+        // Dynamically load CodeMirror if not already loaded
+        if (!window.CodeMirror) {
+            console.log('Loading CodeMirror dependencies...');
+            await this.loadCodeMirrorDependencies();
+            console.log('CodeMirror loaded:', !!window.CodeMirror);
+        }
+
+        const editorTextArea = this.codeEditor;
+        if (!editorTextArea) {
+            console.error('Code editor textarea not found');
+            return;
+        }
+
+        console.log('Creating CodeMirror instance from textarea');
+
+        try {
+            this.codeMirrorEditor = CodeMirror.fromTextArea(editorTextArea, {
+                mode: "javascript",
+                theme: "dracula",
+                lineNumbers: true,
+                autoCloseBrackets: true,
+                matchBrackets: true,
+                indentUnit: 4,
+                tabSize: 4,
+                indentWithTabs: false,
+                foldGutter: true,
+                gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+                extraKeys: {
+                    "Ctrl-S": () => {
+                        this.logToConsole('Auto-save not needed in code mode. Switch to Nodes tab to parse changes.', 'info');
+                        return false;
+                    },
+                    "Ctrl-F": "findPersistent",
+                    "Ctrl-H": "replace",
+                    "Ctrl-Space": "autocomplete"
+                }
+            });
+
+            console.log('CodeMirror instance created:', !!this.codeMirrorEditor);
+
+            // Set initial value
+            const initialValue = this.codeEditor.value || '// Code will appear here';
+            this.codeMirrorEditor.setValue(initialValue);
+            console.log('CodeMirror initial value set, length:', initialValue.length);
+
+            // Setup change event
+            this.codeMirrorEditor.on("change", () => {
+                // Update the hidden textarea for compatibility
+                this.codeEditor.value = this.codeMirrorEditor.getValue();
+            });
+
+            // Refresh after a short delay to ensure proper rendering
+            setTimeout(() => {
+                if (this.codeMirrorEditor) {
+                    this.codeMirrorEditor.refresh();
+                    console.log('CodeMirror refreshed');
+                }
+            }, 100);
+
+        } catch (error) {
+            console.error('Error creating CodeMirror instance:', error);
+            this.logToConsole('Failed to initialize code editor: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Load CodeMirror dependencies
+     */
+    async loadCodeMirrorDependencies() {
+        // Create and load CodeMirror CSS
+        const loadCSS = (url) => {
+            return new Promise((resolve) => {
+                // Check if already loaded
+                if (document.querySelector(`link[href="${url}"]`)) {
+                    resolve();
+                    return;
+                }
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = url;
+                link.onload = () => resolve();
+                link.onerror = () => resolve(); // Continue even if load fails
+                document.head.appendChild(link);
+            });
+        };
+
+        // Create and load script
+        const loadScript = (url) => {
+            return new Promise((resolve) => {
+                // Check if already loaded
+                if (document.querySelector(`script[src="${url}"]`)) {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve();
+                script.onerror = () => resolve(); // Continue even if load fails
+                document.body.appendChild(script);
+            });
+        };
+
+        // Load required CSS files
+        await Promise.all([
+            loadCSS("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.css"),
+            loadCSS("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/theme/dracula.min.css"),
+            loadCSS("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/foldgutter.min.css"),
+            loadCSS("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/show-hint.min.css"),
+            loadCSS("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/dialog/dialog.min.css")
+        ]);
+
+        // Load required JS files
+        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js");
+
+        // Load modes
+        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/javascript/javascript.min.js");
+
+        // Load addons
+        await Promise.all([
+            // Editing addons
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/edit/closebrackets.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/edit/matchbrackets.min.js"),
+
+            // Search addons
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/search/search.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/search/searchcursor.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/dialog/dialog.min.js"),
+
+            // Fold addons
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/foldcode.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/foldgutter.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/fold/brace-fold.min.js"),
+
+            // Hint addons
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/show-hint.min.js"),
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/hint/javascript-hint.min.js"),
+
+            // Other addons
+            loadScript("https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/addon/selection/active-line.min.js")
+        ]);
+    }
+
+    /**
+     * Generate JavaScript code that represents the current node setup
+     */
+    generateNodeDefinitionCode() {
+        try {
+            const nodeDefs = this.serializeNodesToDefinition();
+            const connDefs = this.serializeConnectionsToDefinition();
+
+            let code = `// Visual Module Builder - Node Definition Code
+// This code uses the VMB API to create nodes and connections.
+// You can edit this code or paste AI-generated node definitions here.
+// When switching back to the Nodes tab, the code will be executed.
+
+// Get the Visual Module Builder instance
+const vmb = window.vmbInstance;
+
+// Clear existing nodes and connections
+vmb.clearCanvas();
+
+// Store node references for connecting
+const nodes = {};
+
+// Create nodes using the API
+`;
+
+            // Generate node creation code
+            nodeDefs.forEach(nodeDef => {
+                // Convert ID to string and make it a valid JavaScript variable name
+                // Prefix with 'node_' to ensure it doesn't start with a number
+                let varName = String(nodeDef.id).replace(/[^a-zA-Z0-9_]/g, '_');
+                if (/^\d/.test(varName)) {
+                    varName = 'node_' + varName;
+                }
+
+                if (nodeDef.options && Object.keys(nodeDef.options).length > 0) {
+                    code += `nodes.${varName} = vmb.createAndAddNode('${nodeDef.type}', ${nodeDef.x}, ${nodeDef.y}, ${JSON.stringify(nodeDef.options, null, 4)});\n`;
+                } else {
+                    code += `nodes.${varName} = vmb.createAndAddNode('${nodeDef.type}', ${nodeDef.x}, ${nodeDef.y});\n`;
+                }
+            });
+
+            code += `\n// Create connections using the API\n`;
+
+            // Generate connection code
+            connDefs.forEach(connDef => {
+                // Convert IDs to strings and make them valid JavaScript variable names
+                // Prefix with 'node_' to ensure they don't start with numbers
+                let fromVar = String(connDef.fromNodeId).replace(/[^a-zA-Z0-9_]/g, '_');
+                let toVar = String(connDef.toNodeId).replace(/[^a-zA-Z0-9_]/g, '_');
+                if (/^\d/.test(fromVar)) fromVar = 'node_' + fromVar;
+                if (/^\d/.test(toVar)) toVar = 'node_' + toVar;
+
+                code += `vmb.connectNodes(nodes.${fromVar}, ${connDef.fromPort}, nodes.${toVar}, ${connDef.toPort});\n`;
+            });
+
+            code += `\n// Update module metadata\n`;
+            code += `vmb.moduleName = ${JSON.stringify(this.moduleName)};\n`;
+            code += `vmb.moduleNamespace = ${JSON.stringify(this.moduleNamespace)};\n`;
+            code += `vmb.moduleDescription = ${JSON.stringify(this.moduleDescription)};\n`;
+            code += `vmb.moduleIcon = ${JSON.stringify(this.moduleIcon)};\n`;
+            code += `vmb.moduleColor = ${JSON.stringify(this.moduleColor)};\n`;
+            code += `vmb.allowMultiple = ${this.allowMultiple};\n`;
+            code += `vmb.drawInEditor = ${this.drawInEditor};\n`;
+
+            code += `\n// Mark as having unsaved changes\n`;
+            code += `vmb.hasUnsavedChanges = true;\n`;
+            code += `vmb.saveState();\n`;
+
+            code += `\n// Log success\n`;
+            code += `vmb.logToConsole('Nodes created successfully from code!', 'success');\n`;
+
+            // Ensure codeEditor exists
+            if (!this.codeEditor) {
+                throw new Error('Code editor not initialized');
+            }
+
+            this.codeEditor.value = code;
+            this.codeEditorContent = code;
+            this.lastValidNodeState = {
+                nodes: JSON.parse(JSON.stringify(this.nodes)),
+                connections: JSON.parse(JSON.stringify(this.connections))
+            };
+
+        } catch (error) {
+            console.error('Error generating code:', error);
+            // Set a default message if code generation fails
+            if (this.codeEditor) {
+                this.codeEditor.value = `// Error generating code: ${error.message}\n// Please check the console for details.`;
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Serialize nodes to a simple definition format
+     */
+    serializeNodesToDefinition() {
+        return this.nodes.map(node => {
+            // Build the options object based on node properties
+            const options = {};
+
+            if (node.label !== this.getNodeDefinition(node.type)?.label) {
+                options.label = node.label;
+            }
+            if (node.value !== undefined && node.value !== '') {
+                options.value = node.value;
+            }
+            if (node.exposeProperty) {
+                options.exposeProperty = node.exposeProperty;
+            }
+            if (node.groupName) {
+                options.groupName = node.groupName;
+            }
+            if (node.selectedProperty && node.selectedProperty !== 'none') {
+                options.selectedProperty = node.selectedProperty;
+            }
+            if (node.dropdownValue && node.dropdownValue !== '==') {
+                options.dropdownValue = node.dropdownValue;
+            }
+            if (node.wrapFlowInBraces !== undefined && !node.wrapFlowInBraces) {
+                options.wrapFlowInBraces = node.wrapFlowInBraces;
+            }
+
+            return {
+                id: node.id,
+                type: node.type,
+                x: node.x,
+                y: node.y,
+                options: Object.keys(options).length > 0 ? options : undefined
+            };
+        });
+    }
+
+    /**
+     * Serialize connections to a simple definition format
+     */
+    serializeConnectionsToDefinition() {
+        return this.connections.map(conn => ({
+            fromNodeId: conn.from.node.id,
+            fromPort: conn.from.portIndex,
+            toNodeId: conn.to.node.id,
+            toPort: conn.to.portIndex
+        }));
+    }
+
+    /**
+     * Parse JavaScript code and recreate nodes from definitions
+     */
+    parseNodeDefinitionCode(code) {
+        // Validate code is not empty
+        if (!code || code.trim() === '') {
+            throw new Error('Code is empty. Nothing to parse.');
+        }
+
+        // First, validate the syntax
+        try {
+            new Function(code);
+        } catch (error) {
+            throw new Error(`Syntax error: ${error.message}`);
+        }
+
+        // Store reference to this instance globally for code access
+        window.vmbInstance = this;
+
+        // Save current state for potential rollback
+        const backupNodes = JSON.parse(JSON.stringify(this.nodes));
+        const backupConnections = JSON.parse(JSON.stringify(this.connections));
+        const backupMetadata = {
+            moduleName: this.moduleName,
+            moduleNamespace: this.moduleNamespace,
+            moduleDescription: this.moduleDescription,
+            moduleIcon: this.moduleIcon,
+            moduleColor: this.moduleColor,
+            allowMultiple: this.allowMultiple,
+            drawInEditor: this.drawInEditor
+        };
+
+        try {
+            // Execute the code
+            const func = new Function(code);
+            func();
+
+            this.hasUnsavedChanges = true;
+            this.codeEditorContent = code;
+
+        } catch (error) {
+            // Restore previous state if execution failed
+            this.nodes = backupNodes;
+            this.connections = backupConnections;
+            this.moduleName = backupMetadata.moduleName;
+            this.moduleNamespace = backupMetadata.moduleNamespace;
+            this.moduleDescription = backupMetadata.moduleDescription;
+            this.moduleIcon = backupMetadata.moduleIcon;
+            this.moduleColor = backupMetadata.moduleColor;
+            this.allowMultiple = backupMetadata.allowMultiple;
+            this.drawInEditor = backupMetadata.drawInEditor;
+
+            throw new Error(`Execution error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Create a node from a definition object
+     */
+    createNodeFromDefinition(nodeDef) {
+        const node = {
+            id: nodeDef.id || this.generateNodeId(),
+            type: nodeDef.type,
+            x: nodeDef.x || 0,
+            y: nodeDef.y || 0,
+            label: nodeDef.label || nodeDef.type,
+            value: nodeDef.value,
+            inputs: nodeDef.inputs || [],
+            outputs: nodeDef.outputs || [],
+            color: nodeDef.color || '#555',
+            icon: nodeDef.icon || '',
+            expanded: nodeDef.expanded !== undefined ? nodeDef.expanded : true,
+            groupName: nodeDef.groupName || null,
+            exposeProperty: nodeDef.exposeProperty || false,
+            propertyType: nodeDef.propertyType || 'number',
+            dropdownOptions: nodeDef.dropdownOptions || [],
+            selectedOption: nodeDef.selectedOption || '',
+            isGroup: nodeDef.isGroup || false,
+            groupData: nodeDef.groupData || null
+        };
+
+        this.nodes.push(node);
+        return node;
+    }
+
+    /**
+     * Validate JavaScript syntax without executing
+     */
+    validateCodeSyntax(code) {
+        if (!code) code = this.codeEditor?.value || '';
+
+        try {
+            // Try to parse as a function to check syntax
+            new Function(code);
+            console.log('✓ Code syntax is valid', 'success');
+            return true;
+        } catch (error) {
+            console.error(`✗ Syntax error: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Simple JavaScript code formatter
+     */
+    formatJavaScript(code) {
+        const formatted = JSCodeFormatter.format(code, {
+            indentSize: 4,
+            indentChar: ' '
+        });
+        return formatted;
+    }
+
+    /**
+     * Helper to create a button
+     */
+    createButton(text, icon, onClick) {
+        const btn = document.createElement('button');
+        btn.style.cssText = `
+            padding: 6px 12px;
+            background: #4CAF50;
+            border: 1px solid #66BB6A;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        `;
+
+        if (icon) {
+            const iconEl = document.createElement('i');
+            iconEl.className = icon;
+            btn.appendChild(iconEl);
+        }
+
+        if (text) {
+            const textEl = document.createElement('span');
+            textEl.textContent = text;
+            btn.appendChild(textEl);
+        }
+
+        btn.addEventListener('click', onClick);
+        btn.addEventListener('mouseenter', () => {
+            btn.style.background = '#66BB6A';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.background = '#4CAF50';
+        });
+
+        return btn;
+    }
+
+    /**
+     * Generate a unique node ID
+     */
+    generateNodeId() {
+        return 'node_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
 
     /**
@@ -1671,11 +2441,11 @@ class VisualModuleBuilderWindow extends EditorWindow {
             // NEW: Store old dimensions for scaling
             const oldWidth = this.canvas.width || rect.width;
             const oldHeight = this.canvas.height || rect.height;
-            
+
             // Set canvas internal resolution to match display size
             this.canvas.width = rect.width;
             this.canvas.height = rect.height;
-            
+
             // Re-render to avoid stretched canvas
             this.render();
         };
@@ -1716,6 +2486,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Setup event listeners for canvas interaction
      */
     setupCanvasEventListeners() {
+        if (!this.isOpen) return;
+
         // Add null check to prevent errors
         if (!this.canvas) {
             console.warn('Canvas not ready for event listeners');
@@ -1735,6 +2507,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         // Keyboard shortcuts
         this.boundHandlers.keydown = (e) => {
+            if (!this.isOpen) return;
+
             // Ctrl+C / Cmd+C - Copy
             if ((e.ctrlKey || e.metaKey) && e.key === 'c' && (this.selectedNode || this.selectedNodes.size > 0)) {
                 e.preventDefault();
@@ -1916,7 +2690,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.isBoxSelecting = true;
             this.boxSelectStart = { x, y };
             this.boxSelectEnd = { x, y };
-            
+
             // Clear selection if not holding shift as well
             if (!e.shiftKey) {
                 this.selectedNode = null;
@@ -2001,29 +2775,29 @@ class VisualModuleBuilderWindow extends EditorWindow {
         // ========== NEW: HANDLE BOX SELECTION ==========
         if (this.isBoxSelecting) {
             this.boxSelectEnd = { x, y };
-            
+
             // Select all nodes within the rectangle
             const minX = Math.min(this.boxSelectStart.x, this.boxSelectEnd.x);
             const maxX = Math.max(this.boxSelectStart.x, this.boxSelectEnd.x);
             const minY = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
             const maxY = Math.max(this.boxSelectStart.y, this.boxSelectEnd.y);
-            
+
             // If shift is held, add to selection, otherwise replace
             if (!e.shiftKey) {
                 this.selectedNodes.clear();
             }
-            
+
             this.nodes.forEach(node => {
                 // Check if node center is within selection box
                 const nodeCenterX = node.x + node.width / 2;
                 const nodeCenterY = node.y + node.height / 2;
-                
+
                 if (nodeCenterX >= minX && nodeCenterX <= maxX &&
                     nodeCenterY >= minY && nodeCenterY <= maxY) {
                     this.selectedNodes.add(node);
                 }
             });
-            
+
             return;
         }
 
@@ -2137,6 +2911,39 @@ class VisualModuleBuilderWindow extends EditorWindow {
      */
     handleCanvasMouseUp(e) {
         const hadChanges = this.draggedNodes.size > 0 || this.draggedGroupPanel !== null;
+
+        // Check if this was a library node being placed
+        if (this.libraryDragStart && this.draggedNodes.size === 1) {
+            const dragDistance = Math.sqrt(
+                Math.pow(e.clientX - this.libraryDragStart.x, 2) +
+                Math.pow(e.clientY - this.libraryDragStart.y, 2)
+            );
+
+            // If drag distance is very small (< 5 pixels), treat it as a click
+            // and place the node at the center of the viewport
+            if (dragDistance < 5) {
+                const node = Array.from(this.draggedNodes)[0].node;
+
+                // Calculate center of viewport in canvas coordinates
+                const rect = this.canvas.getBoundingClientRect();
+                const viewportCenterX = (rect.width / 2 - this.panOffset.x) / this.zoom;
+                const viewportCenterY = (rect.height / 2 - this.panOffset.y) / this.zoom;
+
+                // Snap to grid
+                const snapped = this.snapPositionToGrid(viewportCenterX, viewportCenterY);
+                node.x = snapped.x;
+                node.y = snapped.y;
+            } else {
+                // It was a drag, snap the final position to grid
+                const node = Array.from(this.draggedNodes)[0].node;
+                const snapped = this.snapPositionToGrid(node.x, node.y);
+                node.x = snapped.x;
+                node.y = snapped.y;
+            }
+
+            this.libraryDragStart = null;
+            this.isLibraryDragging = false;
+        }
 
         if (this.connectingFrom) {
             const rect = this.canvas.getBoundingClientRect();
@@ -2378,6 +3185,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Copy a node to clipboard
      */
     copyNode(node) {
+        if (!this.isOpen) return;
         // ========== NEW: COPY MULTIPLE NODES ==========
         if (this.selectedNodes.size > 1) {
             // Copy all selected nodes
@@ -2418,6 +3226,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Paste a node from clipboard
      */
     pasteNode(x, y) {
+        if (!this.isOpen) return;
+
         if (!this.clipboard) {
             this.showNotification('Nothing to paste', 'warning');
             return;
@@ -2530,6 +3340,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
      * Duplicate a node (copy + paste at offset)
      */
     duplicateNode(node) {
+        if (!this.isOpen) return;
         this.copyNode(node);
         this.pasteNode(node.x + this.clipboardOffset.x, node.y + this.clipboardOffset.y);
     }
@@ -2921,24 +3732,22 @@ class VisualModuleBuilderWindow extends EditorWindow {
      */
     startNodeDrag(nodeTemplate, e) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
-        const y = (e.clientY - rect.top - this.panOffset.y) / this.zoom;
-
-        // Snap position to grid
-        const snapped = this.snapPositionToGrid(x, y);
+        const mouseX = (e.clientX - rect.left - this.panOffset.x) / this.zoom;
+        const mouseY = (e.clientY - rect.top - this.panOffset.y) / this.zoom;
 
         // Snap width and height to grid
         const width = this.snapToGridValue(180);
         const height = this.snapToGridValue(this.calculateNodeHeight(nodeTemplate));
 
+        // Create node at mouse position initially
         const newNode = {
             id: this.generateNodeId(),
             type: nodeTemplate.type,
             label: nodeTemplate.label,
             color: nodeTemplate.color,
-            icon: this.getNodeIcon(nodeTemplate.type), // Add icon when creating node
-            x: snapped.x,
-            y: snapped.y,
+            icon: this.getNodeIcon(nodeTemplate.type),
+            x: mouseX, // Start at mouse position (will be updated during drag or on mouseup)
+            y: mouseY,
             width: width,
             height: height,
             inputs: nodeTemplate.inputs || [],
@@ -2963,8 +3772,20 @@ class VisualModuleBuilderWindow extends EditorWindow {
         }
 
         this.nodes.push(newNode);
-        this.draggedNode = newNode;
-        this.dragOffset = { x: 0, y: 0 };
+
+        // Set up for dragging: center the node on the mouse cursor
+        // The offset is from the node's top-left corner to the mouse position
+        this.draggedNodes.clear();
+        this.draggedNodes.add({
+            node: newNode,
+            offsetX: width / 2,  // Center the node horizontally on cursor
+            offsetY: height / 2  // Center the node vertically on cursor
+        });
+
+        // Track the initial mouse position to detect if this is a drag or just a click
+        this.libraryDragStart = { x: e.clientX, y: e.clientY };
+        this.isLibraryDragging = false;
+
         this.hasUnsavedChanges = true;
     }
 
@@ -3391,15 +4212,15 @@ class VisualModuleBuilderWindow extends EditorWindow {
             const maxX = Math.max(this.boxSelectStart.x, this.boxSelectEnd.x);
             const minY = Math.min(this.boxSelectStart.y, this.boxSelectEnd.y);
             const maxY = Math.max(this.boxSelectStart.y, this.boxSelectEnd.y);
-            
+
             ctx.strokeStyle = 'rgba(100, 150, 255, 0.8)';
             ctx.fillStyle = 'rgba(100, 150, 255, 0.1)';
             ctx.lineWidth = 2 / this.zoom; // Adjust line width based on zoom
             ctx.setLineDash([5 / this.zoom, 5 / this.zoom]); // Dashed line
-            
+
             ctx.fillRect(minX, minY, maxX - minX, maxY - minY);
             ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
-            
+
             ctx.setLineDash([]); // Reset line dash
         }
 
@@ -3485,22 +4306,6 @@ class VisualModuleBuilderWindow extends EditorWindow {
 
         node.deleteButton = { x: deleteX, y: deleteY, radius: 8 };
 
-        // ========== NEW: Comment/Annotation button ==========
-        const commentX = node.x + node.width - 16;
-        const commentY = node.y + node.height - 16;
-        const hasComment = this.nodeComments.has(node.id);
-
-        ctx.fillStyle = hasComment ? 'rgba(255, 152, 0, 0.8)' : 'rgba(100, 100, 100, 0.6)';
-        ctx.beginPath();
-        ctx.arc(commentX, commentY, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('💬', commentX, commentY + 4);
-
-        node.commentButton = { x: commentX, y: commentY, radius: 8 };
-
         // Open group button for group nodes
         if (node.isGroup) {
             const openX = node.x + node.width - 36;
@@ -3547,7 +4352,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.inputs && Array.isArray(node.inputs)) {
             node.inputs.forEach((input, index) => {
                 const pos = this.getInputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, false, node, index);
+                const isFlowPort = input === 'flow';
+                this.drawPort(ctx, pos.x, pos.y, false, node, index, isFlowPort);
 
                 // Position label based on whether it's a flow port or data port
                 if (input === 'flow') {
@@ -3624,7 +4430,8 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.outputs && Array.isArray(node.outputs)) {
             node.outputs.forEach((output, index) => {
                 const pos = this.getOutputPortPosition(node, index);
-                this.drawPort(ctx, pos.x, pos.y, true, node, index);
+                const isFlowPort = output === 'flow';
+                this.drawPort(ctx, pos.x, pos.y, true, node, index, isFlowPort);
 
                 // Position label based on whether it's a flow port or data port
                 if (output === 'flow') {
@@ -3697,7 +4504,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
             // Group name input if exposed
             if (node.exposeProperty) {
                 const groupInputX = checkboxX + 70;
-                const groupInputW = node.width - 80;
+                const groupInputW = node.width - 110;
                 ctx.fillStyle = '#333';
                 ctx.fillRect(groupInputX, checkboxY, groupInputW, 16);
                 ctx.strokeStyle = '#555';
@@ -3719,9 +4526,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
             ctx.textAlign = 'center';
             ctx.fillStyle = '#333';
             const inputY = offsetY;
-            ctx.fillRect(node.x + 10, inputY, node.width - 20, 20);
+            ctx.fillRect(node.x + 10, inputY, node.width - 40, 20);
             ctx.strokeStyle = '#555';
-            ctx.strokeRect(node.x + 10, inputY, node.width - 20, 20);
+            ctx.strokeRect(node.x + 10, inputY, node.width - 40, 20);
             ctx.fillStyle = '#fff';
             ctx.font = '11px monospace';
             const displayValue = node.value || '0';
@@ -3745,9 +4552,9 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.hasDropdown) {
             const dropdownY = offsetY;
             ctx.fillStyle = '#333';
-            ctx.fillRect(node.x + 10, dropdownY, node.width - 20, 20);
+            ctx.fillRect(node.x + 10, dropdownY, node.width - 40, 20);
             ctx.strokeStyle = '#555';
-            ctx.strokeRect(node.x + 10, dropdownY, node.width - 20, 20);
+            ctx.strokeRect(node.x + 10, dropdownY, node.width - 40, 20);
             ctx.fillStyle = '#fff';
             ctx.font = '11px monospace';
             ctx.textAlign = 'center';
@@ -3757,13 +4564,13 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.hasColorPicker) {
             const colorY = offsetY;
             const colorX = node.x + 10;
-            const colorW = node.width - 20;
+            const colorW = node.width - 40;
 
             // Draw color swatch
             ctx.fillStyle = node.value || '#ffffff';
             ctx.fillRect(colorX, colorY, colorW, 20);
             ctx.strokeStyle = '#555';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.strokeRect(colorX, colorY, colorW, 20);
 
             // Draw color value text
@@ -3776,7 +4583,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
         if (node.hasPropertyDropdown) {
             const dropdownY = offsetY;
             const dropdownX = node.x + 10;
-            const dropdownW = node.width - 20;
+            const dropdownW = node.width - 40;
 
             // Get all exposed properties
             const exposedProps = this.getAllExposedProperties();
@@ -3799,6 +4606,22 @@ class VisualModuleBuilderWindow extends EditorWindow {
             ctx.font = '8px Arial';
             ctx.fillText('▼', dropdownX + dropdownW - 10, dropdownY + 13);
         }
+
+        // ========== NEW: Comment/Annotation button ==========
+        const commentX = node.x + node.width - 16;
+        const commentY = node.y + node.height - 16;
+        const hasComment = this.nodeComments.has(node.id);
+
+        ctx.fillStyle = hasComment ? 'rgba(255, 152, 0, 0.8)' : 'rgba(100, 100, 100, 0.6)';
+        ctx.beginPath();
+        ctx.arc(commentX, commentY, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('💬', commentX, commentY + 4);
+
+        node.commentButton = { x: commentX, y: commentY, radius: 8 };
 
         // ========== NEW: Draw comment tooltip on hover ==========
         if (this.hoveredCommentButton === node && hasComment) {
@@ -3888,7 +4711,10 @@ class VisualModuleBuilderWindow extends EditorWindow {
     /**
      * Draw a port
      */
-    drawPort(ctx, x, y, isOutput, node, portIndex) {
+    drawPort(ctx, x, y, isOutput, node, portIndex, isFlowPort = false) {
+        // Check if we should use round connectors (default to true if not set)
+        const useRoundConnectors = this.useRoundConnectors !== undefined ? this.useRoundConnectors : true;
+
         // FIX: Proper hover detection by comparing actual port node ID and port index
         const isHovered = this.hoveredPort &&
             this.hoveredPort.node.id === node.id &&
@@ -3900,47 +4726,77 @@ class VisualModuleBuilderWindow extends EditorWindow {
             this.connections.some(c => c.from.node.id === node.id && c.from.portIndex === portIndex) :
             this.connections.some(c => c.to.node.id === node.id && c.to.portIndex === portIndex);
 
-        // If flow node, use purple glow
-        const portLabel = isOutput ? node.outputs[portIndex] : node.inputs[portIndex];
-        const isFlowPort = portLabel === 'flow';
-
         // Determine the color to use
         const lineColor = isFlowPort ? '#ff00ff' : this.connectionColor;
 
         // Set shadow/glow based on state
         if (isHovered) {
-            if (isConnected) {
-                // Connected and hovered: glow white
-                ctx.shadowColor = '#ffffff';
-                ctx.shadowBlur = 15;
-            } else {
-                // Not connected and hovered: glow line color
-                ctx.shadowColor = lineColor;
-                ctx.shadowBlur = 15;
-            }
-        } else if (isConnected) {
-            // Connected but not hovered: subtle line color glow
             ctx.shadowColor = lineColor;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 15;
+        } else if (isConnected) {
+            ctx.shadowColor = lineColor;
+            ctx.shadowBlur = 8;
+        } else {
+            ctx.shadowBlur = 0;
         }
 
         // Fill color: white when hovered, line color when connected, gray when disconnected
         if (isHovered) {
             ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = '#bbbbbb';
+            ctx.strokeStyle = lineColor;
         } else if (isConnected) {
             ctx.fillStyle = lineColor;
             ctx.strokeStyle = lineColor;
         } else {
             ctx.fillStyle = '#666';
-            ctx.strokeStyle = '#999';
+            ctx.strokeStyle = '#888';
         }
 
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        ctx.lineWidth = 1;
+
+        if (useRoundConnectors) {
+            // Draw circular port
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        } else {
+            // Draw triangular port
+            const size = 4; // Triangle size
+            ctx.beginPath();
+
+            if (isFlowPort) {
+                // Flow ports: up for input, down for output
+                if (isOutput) {
+                    // Output flow: triangle pointing down
+                    ctx.moveTo(x, y + size);           // Bottom point
+                    ctx.lineTo(x - size, y - size);    // Top left
+                    ctx.lineTo(x + size, y - size);    // Top right
+                } else {
+                    // Input flow: triangle pointing up
+                    ctx.moveTo(x, y - size);           // Top point
+                    ctx.lineTo(x - size, y + size);    // Bottom left
+                    ctx.lineTo(x + size, y + size);    // Bottom right
+                }
+            } else {
+                // Data ports: left for input, right for output
+                if (isOutput) {
+                    // Output data: triangle pointing right
+                    ctx.moveTo(x + size, y);           // Right point
+                    ctx.lineTo(x - size, y - size);    // Top left
+                    ctx.lineTo(x - size, y + size);    // Bottom left
+                } else {
+                    // Input data: triangle pointing left
+                    ctx.moveTo(x - size, y);           // Left point
+                    ctx.lineTo(x + size, y - size);    // Top right
+                    ctx.lineTo(x + size, y + size);    // Bottom right
+                }
+            }
+
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
 
         ctx.shadowBlur = 0;
     }
@@ -5421,7 +6277,9 @@ class ${className} extends Module {
      */
     draw(ctx) {
 `;
+            code += `       ctx.save();\n`;
             code += this.generateCodeForFlowNode(drawNode, '        ');
+            code += `       ctx.restore();\n`;
             code += `    }\n`;
         }
 
@@ -5600,7 +6458,14 @@ class ${className} extends Module {
         code += `// This makes ${className} available globally and to the module system\n`;
         code += `window.${className} = ${className};\n`;
 
-        return code;
+        const formatter = new JSCodeFormatter({
+            indentSize: 4,
+            indentChar: ' '
+        });
+
+        const formatted = formatter.format(code);
+
+        return formatted;
     }
 
     /**
@@ -6940,7 +7805,7 @@ class ${className} extends Module {
     validateGraph() {
         if (!this.consolePanel) return;
 
-        this.logToConsole('Running validation...', 'info');
+        console.log('Running validation...', 'info');
         let issueCount = 0;
 
         this.nodes.forEach(node => {
@@ -7328,6 +8193,14 @@ class ${className} extends Module {
             this.hasUnsavedChanges = true;
         });
 
+        // Track if color picker dialog is open
+        let colorPickerOpen = false;
+        let blurTimeoutId = null;
+
+        colorInput.addEventListener('click', () => {
+            colorPickerOpen = true;
+        });
+
         textInput.addEventListener('input', (e) => {
             if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
                 node.value = e.target.value;
@@ -7346,16 +8219,35 @@ class ${className} extends Module {
         this.editingElement = container;
 
         const closeEditor = () => {
+            if (blurTimeoutId) {
+                clearTimeout(blurTimeoutId);
+                blurTimeoutId = null;
+            }
             this.saveState(); // NEW: Save state when closing color picker
             this.closeTextEditor();
         };
 
         colorInput.addEventListener('blur', () => {
-            setTimeout(closeEditor, 200);
+            // Delay closing to allow color picker dialog to open
+            blurTimeoutId = setTimeout(() => {
+                if (!colorPickerOpen) {
+                    closeEditor();
+                }
+            }, 200);
+        });
+
+        colorInput.addEventListener('change', () => {
+            // Color was selected, mark picker as closed
+            colorPickerOpen = false;
         });
 
         textInput.addEventListener('blur', () => {
-            setTimeout(closeEditor, 200);
+            setTimeout(() => {
+                // Only close if focus didn't move to color input
+                if (document.activeElement !== colorInput && !colorPickerOpen) {
+                    closeEditor();
+                }
+            }, 200);
         });
 
         textInput.addEventListener('keydown', (e) => {
@@ -7368,6 +8260,19 @@ class ${className} extends Module {
         container.addEventListener('mousedown', (e) => {
             e.stopPropagation();
         });
+
+        // Close editor when clicking outside
+        const outsideClickHandler = (e) => {
+            if (!container.contains(e.target)) {
+                closeEditor();
+                document.removeEventListener('mousedown', outsideClickHandler);
+            }
+        };
+
+        // Add slight delay before attaching outside click handler
+        setTimeout(() => {
+            document.addEventListener('mousedown', outsideClickHandler);
+        }, 100);
     }
 
     /**

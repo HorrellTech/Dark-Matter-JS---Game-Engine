@@ -427,15 +427,10 @@ function showVisualModuleBuilderHelp() {
                             <li><strong>Output Ports (Right):</strong> Send data or execution flow</li>
                             <li><strong>Body:</strong> May contain editable values or displays</li>
                         </ul>
-                        
-                        <h4>Port Types</h4>
-                        <p>Different colored ports indicate different data types:</p>
+
                         <ul>
-                            <li><strong>White/Gray:</strong> Execution flow (determines order of operations)</li>
-                            <li><strong>Blue:</strong> Numbers</li>
-                            <li><strong>Green:</strong> Text/Strings</li>
-                            <li><strong>Red:</strong> Booleans (true/false)</li>
-                            <li><strong>Purple:</strong> Objects/References</li>
+                            <li><strong>Flow Ports:</strong> Flow ports sit at the top and bottom of nodes and depending on the 
+                                wrapFlowNode flag, either cascades the code one after another, or wraps it within the output node body {}</li>
                         </ul>
                         
                         <div class="vmb-help-warning">

@@ -2302,16 +2302,22 @@ class ScriptEditor {
 
         // Simple JavaScript code formatter using js-beautify if available
         if (window.js_beautify) {
+            const cursorPos = this.editor.getCursor();
             const formatted = js_beautify(this.editor.getValue(), {
                 indent_size: 4,
                 space_in_empty_paren: true
             });
             this.editor.setValue(formatted);
+            this.editor.setCursor(cursorPos);
+            this.editor.scrollIntoView(cursorPos);
         } else {
+            const cursorPos = this.editor.getCursor();
             // Simple indentation if js-beautify isn't available
             this.editor.execCommand('selectAll');
             this.editor.execCommand('indentAuto');
-            this.editor.setCursor(this.editor.getCursor());
+            this.editor.setCursor(cursorPos);
+            // Scroll to old cursor position
+            this.editor.scrollIntoView(cursorPos);
         }
     }
 
