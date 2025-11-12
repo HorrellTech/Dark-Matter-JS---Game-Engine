@@ -50,6 +50,8 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .logo-icon {
@@ -68,6 +70,7 @@
             display: flex;
             list-style: none;
             gap: 2rem;
+            align-items: center;
         }
 
         .nav-links a {
@@ -87,6 +90,51 @@
 
         .nav-links a.active {
             color: #6366f1;
+        }
+
+        /* Dropdown Styles */
+        .dropdown {
+            position: relative;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: rgba(10, 10, 10, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #333;
+            border-radius: 8px;
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            z-index: 1001;
+            padding: 0.5rem 0;
+        }
+
+        .dropdown:hover .dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .dropdown-menu li {
+            list-style: none;
+        }
+
+        .dropdown-menu a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #e0e0e0;
+            text-decoration: none;
+            transition: background 0.3s ease;
+        }
+
+        .dropdown-menu a:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: #fff;
         }
 
         /* Hero Section */
@@ -458,8 +506,13 @@
                 <li><a href="#getting-started" class="nav-link">Getting Started</a></li>
                 <li><a href="#examples" class="nav-link">Examples</a></li>
                 <li><a href="#roadmap" class="nav-link">Roadmap</a></li>
-                <li><a href="RNG.html" target="_blank" class="bmc-button">🎲 Name Generator</a></li>
-                <li><a href="RubberDuckyPlayground.html" target="_blank" class="bmc-button">Rubber Ducky</a></li>
+                <li class="dropdown">
+                    <a href="#" class="nav-link">Tools ▼</a>
+                    <ul class="dropdown-menu">
+                        <li><a href="RNG.html" target="_blank">🎲 Name Generator</a></li>
+                        <li><a href="RubberDuckyPlayground.html" target="_blank">🦆 Rubber Ducky</a></li>
+                    </ul>
+                </li>
             </ul>
 
             <a href="https://darkmatterjsforum.flarum.cloud/" target="_blank" class="bmc-button" 
@@ -861,7 +914,6 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
                         <li style="padding: 0.25rem 0;">• HTML5 export</li>
                         <li style="padding: 0.25rem 0;">• Particle effects</li>
                         <li style="padding: 0.25rem 0;">• Physics engine integration (Matter.js)</li>
-                        <li style="padding: 0.25rem 0;">• WebGL performance boost (Custom WebGL library)</li>
                         <li style="padding: 0.25rem 0;">
                             <a href="https://github.com/HorrellTech/MelodiCode?tab=readme-ov-file" target="_blank"
                                 style="color:#6366f1; text-decoration:underline;">
@@ -1153,6 +1205,7 @@ Now you understand the basics of creating a game with Dark Matter JS! Explore mo
             <button id="disableMobileMode">No, use desktop mode</button>
         </div>
     </div-->
+
 
     <div id="image-modal"
         style="display:none; position:fixed; z-index:2000; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); align-items:center; justify-content:center;">

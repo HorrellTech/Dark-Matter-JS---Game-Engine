@@ -2239,6 +2239,19 @@ class VMBExampleModules {
                     codeGen: (node, ctx) => `${ctx.getInputValue(node, 'a')} || ${ctx.getInputValue(node, 'b')}`
                 },
                 {
+                    type: 'else',
+                    label: 'Else',
+                    color: '#7a4400',
+                    iconClass: 'fas fa-code-branch',
+                    inputs: ['content'],
+                    outputs: [],
+                    codeGen: (node, ctx) => { 
+                        return `{
+    ${ctx.getInputValue(node, 'content')}
+}`;
+                    }
+                },
+                {
                     type: 'not',
                     label: 'NOT',
                     color: '#7a563d',
