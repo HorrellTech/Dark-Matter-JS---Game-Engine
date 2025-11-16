@@ -222,6 +222,73 @@ class Inspector {
         return typeof color === 'string' ? color : '#ffffff';
     }
 
+    /**
+     * Convert hex color and opacity to rgba string
+     * @param {string} hex - Hex color (e.g., '#FF0000')
+     * @param {number} opacity - Opacity from 0 to 1
+     * @returns {string} RGBA color string
+     */
+    hexToRgba(hex, opacity = 1) {
+        // Remove # if present
+        hex = hex.replace('#', '');
+        
+        // Parse hex values
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        
+        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+
+    /**
+     * Extract opacity from rgba string or return default
+     * @param {string} color - Color string (rgba, rgb, hex, etc.)
+     * @returns {number} Opacity value from 0 to 1
+     */
+    getShadowOpacity(color) {
+        if (!color) return 0.5; // Default opacity
+        
+        // Check if it's an rgba string
+        if (typeof color === 'string' && color.startsWith('rgba')) {
+            const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)/);
+            if (match && match[4]) {
+                return parseFloat(match[4]);
+            }
+        }
+        
+        // Default to 1 for rgb or hex colors (fully opaque)
+        return color && color.startsWith('rgb') ? 1 : 0.5;
+    }
+
+    /**
+     * Extract just the RGB hex value from any color format (ignoring alpha)
+     * @param {string} color - Color string (rgba, rgb, hex, etc.)
+     * @returns {string} Hex color without alpha (e.g., '#FF0000')
+     */
+    getRgbHexFromColor(color) {
+        if (!color) return '#000000';
+        
+        // If it's already a hex without alpha
+        if (typeof color === 'string' && color.startsWith('#')) {
+            // Return just the first 6 characters (RGB only)
+            return color.substring(0, 7);
+        }
+        
+        // If it's an rgba or rgb string
+        if (typeof color === 'string' && (color.startsWith('rgba') || color.startsWith('rgb'))) {
+            const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (match) {
+                const r = parseInt(match[1]);
+                const g = parseInt(match[2]);
+                const b = parseInt(match[3]);
+                const toHex = (n) => n.toString(16).padStart(2, '0');
+                return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+            }
+        }
+        
+        return '#000000';
+    }
+
     createAddComponentButton() {
         const addComponentBtn = document.createElement('button');
         addComponentBtn.className = 'add-component-btn';
@@ -707,12 +774,35 @@ class Inspector {
                     <label title="Color in editor view">Color</label>
                     <input type="color" class="editor-color" value="${this.rgbaStringToHex(this.inspectedObject.editorColor)}" title="Color in editor view">
                 </div>
+
+                <!-- Shadow/Glow Section -->
+                <hr style="border: none; border-top: 1px solid #444; margin: 10px 0;">
+                <div class="property-row">
+                    <label title="Enable shadow or glow effect">Draw Shadow/Glow</label>
+                    <input type="checkbox" class="draw-shadow" ${this.inspectedObject.drawShadow ? 'checked' : ''}>
+                </div>
+                <div class="shadow-properties" style="display: ${this.inspectedObject.drawShadow ? 'block' : 'none'};">
+                    <div class="property-row">
+                        <label title="Shadow or glow color">Shadow Color</label>
+                        <input type="color" class="shadow-color" value="${this.getRgbHexFromColor(this.inspectedObject.shadowColor || 'rgba(0, 0, 0, 0.5)')}" title="Shadow or glow color">
+                    </div>
+                    <div class="property-row">
+                        <label title="Blur radius for shadow/glow effect">Shadow Blur</label>
+                        <input type="number" class="shadow-blur" value="${this.inspectedObject.shadowBlur || 10}" step="1" min="0" title="Blur radius">
+                    </div>
+                    <div class="property-row">
+                        <label title="Horizontal offset of the shadow">Shadow Offset X</label>
+                        <input type="number" class="shadow-offset-x" value="${this.inspectedObject.shadowOffsetX || 0}" step="1" title="Horizontal offset">
+                    </div>
+                    <div class="property-row">
+                        <label title="Vertical offset of the shadow">Shadow Offset Y</label>
+                        <input type="number" class="shadow-offset-y" value="${this.inspectedObject.shadowOffsetY || 0}" step="1" title="Vertical offset">
+                    </div>
+                </div>
             </div>
         `;
 
         this.modulesList.appendChild(transformModule);
-
-
 
         // Add collapse button event listener with touch support
         const collapseButton = transformModule.querySelector('.module-collapse');
@@ -751,6 +841,14 @@ class Inspector {
         const depthToYInput = transformModule.querySelector('.depth-to-y');
         const colorInput = transformModule.querySelector('.editor-color');
 
+        // Shadow property inputs
+        const drawShadowInput = transformModule.querySelector('.draw-shadow');
+        const shadowPropertiesDiv = transformModule.querySelector('.shadow-properties');
+        const shadowColorInput = transformModule.querySelector('.shadow-color');
+        const shadowBlurInput = transformModule.querySelector('.shadow-blur');
+        const shadowOffsetXInput = transformModule.querySelector('.shadow-offset-x');
+        const shadowOffsetYInput = transformModule.querySelector('.shadow-offset-y');
+
         // Add color change listener
         colorInput.addEventListener('change', () => {
             if (!this.inspectedObject) return;
@@ -767,6 +865,42 @@ class Inspector {
                 hierarchyIcon.style.color = newColor;
             }
 
+            this.editor.refreshCanvas();
+        });
+
+        // Shadow toggle listener - show/hide shadow properties
+        drawShadowInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.drawShadow = drawShadowInput.checked;
+            shadowPropertiesDiv.style.display = drawShadowInput.checked ? 'block' : 'none';
+            this.editor.refreshCanvas();
+        });
+
+        // Shadow color listener
+        shadowColorInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.shadowColor = shadowColorInput.value;
+            this.editor.refreshCanvas();
+        });
+
+        // Shadow blur listener
+        shadowBlurInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.shadowBlur = parseFloat(shadowBlurInput.value);
+            this.editor.refreshCanvas();
+        });
+
+        // Shadow offset X listener
+        shadowOffsetXInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.shadowOffsetX = parseFloat(shadowOffsetXInput.value);
+            this.editor.refreshCanvas();
+        });
+
+        // Shadow offset Y listener
+        shadowOffsetYInput.addEventListener('change', () => {
+            if (!this.inspectedObject) return;
+            this.inspectedObject.shadowOffsetY = parseFloat(shadowOffsetYInput.value);
             this.editor.refreshCanvas();
         });
 
@@ -886,6 +1020,37 @@ class Inspector {
         transformModule.querySelector('.depth').value = this.inspectedObject.depth;
         transformModule.querySelector('.depth-to-y').checked = this.inspectedObject.depthToY;
         transformModule.querySelector('.editor-color').value = this.rgbaStringToHex(this.inspectedObject.editorColor) || '#ffffff';
+
+        // Update shadow properties
+        const drawShadowCheckbox = transformModule.querySelector('.draw-shadow');
+        const shadowPropertiesDiv = transformModule.querySelector('.shadow-properties');
+        
+        if (drawShadowCheckbox) {
+            drawShadowCheckbox.checked = this.inspectedObject.drawShadow || false;
+            if (shadowPropertiesDiv) {
+                shadowPropertiesDiv.style.display = this.inspectedObject.drawShadow ? 'block' : 'none';
+            }
+        }
+
+        const shadowColorInput = transformModule.querySelector('.shadow-color');
+        if (shadowColorInput && this.inspectedObject.shadowColor) {
+            shadowColorInput.value = this.getRgbHexFromColor(this.inspectedObject.shadowColor);
+        }
+
+        const shadowBlurInput = transformModule.querySelector('.shadow-blur');
+        if (shadowBlurInput) {
+            shadowBlurInput.value = this.inspectedObject.shadowBlur || 10;
+        }
+
+        const shadowOffsetXInput = transformModule.querySelector('.shadow-offset-x');
+        if (shadowOffsetXInput) {
+            shadowOffsetXInput.value = this.inspectedObject.shadowOffsetX || 0;
+        }
+
+        const shadowOffsetYInput = transformModule.querySelector('.shadow-offset-y');
+        if (shadowOffsetYInput) {
+            shadowOffsetYInput.value = this.inspectedObject.shadowOffsetY || 0;
+        }
 
         // Update hierarchy icon color
         const hierarchyIcon = document.querySelector(

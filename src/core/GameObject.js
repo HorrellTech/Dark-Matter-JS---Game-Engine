@@ -39,6 +39,13 @@ class GameObject {
         this.collisionLayer = 0;       // Collision layer for filtering
         this.collisionMask = 0xFFFF;   // Collision mask for filtering
 
+        // Shadow/Glow properties
+        this.drawShadow = false;        // Whether to draw shadow/glow effect
+        this.shadowColor = 'rgba(0, 0, 0, 0.5)'; // Shadow color (can be any color for glow effects)
+        this.shadowBlur = 10;           // Shadow blur amount
+        this.shadowOffsetX = 0;         // Shadow X offset
+        this.shadowOffsetY = 0;         // Shadow Y offset
+
         // Keep track of original position and rotation
         this.originalPosition = this.position.clone();
         this.originalRotation = this.angle;
@@ -239,17 +246,46 @@ class GameObject {
         // Track if any module actually drew something
         let moduleDidDraw = false;
 
-        // Draw modules
+        // Apply shadow/glow properties if enabled
+        if (this.drawShadow) {
+            // Use source-over (the default and most compatible mode)
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowColor = this.shadowColor || 'rgba(0, 0, 0, 1)';
+            ctx.shadowBlur = (this.shadowBlur !== undefined && this.shadowBlur !== null) ? this.shadowBlur : 10;
+            ctx.shadowOffsetX = this.shadowOffsetX || 0;
+            ctx.shadowOffsetY = this.shadowOffsetY || 0;
+        }
+
+        // Draw modules (with shadow effect applied if enabled)
         for (const module of this.modules) {
             if (module.enabled && typeof module.draw === 'function') {
                 try {
                     if (module.ignoreGameObjectTransform) {
                         ctx.restore(); // Remove transform
+                        
+                        // Reapply shadow settings if enabled
+                        if (this.drawShadow) {
+                            ctx.globalCompositeOperation = 'source-over';
+                            ctx.shadowColor = this.shadowColor || 'rgba(0, 0, 0, 0.5)';
+                            ctx.shadowBlur = (this.shadowBlur !== undefined && this.shadowBlur !== null) ? this.shadowBlur : 10;
+                            ctx.shadowOffsetX = this.shadowOffsetX || 0;
+                            ctx.shadowOffsetY = this.shadowOffsetY || 0;
+                        }
+                        
                         module.draw(ctx); // Draw in world space
                         ctx.save();
                         ctx.translate(pixelPerfectX, pixelPerfectY);
                         ctx.rotate(worldAngle * Math.PI / 180);
                         ctx.scale(worldScale.x, worldScale.y);
+                        
+                        // Reapply shadow settings after restoring transform
+                        if (this.drawShadow) {
+                            ctx.globalCompositeOperation = 'source-over';
+                            ctx.shadowColor = this.shadowColor || 'rgba(0, 0, 0, 0.5)';
+                            ctx.shadowBlur = (this.shadowBlur !== undefined && this.shadowBlur !== null) ? this.shadowBlur : 10;
+                            ctx.shadowOffsetX = this.shadowOffsetX || 0;
+                            ctx.shadowOffsetY = this.shadowOffsetY || 0;
+                        }
                     } else {
                         module.draw(ctx);
                     }
@@ -258,6 +294,14 @@ class GameObject {
                     console.error(`Error in module ${module.type || module.constructor.name} draw on ${this.name}:`, error);
                 }
             }
+        }
+
+        // Clear shadow settings after drawing modules
+        if (this.drawShadow) {
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
         }
 
         ctx.restore();
@@ -1243,6 +1287,11 @@ class GameObject {
             collisionEnabled: this.collisionEnabled,
             collisionLayer: this.collisionLayer,
             collisionMask: this.collisionMask,
+            drawShadow: this.drawShadow,
+            shadowColor: this.shadowColor,
+            shadowBlur: this.shadowBlur,
+            shadowOffsetX: this.shadowOffsetX,
+            shadowOffsetY: this.shadowOffsetY,
             modules: this.modules.map(module => ({
                 type: module.constructor.name,
                 id: module.id,
@@ -1295,6 +1344,13 @@ class GameObject {
         if (json.collisionEnabled !== undefined) obj.collisionEnabled = json.collisionEnabled;
         if (json.collisionLayer !== undefined) obj.collisionLayer = json.collisionLayer;
         if (json.collisionMask !== undefined) obj.collisionMask = json.collisionMask;
+
+        // Restore shadow properties
+        if (json.drawShadow !== undefined) obj.drawShadow = json.drawShadow;
+        if (json.shadowColor !== undefined) obj.shadowColor = json.shadowColor;
+        if (json.shadowBlur !== undefined) obj.shadowBlur = json.shadowBlur;
+        if (json.shadowOffsetX !== undefined) obj.shadowOffsetX = json.shadowOffsetX;
+        if (json.shadowOffsetY !== undefined) obj.shadowOffsetY = json.shadowOffsetY;
 
         // Add modules - with improved module class lookup
         if (json.modules && Array.isArray(json.modules)) {

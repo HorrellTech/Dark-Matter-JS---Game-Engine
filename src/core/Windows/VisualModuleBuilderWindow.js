@@ -13,6 +13,7 @@ class VisualModuleBuilderWindow extends EditorWindow {
     static namespace = "Tools";
     static description = "Visual node-based module creator";
     static icon = "fas fa-project-diagram";
+    static color = "#aa64ca";
 
     constructor() {
         super("Visual Module Builder", {
