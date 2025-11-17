@@ -1,0 +1,8 @@
+{
+  "projects": [
+    {
+      "name": "Particle Effects",
+      "path": "./ExampleProjects/particle_effects.dmproj"
+    }
+  ]
+}

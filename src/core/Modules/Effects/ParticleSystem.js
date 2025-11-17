@@ -52,16 +52,28 @@ class ParticleSystem extends Module {
         this.imageFlipX = false;
         this.imageFlipY = false;
 
+        // Collision properties
+        this.enableCollisions = false; // Enable particle collisions with game objects
+        this.collisionTarget = ""; // Tag or name of game objects to collide with (empty = all)
+        this.collisionBounce = 0.8; // Bounce coefficient (0-1, where 1 = full bounce)
+        this.collisionFriction = 0.95; // Friction on collision (0-1)
+        this.particleRadius = 5; // Collision radius for particles
+        this.useParticleSize = true; // Use particle size as collision radius
+        this.killOnCollision = false; // Kill particles on collision
+
         // Control properties
         this.autoStart = true;
         this.loopEmitter = true;
         this.duration = 5.0; // duration for non-looping systems
 
+        // World space simulation
+        this.simulateInWorldSpace = true; // Particles stay in world position when game object moves
+
         // Performance properties
         this.useObjectPooling = true;
         this.enableBatching = true;
         this.maxBatchSize = 50;
-        this.cullingEnabled = true;
+        this.cullingEnabled = false;
         this.cullingMargin = 100;
 
         // Internal state
@@ -85,6 +97,11 @@ class ParticleSystem extends Module {
 
         // Batch rendering data
         this.batchedParticles = new Map(); // Group particles by rendering properties
+
+        // Collision cache
+        this._collisionTargets = null;
+        this._collisionCacheTime = 0;
+        this._collisionCacheInterval = 100; // ms
 
         this.setupProperties();
         this.createImageAssetReference();
@@ -261,13 +278,12 @@ class ParticleSystem extends Module {
 
         // Image particle properties
         if (this.useImageParticles) {
-            // Enhanced image asset property with AssetManager integration - MATCH SpriteRenderer
             this.exposeProperty("imageAsset", "asset", this.imageAsset, {
                 description: "Image for particles",
                 assetType: 'image',
                 fileTypes: ['png', 'jpg', 'jpeg', 'gif', 'webp'],
                 onAssetSelected: (assetPath) => {
-                    this.setParticleImage(assetPath);  // Use setParticleImage instead of handleImageDrop
+                    this.setParticleImage(assetPath);
                 },
                 onDropCallback: this.handleImageDrop.bind(this),
                 showImageDropdown: true
@@ -324,6 +340,64 @@ class ParticleSystem extends Module {
         this.exposeProperty("loopEmitter", "boolean", this.loopEmitter, {
             description: "Loop the particle system",
             onChange: (val) => { this.loopEmitter = val; }
+        });
+
+        // Collision properties
+        this.exposeProperty("enableCollisions", "boolean", this.enableCollisions, {
+            description: "Enable particle collisions with game objects",
+            onChange: (val) => {
+                this.enableCollisions = val;
+                this.refreshInspector();
+            }
+        });
+
+        if (this.enableCollisions) {
+            this.exposeProperty("collisionTarget", "string", this.collisionTarget, {
+                description: "Tag or name of objects to collide with (empty = all)",
+                onChange: (val) => {
+                    this.collisionTarget = val;
+                    this._collisionTargets = null; // Clear cache
+                }
+            });
+
+            this.exposeProperty("collisionBounce", "number", this.collisionBounce, {
+                min: 0, max: 1, step: 0.05,
+                description: "Bounce coefficient (0 = no bounce, 1 = full bounce)",
+                onChange: (val) => { this.collisionBounce = val; }
+            });
+
+            this.exposeProperty("collisionFriction", "number", this.collisionFriction, {
+                min: 0, max: 1, step: 0.05,
+                description: "Friction coefficient (1 = no friction)",
+                onChange: (val) => { this.collisionFriction = val; }
+            });
+
+            this.exposeProperty("useParticleSize", "boolean", this.useParticleSize, {
+                description: "Use particle size as collision radius",
+                onChange: (val) => {
+                    this.useParticleSize = val;
+                    this.refreshInspector();
+                }
+            });
+
+            if (!this.useParticleSize) {
+                this.exposeProperty("particleRadius", "number", this.particleRadius, {
+                    min: 1, max: 50, step: 1,
+                    description: "Fixed collision radius for particles",
+                    onChange: (val) => { this.particleRadius = val; }
+                });
+            }
+
+            this.exposeProperty("killOnCollision", "boolean", this.killOnCollision, {
+                description: "Kill particles when they collide",
+                onChange: (val) => { this.killOnCollision = val; }
+            });
+        }
+
+        // World space simulation property
+        this.exposeProperty("simulateInWorldSpace", "boolean", this.simulateInWorldSpace, {
+            description: "Particles stay in world position (realistic trails)",
+            onChange: (val) => { this.simulateInWorldSpace = val; }
         });
     }
 
@@ -566,6 +640,59 @@ class ParticleSystem extends Module {
         }
 
         styleHelper.endGroup();
+
+        // Add Collision group after World Space group
+        styleHelper
+            .startGroup("Collisions", false, { color: "#E67E22" })
+            .exposeProperty("enableCollisions", "boolean", this.enableCollisions, {
+                label: "Enable Collisions",
+                description: "Enable particle collisions with game objects"
+            });
+
+        if (this.enableCollisions) {
+            styleHelper
+                .exposeProperty("collisionTarget", "string", this.collisionTarget, {
+                    label: "Collision Target",
+                    description: "Tag or name of objects to collide with (empty = all)"
+                })
+                .exposeProperty("collisionBounce", "number", this.collisionBounce, {
+                    label: "Bounce",
+                    min: 0, max: 1, step: 0.05,
+                    description: "Bounce coefficient (0 = no bounce, 1 = full bounce)"
+                })
+                .exposeProperty("collisionFriction", "number", this.collisionFriction, {
+                    label: "Friction",
+                    min: 0, max: 1, step: 0.05,
+                    description: "Friction coefficient (1 = no friction)"
+                })
+                .exposeProperty("useParticleSize", "boolean", this.useParticleSize, {
+                    label: "Use Particle Size",
+                    description: "Use particle size as collision radius"
+                });
+
+            if (!this.useParticleSize) {
+                styleHelper.exposeProperty("particleRadius", "number", this.particleRadius, {
+                    label: "Particle Radius",
+                    min: 1, max: 50, step: 1,
+                    description: "Fixed collision radius for particles"
+                });
+            }
+
+            styleHelper.exposeProperty("killOnCollision", "boolean", this.killOnCollision, {
+                label: "Kill On Collision",
+                description: "Kill particles when they collide"
+            });
+        }
+
+        styleHelper.endGroup();
+
+        styleHelper
+            .startGroup("World Space", false, { color: "#8E44AD" })
+            .exposeProperty("simulateInWorldSpace", "boolean", this.simulateInWorldSpace, {
+                label: "Simulate in World Space",
+                description: "Particles stay in world position (realistic trails)"
+            })
+            .endGroup();
     }
 
     refreshInspector() {
@@ -1135,10 +1262,160 @@ class ParticleSystem extends Module {
         }
     }
 
+    /**
+     * Get collision targets (cached for performance)
+     */
+    getCollisionTargets() {
+        const now = performance.now();
+
+        // Return cached targets if still valid
+        if (this._collisionTargets && (now - this._collisionCacheTime) < this._collisionCacheInterval) {
+            return this._collisionTargets;
+        }
+
+        // Get all game objects
+        const allObjects = window.engine ? window.engine.getAllObjects() : [];
+
+        // Filter based on target
+        if (!this.collisionTarget || this.collisionTarget.trim() === "") {
+            // Collide with all objects that have collisions enabled
+            this._collisionTargets = allObjects.filter(obj =>
+                obj !== this.gameObject && obj.collisionEnabled
+            );
+        } else {
+            // Collide with specific tagged/named objects
+            this._collisionTargets = allObjects.filter(obj =>
+                obj !== this.gameObject &&
+                obj.collisionEnabled &&
+                (obj.tags.includes(this.collisionTarget) || obj.name === this.collisionTarget)
+            );
+        }
+
+        this._collisionCacheTime = now;
+        return this._collisionTargets;
+    }
+
+    /**
+     * Check if a particle collides with any game object
+     */
+    checkParticleCollision(particle) {
+        if (!this.enableCollisions) return null;
+
+        const targets = this.getCollisionTargets();
+        const radius = this.useParticleSize ? particle.size / 2 : this.particleRadius;
+
+        for (const target of targets) {
+            const collision = this.particleCollidesWithObject(particle, target, radius);
+            if (collision) {
+                return { target, collision };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a particle collides with a specific game object
+     */
+    particleCollidesWithObject(particle, gameObject, radius) {
+        const box = gameObject.getBoundingBox();
+
+        // Find closest point on the box to the particle
+        const closestX = Math.max(box.left, Math.min(particle.x, box.right));
+        const closestY = Math.max(box.top, Math.min(particle.y, box.bottom));
+
+        // Calculate distance from particle center to closest point
+        const distanceX = particle.x - closestX;
+        const distanceY = particle.y - closestY;
+        const distanceSquared = distanceX * distanceX + distanceY * distanceY;
+
+        // Check if particle intersects
+        if (distanceSquared < radius * radius) {
+            // Determine collision side based on closest point
+            let normal = { x: 0, y: 0 };
+
+            // If particle center is inside box
+            if (particle.x >= box.left && particle.x <= box.right &&
+                particle.y >= box.top && particle.y <= box.bottom) {
+                // Find which edge is closest
+                const distances = {
+                    left: particle.x - box.left,
+                    right: box.right - particle.x,
+                    top: particle.y - box.top,
+                    bottom: box.bottom - particle.y
+                };
+
+                const minDist = Math.min(distances.left, distances.right, distances.top, distances.bottom);
+
+                if (minDist === distances.left) normal = { x: -1, y: 0 };
+                else if (minDist === distances.right) normal = { x: 1, y: 0 };
+                else if (minDist === distances.top) normal = { x: 0, y: -1 };
+                else normal = { x: 0, y: 1 };
+            } else {
+                // Particle is outside, use direction from closest point to particle center
+                const length = Math.sqrt(distanceSquared);
+                if (length > 0) {
+                    normal = { x: distanceX / length, y: distanceY / length };
+                }
+            }
+
+            return {
+                point: { x: closestX, y: closestY },
+                normal: normal,
+                depth: radius - Math.sqrt(distanceSquared)
+            };
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve collision between particle and game object
+     */
+    resolveParticleCollision(particle, collisionData) {
+        const { collision } = collisionData;
+        const normal = collision.normal;
+
+        // Move particle out of collision
+        particle.x += normal.x * collision.depth;
+        particle.y += normal.y * collision.depth;
+
+        // Calculate velocity along the normal
+        const velocityDotNormal = particle.vx * normal.x + particle.vy * normal.y;
+
+        // Only resolve if moving into the surface
+        if (velocityDotNormal < 0) {
+            // Reflect velocity
+            particle.vx -= (1 + this.collisionBounce) * velocityDotNormal * normal.x;
+            particle.vy -= (1 + this.collisionBounce) * velocityDotNormal * normal.y;
+
+            // Apply friction to tangential velocity
+            const tangentX = -normal.y;
+            const tangentY = normal.x;
+            const velocityDotTangent = particle.vx * tangentX + particle.vy * tangentY;
+
+            particle.vx -= tangentX * velocityDotTangent * (1 - this.collisionFriction);
+            particle.vy -= tangentY * velocityDotTangent * (1 - this.collisionFriction);
+        }
+
+        // Kill particle if enabled
+        if (this.killOnCollision) {
+            particle.life = 0;
+        }
+    }
+
     updateParticles(deltaTime) {
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const particle = this.particles[i];
             this.updateParticle(particle, deltaTime);
+
+            // Check for collisions
+            if (this.enableCollisions) {
+                const collisionData = this.checkParticleCollision(particle);
+                if (collisionData) {
+                    this.resolveParticleCollision(particle, collisionData);
+                }
+            }
 
             // Remove dead particles
             if (particle.life <= 0) {
@@ -1217,25 +1494,44 @@ class ParticleSystem extends Module {
             particle = this.createParticle();
         }
 
-        // Set emission position based on shape
+        // Calculate local emission position based on shape
+        let localX = 0;
+        let localY = 0;
+
         switch (this.emissionShape) {
             case "circle":
                 const angle = Math.random() * Math.PI * 2;
                 const radius = Math.random() * this.emissionRadius;
-                particle.x = Math.cos(angle) * radius;
-                particle.y = Math.sin(angle) * radius;
+                localX = Math.cos(angle) * radius;
+                localY = Math.sin(angle) * radius;
                 break;
 
             case "rectangle":
-                particle.x = (Math.random() - 0.5) * this.emissionWidth;
-                particle.y = (Math.random() - 0.5) * this.emissionHeight;
+                localX = (Math.random() - 0.5) * this.emissionWidth;
+                localY = (Math.random() - 0.5) * this.emissionHeight;
                 break;
 
             case "point":
             default:
-                particle.x = 0;
-                particle.y = 0;
+                localX = 0;
+                localY = 0;
                 break;
+        }
+
+        if (this.simulateInWorldSpace && this.gameObject) {
+            // Convert local position to world position
+            const worldPos = this.localToWorld(localX, localY);
+            particle.x = worldPos.x;
+            particle.y = worldPos.y;
+
+            // Convert local velocity to world velocity (affected by game object rotation)
+            const worldVel = this.localVelocityToWorld(particle.vx, particle.vy);
+            particle.vx = worldVel.vx;
+            particle.vy = worldVel.vy;
+        } else {
+            // Local space (old behavior)
+            particle.x = localX;
+            particle.y = localY;
         }
 
         this.particles.push(particle);
@@ -1278,23 +1574,26 @@ class ParticleSystem extends Module {
         // Update life
         particle.life -= deltaTime;
 
-        // Apply gravity relative to GameObject's rotation
+        // Apply gravity - always in world space direction
         if (this.gravity !== 0) {
-            const gameObjectAngle = (this.gameObject?.angle || 0) * Math.PI / 180;
-
-            // Calculate gravity direction relative to GameObject rotation
-            const gravityX = Math.sin(gameObjectAngle) * this.gravity * deltaTime;
-            const gravityY = Math.cos(gameObjectAngle) * this.gravity * deltaTime;
-
-            particle.vx += gravityX;
-            particle.vy += gravityY;
+            if (this.simulateInWorldSpace) {
+                // Gravity in world space (always downward in world)
+                particle.vy += this.gravity * deltaTime;
+            } else {
+                // Gravity relative to GameObject's rotation (old behavior)
+                const gameObjectAngle = (this.gameObject?.angle || 0) * Math.PI / 180;
+                const gravityX = Math.sin(gameObjectAngle) * this.gravity * deltaTime;
+                const gravityY = Math.cos(gameObjectAngle) * this.gravity * deltaTime;
+                particle.vx += gravityX;
+                particle.vy += gravityY;
+            }
         }
 
         // Apply drag
         particle.vx *= this.drag;
         particle.vy *= this.drag;
 
-        // Update position
+        // Update position (always in world space if simulateInWorldSpace is true)
         particle.x += particle.vx * deltaTime;
         particle.y += particle.vy * deltaTime;
 
@@ -1307,6 +1606,73 @@ class ParticleSystem extends Module {
         particle.size = particle.initialSize * lifeRatio + particle.targetSize * invLifeRatio;
     }
 
+    /**
+     * Convert local position to world position
+     */
+    localToWorld(localX, localY) {
+        if (!this.gameObject) {
+            return { x: localX, y: localY };
+        }
+
+        // Get the world position using the GameObject method
+        const worldPos = this.gameObject.getWorldPosition();
+        const angle = this.gameObject.getWorldRotation() * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        // Rotate local position by game object angle
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+
+        // Add game object world position
+        return {
+            x: worldPos.x + rotatedX,
+            y: worldPos.y + rotatedY
+        };
+    }
+
+    /**
+     * Convert local velocity to world velocity (affected by game object rotation)
+     */
+    localVelocityToWorld(vx, vy) {
+        if (!this.gameObject) {
+            return { vx, vy };
+        }
+
+        const angle = this.gameObject.getWorldRotation() * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        // Rotate velocity by game object angle
+        return {
+            vx: vx * cos - vy * sin,
+            vy: vx * sin + vy * cos
+        };
+    }
+
+    /**
+     * Convert world position to local position (for rendering)
+     */
+    worldToLocal(worldX, worldY) {
+        if (!this.gameObject) {
+            return { x: worldX, y: worldY };
+        }
+
+        // Translate to local space
+        const dx = worldX - this.gameObject.x;
+        const dy = worldY - this.gameObject.y;
+
+        const angle = -this.gameObject.angle * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        // Rotate back to local space
+        return {
+            x: dx * cos - dy * sin,
+            y: dx * sin + dy * cos
+        };
+    }
+
     draw(ctx) {
         if (!this.enabled || this.particles.length === 0) return;
 
@@ -1317,6 +1683,36 @@ class ParticleSystem extends Module {
         }
 
         ctx.save();
+
+        // If simulating in world space, we need to draw particles without GameObject's transform
+        // because particles are already in world coordinates
+        if (this.simulateInWorldSpace && this.gameObject) {
+            // The canvas already has GameObject transform applied from GameObject.draw()
+            // We need to remove it and draw in world space directly
+
+            // Get GameObject's transform
+            const worldPos = this.gameObject.getWorldPosition();
+            const worldAngle = this.gameObject.getWorldRotation();
+            const worldScale = this.gameObject.getWorldScale();
+
+            // Calculate pixel-perfect position (matching GameObject.draw behavior)
+            const pixelPerfectX = Math.round(worldPos.x);
+            const pixelPerfectY = Math.round(worldPos.y);
+
+            // Undo the GameObject's transform that was applied in GameObject.draw()
+            // Operations must be in reverse order: scale -> rotate -> translate
+
+            // First undo the scale
+            ctx.scale(1 / worldScale.x, 1 / worldScale.y);
+
+            // Then undo the rotation (around origin)
+            ctx.rotate(-worldAngle * Math.PI / 180);
+
+            // Finally undo the translation
+            ctx.translate(-pixelPerfectX, -pixelPerfectY);
+
+            // Now ctx is back in camera/world space, and particles with world coordinates will draw correctly
+        }
 
         // Set blend mode
         this.setBlendMode(ctx);
@@ -1367,8 +1763,46 @@ class ParticleSystem extends Module {
 
     drawIndividualParticles(ctx) {
         for (const particle of this.particles) {
+            // When in world space, particles are already positioned correctly
+            // When in local space, use the old behavior
             this.drawParticle(ctx, particle);
         }
+    }
+
+    /**
+     * Draw particle in world space (independent of game object transform)
+     */
+    drawParticleWorld(ctx, particle) {
+        const lifeRatio = particle.life / particle.maxLife;
+        const invLifeRatio = 1 - lifeRatio;
+
+        // Interpolate size
+        const currentSize = particle.size;
+
+        // Interpolate colors
+        const startRGB = this.hexToRgb(this.startColor);
+        const endRGB = this.hexToRgb(this.endColor);
+        const currentR = Math.round(startRGB.r * lifeRatio + endRGB.r * invLifeRatio);
+        const currentG = Math.round(startRGB.g * lifeRatio + endRGB.g * invLifeRatio);
+        const currentB = Math.round(startRGB.b * lifeRatio + endRGB.b * invLifeRatio);
+
+        // Interpolate alpha
+        const currentAlpha = this.startAlpha * lifeRatio + this.endAlpha * invLifeRatio;
+
+        ctx.save();
+
+        // Translate to world position (particle position is already in world space)
+        ctx.translate(particle.x, particle.y);
+        ctx.rotate(particle.rotation);
+        ctx.globalAlpha = currentAlpha;
+
+        if (this.particleShape === "image" && this.useImageParticles) {
+            this.drawImageParticle(ctx, particle, currentSize);
+        } else {
+            this.drawShapeParticle(ctx, particle, currentSize, currentR, currentG, currentB);
+        }
+
+        ctx.restore();
     }
 
     setBatchProperties(ctx, sampleParticle) {
@@ -1521,7 +1955,23 @@ class ParticleSystem extends Module {
 
     drawShapeParticleWithCurrentStyle(ctx, particle, currentSize) {
         if (this.useAlphaGradient) {
-            this.drawShapeWithAlphaGradient(ctx, currentSize, ctx.fillStyle);
+            // Get the fillStyle and convert it to a proper color string
+            let color = ctx.fillStyle;
+
+            // Handle WebGL context (returns array) vs Canvas 2D (returns string)
+            if (Array.isArray(color)) {
+                // WebGL context - convert array [r,g,b,a] to rgb string
+                // Values are normalized 0-1, so multiply by 255
+                const r = Math.round(color[0] * 255);
+                const g = Math.round(color[1] * 255);
+                const b = Math.round(color[2] * 255);
+                color = `rgb(${r}, ${g}, ${b})`;
+            } else if (typeof color !== 'string' || (!color.startsWith('rgb') && !color.startsWith('#'))) {
+                // Invalid color format, use default
+                color = 'rgb(255, 255, 255)';
+            }
+
+            this.drawShapeWithAlphaGradient(ctx, currentSize, color);
         } else {
             this.drawBasicShape(ctx, currentSize);
         }
@@ -1550,13 +2000,62 @@ class ParticleSystem extends Module {
     }
 
     drawShapeWithAlphaGradient(ctx, currentSize, color) {
+        // Convert color to string if it's an array (WebGL context)
+        if (Array.isArray(color)) {
+            const r = Math.round(color[0] * 255);
+            const g = Math.round(color[1] * 255);
+            const b = Math.round(color[2] * 255);
+            color = `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Check if this is a WebGL context or if color is not a string
+        if (!color || typeof color !== 'string') {
+            // Fallback to basic shape drawing without gradient
+            this.drawBasicShape(ctx, currentSize);
+            return;
+        }
+
+        // Check if we're working with a WebGL context (no createRadialGradient method)
+        if (!ctx.createRadialGradient || !ctx.createLinearGradient) {
+            // Fallback to basic shape drawing for WebGL
+            this.drawBasicShape(ctx, currentSize);
+            return;
+        }
+
         let gradient;
 
         if (this.gradientType === "radial") {
             gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, currentSize / 2);
             gradient.addColorStop(0, color);
-            gradient.addColorStop(0.7, color.replace('rgb', 'rgba').replace(')', ', 0.5)'));
-            gradient.addColorStop(1, color.replace('rgb', 'rgba').replace(')', ', 0)'));
+
+            // Convert rgb/rgba/hex to rgba with alpha
+            let colorWithAlpha = color;
+            if (color.startsWith('rgb(')) {
+                colorWithAlpha = color.replace('rgb', 'rgba').replace(')', ', 0.5)');
+            } else if (color.startsWith('rgba(')) {
+                // Already rgba, modify alpha
+                colorWithAlpha = color.replace(/,\s*[\d.]+\)/, ', 0.5)');
+            } else if (color.startsWith('#')) {
+                // Convert hex to rgba
+                const rgb = this.hexToRgb(color);
+                if (rgb) {
+                    colorWithAlpha = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`;
+                }
+            }
+            gradient.addColorStop(0.7, colorWithAlpha);
+
+            let transparentColor = color;
+            if (color.startsWith('rgb(')) {
+                transparentColor = color.replace('rgb', 'rgba').replace(')', ', 0)');
+            } else if (color.startsWith('rgba(')) {
+                transparentColor = color.replace(/,\s*[\d.]+\)/, ', 0)');
+            } else if (color.startsWith('#')) {
+                const rgb = this.hexToRgb(color);
+                if (rgb) {
+                    transparentColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`;
+                }
+            }
+            gradient.addColorStop(1, transparentColor);
         } else {
             // Linear gradient
             const angle = this.gradientDirection * Math.PI / 180;
@@ -1567,10 +2066,29 @@ class ParticleSystem extends Module {
             const y2 = Math.sin(angle) * radius;
 
             gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-            gradient.addColorStop(0, color.replace('rgb', 'rgba').replace(')', ', 0)'));
-            gradient.addColorStop(0.3, color.replace('rgb', 'rgba').replace(')', ', 0.5)'));
+
+            // Convert color to rgba for gradient stops
+            let transparentColor = color;
+            let semiTransparentColor = color;
+
+            if (color.startsWith('rgb(')) {
+                transparentColor = color.replace('rgb', 'rgba').replace(')', ', 0)');
+                semiTransparentColor = color.replace('rgb', 'rgba').replace(')', ', 0.5)');
+            } else if (color.startsWith('rgba(')) {
+                transparentColor = color.replace(/,\s*[\d.]+\)/, ', 0)');
+                semiTransparentColor = color.replace(/,\s*[\d.]+\)/, ', 0.5)');
+            } else if (color.startsWith('#')) {
+                const rgb = this.hexToRgb(color);
+                if (rgb) {
+                    transparentColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`;
+                    semiTransparentColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.5)`;
+                }
+            }
+
+            gradient.addColorStop(0, transparentColor);
+            gradient.addColorStop(0.3, semiTransparentColor);
             gradient.addColorStop(0.7, color);
-            gradient.addColorStop(1, color.replace('rgb', 'rgba').replace(')', ', 0)'));
+            gradient.addColorStop(1, transparentColor);
         }
 
         ctx.fillStyle = gradient;
@@ -1742,7 +2260,7 @@ class ParticleSystem extends Module {
         json.gradientType = this.gradientType;
         json.gradientDirection = this.gradientDirection;
 
-        // Image properties - MATCH SpriteRenderer approach
+        // Image properties
         json.useImageParticles = this.useImageParticles;
         json.imageAsset = this.imageAsset ? {
             path: this.imageAsset.path,
@@ -1758,13 +2276,22 @@ class ParticleSystem extends Module {
         json.autoStart = this.autoStart;
         json.loopEmitter = this.loopEmitter;
         json.duration = this.duration;
+        json.simulateInWorldSpace = this.simulateInWorldSpace; // NEW
 
         // Performance properties
         json.useObjectPooling = this.useObjectPooling;
         json.enableBatching = this.enableBatching;
         json.cullingEnabled = this.cullingEnabled;
 
-        // DON'T store image data here - let AssetManager handle it
+        // Collision properties
+        json.enableCollisions = this.enableCollisions;
+        json.collisionTarget = this.collisionTarget;
+        json.collisionBounce = this.collisionBounce;
+        json.collisionFriction = this.collisionFriction;
+        json.particleRadius = this.particleRadius;
+        json.useParticleSize = this.useParticleSize;
+        json.killOnCollision = this.killOnCollision;
+
         return json;
     }
 
@@ -1821,13 +2348,23 @@ class ParticleSystem extends Module {
         if (json.autoStart !== undefined) this.autoStart = json.autoStart;
         if (json.loopEmitter !== undefined) this.loopEmitter = json.loopEmitter;
         if (json.duration !== undefined) this.duration = json.duration;
+        if (json.simulateInWorldSpace !== undefined) this.simulateInWorldSpace = json.simulateInWorldSpace; // NEW
 
         // Performance properties
         if (json.useObjectPooling !== undefined) this.useObjectPooling = json.useObjectPooling;
         if (json.enableBatching !== undefined) this.enableBatching = json.enableBatching;
         if (json.cullingEnabled !== undefined) this.cullingEnabled = json.cullingEnabled;
 
-        // Restore asset reference and load from AssetManager - MATCH SpriteRenderer approach
+        // Collision properties
+        if (json.enableCollisions !== undefined) this.enableCollisions = json.enableCollisions;
+        if (json.collisionTarget !== undefined) this.collisionTarget = json.collisionTarget;
+        if (json.collisionBounce !== undefined) this.collisionBounce = json.collisionBounce;
+        if (json.collisionFriction !== undefined) this.collisionFriction = json.collisionFriction;
+        if (json.particleRadius !== undefined) this.particleRadius = json.particleRadius;
+        if (json.useParticleSize !== undefined) this.useParticleSize = json.useParticleSize;
+        if (json.killOnCollision !== undefined) this.killOnCollision = json.killOnCollision;
+
+        // Restore asset reference and load from AssetManager
         if (json.imageAsset && json.imageAsset.path) {
             console.log('Loading particle image from AssetManager:', json.imageAsset.path);
 

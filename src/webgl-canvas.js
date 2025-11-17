@@ -5018,8 +5018,16 @@ class WebGLCanvas {
      * @param {number} dHeight - Destination height (optional)
      */
     drawImage(image, ...args) {
-        // Check if image is loaded
-        if (!image || !image.complete || image.naturalWidth === 0) {
+        // Check if image is loaded (handle both Image and Canvas elements)
+        if (!image) {
+            return;
+        }
+        
+        // Canvas elements don't have .complete or .naturalWidth properties
+        const isCanvas = image instanceof HTMLCanvasElement || image instanceof OffscreenCanvas;
+        const isVideo = image instanceof HTMLVideoElement;
+        
+        if (!isCanvas && !isVideo && (!image.complete || image.naturalWidth === 0)) {
             //// console.warn('Image not loaded or invalid');
             return;
         }

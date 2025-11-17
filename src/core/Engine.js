@@ -76,7 +76,31 @@ class Engine {
         this.backgroundCanvas.style.top = '0px';
         this.backgroundCanvas.style.pointerEvents = 'none';
 
+        this.shadowCanvas = document.createElement('canvas');
+        this.shadowCanvas.width = 800;
+        this.shadowCanvas.height = 600;
+        this.shadowCanvas.style.position = 'absolute';
+        this.shadowCanvas.style.left = '0px';
+        this.shadowCanvas.style.top = '0px';
+        this.shadowCanvas.style.pointerEvents = 'none';
+
         this.useOffscreenRendering = options.useOffscreenRendering !== false; // Enable by default
+
+        /*
+            // USING MULTIPLAYER MANAGER
+            // Connect to server
+            engine.multiplayer.connect('ws://localhost:8080');
+
+            // Register networked objects
+            engine.multiplayer.registerNetworkedObject(player, true);
+        */
+
+        this.enableMultiplayer = options.enableMultiplayer || false;
+
+        if (this.enableMultiplayer) {
+            // Initialize Multiplayer Manager
+            this.multiplayer = new MultiplayerManager(this);
+        }
 
         //this.ctx = canvas.getContext('2d');
         this.scene = null;
@@ -541,6 +565,10 @@ class Engine {
     // Set the canvas context for different drawing modes
     getBackgroundCanvas() {
         return this.backgroundCanvas.getContext('2d');
+    }
+
+    getShadowCanvas() {
+        return this.shadowCanvas.getContext('2d');
     }
 
     getGuiCanvas() {
@@ -1345,6 +1373,11 @@ class Engine {
                 });*/
             }
         });
+
+        // Update multiplayer
+        if (this.multiplayer && this.enableMultiplayer) {
+            this.multiplayer.update(deltaTime);
+        }
     }
 
     draw() {
@@ -1377,6 +1410,62 @@ class Engine {
             return;
         }
 
+        // WebGL rendering path
+        if (this.useWebGL && this.ctx) {
+            // WebGL context handles its own clearing and rendering
+            if (this.ctx.clear) {
+                this.ctx.clear();
+            }
+
+            // Get background color
+            const fillColor = (this.scene && this.scene.settings && this.scene.settings.backgroundColor)
+                ? this.scene.settings.backgroundColor
+                : '#000000';
+
+            // Set clear color if WebGL context supports it
+            if (this.ctx.setClearColor) {
+                this.ctx.setClearColor(fillColor);
+            }
+
+            // Apply viewport transformation for WebGL
+            this.applyViewportTransformToContext(this.ctx);
+
+            // Draw 3D cameras first
+            this.draw3DCamerasToContext(this.ctx);
+
+            // Draw all game objects
+            const allObjects = this.getAllObjects(this.gameObjects);
+
+            if (allObjects.length === 0) {
+                // Note: Drawing text with WebGL context might not work the same way
+                // This would need a proper text rendering implementation for WebGL
+            } else {
+                allObjects
+                    .filter(obj => obj.active && obj.visible !== false)
+                    .sort((a, b) => b.depth - a.depth)
+                    .forEach(obj => {
+                        try {
+                            obj.draw(this.ctx);
+                        } catch (error) {
+                            console.error(`Error drawing object ${obj.name}:`, error);
+                        }
+                    });
+            }
+
+            // Draw physics debug
+            if (window.physicsManager && window.physicsManager.debugDraw) {
+                window.physicsManager.drawDebug(this.ctx);
+            }
+
+            // Flush WebGL commands
+            if (this.ctx.flush) {
+                this.ctx.flush();
+            }
+
+            return;
+        }
+
+        // Canvas 2D rendering path
         // Determine which context to render to
         const renderCtx = this.useOffscreenRendering ? this.offscreenCtx : this.ctx;
         const renderCanvas = this.useOffscreenRendering ? this.offscreenCanvas : this.canvas;
@@ -1395,6 +1484,10 @@ class Engine {
         if (this.backgroundCanvas) {
             const bgCtx = this.backgroundCanvas.getContext('2d');
             bgCtx.clearRect(0, 0, this.backgroundCanvas.width, this.backgroundCanvas.height);
+        }
+        if (this.shadowCanvas) {
+            const shadowCtx = this.shadowCanvas.getContext('2d');
+            shadowCtx.clearRect(0, 0, this.shadowCanvas.width, this.shadowCanvas.height);
         }
         if (this.guiCanvas) {
             const guiCtx = this.guiCanvas.getContext('2d');
@@ -1416,6 +1509,14 @@ class Engine {
             renderCtx.save();
             renderCtx.globalAlpha = 1.0;
             renderCtx.drawImage(this.backgroundCanvas, 0, 0);
+            renderCtx.restore();
+        }
+
+        // Draw shadow canvas (after background, before main objects)
+        if (this.shadowCanvas) {
+            renderCtx.save();
+            renderCtx.globalAlpha = 1.0;
+            renderCtx.drawImage(this.shadowCanvas, 0, 0);
             renderCtx.restore();
         }
 
@@ -1488,7 +1589,7 @@ class Engine {
         }
 
         // If using offscreen rendering, now draw the offscreen canvas to the display canvas
-        if (this.useOffscreenRendering) {
+        if (this.useOffscreenRendering && this.displayCtx) {
             this.displayCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
             // Disable image smoothing for pixel-perfect rendering
@@ -2635,7 +2736,7 @@ class Engine {
         const canvasHeight = viewportHeight;
 
         // CRITICAL: For pixel-perfect rendering, disable smoothing
-        if (this.useOffscreenRendering) {
+        if (this.useOffscreenRendering && !this.useWebGL) {
             // Set offscreen canvas to viewport resolution
             this.offscreenCanvas.width = canvasWidth;
             this.offscreenCanvas.height = canvasHeight;
@@ -2650,11 +2751,13 @@ class Engine {
             this.canvas.width = canvasWidth;
             this.canvas.height = canvasHeight;
 
-            // Configure display canvas for pixel-perfect scaling
-            this.displayCtx.imageSmoothingEnabled = false;
-            this.displayCtx.mozImageSmoothingEnabled = false;
-            this.displayCtx.webkitImageSmoothingEnabled = false;
-            this.displayCtx.msImageSmoothingEnabled = false;
+            // Configure display canvas for pixel-perfect scaling (only if displayCtx exists)
+            if (this.displayCtx) {
+                this.displayCtx.imageSmoothingEnabled = false;
+                this.displayCtx.mozImageSmoothingEnabled = false;
+                this.displayCtx.webkitImageSmoothingEnabled = false;
+                this.displayCtx.msImageSmoothingEnabled = false;
+            }
 
             // Force pixel-perfect CSS rendering if pixel scaling is enabled
             if (this.renderConfig.usePixelScaling) {
@@ -2662,18 +2765,20 @@ class Engine {
                 this.canvas.style.imageRendering = '-moz-crisp-edges';
                 this.canvas.style.imageRendering = 'crisp-edges';
             }
-        } else {
+        } else if (!this.useWebGL) {
             // For direct rendering: canvas resolution = viewport resolution
             this.canvas.width = canvasWidth;
             this.canvas.height = canvasHeight;
 
             this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-            // Disable smoothing for pixel-perfect rendering
-            this.ctx.imageSmoothingEnabled = false;
-            this.ctx.mozImageSmoothingEnabled = false;
-            this.ctx.webkitImageSmoothingEnabled = false;
-            this.ctx.msImageSmoothingEnabled = false;
+            // Disable smoothing for pixel-perfect rendering (only for 2D context)
+            if (this.ctx && typeof this.ctx.imageSmoothingEnabled !== 'undefined') {
+                this.ctx.imageSmoothingEnabled = false;
+                this.ctx.mozImageSmoothingEnabled = false;
+                this.ctx.webkitImageSmoothingEnabled = false;
+                this.ctx.msImageSmoothingEnabled = false;
+            }
 
             // Force pixel-perfect CSS rendering if pixel scaling is enabled
             if (this.renderConfig.usePixelScaling) {

@@ -231,12 +231,12 @@ class Inspector {
     hexToRgba(hex, opacity = 1) {
         // Remove # if present
         hex = hex.replace('#', '');
-        
+
         // Parse hex values
         const r = parseInt(hex.substring(0, 2), 16);
         const g = parseInt(hex.substring(2, 4), 16);
         const b = parseInt(hex.substring(4, 6), 16);
-        
+
         return `rgba(${r}, ${g}, ${b}, ${opacity})`;
     }
 
@@ -247,7 +247,7 @@ class Inspector {
      */
     getShadowOpacity(color) {
         if (!color) return 0.5; // Default opacity
-        
+
         // Check if it's an rgba string
         if (typeof color === 'string' && color.startsWith('rgba')) {
             const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+),?\s*([\d.]+)?\)/);
@@ -255,7 +255,7 @@ class Inspector {
                 return parseFloat(match[4]);
             }
         }
-        
+
         // Default to 1 for rgb or hex colors (fully opaque)
         return color && color.startsWith('rgb') ? 1 : 0.5;
     }
@@ -267,13 +267,13 @@ class Inspector {
      */
     getRgbHexFromColor(color) {
         if (!color) return '#000000';
-        
+
         // If it's already a hex without alpha
         if (typeof color === 'string' && color.startsWith('#')) {
             // Return just the first 6 characters (RGB only)
             return color.substring(0, 7);
         }
-        
+
         // If it's an rgba or rgb string
         if (typeof color === 'string' && (color.startsWith('rgba') || color.startsWith('rgb'))) {
             const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -285,7 +285,7 @@ class Inspector {
                 return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
             }
         }
-        
+
         return '#000000';
     }
 
@@ -1024,7 +1024,7 @@ class Inspector {
         // Update shadow properties
         const drawShadowCheckbox = transformModule.querySelector('.draw-shadow');
         const shadowPropertiesDiv = transformModule.querySelector('.shadow-properties');
-        
+
         if (drawShadowCheckbox) {
             drawShadowCheckbox.checked = this.inspectedObject.drawShadow || false;
             if (shadowPropertiesDiv) {
@@ -1586,13 +1586,20 @@ class Inspector {
                     return styleHelper;
                 },
                 addButton: (label, onChange, options = {}) => {
-                    const buttonId = `btn-${module.id}-${Date.now()}`;
+                    // Use a counter to ensure truly unique IDs
+                    if (!styleHelper._buttonCounter) styleHelper._buttonCounter = 0;
+                    const buttonId = `btn-${module.id}-${styleHelper._buttonCounter++}-${Date.now()}`;
                     const customStyle = options.style || '';
 
                     if (!styleHelper._buttons) styleHelper._buttons = [];
-                    styleHelper._buttons.push({ btnId: buttonId, onChange });
+
+                    // Store the callback in a closure to preserve it properly
+                    const callback = onChange;
+                    styleHelper._buttons.push({ btnId: buttonId, callback: callback });
 
                     styleHelper.html += `<button id="${buttonId}" class="property-btn" style="margin: 4px 0; padding: 6px 12px; ${customStyle}">${label}</button>`;
+
+                    return styleHelper;
                 },
                 addHelpText: (text, options = {}) => {
                     let color = options?.color || '';
@@ -1659,16 +1666,23 @@ class Inspector {
 
             setTimeout(() => {
                 if (styleHelper._buttons) {
-                    styleHelper._buttons.forEach(({ btnId, onClick }) => {
+                    styleHelper._buttons.forEach(({ btnId, callback }) => {
                         const btn = document.getElementById(btnId);
-                        if (btn && typeof onClick === 'function') btn.onclick = onClick;
+                        if (btn && typeof callback === 'function') {
+                            // Use addEventListener instead of onclick to avoid overwriting
+                            btn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                callback.call(module, e);
+                            });
+                        }
                     });
                 }
                 if (styleHelper._dropdowns) {
                     styleHelper._dropdowns.forEach(({ inputId, onChange }) => {
                         const el = document.getElementById(inputId);
                         if (el && typeof onChange === 'function') {
-                            el.onchange = () => onChange(el.value);
+                            el.addEventListener('change', () => onChange(el.value));
                         }
                     });
                 }
@@ -1676,10 +1690,10 @@ class Inspector {
                     styleHelper._sliders.forEach(({ inputId, onChange }) => {
                         const el = document.getElementById(inputId);
                         if (el && typeof onChange === 'function') {
-                            el.oninput = () => {
+                            el.addEventListener('input', () => {
                                 el.nextElementSibling.textContent = el.value;
                                 onChange(parseFloat(el.value));
-                            };
+                            });
                         }
                     });
                 }
@@ -4087,10 +4101,12 @@ console.log("Module name:", this.name);</pre>
                     module.onButtonClick(propName, btnId);
                 }
 
-                // Look for specific handler method
-                const handlerName = `on${propName.charAt(0).toUpperCase()}${propName.slice(1)}Click`;
-                if (typeof module[handlerName] === 'function') {
-                    module[handlerName]();
+                // Look for specific handler method only if propName exists
+                if (propName && typeof propName === 'string') {
+                    const handlerName = `on${propName.charAt(0).toUpperCase()}${propName.slice(1)}Click`;
+                    if (typeof module[handlerName] === 'function') {
+                        module[handlerName]();
+                    }
                 }
 
                 updateGameObject();

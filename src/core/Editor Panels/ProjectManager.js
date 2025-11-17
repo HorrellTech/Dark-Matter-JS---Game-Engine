@@ -13,6 +13,7 @@ class ProjectManager {
         this.lastProjectFileHandle = null;
         this._loadLastProjectFileHandle();
         this._setupKeyboardShortcuts();
+        this._setupExampleProjectsDropdown(); // NEW: Setup example projects
 
         this.newProject(false); // Initialize with a new project
 
@@ -33,6 +34,338 @@ class ProjectManager {
             }
         }
         return true; // Proceed
+    }
+
+    async _setupExampleProjectsDropdown() {
+        const dropdown = document.getElementById('exampleProjectsDropdown');
+        if (!dropdown) {
+            console.warn("Example projects dropdown not found");
+            return;
+        }
+
+        // Scan ExampleProjects directory
+        try {
+            const exampleProjects = await this._scanExampleProjects();
+
+            // Clear existing options except the first one
+            dropdown.innerHTML = '<option value="">📚 Example Projects</option>';
+
+            if (exampleProjects.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '(No examples available)';
+                option.disabled = true;
+                dropdown.appendChild(option);
+            } else {
+                exampleProjects.forEach(project => {
+                    const option = document.createElement('option');
+                    option.value = project.path;
+                    option.textContent = project.name;
+                    dropdown.appendChild(option);
+                });
+            }
+
+            // Add change event listener
+            dropdown.addEventListener('change', async (e) => {
+                const selectedPath = e.target.value;
+                if (selectedPath) {
+                    await this.loadExampleProject(selectedPath);
+                    // Reset dropdown to default
+                    dropdown.value = '';
+                }
+            });
+
+        } catch (error) {
+            console.error("Error setting up example projects dropdown:", error);
+        }
+    }
+
+    async _scanExampleProjects() {
+        // Since we can't directly access the file system in the browser,
+        // we'll need to make a fetch request to get the directory listing
+        // This requires a simple server-side endpoint or we can hardcode the list
+
+        // For now, let's try to fetch a manifest file or scan known locations
+        const exampleProjects = [];
+
+        try {
+            // Try to fetch a manifest file (you can create this file manually)
+            const response = await fetch('./ExampleProjects/manifest.json');
+            if (response.ok) {
+                const manifest = await response.json();
+                return manifest.projects || [];
+            }
+        } catch (error) {
+            console.log("No manifest.json found, scanning for projects...");
+        }
+
+        // Fallback: Try to load known example projects
+        // You can update this list as you add more examples
+        const knownExamples = [
+            'example1.dmproj',
+            'example2.dmproj',
+            'example3.dmproj'
+        ];
+
+        for (const filename of knownExamples) {
+            try {
+                const response = await fetch(`./ExampleProjects/${filename}`, { method: 'HEAD' });
+                if (response.ok) {
+                    exampleProjects.push({
+                        name: filename.replace('.dmproj', '').replace(/_/g, ' '),
+                        path: `./ExampleProjects/${filename}`
+                    });
+                }
+            } catch (error) {
+                // File doesn't exist, skip it
+            }
+        }
+
+        return exampleProjects;
+    }
+
+    async loadExampleProject(projectPath) {
+        // Disable AutoSaveManager during loading
+        if (window.autoSaveManager) {
+            window.autoSaveManager.stopAutoSave();
+            window.autoSaveManager.clearSavedState();
+        }
+
+        // First ensure core classes are available
+        if (!await this.ensureCoreDependencies()) {
+            return;
+        }
+
+        if (this.isSavingOrLoading) {
+            console.warn("Project operation already in progress.");
+            this.editor.fileBrowser.showNotification("Operation in progress. Please wait.", "warn");
+            return;
+        }
+
+        if (!await this._confirmUnsavedChanges()) {
+            return;
+        }
+
+        this.isSavingOrLoading = true;
+        this.showLoadingOverlay("Loading example project...");
+
+        try {
+            // Fetch the example project file
+            const response = await fetch(projectPath);
+            if (!response.ok) {
+                throw new Error(`Failed to load example project: ${response.statusText}`);
+            }
+
+            const blob = await response.blob();
+
+            // Use the same loading logic as loadProject
+            await this._loadProjectFromBlob(blob, projectPath.split('/').pop().replace('.dmproj', ''));
+
+            this.editor.fileBrowser.showNotification("Example project loaded successfully!", "success");
+
+        } catch (error) {
+            console.error("Error loading example project:", error);
+            this.editor.fileBrowser.showNotification(`Error loading example: ${error.message}`, "error");
+        } finally {
+            this.hideLoadingOverlay();
+            this.isSavingOrLoading = false;
+
+            // Re-enable AutoSaveManager
+            if (window.autoSaveManager) {
+                window.autoSaveManager.startAutoSave();
+            }
+        }
+    }
+
+    async _loadProjectFromBlob(blob, projectName = null) {
+        const zip = await JSZip.loadAsync(blob);
+        console.log("Project archive loaded.");
+
+        if (this.fileBrowser.db) {
+            this.fileBrowser.db.close();
+            this.fileBrowser.db = null;
+        }
+
+        // 1. Clear current project state
+        await this.fileBrowser.resetDatabase();
+        await this.fileBrowser.navigateTo('/');
+        this.editor.scenes = [];
+        this.editor.activeScene = null;
+        if (this.editor.hierarchy) {
+            this.editor.hierarchy.selectedObject = null;
+            this.editor.hierarchy.refreshHierarchy();
+        }
+        if (this.editor.inspector) {
+            this.editor.inspector.inspectObject(null);
+        }
+        console.log("Cleared current project state.");
+
+        this.showLoadingOverlay("Restoring project...");
+
+        // 1.1. Reset engine state if engine exists
+        if (window.engine) {
+            if (window.engine.running) {
+                window.engine.stop();
+            }
+            window.engine.gameObjects = [];
+            window.engine.scene = null;
+            window.engine.activeScene = null;
+            window.engine.originalGameObjects = [];
+            window.engine.dynamicObjects.clear();
+            window.engine.viewport = {
+                width: 800,
+                height: 600,
+                x: 0,
+                y: 0,
+                zoom: 1,
+                angle: 0,
+                minZoom: 0.1,
+                maxZoom: 10,
+                dirty: true,
+            };
+        }
+
+        // 2. Load project.json
+        const projectJsonFile = zip.file("project.json");
+        if (!projectJsonFile) {
+            throw new Error("project.json not found in archive.");
+        }
+        const projectJsonStr = await projectJsonFile.async("text");
+        const projectData = JSON.parse(projectJsonStr);
+        console.log("Project data loaded:", projectData);
+
+        if (projectName) {
+            this.currentProjectName = projectName;
+        } else {
+            this.currentProjectName = projectData.projectName || "LoadedProject";
+        }
+
+        // 3. Restore assets
+        this.showLoadingOverlay("Restoring assets...");
+        const assetsFolder = zip.folder("assets");
+        if (assetsFolder) {
+            const assetFiles = [];
+            assetsFolder.forEach((relativePath, file) => {
+                if (!file.dir) {
+                    assetFiles.push({ relativePath, file });
+                }
+            });
+
+            for (const { relativePath, file } of assetFiles) {
+                try {
+                    const content = await file.async("text");
+                    const fullPath = `/${relativePath}`;
+                    await this.fileBrowser.createFile(fullPath, content);
+                } catch (err) {
+                    console.warn(`Could not restore asset ${relativePath}:`, err);
+                }
+            }
+            console.log(`Restored ${assetFiles.length} asset files.`);
+        }
+
+        // 4. Restore asset manager cache
+        this.showLoadingOverlay("Restoring cached assets...");
+        if (window.assetManager && projectData.assetCache) {
+            try {
+                await window.assetManager.deserializeCache(projectData.assetCache);
+                console.log("Asset cache restored.");
+            } catch (error) {
+                console.warn("Could not restore asset cache:", error);
+            }
+        }
+
+        // 5. Restore scenes
+        this.showLoadingOverlay("Restoring scenes...");
+        if (projectData.scenes && projectData.scenes.length > 0) {
+            for (const sceneData of projectData.scenes) {
+                try {
+                    const scene = Scene.fromJSON(sceneData, this.editor);
+                    this.editor.scenes.push(scene);
+                } catch (err) {
+                    console.error("Error loading scene:", err);
+                }
+            }
+            console.log(`Restored ${this.editor.scenes.length} scenes.`);
+        } else {
+            this.editor.createDefaultScene();
+            console.log("No scenes found in project, created default scene.");
+        }
+
+        // 6. Restore editor settings
+        this.showLoadingOverlay("Restoring editor settings...");
+        const settings = projectData.editorSettings || {};
+
+        if (settings.activeSceneName) {
+            const activeScene = this.editor.scenes.find(s => s.name === settings.activeSceneName);
+            if (activeScene) {
+                this.editor.setActiveScene(activeScene);
+            } else if (this.editor.scenes.length > 0) {
+                this.editor.setActiveScene(this.editor.scenes[0]);
+            }
+        } else if (this.editor.scenes.length > 0) {
+            this.editor.setActiveScene(this.editor.scenes[0]);
+        }
+
+        if (settings.camera) {
+            this.editor.camera.position.x = settings.camera.x || 0;
+            this.editor.camera.position.y = settings.camera.y || 0;
+            this.editor.camera.zoom = settings.camera.zoom || 1;
+            this.editor.updateZoomLevelDisplay();
+        }
+
+        if (settings.grid) {
+            this.editor.grid.showGrid = settings.grid.showGrid !== undefined ? settings.grid.showGrid : true;
+            this.editor.grid.gridSize = settings.grid.gridSize || 32;
+            this.editor.grid.snapToGrid = settings.grid.snapToGrid || false;
+
+            const showGridCheckbox = document.getElementById('showGrid');
+            const gridSizeInput = document.getElementById('gridSize');
+            const snapToGridCheckbox = document.getElementById('snapToGrid');
+            if (showGridCheckbox) showGridCheckbox.checked = this.editor.grid.showGrid;
+            if (gridSizeInput) gridSizeInput.value = this.editor.grid.gridSize;
+            if (snapToGridCheckbox) snapToGridCheckbox.checked = this.editor.grid.snapToGrid;
+        }
+
+        if (settings.inspectorCollapseStates) {
+            localStorage.setItem('moduleCollapseStates', JSON.stringify(settings.inspectorCollapseStates));
+        }
+        if (settings.inspectorFolderCollapseStates) {
+            localStorage.setItem('moduleFolderCollapseStates', JSON.stringify(settings.inspectorFolderCollapseStates));
+        }
+
+        if (settings.activeBottomTab) {
+            const tabButtons = document.querySelectorAll('.tab-buttons .tab-button');
+            tabButtons.forEach(btn => {
+                if (btn.dataset.tab === settings.activeBottomTab) {
+                    btn.click();
+                }
+            });
+        }
+
+        if (settings.activeCanvasTab) {
+            const canvasTabs = document.querySelectorAll('.canvas-tabs .canvas-tab');
+            canvasTabs.forEach(tab => {
+                if (tab.dataset.canvas === settings.activeCanvasTab) {
+                    tab.click();
+                }
+            });
+        }
+
+        this.editor.refreshCanvas();
+        if (this.editor.hierarchy) {
+            this.editor.hierarchy.refreshHierarchy();
+            if (settings.selectedObjectId && this.editor.activeScene) {
+                const selectedObj = this.editor.activeScene.findGameObjectById(settings.selectedObjectId);
+                if (selectedObj) {
+                    this.editor.hierarchy.selectObject(selectedObj);
+                }
+            }
+        }
+
+        document.title = `Dark Matter JS - ${this.currentProjectName}`;
+        console.log("Project loaded successfully.");
+
+        //await this.editor.moduleManager.scanForScripts();
     }
 
     _startSaveReminderTimer() {
@@ -120,10 +453,10 @@ class ProjectManager {
 
         try {
             //if(!promptUser) {
-                if (!await this._confirmUnsavedChanges(true)) {
-                    this.isSavingOrLoading = false;
-                    return;
-                }
+            if (!await this._confirmUnsavedChanges(true)) {
+                this.isSavingOrLoading = false;
+                return;
+            }
             //}
 
             console.log("Creating new project...");
@@ -133,7 +466,7 @@ class ProjectManager {
                 this.fileBrowser.db = null;
             }
 
-            if(window.engine) {
+            if (window.engine) {
                 // Stop the engine if it's running
                 if (window.engine.running) {
                     window.engine.stop();
@@ -378,11 +711,21 @@ class ProjectManager {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.dmproj';
+
+        // Add oncancel handler to reset the flag when user cancels the dialog
+        input.oncancel = () => {
+            console.log("File selection cancelled by user.");
+            this.editor.fileBrowser.showNotification("Load cancelled.", "warn");
+            this.isSavingOrLoading = false;
+            clearTimeout(safetyTimeout);
+        };
+
         input.onchange = async (e) => {
             const file = e.target.files[0];
             if (!file) {
                 this.editor.fileBrowser.showNotification("Load cancelled.", "warn");
                 this.isSavingOrLoading = false;
+                clearTimeout(safetyTimeout);
                 return;
             }
 

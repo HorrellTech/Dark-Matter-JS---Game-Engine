@@ -93,6 +93,26 @@ class Scene {
         return this.findGameObjectByNameRecursive(this.gameObjects, name);
     }
 
+    findGameObjectById(id) {
+        return this.findGameObjectByIdRecursive(this.gameObjects, id);
+    }
+
+    findGameObjectByIdRecursive(objects, id) {
+        for (const obj of objects) {
+            if (obj.id === id) {
+                return obj;
+            }
+            // Search in children if they exist
+            if (obj.children && obj.children.length > 0) {
+                const found = this.findGameObjectByIdRecursive(obj.children, id);
+                if (found) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     /**
      * Recursively search for a GameObject by name
      * @param {Array} objects - Array of GameObjects to search

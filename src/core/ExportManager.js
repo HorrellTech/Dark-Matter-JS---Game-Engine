@@ -1340,37 +1340,110 @@ class ExportManager {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        // Define viewport configuration globally so it's accessible everywhere
+        const viewportConfig = {
+            width: ${settings.viewport && settings.viewport.width ? settings.viewport.width : 800},
+            height: ${settings.viewport && settings.viewport.height ? settings.viewport.height : 600},
+            scalable: ${settings.viewport && typeof settings.viewport.scalable !== 'undefined' ? settings.viewport.scalable : true},
+            maintainAspect: ${typeof settings.maintainAspectRatio === 'undefined' ? 'true' : (settings.maintainAspectRatio ? 'true' : 'false')}
+        };
+
+        function centerContainer() {
+            const container = document.getElementById('game-container');
+            if (!container) return;
+            document.documentElement.style.height = '100%';
+            document.body.style.height = '100%';
+            document.body.style.margin = '0';
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+            container.style.overflow = 'hidden';
+        }
+
+        function updateCanvasSize() {
             const canvas = document.getElementById('gameCanvas');
-            if (canvas) {
-                const updateCanvasSize = () => {
-                    const width = window.innerWidth;
-                    const height = window.innerHeight;
-                    canvas.width = width;
-                    canvas.height = height;
-                    canvas.style.width = width + 'px';
-                    canvas.style.height = height + 'px';
-                    if (window.engine && typeof window.engine.handleResize === 'function') {
-                        window.engine.handleResize(width, height);
+            if (!canvas) return;
+
+            // Always set the internal drawing buffer to the logical viewport dimensions
+            canvas.width = viewportConfig.width;
+            canvas.height = viewportConfig.height;
+
+            if (viewportConfig.scalable) {
+                // Calculate aspect ratio of the game
+                const gameAspect = viewportConfig.width / viewportConfig.height;
+                
+                // Get available window space
+                const windowWidth = window.innerWidth;
+                const windowHeight = window.innerHeight;
+                const windowAspect = windowWidth / windowHeight;
+
+                let displayWidth, displayHeight;
+
+                if (viewportConfig.maintainAspect === true || viewportConfig.maintainAspect === 'true') {
+                    // Maintain aspect ratio - fit within window with letterboxing
+                    if (windowAspect > gameAspect) {
+                        // Window is wider than game - fit to height
+                        displayHeight = windowHeight;
+                        displayWidth = Math.round(displayHeight * gameAspect);
+                    } else {
+                        // Window is taller than game - fit to width
+                        displayWidth = windowWidth;
+                        displayHeight = Math.round(displayWidth / gameAspect);
                     }
-                };
+                } else {
+                    // Fill screen without maintaining aspect ratio (stretches)
+                    displayWidth = windowWidth;
+                    displayHeight = windowHeight;
+                }
+
+                // Apply the calculated display size
+                canvas.style.width = displayWidth + 'px';
+                canvas.style.height = displayHeight + 'px';
+
+                // Center container in case of letterboxing
+                centerContainer();
+            } else {
+                // Fixed-size exported viewport: set CSS to pixel-perfect viewport dimensions
+                canvas.style.width = viewportConfig.width + 'px';
+                canvas.style.height = viewportConfig.height + 'px';
+
+                // Prevent body scrolling when the exported viewport is smaller/larger than the screen
+                document.body.style.overflow = 'hidden';
+                centerContainer();
+            }
+
+            // Notify the engine of the logical drawing size (use logical viewport dimensions)
+            if (window.engine && typeof window.engine.handleResize === 'function') {
+                try {
+                    window.engine.handleResize(viewportConfig.width, viewportConfig.height);
+                } catch (e) {
+                    console.warn('Error calling engine.handleResize:', e);
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial canvas size setup
+            updateCanvasSize();
+
+            // Update on resize/orientation; debounced slightly to avoid thrashing on mobile
+            let resizeTimer = null;
+            function onResize() {
+                if (resizeTimer) clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    updateCanvasSize();
+                    resizeTimer = null;
+                }, 80);
+            }
+
+            // Canvas scaling is already handled by updateCanvasSize() in the HTML header
+            // Just ensure it's called when the engine is ready
+            if (typeof updateCanvasSize === 'function') {
                 updateCanvasSize();
                 window.addEventListener('resize', updateCanvasSize);
                 window.addEventListener('orientationchange', () => {
-                    setTimeout(updateCanvasSize, 100);
+                    setTimeout(updateCanvasSize, 120);
                 });
-            }
-            if (typeof Matter === 'undefined') {
-                console.log('Loading Matter.js from CDN as fallback...');
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.18.0/matter.min.js';
-                script.onload = function() {
-                    console.log('Matter.js loaded from CDN');
-                    window.dispatchEvent(new Event('matter-loaded'));
-                };
-                document.head.appendChild(script);
-            } else {
-                window.dispatchEvent(new Event('matter-loaded'));
             }
         });
 
@@ -1712,53 +1785,21 @@ html, body {
     background: #000;
     margin: 0;
     padding: 0;
+    overflow: hidden;
 }
 
-/* Canvas fills the game container while maintaining aspect ratio */
+/* Canvas - Let JavaScript handle sizing completely */
 #gameCanvas {
     display: block;
     background: #000;
-    width: 100%;
-    height: 100%;
-    /* Remove fixed dimensions and let it fill container */
-    max-width: 100vw;
-    max-height: 100vh;
-    /* Maintain aspect ratio */
-    object-fit: ${settings.maintainAspectRatio !== false ? 'contain' : 'fill'};
-    /* Center the canvas */
+    /* DO NOT set width/height here - let JS handle it */
     margin: 0;
-    /* Smooth scaling */
-    image-rendering: auto;
-}
-
-/* For pixel-perfect games, use pixelated rendering */
-${settings.pixelPerfect ? `
-#gameCanvas {
-    image-rendering: pixelated;
-    image-rendering: -moz-crisp-edges;
+    /* Smooth scaling - use pixelated for retro games */
+    image-rendering: ${settings.pixelPerfect ? 'pixelated' : 'auto'};
+    ${settings.pixelPerfect ? `image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
-    image-rendering: -webkit-optimize-contrast;
-}
-` : ''}
-
-/* Loading screen covers entire viewport */
-#loading-screen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: #000;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: Arial, sans-serif;
-    z-index: 1000;
-}
-
-/* Prevent context menu and selection */
-#gameCanvas {
+    image-rendering: -webkit-optimize-contrast;` : ''}
+    /* Prevent context menu and selection */
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     -khtml-user-select: none;
@@ -1768,30 +1809,28 @@ ${settings.pixelPerfect ? `
     outline: none;
 }
 
-/* Mobile optimizations */
+/* Loading screen covers entire viewport */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: ${settings.loadingBg || '#111'};
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: Arial, sans-serif;
+    z-index: 1000;
+}
+
+/* Mobile optimizations - removed canvas size overrides */
 @media (max-width: 768px) {
     body {
         position: fixed;
         overflow: hidden;
         -webkit-overflow-scrolling: touch;
-    }
-    
-    #gameCanvas {
-        width: 100vw !important;
-        height: 100vh !important;
-    }
-}
-
-/* Orientation change handling */
-@media screen and (orientation: portrait) {
-    #game-container {
-        flex-direction: column;
-    }
-}
-
-@media screen and (orientation: landscape) {
-    #game-container {
-        flex-direction: row;
     }
 }
 
@@ -1809,19 +1848,6 @@ html {
     scrollbar-width: none;
 }
 
-/* Enhanced loading screen */
-#loading-screen {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
-    background: ${settings.loadingBg || '#111'};
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    font-family: Arial, sans-serif;
-}
 .loading-content {
     display: flex;
     flex-direction: column;
@@ -1977,9 +2003,8 @@ html {
     margin: 18px 0;
 }
 
-* Style the file input for the load game modal */
 #load-game-modal input[type="file"] {
-    background: #2d3e5c; /* Slightly darker than spinner color */
+    background: #2d3e5c;
     color: #fff;
     border: none;
     border-radius: 8px;
@@ -1992,23 +2017,10 @@ html {
 
 #load-game-modal input[type="file"]:hover,
 #load-game-modal input[type="file"]:focus {
-    background: #22304a; /* Even darker on hover/focus */
+    background: #22304a;
     outline: none;
 }
 
-/* --- Loading Screen --- */
-#loading-screen {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100vw; height: 100vh;
-    background: #111;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    font-family: Arial, sans-serif;
-}
 .loading-content {
     display: flex;
     flex-direction: column;
@@ -2845,19 +2857,19 @@ async function initializeGame() {
     // Initialize engine with WebGL option
     const canvas = document.getElementById('gameCanvas');
 
-    // Get actual viewport dimensions
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    // Use the configured viewport dimensions from global config
+    const canvasLogicalWidth = viewportConfig.width;
+    const canvasLogicalHeight = viewportConfig.height;
 
-    // Set canvas to match viewport
-    canvas.width = viewportWidth;
-    canvas.height = viewportHeight;
+    // The canvas size should already be set by updateCanvasSize(), but ensure it's correct
+    canvas.width = canvasLogicalWidth;
+    canvas.height = canvasLogicalHeight;
 
     const engineOptions = { 
         useWebGL: ${settings.useWebGL},
         enableFullscreen: true,
-        pixelWidth: viewportWidth,
-        pixelHeight: viewportHeight,
+        pixelWidth: canvasLogicalWidth,
+        pixelHeight: canvasLogicalHeight,
         pixelScale: 1
     };
 
@@ -2902,8 +2914,8 @@ async function initializeGame() {
 
     // Add resize handler to engine
     engine.handleResize = function(width, height) {
-        this.canvas.width = width;
-        this.canvas.height = height;
+        // Don't change canvas.width/height here - updateCanvasSize() already did that
+        // Just update the engine's internal state
         this.width = width;
         this.height = height;
         
@@ -2914,12 +2926,14 @@ async function initializeGame() {
         
         // Update camera bounds if camera exists
         if (this.camera) {
-            // Keep camera centered but update bounds
             this.camera.updateBounds(width, height);
         }
         
-        console.log('Engine resized to:', width, 'x', height);
+        console.log('Engine internal state resized to:', width, 'x', height);
     };
+    
+    // Call initial resize to sync engine with canvas
+    engine.handleResize(canvasLogicalWidth, canvasLogicalHeight);
     
     // CRITICAL: Connect physics to engine properly
     if (window.physicsManager) {
@@ -2957,7 +2971,7 @@ async function initializeGame() {
     }
     
     // Setup canvas scaling
-    function resizeCanvas() {
+    /*function resizeCanvas() {
         const container = document.getElementById('game-container');
         const canvas = document.getElementById('gameCanvas');
         
@@ -2981,10 +2995,10 @@ async function initializeGame() {
         canvas.style.left = '50%';
         canvas.style.top = '50%';
         canvas.style.transform = 'translate(-50%, -50%)';
-    }
+    }*/
     
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    //resizeCanvas();
+    //window.addEventListener('resize', resizeCanvas);
     
     // Load scenes
     const scenes = gameData.scenes || [];

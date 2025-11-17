@@ -514,3 +514,18 @@ html, body {
     width: 80px;
 }
   
+#exampleProjectsDropdown {
+    font-size: 14px;
+    min-width: 150px;
+    transition: all 0.2s ease;
+}
+
+#exampleProjectsDropdown:hover {
+    background: #555 !important;
+    border-color: #666 !important;
+}
+
+#exampleProjectsDropdown:focus {
+    outline: 2px solid #ff9800;
+    outline-offset: 2px;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "darkmatter-multiplayer-server",
+  "version": "1.0.0",
+  "description": "Multiplayer server for Dark Matter JS Game Engine",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "websocket",
+    "darkmatter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
