@@ -1,5 +1,8 @@
 // Initialize editor components
 document.addEventListener('DOMContentLoaded', async () => {
+     // Store cleanup functions
+    const cleanupFunctions = [];
+    
     try {
         if (window.docsModal) {
             console.log('Documentation button clicked');
@@ -318,10 +321,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Try to initialize ProjectManager immediately
     if (!initializeProjectManager()) {
-        // If not successful, set up periodic checking
+        // FIX 1: Properly clear ProjectManager interval
         const checkInterval = setInterval(() => {
             if (initializeProjectManager()) {
-                clearInterval(checkInterval);
+                clearInterval(checkInterval); // ✅ Already cleared
             }
         }, 100);
 
@@ -346,6 +349,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Hide context menu when clicking elsewhere
     document.addEventListener('click', () => {
         contextMenu.style.display = 'none';
+    });
+
+    // FIX 2: Store context menu listener for cleanup
+    const contextMenuHandler = () => {
+        contextMenu.style.display = 'none';
+    };
+    document.addEventListener('click', contextMenuHandler);
+    cleanupFunctions.push(() => document.removeEventListener('click', contextMenuHandler));
+
+    // FIX 4: Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+        // Clean up all registered listeners
+        cleanupFunctions.forEach(cleanup => cleanup());
+        
+        // Stop engine properly
+        if (window.engine) {
+            window.engine.stop();
+        }
+        
+        // Disconnect resize observer
+        if (window.engine && window.engine.resizeObserver) {
+            window.engine.resizeObserver.disconnect();
+        }
+        
+        // Stop auto-save
+        if (window.autoSaveManager) {
+            window.autoSaveManager.stopAutoSave();
+        }
+        
+        // Clean up database
+        if (window.fileBrowser && window.fileBrowser.dbName) {
+            indexedDB.deleteDatabase(window.fileBrowser.dbName);
+        }
+        
+        event.returnValue = 'Are you sure you want to leave?';
+        return event.returnValue;
     });
 
     // Initialize AutoSaveManager after editor is initialized
@@ -628,19 +667,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Dispatch an initial resize event to set canvas size
     window.dispatchEvent(new Event('resize'));
 
-    // Initialize console output
-    const consoleOutput = document.querySelector('.console-output');
-    const clearConsoleButton = document.getElementById('clearConsole');
-
-    // Console message types
-    const messageTypes = ['log', 'info', 'warn', 'error'];
-
-    // Store original console methods
-    const originalConsole = {};
-    messageTypes.forEach(type => {
-        originalConsole[type] = console[type];
-    });
-
     // Helper to format timestamp
     function getTimestamp() {
         const now = new Date();
@@ -661,33 +687,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Override console methods
+    // Initialize console output
+    const consoleOutput = document.querySelector('.console-output');
+    const clearConsoleButton = document.getElementById('clearConsole');
+
+    // ✅ MOVE THIS DECLARATION HERE (before it's used)
+    const messageTypes = ['log', 'info', 'warn', 'error'];
+
+    // Store original console methods
+    const originalConsole = {};
+    messageTypes.forEach(type => {
+        originalConsole[type] = console[type];
+    });
+
+    // Helper to format timestamp
+    function getTimestamp() {
+        const now = new Date();
+        return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    }
+
+    // Override console methods with memory leak fix
     messageTypes.forEach(type => {
         console[type] = (...args) => {
             // Call original method
             originalConsole[type].apply(console, args);
 
-            // Create message element
             const message = document.createElement('div');
             message.className = `console-message ${type}`;
 
-            // Add timestamp
             const timestamp = document.createElement('span');
             timestamp.className = 'console-timestamp';
             timestamp.textContent = getTimestamp();
             message.appendChild(timestamp);
 
-            // Add message content
             const content = document.createElement('span');
             content.textContent = args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
             ).join(' ');
             message.appendChild(content);
 
-            // Add to console output
             consoleOutput.appendChild(message);
 
-            // Auto-scroll to bottom
+            // ✅ LIMIT TO 500 MESSAGES MAX TO PREVENT MEMORY LEAK
+            while (consoleOutput.children.length > 500) {
+                consoleOutput.removeChild(consoleOutput.firstChild);
+            }
+
             consoleOutput.scrollTop = consoleOutput.scrollHeight;
         };
     });
@@ -699,24 +744,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Optional: Add input handling
     const consoleInput = document.querySelector('.console-input-field');
-    consoleInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.target.value.trim()) {
-            try {
-                // Log the input
-                console.log('>', e.target.value);
-
-                // Evaluate the input
-                const result = eval(e.target.value);
-                if (result !== undefined) {
-                    console.log(result);
+    if (consoleInput) {
+        consoleInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.value.trim()) {
+                try {
+                    console.log('>', e.target.value);
+                    const result = eval(e.target.value);
+                    if (result !== undefined) {
+                        console.log(result);
+                    }
+                } catch (error) {
+                    console.error(error);
                 }
-            } catch (error) {
-                console.error(error);
+                e.target.value = '';
             }
+        });
+    }
 
-            // Clear input
-            e.target.value = '';
-        }
+    // Clear console button handler
+    clearConsoleButton.addEventListener('click', () => {
+        consoleOutput.innerHTML = '';
     });
 
     // Zen Mode button handler
@@ -1330,4 +1377,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     }, 500);
+
+    // Store original console methods for potential restoration
+    originalConsole = { ...console };
+
+    // Override console methods with empty functions
+    console.log = function() {};
+    console.warn = function() {};
+    console.error = function() {};
+    console.info = function() {};
+    console.debug = function() {};
 });

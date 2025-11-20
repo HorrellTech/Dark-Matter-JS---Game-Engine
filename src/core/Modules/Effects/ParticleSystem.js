@@ -1459,6 +1459,12 @@ class ParticleSystem extends Module {
     }
 
     prepareBatchedParticles() {
+        // ✅ Safety check: Ensure batchedParticles is initialized
+        if (!this.batchedParticles || !(this.batchedParticles instanceof Map)) {
+            console.warn('ParticleSystem: batchedParticles not properly initialized, reinitializing...');
+            this.batchedParticles = new Map();
+        }
+        
         this.batchedParticles.clear();
 
         for (const particle of this.particles) {
@@ -1748,6 +1754,13 @@ class ParticleSystem extends Module {
     }
 
     drawBatchedParticles(ctx) {
+        // ✅ Safety check: Ensure batchedParticles is initialized
+        if (!this.batchedParticles || !(this.batchedParticles instanceof Map)) {
+            console.warn('ParticleSystem: batchedParticles not properly initialized, reinitializing...');
+            this.batchedParticles = new Map();
+            return;
+        }
+
         for (const [batchKey, particles] of this.batchedParticles) {
             if (particles.length === 0) continue;
 
@@ -2299,6 +2312,19 @@ class ParticleSystem extends Module {
         super.fromJSON(json);
 
         if (!json) return;
+
+        // ✅ CRITICAL FIX: Ensure internal state is properly initialized
+        // These can be lost during deserialization
+        if (!this.particles) this.particles = [];
+        if (!this.particlePool) this.particlePool = [];
+        if (!this.batchedParticles) this.batchedParticles = new Map();
+        if (!this.collisionCache) this.collisionCache = [];
+        
+        // Reset state flags
+        this.isEmitting = false;
+        this.emissionTimer = 0;
+        this.systemTimer = 0;
+        this.lastCullTime = 0;
 
         // Emission properties
         if (json.emissionRate !== undefined) this.emissionRate = json.emissionRate;

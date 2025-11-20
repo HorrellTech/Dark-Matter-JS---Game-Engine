@@ -677,17 +677,19 @@ canvas {
 
 .vector-components {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;  /* Changed from default row to column */
+    width: 100%;
     padding: 4px 0 0 12px;
     margin-top: 4px;
     border-left: 2px solid rgba(100, 100, 120, 0.3);
+    gap: 6px;  /* Add gap for spacing between components */
 }
 
 .vector-component {
     display: flex;
     align-items: center;
-    margin-right: 10px;
-    margin-bottom: 6px;
+    margin-right: 0;  /* Remove right margin since we're stacking */
+    margin-bottom: 0;  /* Remove bottom margin, using gap instead */
 }
 
 .vector-component label {
@@ -1247,6 +1249,25 @@ button.remove-vertex:disabled {
     letter-spacing: 0.5px;
     margin-top: 8px;
     margin-bottom: 2px;
+}
+
+.module-edit {
+    background: none;
+    border: none;
+    color: #4CAF50;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.module-edit:hover {
+    color: #66BB6A;
+    transform: scale(1.1);
+}
+
+.module-edit i {
+    pointer-events: none;
 }
 
 /*.vector-components {

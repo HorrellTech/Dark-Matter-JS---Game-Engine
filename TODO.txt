@@ -29,4 +29,5 @@ user will be able to manipulate the spline in the editor, updating its values.
 
 - Release rubber ducky as its own open source javascript project
 
-- EventSheetEditor needs to nest if statements inside the actions group correctly. Small size also needs to be smaller
+- Clones game objects arent carrying over the game objects current properties, suggesting maybe they're referencing an older 
+    version of the game object, meaning maybe we arent destroying old instances or modules...

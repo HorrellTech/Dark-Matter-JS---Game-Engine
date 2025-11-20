@@ -8,6 +8,9 @@ class Inspector {
         this.modulesList = null;
         this.availableModules = [];
 
+        this.playModeChanges = new Map(); // Store changes made during play mode
+        this.applyToEditorEnabled = false; // Whether to apply changes back to editor
+
         // Initialize UI
         this.initializeUI();
 
@@ -34,37 +37,40 @@ class Inspector {
      */
     initializeUI() {
         this.container.innerHTML = `
-            <div class="inspector-container">
-                <div class="inspector-header">
-                    <div class="no-object-message">No GameObject selected</div>
-                    <div class="object-header" style="display: none;">
-                        <div class="header-row">
-                            <input type="checkbox" class="object-active-toggle" title="Enable/Disable GameObject">
-                            <input type="text" class="object-name-input" placeholder="Name">
-                            <button class="lock-button" title="Lock Inspector">
-                                <i class="fas fa-unlock"></i>
-                            </button>
-                        </div>
-                        <div class="parent-info">
-                            <span class="parent-label">Parent:</span>
-                            <span class="parent-name">None</span>
-                            <button class="unparent-button" title="Remove from parent">
-                                <i class="fas fa-unlink"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="inspector-scroll-container">
-                    <div class="modules-list"></div>
-                    <div class="add-module-container">
-                        <button class="add-module-button">
-                            <i class="fas fa-plus"></i> Add Module
+        <div class="inspector-container">
+            <div class="inspector-header">
+                <div class="no-object-message">No GameObject selected</div>
+                <div class="object-header" style="display: none;">
+                    <div class="header-row">
+                        <input type="checkbox" class="object-active-toggle" title="Enable/Disable GameObject">
+                        <input type="text" class="object-name-input" placeholder="Name">
+                        <button class="lock-button" title="Lock Inspector">
+                            <i class="fas fa-unlock"></i>
                         </button>
-                        <div class="module-dropdown" style="display: none;"></div>
+                        <button class="apply-to-editor-toggle" title="Apply to Editor: OFF (changes will be discarded)" style="display: none;">
+                            <i class="far fa-save"></i>
+                        </button>
+                    </div>
+                    <div class="parent-info">
+                        <span class="parent-label">Parent:</span>
+                        <span class="parent-name">None</span>
+                        <button class="unparent-button" title="Remove from parent">
+                            <i class="fas fa-unlink"></i>
+                        </button>
                     </div>
                 </div>
             </div>
-        `;
+            <div class="inspector-scroll-container">
+                <div class="modules-list"></div>
+                <div class="add-module-container">
+                    <button class="add-module-button">
+                        <i class="fas fa-plus"></i> Add Module
+                    </button>
+                    <div class="module-dropdown" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    `;
 
         // Get references to important elements
         this.objectHeader = this.container.querySelector('.object-header');
@@ -78,9 +84,32 @@ class Inspector {
         this.modulesList = this.container.querySelector('.modules-list');
         this.addModuleButton = this.container.querySelector('.add-module-button');
         this.moduleDropdown = this.container.querySelector('.module-dropdown');
+        this.applyToEditorButton = this.container.querySelector('.apply-to-editor-toggle');
 
         // Set up event listeners
         this.setupEventListeners();
+
+        // Listen for module reload events
+        if (window.moduleRegistry) {
+            window.moduleRegistry.addListener((event, ModuleClass) => {
+                if (event === 'register' && this.inspectedObject) {
+                    // Check if the inspected object has this module type
+                    const hasModule = this.inspectedObject.modules?.some(m =>
+                        m.constructor.name === ModuleClass.name
+                    );
+
+                    if (hasModule) {
+                        console.log(`Module ${ModuleClass.name} was reloaded, refreshing inspector...`);
+                        // Re-inspect the same object to get fresh module references
+                        const currentObject = this.inspectedObject;
+                        this.inspectedObject = null;
+                        requestAnimationFrame(() => {
+                            this.inspect(currentObject);
+                        });
+                    }
+                }
+            });
+        }
 
         // Listen for panel resize events
         window.addEventListener('panelsResized', () => {
@@ -158,6 +187,26 @@ class Inspector {
         this.addModuleButton.addEventListener('click', () => {
             this.toggleModuleDropdown();
         });
+
+        // Apply to Editor toggle button (add after lock button listener)
+        if (this.applyToEditorButton) {
+            this.applyToEditorButton.addEventListener('click', () => {
+                this.toggleApplyToEditor();
+            });
+        }
+
+        // Show/hide the Apply to Editor button based on play mode
+        if (window.engine) {
+            // Listen for play mode changes
+            const checkPlayMode = () => {
+                if (this.applyToEditorButton) {
+                    this.applyToEditorButton.style.display = window.engine.running ? 'block' : 'none';
+                }
+            };
+
+            // Check on interval (or you can add events to engine)
+            setInterval(checkPlayMode, 500);
+        }
 
         // Close module dropdown when clicking outside
         document.addEventListener('click', (e) => {
@@ -1175,6 +1224,9 @@ class Inspector {
                     ${isPlaceholder ? '<span class="placeholder-badge">PLACEHOLDER</span>' : ''}
                 </div>
                 <div class="module-actions">
+                    <button class="module-edit" title="Edit Script">
+                        <i class="fas fa-pencil-alt"></i>
+                    </button>
                     <button class="module-toggle" title="${module.enabled ? 'Disable' : 'Enable'} Module">
                         <i class="fas ${module.enabled ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
                     </button>
@@ -1191,6 +1243,14 @@ class Inspector {
                 ${this.generateModulePropertiesUI(module)}
             </div>
         `;
+
+        // After the existing button event listeners (around line 1195), add:
+        const editButton = moduleContainer.querySelector('.module-edit');
+        if (editButton) {
+            editButton.addEventListener('click', async () => {
+                await this.openModuleScriptEditor(module);
+            });
+        }
 
         // Set up event listeners (existing code)
         const toggleButton = moduleContainer.querySelector('.module-toggle');
@@ -1304,6 +1364,94 @@ class Inspector {
 
         // Remainder of your existing function
         return moduleContainer;
+    }
+
+    /**
+ * Open the script editor for a module
+ * @param {Module} module - The module to edit
+ */
+    async openModuleScriptEditor(module) {
+        try {
+            const moduleName = module.type || module.constructor.name;
+
+            // Check if file browser is available
+            if (!window.fileBrowser) {
+                alert('File browser not available');
+                return;
+            }
+
+            // Search for the module file
+            const filePath = await this.findModuleFile(moduleName);
+
+            if (!filePath) {
+                alert(`Could not find script file for module: ${moduleName}`);
+                return;
+            }
+
+            // Check if script editor is available
+            if (!window.scriptEditor) {
+                // Try to initialize it
+                if (window.ScriptEditor) {
+                    window.scriptEditor = new window.ScriptEditor();
+                } else {
+                    alert('Script editor not available');
+                    return;
+                }
+            }
+
+            // Read the file content
+            const content = await window.fileBrowser.readFile(filePath);
+
+            // Open in script editor
+            window.scriptEditor.loadFile(filePath, content);
+            window.scriptEditor.open();
+
+        } catch (error) {
+            console.error('Error opening module script:', error);
+            alert(`Error opening script: ${error.message}`);
+        }
+    }
+
+    /**
+     * Find the file path for a module by name
+     * @param {string} moduleName - The name of the module class
+     * @returns {Promise<string|null>} The file path or null if not found
+     */
+    async findModuleFile(moduleName) {
+        if (!window.fileBrowser || !window.fileBrowser.db) {
+            return null;
+        }
+
+        try {
+            const transaction = window.fileBrowser.db.transaction(['files'], 'readonly');
+            const store = transaction.objectStore('files');
+
+            return new Promise((resolve) => {
+                store.getAll().onsuccess = (e) => {
+                    const files = e.target.result;
+
+                    // Look for a file matching the module name
+                    const moduleFile = files.find(file => {
+                        if (file.type !== 'file' || !file.name.endsWith('.js')) {
+                            return false;
+                        }
+
+                        // Check if filename matches (without .js extension)
+                        const fileName = file.name.replace('.js', '');
+                        return fileName === moduleName;
+                    });
+
+                    resolve(moduleFile ? moduleFile.path : null);
+                };
+
+                store.getAll().onerror = () => {
+                    resolve(null);
+                };
+            });
+        } catch (error) {
+            console.error('Error finding module file (built-in modules can NOT be edited):', error);
+            return null;
+        }
     }
 
     /**
@@ -1673,7 +1821,21 @@ class Inspector {
                             btn.addEventListener('click', (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+
+                                // Execute the callback
                                 callback.call(module, e);
+
+                                // Auto-refresh inspector to show changes
+                                setTimeout(() => {
+                                    if (this.inspectedObject) {
+                                        this.showObjectInspector();
+                                    }
+
+                                    // Also refresh the canvas/editor if available
+                                    if (this.editor && typeof this.editor.refreshCanvas === 'function') {
+                                        this.editor.refreshCanvas();
+                                    }
+                                }, 10);
                             });
                         }
                     });
@@ -3151,30 +3313,211 @@ console.log("Module name:", this.name);</pre>
         // List header + controls
         let html = `
         <div class="property-row polygon-property">
-        <label>${this.formatPropertyName(prop.name)}</label>
-        <button class="vector-collapse" data-target="${id}" data-vector-id="${id}" title="${collapsed ? 'Expand' : 'Collapse'}">
-            <i class="fas ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
-        </button>
+            <label>${this.formatPropertyName(prop.name)}</label>
+            <button class="vector-collapse" data-target="${id}" data-vector-id="${id}" title="${collapsed ? 'Expand' : 'Collapse'}">
+                <i class="fas ${collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
+            </button>
         </div>
-        <div class="vector-components" id="${id}" style="${collapsed ? 'display:none' : ''}">`;
+        <div class="polygon-points-container" id="${id}" style="${collapsed ? 'display:none' : ''}">`;
 
         verts.forEach((v, i) => {
             html += `
-        <div class="vector-component">
-            <label>${i + 1}</label>
-            <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:x" value="${v.x}" step="1">
-            <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:y" value="${v.y}" step="1">
-            <button class="remove-vertex" data-index="${i}" data-prop-name="${prop.name}" ${verts.length <= min ? 'disabled' : ''}>×</button>
-        </div>`;
+            <div class="polygon-point-row">
+                <span class="point-index">${i + 1}</span>
+                <div class="point-inputs">
+                    <div class="point-input-group">
+                        <label>X</label>
+                        <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:x" value="${v.x}" step="1">
+                    </div>
+                    <div class="point-input-group">
+                        <label>Y</label>
+                        <input type="number" class="component-input" data-prop-name="${prop.name}" data-component="${i}:y" value="${v.y}" step="1">
+                    </div>
+                </div>
+                <button class="remove-vertex" data-index="${i}" data-prop-name="${prop.name}" ${verts.length <= min ? 'disabled' : ''} title="Remove point">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>`;
         });
 
         html += `
-        <button class="add-vertex" data-prop-name="${prop.name}">
-            <i class="fas fa-plus"></i> Add Point
-        </button>
+            <button class="add-vertex" data-prop-name="${prop.name}">
+                <i class="fas fa-plus"></i> Add Point
+            </button>
         </div>`;
 
         return html;
+    }
+
+    /**
+ * Enable "Apply to Editor" mode - changes in play mode will be saved to editor
+ */
+    enableApplyToEditor() {
+        this.applyToEditorEnabled = true;
+        this.updateApplyToEditorButton();
+        console.log("Apply to Editor enabled - changes will be saved when stopping play mode");
+    }
+
+    /**
+     * Disable "Apply to Editor" mode
+     */
+    disableApplyToEditor() {
+        this.applyToEditorEnabled = false;
+        this.playModeChanges.clear();
+        this.updateApplyToEditorButton();
+        console.log("Apply to Editor disabled - changes will be discarded when stopping play mode");
+    }
+
+    /**
+     * Toggle "Apply to Editor" mode
+     */
+    toggleApplyToEditor() {
+        if (this.applyToEditorEnabled) {
+            this.disableApplyToEditor();
+        } else {
+            this.enableApplyToEditor();
+        }
+    }
+
+    /**
+     * Update the Apply to Editor button visual state
+     */
+    updateApplyToEditorButton() {
+        const button = this.container.querySelector('.apply-to-editor-toggle');
+        if (button) {
+            if (this.applyToEditorEnabled) {
+                button.classList.add('active');
+                button.title = 'Apply to Editor: ON (changes will be saved)';
+                button.innerHTML = '<i class="fas fa-save"></i>';
+            } else {
+                button.classList.remove('active');
+                button.title = 'Apply to Editor: OFF (changes will be discarded)';
+                button.innerHTML = '<i class="far fa-save"></i>';
+            }
+        }
+    }
+
+    /**
+     * Track a property change during play mode
+     */
+    trackPlayModeChange(gameObject, modulePath, propertyPath, value) {
+        if (!this.applyToEditorEnabled || !window.engine || !window.engine.running) {
+            return;
+        }
+
+        const objectKey = gameObject.id;
+        if (!this.playModeChanges.has(objectKey)) {
+            this.playModeChanges.set(objectKey, new Map());
+        }
+
+        const objectChanges = this.playModeChanges.get(objectKey);
+        const changeKey = `${modulePath}.${propertyPath}`;
+        objectChanges.set(changeKey, value);
+
+        console.log(`Tracked play mode change: ${gameObject.name} -> ${changeKey} = ${value}`);
+    }
+
+    /**
+     * Apply tracked changes back to editor objects when stopping play mode
+     */
+    applyPlayModeChangesToEditor() {
+        if (!this.applyToEditorEnabled || this.playModeChanges.size === 0) {
+            this.playModeChanges.clear();
+            return;
+        }
+
+        console.log(`Applying ${this.playModeChanges.size} objects worth of play mode changes to editor...`);
+
+        // Get the original objects from the editor
+        const originalObjects = window.engine?.originalGameObjects || [];
+
+        this.playModeChanges.forEach((changes, objectId) => {
+            // Find the original object by ID
+            const originalObject = this.findObjectById(originalObjects, objectId);
+            if (!originalObject) {
+                console.warn(`Could not find original object with ID ${objectId}`);
+                return;
+            }
+
+            console.log(`Applying changes to ${originalObject.name}:`, Array.from(changes.entries()));
+
+            changes.forEach((value, changeKey) => {
+                const [modulePath, ...propertyParts] = changeKey.split('.');
+                const propertyPath = propertyParts.join('.');
+
+                // Find the module
+                let module;
+                if (modulePath === 'transform' || modulePath === 'gameObject') {
+                    // Changes to GameObject itself
+                    this.applyPropertyChange(originalObject, propertyPath, value);
+                } else {
+                    // Find module by ID or type
+                    module = originalObject.modules?.find(m => m.id === modulePath || m.type === modulePath);
+                    if (module) {
+                        this.applyPropertyChange(module, propertyPath, value);
+                    }
+                }
+            });
+        });
+
+        // Clear tracked changes
+        this.playModeChanges.clear();
+
+        // Refresh the inspector if we have a selected object
+        if (this.inspectedObject) {
+            this.showObjectInspector();
+        }
+
+        // Refresh the editor canvas
+        if (this.editor) {
+            this.editor.refreshCanvas();
+        }
+
+        console.log("Play mode changes applied to editor successfully");
+    }
+
+    /**
+     * Helper to find an object by ID in a hierarchy
+     */
+    findObjectById(objects, id) {
+        for (const obj of objects) {
+            if (obj.id === id) {
+                return obj;
+            }
+            if (obj.children && obj.children.length > 0) {
+                const found = this.findObjectById(obj.children, id);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Apply a property change to an object or module
+     */
+    applyPropertyChange(target, propertyPath, value) {
+        const parts = propertyPath.split('.');
+        let current = target;
+
+        // Navigate to the parent of the final property
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (current[parts[i]] === undefined) {
+                console.warn(`Property path ${propertyPath} not found on target`, target);
+                return;
+            }
+            current = current[parts[i]];
+        }
+
+        const finalProp = parts[parts.length - 1];
+
+        // Use setProperty if available
+        if (typeof target.setProperty === 'function' && parts.length === 1) {
+            target.setProperty(finalProp, value);
+        } else {
+            current[finalProp] = value;
+        }
+
+        console.log(`Applied ${propertyPath} = ${value} to`, target);
     }
 
     inspectMultipleObjects(objects) {
@@ -3479,7 +3822,7 @@ console.log("Module name:", this.name);</pre>
                 <i class="fas ${isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>
             </button>
         </div>
-        <div class="vector-components" id="${collapsibleId}" style="display:${isCollapsed ? 'none' : 'flex'}; flex-direction:row;">
+        <div class="vector-components" id="${collapsibleId}" style="display:${isCollapsed ? 'none' : 'flex'};">
             <div class="vector-component">
                 <label title="X coordinate">X</label>
                 <input type="number" class="component-input"
@@ -3587,10 +3930,65 @@ console.log("Module name:", this.name);</pre>
     setupModulePropertyListeners(container, module) {
         console.log("Setting up module property listeners for:", module.type, module);
 
-        // Define the update function outside the event handlers for consistent use
+        // CRITICAL FIX: Helper function to ALWAYS get the live module from the game object
+        const getLiveModule = () => {
+            // First, ensure we have the live GameObject reference from the scene
+            let liveGameObject = this.inspectedObject;
+            
+            // Verify this game object is actually in the scene
+            if (window.editor && window.editor.activeScene) {
+                const sceneObject = window.editor.activeScene.findObjectById(this.inspectedObject?.id);
+                if (sceneObject) {
+                    liveGameObject = sceneObject;
+                    // Update our reference if it's stale
+                    if (liveGameObject !== this.inspectedObject) {
+                        console.warn('⚠️ Inspector had stale GameObject reference, updating...');
+                        this.inspectedObject = liveGameObject;
+                    }
+                }
+            }
+            
+            if (!liveGameObject || !liveGameObject.modules) {
+                return null;
+            }
+
+            // Find module by data-module-id from the container
+            const moduleId = container.dataset.moduleId;
+            if (moduleId) {
+                const found = liveGameObject.modules.find(m => m.id === moduleId);
+                if (found) {
+                    console.log(`✅ Found live module by ID: ${found.type}`);
+                    return found;
+                }
+            }
+
+            // Fallback: find by original module's ID
+            const found = liveGameObject.modules.find(m => m.id === module.id);
+            if (found) {
+                console.log(`✅ Found live module by fallback ID: ${found.type}`);
+                return found;
+            }
+
+            // Last resort: find by type
+            const typeFound = liveGameObject.modules.find(m => m.type === module.type);
+            if (typeFound) {
+                console.log(`⚠️ Found live module by type only (less reliable): ${typeFound.type}`);
+            }
+            return typeFound;
+        };
+
+        // Define the update function with change tracking
         const updateGameObject = () => {
             if (this.editor && this.editor.refreshCanvas) {
                 this.editor.refreshCanvas();
+            }
+        };
+
+        // Helper to track changes
+        const trackChange = (modulePath, propertyPath, value) => {
+            const liveModule = getLiveModule();
+            if (liveModule && liveModule.gameObject) {
+                this.trackPlayModeChange(liveModule.gameObject, modulePath, propertyPath, value);
             }
         };
 
@@ -3649,8 +4047,10 @@ console.log("Module name:", this.name);</pre>
             // Clear button
             if (clearBtn) {
                 clearBtn.addEventListener('click', () => {
-                    this.clearAssetProperty(module, propName);
-                    this.refreshModuleUI(module);
+                    const liveModule = getLiveModule();
+                    if (!liveModule) return;
+                    this.clearAssetProperty(liveModule, propName);
+                    this.refreshModuleUI(liveModule);
                     this.editor?.refreshCanvas();
                 });
             }
@@ -3659,8 +4059,10 @@ console.log("Module name:", this.name);</pre>
             if (dropdown) {
                 dropdown.addEventListener('change', (e) => {
                     if (e.target.value) {
-                        this.setAssetProperty(module, propName, e.target.value);
-                        this.refreshModuleUI(module);
+                        const liveModule = getLiveModule();
+                        if (!liveModule) return;
+                        this.setAssetProperty(liveModule, propName, e.target.value);
+                        this.refreshModuleUI(liveModule);
                         this.editor?.refreshCanvas();
                     }
                 });
@@ -3686,15 +4088,19 @@ console.log("Module name:", this.name);</pre>
                     e.preventDefault();
                     e.stopPropagation();
 
+                    // CRITICAL FIX: Get the LIVE module
+                    const liveModule = getLiveModule();
+                    if (!liveModule) return;
+
                     // Clear the image
-                    if (typeof module.setProperty === 'function') {
-                        module.setProperty(propName, null);
+                    if (typeof liveModule.setProperty === 'function') {
+                        liveModule.setProperty(propName, null);
                     } else {
-                        module[propName] = null;
+                        liveModule[propName] = null;
                     }
 
                     // Update UI
-                    this.refreshModuleUI(module);
+                    this.refreshModuleUI(liveModule);
                     updateGameObject();
                 });
             }
@@ -3706,9 +4112,14 @@ console.log("Module name:", this.name);</pre>
                 input.addEventListener('change', () => {
                     const propName = input.dataset.propName;
                     const value = input.value;
-                    this.updateModuleProperty(module, propName, value);
-                    if (typeof module.style === 'function') {
-                        this.refreshModuleUI(module);
+
+                    // CRITICAL FIX: Get the LIVE module
+                    const liveModule = getLiveModule();
+                    if (!liveModule) return;
+
+                    this.updateModuleProperty(liveModule, propName, value);
+                    if (typeof liveModule.style === 'function') {
+                        this.refreshModuleUI(liveModule);
                     }
                     if (this.editor && this.editor.refreshCanvas) {
                         this.editor.refreshCanvas();
@@ -3744,8 +4155,8 @@ console.log("Module name:", this.name);</pre>
                 const collapsed = tgt.style.display === 'none';
                 console.log(`Toggling vector collapse for ${targetId}: was ${collapsed ? 'collapsed' : 'expanded'}`);
 
-                // Toggle display
-                tgt.style.display = collapsed ? 'block' : 'none';
+                // Toggle display - use 'flex' instead of 'block' to maintain flexbox layout
+                tgt.style.display = collapsed ? 'flex' : 'none';
 
                 // Update icon
                 const icon = btn.querySelector('i');
@@ -3759,16 +4170,19 @@ console.log("Module name:", this.name);</pre>
             });
         });
 
-
         // Handle button clicks
         container.querySelectorAll('.property-button, .property-btn').forEach(button => {
             button.addEventListener('click', () => {
                 const buttonId = button.id;
                 const propName = button.dataset.propName;
 
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
                 // Look for the onClick handler in the module's exposed properties
-                if (module.getExposedProperties) {
-                    const exposedProps = module.getExposedProperties();
+                if (liveModule.getExposedProperties) {
+                    const exposedProps = liveModule.getExposedProperties();
                     const buttonProp = exposedProps.find(prop =>
                         prop.name === propName ||
                         prop.name === buttonId ||
@@ -3785,10 +4199,10 @@ console.log("Module name:", this.name);</pre>
 
                     // Special handling for code properties
                     if (buttonProp && buttonProp.type === 'code') {
-                        const currentCode = this.getModuleProperty(module, propName) || '';
+                        const currentCode = this.getModuleProperty(liveModule, propName) || '';
                         if (window.scriptEditor) {
                             window.scriptEditor.loadInlineCode(currentCode, (newCode) => {
-                                this.updateModuleProperty(module, propName, newCode);
+                                this.updateModuleProperty(liveModule, propName, newCode);
                                 this.editor?.refreshCanvas();
                             });
                         } else {
@@ -3799,9 +4213,9 @@ console.log("Module name:", this.name);</pre>
                 }
 
                 // Also check for style-based buttons
-                if (module._styleButtonHandlers && module._styleButtonHandlers[buttonId]) {
+                if (liveModule._styleButtonHandlers && liveModule._styleButtonHandlers[buttonId]) {
                     try {
-                        module._styleButtonHandlers[buttonId]();
+                        liveModule._styleButtonHandlers[buttonId]();
                     } catch (error) {
                         console.error('Error executing style button handler:', error);
                     }
@@ -3813,10 +4227,13 @@ console.log("Module name:", this.name);</pre>
         container.querySelectorAll('.add-vertex').forEach(button => {
             button.addEventListener('click', () => {
                 const propName = button.dataset.propName;
-                if (!propName || !module[propName]) return;
+
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule || !liveModule[propName]) return;
 
                 // Get the polygon
-                const polygon = module[propName];
+                const polygon = liveModule[propName];
 
                 // Calculate a new vertex position
                 const len = polygon.length;
@@ -3847,19 +4264,19 @@ console.log("Module name:", this.name);</pre>
                 }
 
                 // Add the new vertex
-                if (typeof module.addVertex === 'function') {
-                    module.addVertex(newVertex);
+                if (typeof liveModule.addVertex === 'function') {
+                    liveModule.addVertex(newVertex);
                 } else {
                     polygon.push(newVertex);
 
                     // If there's no addVertex method, we need to update the property manually
-                    if (typeof module.setProperty === 'function') {
-                        module.setProperty(propName, polygon);
+                    if (typeof liveModule.setProperty === 'function') {
+                        liveModule.setProperty(propName, polygon);
                     }
                 }
 
                 // Refresh UI and update
-                this.refreshModuleUI(module);
+                this.refreshModuleUI(liveModule);
                 updateGameObject();
             });
         });
@@ -3870,9 +4287,11 @@ console.log("Module name:", this.name);</pre>
                 const index = parseInt(button.dataset.index);
                 const propName = button.dataset.propName;
 
-                if (isNaN(index) || !propName || !module[propName]) return;
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule || isNaN(index) || !propName || !liveModule[propName]) return;
 
-                const polygon = module[propName];
+                const polygon = liveModule[propName];
 
                 if (polygon.length <= 3) {
                     // console.warn('Cannot remove vertex: polygon must have at least 3 vertices');
@@ -3880,19 +4299,19 @@ console.log("Module name:", this.name);</pre>
                 }
 
                 // Remove the vertex
-                if (typeof module.removeVertex === 'function') {
-                    module.removeVertex(index);
+                if (typeof liveModule.removeVertex === 'function') {
+                    liveModule.removeVertex(index);
                 } else {
                     polygon.splice(index, 1);
 
                     // If there's no removeVertex method, update property manually
-                    if (typeof module.setProperty === 'function') {
-                        module.setProperty(propName, polygon);
+                    if (typeof liveModule.setProperty === 'function') {
+                        liveModule.setProperty(propName, polygon);
                     }
                 }
 
                 // Refresh UI and update
-                this.refreshModuleUI(module);
+                this.refreshModuleUI(liveModule);
                 updateGameObject();
             });
         });
@@ -3904,13 +4323,17 @@ console.log("Module name:", this.name);</pre>
                 const component = input.dataset.component;
                 const raw = parseFloat(input.value) || 0;
 
-                let current = typeof module.getProperty === 'function'
-                    ? module.getProperty(propName)
-                    : module[propName];
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                let current = typeof liveModule.getProperty === 'function'
+                    ? liveModule.getProperty(propName)
+                    : liveModule[propName];
 
                 // Ensure we have a valid object to modify
                 if (!current) {
-                    // console.warn(`Property ${propName} is undefined on module`, module);
+                    // console.warn(`Property ${propName} is undefined on module`, liveModule);
                     return;
                 }
 
@@ -3924,14 +4347,14 @@ console.log("Module name:", this.name);</pre>
                 }
 
                 // Try different ways to update the property
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, current);
+                if (typeof liveModule.setProperty === 'function') {
+                    liveModule.setProperty(propName, current);
                 } else {
-                    module[propName] = current;
+                    liveModule[propName] = current;
                 }
 
-                if (typeof module.style === 'function') {
-                    this.refreshModuleUI(module);
+                if (typeof liveModule.style === 'function') {
+                    this.refreshModuleUI(liveModule);
                 }
 
                 // Force immediate update
@@ -3958,19 +4381,26 @@ console.log("Module name:", this.name);</pre>
 
                 console.log(`Checkbox changed: ${propName} = ${value}`);
 
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, value);
-                } else if (propName in module) {
-                    module[propName] = value;
-                } else if (module.properties) {
-                    module.properties[propName] = value;
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                if (typeof liveModule.setProperty === 'function') {
+                    liveModule.setProperty(propName, value);
+                } else if (propName in liveModule) {
+                    liveModule[propName] = value;
+                } else if (liveModule.properties) {
+                    liveModule.properties[propName] = value;
                 }
 
-                if (typeof module.style === 'function') {
-                    this.refreshModuleUI(module);
+                // Track the change for apply to editor
+                trackChange(liveModule.id || liveModule.type, propName, value);
+
+                if (typeof liveModule.style === 'function') {
+                    this.refreshModuleUI(liveModule);
                 }
 
-                // IMPORTANT: Update game object for immediate effect
+                // IMPORTANT: Update game object for immediate effect in BOTH modes
                 updateGameObject();
             });
         });
@@ -3983,10 +4413,18 @@ console.log("Module name:", this.name);</pre>
                 if (valueDisplay) {
                     valueDisplay.textContent = range.value;
                 }
-                this.updateModuleProperty(module, range.dataset.propName, parseFloat(range.value));
+
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                // Track the change
+                trackChange(liveModule.id || liveModule.type, range.dataset.propName, parseFloat(range.value));
+
+                this.updateModuleProperty(liveModule, range.dataset.propName, parseFloat(range.value));
                 updateGameObject();
-                if (typeof module.style === 'function') {
-                    this.refreshModuleUI(module);
+                if (typeof liveModule.style === 'function') {
+                    this.refreshModuleUI(liveModule);
                 }
             });
         });
@@ -3994,10 +4432,18 @@ console.log("Module name:", this.name);</pre>
         // Toggle switches
         container.querySelectorAll('.toggle-switch input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => {
-                this.updateModuleProperty(module, checkbox.dataset.propName, checkbox.checked);
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                this.updateModuleProperty(liveModule, checkbox.dataset.propName, checkbox.checked);
+
+                // Track the change
+                trackChange(liveModule.id || liveModule.type, checkbox.dataset.propName, checkbox.checked);
+
                 updateGameObject();
-                if (typeof module.style === 'function') {
-                    this.refreshModuleUI(module);
+                if (typeof liveModule.style === 'function') {
+                    this.refreshModuleUI(liveModule);
                 }
             });
         });
@@ -4010,13 +4456,20 @@ console.log("Module name:", this.name);</pre>
 
                 console.log(`Color changed: ${propName} = ${value}`);
 
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, value);
-                } else if (propName in module) {
-                    module[propName] = value;
-                } else if (module.properties) {
-                    module.properties[propName] = value;
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                if (typeof liveModule.setProperty === 'function') {
+                    liveModule.setProperty(propName, value);
+                } else if (propName in liveModule) {
+                    liveModule[propName] = value;
+                } else if (liveModule.properties) {
+                    liveModule.properties[propName] = value;
                 }
+
+                // Track the change
+                trackChange(liveModule.id || liveModule.type, propName, value);
 
                 // Update game object for live preview
                 updateGameObject();
@@ -4035,15 +4488,27 @@ console.log("Module name:", this.name);</pre>
 
             if (colorPicker && textInput) {
                 colorPicker.addEventListener('input', () => {
+                    // CRITICAL FIX: Get the LIVE module
+                    const liveModule = getLiveModule();
+                    if (!liveModule) return;
+
                     textInput.value = colorPicker.value;
-                    this.updateModuleProperty(module, colorPicker.dataset.propName, colorPicker.value);
+                    this.updateModuleProperty(liveModule, colorPicker.dataset.propName, colorPicker.value);
                     updateGameObject();
                 });
 
                 textInput.addEventListener('change', () => {
                     if (/^#[0-9A-Fa-f]{6}$/.test(textInput.value)) {
+                        // CRITICAL FIX: Get the LIVE module
+                        const liveModule = getLiveModule();
+                        if (!liveModule) return;
+
                         colorPicker.value = textInput.value;
-                        this.updateModuleProperty(module, colorPicker.dataset.propName, textInput.value);
+                        this.updateModuleProperty(liveModule, colorPicker.dataset.propName, textInput.value);
+
+                        // Track the change
+                        trackChange(liveModule.id || liveModule.type, colorPicker.dataset.propName, colorPicker.value);
+
                         updateGameObject();
                     } else {
                         textInput.value = colorPicker.value; // Reset to valid value
@@ -4067,16 +4532,23 @@ console.log("Module name:", this.name);</pre>
 
                 console.log(`Property changed: ${propName} = ${value}`);
 
-                if (typeof module.setProperty === 'function') {
-                    module.setProperty(propName, value);
-                } else if (propName in module) {
-                    module[propName] = value;
-                } else if (module.properties) {
-                    module.properties[propName] = value;
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
+                // Track the change
+                trackChange(liveModule.id || liveModule.type, propName, value);
+
+                if (typeof liveModule.setProperty === 'function') {
+                    liveModule.setProperty(propName, value);
+                } else if (propName in liveModule) {
+                    liveModule[propName] = value;
+                } else if (liveModule.properties) {
+                    liveModule.properties[propName] = value;
                 }
 
-                if (typeof module.style === 'function') {
-                    this.refreshModuleUI(module);
+                if (typeof liveModule.style === 'function') {
+                    this.refreshModuleUI(liveModule);
                 }
 
                 // IMPORTANT: Update game object for immediate effect
@@ -4096,16 +4568,20 @@ console.log("Module name:", this.name);</pre>
                 const propName = button.dataset.propName;
                 const btnId = button.dataset.btnId;
 
+                // CRITICAL FIX: Get the LIVE module
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+
                 // Call the module's button handler if it exists
-                if (typeof module.onButtonClick === 'function') {
-                    module.onButtonClick(propName, btnId);
+                if (typeof liveModule.onButtonClick === 'function') {
+                    liveModule.onButtonClick(propName, btnId);
                 }
 
                 // Look for specific handler method only if propName exists
                 if (propName && typeof propName === 'string') {
                     const handlerName = `on${propName.charAt(0).toUpperCase()}${propName.slice(1)}Click`;
-                    if (typeof module[handlerName] === 'function') {
-                        module[handlerName]();
+                    if (typeof liveModule[handlerName] === 'function') {
+                        liveModule[handlerName]();
                     }
                 }
 
@@ -4127,12 +4603,16 @@ console.log("Module name:", this.name);</pre>
             fileInput?.addEventListener('change', (e) => {
                 if (e.target.files.length > 0) {
                     const file = e.target.files[0];
-                    this.handleFileSelection(fileContainer, module, file);
+                    const liveModule = getLiveModule();
+                    if (!liveModule) return;
+                    this.handleFileSelection(fileContainer, liveModule, file);
                 }
             });
 
             clearBtn?.addEventListener('click', () => {
-                this.clearFileSelection(fileContainer, module);
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+                this.clearFileSelection(fileContainer, liveModule);
             });
 
             // File drop support
@@ -4142,20 +4622,26 @@ console.log("Module name:", this.name);</pre>
         // Array controls
         container.querySelectorAll('.add-array-item').forEach(button => {
             button.addEventListener('click', () => {
-                this.addArrayItem(button.dataset.propName, module, container);
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+                this.addArrayItem(button.dataset.propName, liveModule, container);
             });
         });
 
         container.querySelectorAll('.remove-array-item').forEach(button => {
             button.addEventListener('click', () => {
-                this.removeArrayItem(button.dataset.propName, button.dataset.index, module, container);
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+                this.removeArrayItem(button.dataset.propName, button.dataset.index, liveModule, container);
             });
         });
 
         // Array item inputs
         container.querySelectorAll('.array-item-input').forEach(input => {
             input.addEventListener('change', () => {
-                this.updateArrayItem(input.dataset.propName, input.dataset.index, input, module);
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+                this.updateArrayItem(input.dataset.propName, input.dataset.index, input, liveModule);
                 updateGameObject();
             });
         });
@@ -4163,7 +4649,9 @@ console.log("Module name:", this.name);</pre>
         // Object field inputs
         container.querySelectorAll('.object-field-input').forEach(input => {
             input.addEventListener('change', () => {
-                this.updateObjectField(input.dataset.propName, input.dataset.field, input, module);
+                const liveModule = getLiveModule();
+                if (!liveModule) return;
+                this.updateObjectField(input.dataset.propName, input.dataset.field, input, liveModule);
                 updateGameObject();
             });
         });
@@ -4608,64 +5096,137 @@ console.log("Module name:", this.name);</pre>
         });
     }
 
+    refreshInspectorAfterModuleReload() {
+        if (!this.inspectedObject) return;
+
+        // Clear the current inspector state
+        this.modulesList.innerHTML = '';
+
+        // Force re-inspection with fresh module references
+        const currentObject = this.inspectedObject;
+        this.inspectedObject = null;
+
+        // Small delay to ensure cleanup
+        requestAnimationFrame(() => {
+            this.inspect(currentObject);
+        });
+    }
+
+    /**
+     * Get the live module reference from the inspected game object
+     * This is critical for hot-reloading - the module instance may have been replaced
+     */
+    getLiveModuleReference(module) {
+        // First, ensure we have the live GameObject reference
+        let liveGameObject = this.inspectedObject;
+        
+        if (window.editor && window.editor.activeScene && this.inspectedObject) {
+            const sceneObject = window.editor.activeScene.findObjectById(this.inspectedObject.id);
+            if (sceneObject && sceneObject !== this.inspectedObject) {
+                console.warn('⚠️ Updating stale GameObject reference in inspector');
+                liveGameObject = sceneObject;
+                this.inspectedObject = sceneObject;
+            }
+        }
+        
+        if (!liveGameObject || !liveGameObject.modules || !module) {
+            return module; // Fallback to original if we can't find it
+        }
+
+        // Try to find by ID first (most reliable)
+        let liveModule = liveGameObject.modules.find(m => m.id === module.id);
+
+        // If not found by ID, try by type and name
+        if (!liveModule) {
+            liveModule = liveGameObject.modules.find(m =>
+                m.type === module.type && m.name === module.name
+            );
+        }
+
+        // If still not found, try just by type (less reliable but better than nothing)
+        if (!liveModule) {
+            liveModule = liveGameObject.modules.find(m => m.type === module.type);
+        }
+
+        if (liveModule && liveModule !== module) {
+            console.log(`🔄 Retrieved live module reference for ${module.type}`);
+        }
+
+        return liveModule || module; // Fallback to original if still not found
+    }
+
     /**
      * Helper to update module property
      */
+
     updateModuleProperty(module, propName, value) {
         if (!module || !this.inspectedObject) return;
 
-        // CRITICAL: Find the actual module instance attached to the game object
-        const actualModule = this.inspectedObject.modules?.find(m => m.id === module.id);
+        // CRITICAL FIX: Always get the live module reference
+        const actualModule = this.getLiveModuleReference(module);
 
         if (!actualModule) {
-            console.warn(`Could not find module ${module.type} in game object's module list`);
+            console.warn(`Could not find live module for ${module.type}`);
             return;
         }
 
-        // Update both the public and private property on the ACTUAL module
+        console.log('🔍 UPDATE MODULE PROPERTY:', {
+            module: actualModule.type,
+            property: propName,
+            value: value,
+            inspectedObject: this.inspectedObject.name,
+            inspectedObjectId: this.inspectedObject.id,
+            moduleId: actualModule.id,
+            // Check if this object is in the scene
+            inScene: window.editor?.activeScene?.gameObjects?.includes(this.inspectedObject)
+        });
+
         const privatePropName = `_${propName}`;
 
-        // Method 1: Try setProperty if available
-        if (typeof actualModule.setProperty === 'function') {
-            actualModule.setProperty(propName, value);
-        }
-        // Method 2: Use property setter if defined
-        else if (Object.getOwnPropertyDescriptor(actualModule, propName)?.set) {
-            actualModule[propName] = value;
-        }
-        // Method 3: Direct assignment
-        else {
-            actualModule[propName] = value;
-            // Also update private property if it exists
-            if (actualModule.hasOwnProperty(privatePropName)) {
-                actualModule[privatePropName] = value;
+        // Use the fresh module reference
+        try {
+            // Method 1: Try setProperty if available (recommended)
+            if (typeof actualModule.setProperty === 'function') {
+                actualModule.setProperty(propName, value);
             }
-        }
-
-        // If the module reference we have is different from the actual module,
-        // update it too to keep UI in sync
-        if (module !== actualModule) {
-            if (typeof module.setProperty === 'function') {
-                module.setProperty(propName, value);
-            } else {
-                module[propName] = value;
-                if (module.hasOwnProperty(privatePropName)) {
-                    module[privatePropName] = value;
+            // Method 2: Try direct property assignment with setter
+            else if (Object.getOwnPropertyDescriptor(actualModule, propName)?.set) {
+                actualModule[propName] = value;
+            }
+            // Method 3: Direct assignment to private property if exists
+            else if (actualModule.hasOwnProperty(privatePropName)) {
+                actualModule[privatePropName] = value;
+                // Manually trigger onChange if it exists
+                const propDef = actualModule.exposedProperties?.find(p => p.name === propName);
+                if (propDef?.options?.onChange) {
+                    try {
+                        propDef.options.onChange.call(actualModule, value);
+                    } catch (e) {
+                        console.error('Error in onChange callback:', e);
+                    }
                 }
             }
+            // Method 4: Fallback to direct assignment
+            else {
+                actualModule[propName] = value;
+            }
+
+            console.log('✅ Property updated successfully');
+        } catch (error) {
+            console.error(`Error updating property ${propName} on module ${actualModule.type}:`, error);
         }
 
-        // Mark the scene as dirty
+        // Mark scene as dirty
         if (window.editor && window.editor.activeScene) {
             window.editor.activeScene.markDirty();
+            console.log('📝 Scene marked dirty');
         }
 
-        // Refresh canvas immediately
+        // Refresh canvas
         if (this.editor && this.editor.refreshCanvas) {
             this.editor.refreshCanvas();
         }
     }
-
 
     /**
      * Helper to get module property
@@ -4865,7 +5426,9 @@ console.log("Module name:", this.name);</pre>
             /* ----- VECTOR COMPONENT STYLING ----- */
             /* Vector property container */
             .vector-property {
-                margin-bottom: 12px;
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 8px;
             }
             
             /* Vector header styling */
@@ -4902,21 +5465,23 @@ console.log("Module name:", this.name);</pre>
             .vector-components {
                 display: flex;
                 flex-direction: row;
-                width: 100%;
-                padding: 8px;
-                gap: 8px;
+                width: calc(100% - 20px); /* Reduce width for indent */
+                padding: 6px 8px; /* Smaller padding */
+                gap: 6px; /* Smaller gap */
                 margin-top: 4px;
-                background-color: rgba(40, 40, 40, 0.5);
+                margin-left: 20px; /* Indent to the right */
+                background-color: rgba(40, 40, 40, 0.3); /* Lighter background */
                 border-radius: 4px;
+                border-left: 2px solid rgba(100, 150, 200, 0.3); /* Add subtle accent */
             }
             
             /* Individual component (X, Y, Z) - vertical layout */
             .vector-component {
                 display: flex;
                 flex-direction: column;
-                width: 60px; /* Fixed narrower width */
-                max-width: 60px;
-                min-width: 60px;
+                width: 50px; /* Smaller width */
+                max-width: 50px;
+                min-width: 50px;
             }
             
             /* Component labels */
@@ -4924,61 +5489,198 @@ console.log("Module name:", this.name);</pre>
                 width: 100%;
                 text-align: center;
                 font-weight: bold;
-                color: #aaa;
-                margin-bottom: 4px;
-                font-size: 12px;
+                color: #888; /* Slightly dimmer */
+                margin-bottom: 3px; /* Smaller margin */
+                font-size: 10px; /* Smaller font */
+                text-transform: uppercase; /* Make it look more compact */
             }
             
             /* Component inputs */
             .vector-component input {
                 width: 100%;
-                max-width: 60px;
+                max-width: 50px;
+                font-size: 12px; /* Smaller font */
+                padding: 3px 4px; /* Smaller padding */
+                text-align: center; /* Center the values */
             }
             
             /* ----- POLYGON SPECIFIC STYLES ----- */
-            .polygon-property .vector-component {
-                display: grid;
-                grid-template-columns: 30px 1fr 1fr 30px;
+            .polygon-property {
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 12px;
+            }
+
+            .polygon-property .vector-collapse {
+                margin-left: auto;
+            }
+
+            .polygon-points-container {
+                display: flex;
+                flex-direction: column;
                 gap: 8px;
-                width: auto;
-                max-width: none;
+                margin-left: 20px;
+                margin-top: 8px;
+                padding: 8px;
+                background-color: rgba(40, 40, 40, 0.3);
+                border-radius: 4px;
+                border-left: 2px solid rgba(100, 150, 200, 0.3);
+            }
+
+            .polygon-point-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 6px 8px;
+                background-color: rgba(50, 50, 50, 0.4);
+                border-radius: 4px;
+            }
+
+            .point-index {
+                font-weight: bold;
+                color: #888;
+                font-size: 11px;
+                min-width: 20px;
+                text-align: center;
+            }
+
+            .point-inputs {
+                display: flex;
+                gap: 8px;
+                flex: 1;
+            }
+
+            .point-input-group {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+            }
+
+            .point-input-group label {
+                font-size: 10px;
+                font-weight: bold;
+                color: #888;
+                text-transform: uppercase;
+                margin-bottom: 3px;
+                text-align: center;
+            }
+
+            .point-input-group input {
+                width: 100%;
+                font-size: 12px;
+                padding: 6px 8px;
+                text-align: center;
+                background: #2d2d2d;
+                border: 1px solid #444;
+                color: #e0e0e0;
+                border-radius: 3px;
+                outline: none;
+                transition: all 0.2s ease;
+            }
+
+            .point-input-group input:hover {
+                border-color: #555;
+                background: #323232;
+            }
+
+            .point-input-group input:focus {
+                border-color: #0078d7;
+                background: #2a2a2a;
+                box-shadow: 0 0 0 2px rgba(0, 120, 215, 0.1);
+            }
+
+            /* Number input spinner buttons styling */
+            .point-input-group input[type="number"]::-webkit-inner-spin-button,
+            .point-input-group input[type="number"]::-webkit-outer-spin-button {
+                opacity: 0.5;
+                margin-left: 4px;
+            }
+
+            .point-input-group input[type="number"]:hover::-webkit-inner-spin-button,
+            .point-input-group input[type="number"]:hover::-webkit-outer-spin-button {
+                opacity: 1;
             }
             
             .remove-vertex {
-                width: 24px;
-                height: 24px;
+                width: 28px;
+                height: 28px;
+                min-width: 28px;
                 padding: 0;
-                background: none;
-                border: none;
+                background: rgba(244, 68, 68, 0.1);
+                border: 1px solid rgba(244, 68, 68, 0.3);
+                border-radius: 4px;
                 color: #f44;
                 cursor: pointer;
-                font-size: 16px;
+                font-size: 14px;
                 opacity: 0.7;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
             }
             
             .remove-vertex:hover:not([disabled]) {
                 opacity: 1;
+                background: rgba(244, 68, 68, 0.2);
+                border-color: rgba(244, 68, 68, 0.5);
+                transform: scale(1.05);
             }
             
             .remove-vertex[disabled] {
                 opacity: 0.3;
                 cursor: not-allowed;
+                background: rgba(100, 100, 100, 0.1);
+                border-color: rgba(100, 100, 100, 0.2);
+                color: #666;
             }
             
             .add-vertex {
-                margin-top: 6px;
-                padding: 4px 8px;
-                background: #444;
-                border: none;
+                margin-top: 4px;
+                padding: 8px 12px;
+                background: linear-gradient(180deg, #404040 0%, #383838 100%);
+                border: 1px solid #555;
                 border-radius: 4px;
-                color: #fff;
+                color: #e0e0e0;
                 cursor: pointer;
                 font-size: 12px;
+                font-weight: 500;
                 align-self: flex-start;
+                transition: all 0.2s;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             }
             
             .add-vertex:hover {
-                background: #555;
+                background: linear-gradient(180deg, #4a4a4a 0%, #424242 100%);
+                border-color: #666;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+                transform: translateY(-1px);
+            }
+
+            .add-vertex:active {
+                transform: translateY(0);
+                box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+            }
+
+            .add-vertex i {
+                margin-right: 6px;
+                font-size: 11px;
+            }
+
+            /* Improve point row hover state */
+            .polygon-point-row:hover {
+                background-color: rgba(60, 60, 60, 0.5);
+            }
+
+            /* Better point index styling */
+            .point-index {
+                font-weight: bold;
+                color: #7a9bb8;
+                font-size: 11px;
+                min-width: 24px;
+                text-align: center;
+                background: rgba(100, 150, 200, 0.15);
+                padding: 4px 6px;
+                border-radius: 3px;
             }
 
             /* --- Improved Property Group Styling --- */

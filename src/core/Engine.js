@@ -548,17 +548,13 @@ class Engine {
 
     setupResizeObserver() {
         if (this.canvas && this.canvas.parentElement && window.ResizeObserver) {
-            // Create a ResizeObserver to monitor container size changes
             this.resizeObserver = new ResizeObserver(entries => {
-                // Resize the canvas whenever the container size changes
                 this.resizeCanvas();
             });
-
-            // Start observing the canvas container
             this.resizeObserver.observe(this.canvas.parentElement);
         } else {
-            // Fallback for browsers without ResizeObserver
-            setInterval(() => this.resizeCanvas(), 1000); // Check every second
+            // ✅ Store interval ID for cleanup
+            this._resizeCheckInterval = setInterval(() => this.resizeCanvas(), 1000);
         }
     }
 
@@ -856,6 +852,8 @@ class Engine {
             window.input.setEngine(this);
         }
 
+        this.objectsToCreate.clear();
+
         console.log("Starting game...");
 
         this.viewportOriginalPosition = {
@@ -922,15 +920,16 @@ class Engine {
             this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this));
             console.log("Game resumed");
         }
-    }
+    } 
 
     stop() {
         console.log("Stopping game...");
         this.running = false;
         this.wasRunning = false;
+         // ✅ Ensure animation frame is cancelled
         if (this.animationFrameId) {
             cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null; // Ensure no stale frame
+            this.animationFrameId = null;
         }
 
         // Stop all melodicode audio
@@ -2704,10 +2703,20 @@ class Engine {
                 physicalHeight = containerHeight;
             }
         } else {
-            const scale = Math.min(
+            let scale = Math.min(
                 containerWidth / viewportWidth,
                 containerHeight / viewportHeight
             );
+
+            // Force integer scaling if pixel perfect mode is enabled
+            // This prevents "shimmering" and inconsistent pixel sizes
+            if (this.renderConfig.scaleMode === 'pixel-perfect' || 
+                this.renderConfig.pixelPerfect || 
+                this.renderConfig.usePixelScaling) {
+                
+                scale = Math.floor(scale);
+                if (scale < 1) scale = 1;
+            }
 
             physicalWidth = viewportWidth * scale;
             physicalHeight = viewportHeight * scale;
@@ -2814,17 +2823,23 @@ class Engine {
     }
 
     cleanup() {
-        // Clean up resources when engine is destroyed
+        // Disconnect resize observer
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
+            this.resizeObserver = null;
         }
-
-        this._resizeHandler = this.resizeCanvas.bind(this);
-        window.addEventListener('resize', this._resizeHandler);
-        window.addEventListener('panel-resized', this._resizeHandler);
-
-        // Clear viewport callbacks
-        this.viewportCallbacks = [];
+        
+        // Clear resize interval
+        if (this._resizeCheckInterval) {
+            clearInterval(this._resizeCheckInterval);
+            this._resizeCheckInterval = null;
+        }
+        
+        // Cancel animation frame
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
     }
 }
 

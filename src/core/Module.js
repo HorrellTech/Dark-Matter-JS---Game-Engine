@@ -418,36 +418,66 @@ class Module {
     /** 
      *  Create a new instance of a GameObject by name
      */
-    instanceCreate(x, y, gameObjectName, destroyOriginal = true) {
+    instanceCreate(x, y, gameObjectName, destroyOriginal = true, startInvisible = false) {
         if (window.engine) {
-            // First check if the object exists in objectsToCreate
             let obj = null;
+            
+            // Check cache FIRST
             if (window.engine.objectsToCreate && window.engine.objectsToCreate.has(gameObjectName)) {
                 obj = window.engine.objectsToCreate.get(gameObjectName);
+                
+                // IMPORTANT: Check if the object in scene has been updated (newer version exists)
+                const sceneObj = this.getGameObjectByName(gameObjectName);
+                if (sceneObj) {
+                    // Found a newer version in the scene - update the cache
+                    console.log(`Found updated version of '${gameObjectName}' in scene - refreshing cache`);
+                    const template = sceneObj.clone();
+                    window.engine.objectsToCreate.set(gameObjectName, template);
+                    
+                    // Remove from scene if destroyOriginal is true
+                    if (destroyOriginal) {
+                        if (sceneObj.parent) {
+                            sceneObj.parent.removeChild(sceneObj);
+                        }
+                        const index = window.engine.gameObjects.indexOf(sceneObj);
+                        if (index > -1) {
+                            window.engine.gameObjects.splice(index, 1);
+                        }
+                    }
+                    
+                    obj = template;
+                }
             } else {
-                // Fall back to getting from the scene
+                // Not in cache - get from scene and cache it
                 obj = this.getGameObjectByName(gameObjectName);
-            }
-
-            // This preserves the original pristine object for future cloning
-            if (window.engine.objectsToCreate && !window.engine.objectsToCreate.has(gameObjectName)) {
-                window.engine.objectsToCreate.set(gameObjectName, obj);
+                
+                if (obj && window.engine.objectsToCreate) {
+                    // Clone it before caching to preserve the original state
+                    const template = obj.clone();
+                    window.engine.objectsToCreate.set(gameObjectName, template);
+                    
+                    // Remove the original from scene if destroyOriginal is true
+                    if (destroyOriginal) {
+                        if (obj.parent) {
+                            obj.parent.removeChild(obj);
+                        }
+                        const index = window.engine.gameObjects.indexOf(obj);
+                        if (index > -1) {
+                            window.engine.gameObjects.splice(index, 1);
+                        }
+                    }
+                    
+                    obj = template;
+                }
             }
 
             if (obj) {
                 const clone = obj.clone();
-
-                clone.position.x = x;
-                clone.position.y = y;
-
-                if (destroyOriginal) {
-
-                    if (obj.parent) {
-                        obj.parent.removeChild(obj);
-                    }
-                    obj.onDestroy();
+                if (startInvisible) {
+                    clone.visible = false;
                 }
 
+                clone.position = new Vector2(x, y);
                 clone.start();
                 window.engine.addGameObject(clone);
 
@@ -526,7 +556,55 @@ class Module {
             }
         }
 
-        // 2) copy all your own data except any gameObject pointers
+        // FIXED: First, copy exposed properties using their getters to get current values
+        if (Array.isArray(this.exposedProperties)) {
+            for (const prop of this.exposedProperties) {
+                const propName = prop.name;
+                let currentValue;
+                
+                // Get the CURRENT value via getter or direct access
+                if (typeof this.getProperty === 'function') {
+                    currentValue = this.getProperty(propName);
+                } else {
+                    currentValue = this[propName]; // This uses the getter if defined
+                }
+                
+                // Deep clone the value
+                let clonedValue;
+                if (currentValue == null || typeof currentValue === 'function') {
+                    clonedValue = currentValue;
+                }
+                else if (Array.isArray(currentValue)) {
+                    clonedValue = currentValue.map(item =>
+                        (item && typeof item.clone === 'function')
+                            ? item.clone()
+                            : item
+                    );
+                }
+                else if (typeof currentValue.clone === 'function') {
+                    clonedValue = currentValue.clone();
+                }
+                else if (typeof currentValue === 'object') {
+                    try {
+                        clonedValue = JSON.parse(JSON.stringify(currentValue));
+                    } catch (e) {
+                        clonedValue = currentValue; // Fallback for non-serializable objects
+                    }
+                }
+                else {
+                    clonedValue = currentValue;
+                }
+                
+                // Set the value on the cloned module using setter
+                if (typeof cloned.setProperty === 'function') {
+                    cloned.setProperty(propName, clonedValue);
+                } else {
+                    cloned[propName] = clonedValue; // This uses the setter if defined
+                }
+            }
+        }
+
+        // 2) copy all other properties except gameObject pointers and exposed properties
         const keys = new Set([
             ...Object.getOwnPropertyNames(this),
             ...Object.keys(this)
@@ -535,8 +613,20 @@ class Module {
         keys.delete('_gameObject');
         keys.delete('_previousGameObject');
         keys.delete('constructor');
+        
+        // Build a set of exposed property names (including private versions) to skip
+        const exposedPropNames = new Set();
+        if (Array.isArray(this.exposedProperties)) {
+            for (const prop of this.exposedProperties) {
+                exposedPropNames.add(prop.name);
+                exposedPropNames.add(`_${prop.name}`); // Skip private version too
+            }
+        }
 
         for (const key of keys) {
+            // Skip if this is an exposed property (already handled above)
+            if (exposedPropNames.has(key)) continue;
+            
             const v = this[key];
             if (v == null || typeof v === 'function') {
                 cloned[key] = v;
@@ -552,7 +642,11 @@ class Module {
                 cloned[key] = v.clone();
             }
             else if (typeof v === 'object') {
-                cloned[key] = JSON.parse(JSON.stringify(v));
+                try {
+                    cloned[key] = JSON.parse(JSON.stringify(v));
+                } catch (e) {
+                    cloned[key] = v; // Fallback for non-serializable objects
+                }
             }
             else {
                 cloned[key] = v;

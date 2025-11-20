@@ -24,15 +24,16 @@ class AssetManagerWindow extends EditorWindow {
             'basic_drawing_module.dmjs',
             'marching_squares.dmjs',
             'infinite_2d_parallax_starfield.dmjs',
-            'top_down_cars_and_road_cone.dmjs',
+            'solar_system_physics_simulation.dmjs',
             'asteroids.dmjs',
-            '2d_context_3d.dmjs',
+            'top_down_cars_and_road_cone.dmjs',
             'matter_js.dmjs',
             'puddle_lake_generator.dmjs',
             'splines.dmjs',
             'platformer_procedurally_generated.dmjs',
             'object_visual_effects.dmjs',
-            'dialog_system_editor.dmjs'
+            'dialog_system_editor.dmjs',
+            '2d_context_3d.dmjs'
             // Add more known asset filenames here
         ];
 
@@ -41,8 +42,28 @@ class AssetManagerWindow extends EditorWindow {
         this.selectedAssets = new Set();
         this.isLoading = false;
 
+        // Image crop percentage (0 = no crop, 0.25 = 25% crop from edges, etc.)
+        this.imageCropPercent = 0.10;
+
         this.setupUI();
         this.scanForAssets();
+    }
+
+    getImageCropStyles() {
+        // Calculate scale based on crop percentage
+        // If we crop 25% (0.25), we need to scale to 150% (1 / (1 - 0.25 * 2))
+        const scale = 1 / (1 - this.imageCropPercent * 2);
+        const scalePercent = (scale * 100).toFixed(2);
+        
+        // Calculate transform offset percentage
+        // This centers the scaled image
+        const translatePercent = ((scale - 1) / 2 / scale * 100).toFixed(2);
+        
+        return {
+            scale: scale,
+            scalePercent: scalePercent,
+            translatePercent: translatePercent
+        };
     }
 
     setupUI() {
@@ -374,16 +395,31 @@ class AssetManagerWindow extends EditorWindow {
             align-items: center;
         `;
 
+        // Create image container with crop
+        const cropStyles = this.getImageCropStyles();
+        const imageContainer = document.createElement('div');
+        imageContainer.style.cssText = `
+            width: 512px;
+            height: 512px;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+
         // Create image element
         const image = document.createElement('img');
         image.src = imageSrc;
         image.style.cssText = `
-            width: 512px;
-            height: 512px;
+            width: ${cropStyles.scalePercent}%;
+            height: ${cropStyles.scalePercent}%;
             object-fit: cover;
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            object-position: center;
         `;
+
+        imageContainer.appendChild(image);
 
         // Create image info bar
         const imageInfo = document.createElement('div');
@@ -453,7 +489,7 @@ class AssetManagerWindow extends EditorWindow {
         document.addEventListener('keydown', handleKeyPress);
 
         modalContent.appendChild(closeBtn);
-        modalContent.appendChild(image);
+        modalContent.appendChild(imageContainer);
         modalContent.appendChild(imageInfo);
         modal.appendChild(modalContent);
         document.body.appendChild(modal);
@@ -465,7 +501,7 @@ class AssetManagerWindow extends EditorWindow {
 
         image.onerror = () => {
             imageInfo.textContent = `${imageName} (Failed to load)`;
-            image.style.display = 'none';
+            imageContainer.style.display = 'none';
         };
     }
 
@@ -507,10 +543,13 @@ class AssetManagerWindow extends EditorWindow {
         border-radius: 8px 8px 0 0;
     `;
 
-        // Build image HTML (256x256)
+        // Build image HTML (256x256) with crop
+        const cropStyles = this.getImageCropStyles();
         let imageHtml = '';
         if (asset.customIcon && asset.customIcon.data) {
-            imageHtml = `<img src="${asset.customIcon.data}" style="width: 256px; height: 256px; border-radius: 8px; object-fit: cover; margin-right: 20px;">`;
+            imageHtml = `<div style="width: 256px; height: 256px; border-radius: 8px; overflow: hidden; margin-right: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                <img src="${asset.customIcon.data}" style="width: ${cropStyles.scalePercent}%; height: ${cropStyles.scalePercent}%; object-fit: cover; object-position: center;">
+            </div>`;
         } else {
             imageHtml = `<div style="width: 256px; height: 256px; border-radius: 8px; background: rgba(0, 120, 212, 0.1); border: 1px solid rgba(0, 120, 212, 0.3); display: flex; align-items: center; justify-content: center; margin-right: 20px;">
                 <i class="fas ${asset.icon}" style="font-size: 48px; color: #0078d4;"></i>
@@ -728,17 +767,20 @@ class AssetManagerWindow extends EditorWindow {
         border-radius: 6px;
         background: rgba(0, 120, 212, 0.1);
         border: 1px solid rgba(0, 120, 212, 0.3);
+        overflow: hidden;
     `;
 
         if (asset.customIcon && asset.customIcon.data) {
-            // Use custom icon image
+            // Use custom icon image with crop
+            const cropStyles = this.getImageCropStyles();
             const iconImg = document.createElement('img');
             iconImg.src = asset.customIcon.data;
             iconImg.style.cssText = `
-            width: 40px;
-            height: 40px;
+            width: ${cropStyles.scalePercent}%;
+            height: ${cropStyles.scalePercent}%;
             border-radius: 4px;
             object-fit: cover;
+            object-position: center;
         `;
             iconImg.onerror = () => {
                 // Fallback to FontAwesome icon if image fails to load

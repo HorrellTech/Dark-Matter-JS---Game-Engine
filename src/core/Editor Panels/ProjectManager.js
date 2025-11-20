@@ -225,6 +225,21 @@ class ProjectManager {
             };
         }
 
+        // 1.2. Reset module registry
+        if (window.moduleRegistry) {
+            const registeredModules = window.moduleRegistry.getAllModules();
+            registeredModules.forEach(moduleClass => {
+                window.moduleRegistry.unregister(moduleClass.name);
+            });
+            console.log("Module registry cleared.");
+        }
+
+        // 1.3. Reset module manager if it exists
+        if (this.editor.moduleManager) {
+            this.editor.moduleManager.registeredModules.clear();
+            console.log("Module manager cleared.");
+        }
+
         // 2. Load project.json
         const projectJsonFile = zip.file("project.json");
         if (!projectJsonFile) {
@@ -473,9 +488,75 @@ class ProjectManager {
                 }
             }
 
+            // Reset module registry
+            if (window.moduleRegistry) {
+                const registeredModules = window.moduleRegistry.getAllModules();
+                registeredModules.forEach(moduleClass => {
+                    window.moduleRegistry.unregister(moduleClass.name);
+                });
+                console.log("Module registry cleared for new project.");
+            }
+
+            // Reset module manager if it exists
+            if (this.editor.moduleManager) {
+                this.editor.moduleManager.registeredModules.clear();
+                console.log("Module manager cleared for new project.");
+            }
+
             // 1. Reset File Browser
             await this.fileBrowser.resetDatabase(promptUser); // This clears and re-initializes with root
             await this.fileBrowser.navigateTo('/'); // Navigate to root after reset
+
+            // 1.1. Reset engine state if engine exists
+            if (window.engine) {
+                // Stop the engine if it's running
+                if (window.engine.running) {
+                    window.engine.stop();
+                }
+
+                // Clear engine's game objects and scene references
+                window.engine.gameObjects = [];
+                window.engine.scene = null;
+                window.engine.activeScene = null;
+                window.engine.originalGameObjects = [];
+                window.engine.dynamicObjects.clear();
+
+                // Reset viewport to default
+                window.engine.viewport = {
+                    width: 800,
+                    height: 600,
+                    x: 0,
+                    y: 0,
+                    zoom: 1,
+                    angle: 0,
+                    minZoom: 0.1,
+                    maxZoom: 10,
+                    dirty: true,
+                    shake: { x: 0, y: 0, intensity: 0, duration: 0 }
+                };
+
+                // Reset physics if available
+                if (window.physicsManager) {
+                    window.physicsManager.reset();
+                }
+
+                console.log("Engine state reset for new project.");
+            }
+
+            // 1.2. Reset module registry
+            if (window.moduleRegistry) {
+                const registeredModules = window.moduleRegistry.getAllModules();
+                registeredModules.forEach(moduleClass => {
+                    window.moduleRegistry.unregister(moduleClass.name);
+                });
+                console.log("Module registry cleared for loaded project.");
+            }
+
+            // 1.3. Reset module manager if it exists
+            if (this.editor.moduleManager) {
+                this.editor.moduleManager.registeredModules.clear();
+                console.log("Module manager cleared for loaded project.");
+            }
 
             // 2. Reset Scenes
             this.editor.scenes = [];

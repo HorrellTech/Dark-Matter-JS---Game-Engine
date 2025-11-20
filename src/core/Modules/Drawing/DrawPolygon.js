@@ -18,6 +18,15 @@ class DrawPolygon extends Module {
         this.outlineColor = "#000000";
         this.outlineWidth = 2;
 
+        // Gizmo properties for editor
+        this.showGizmos = true;
+        this.gizmoRadius = 8;
+        this.selectedVertexIndex = -1;
+        this.draggingVertexIndex = -1;
+        this.isDragging = false;
+        this.dragOffset = new Vector2(0, 0);
+        this.hoveredVertex = -1;
+
         this.exposeProperty("vertices", "polygon", this.vertices, {
             description: "Array of Vector2 points (min 3)",
             minItems: 3,
@@ -134,6 +143,272 @@ class DrawPolygon extends Module {
     }
 
     /**
+     * Draw gizmos for interactive editing in the editor
+     */
+    drawGizmos(ctx) {
+        if (!this.showGizmos || !this.vertices || this.vertices.length === 0 || !this.gameObject) return;
+
+        ctx.save();
+
+        // Apply GameObject transform
+        const worldPos = this.gameObject.getWorldPosition();
+        const worldAngle = this.gameObject.angle;
+
+        ctx.translate(worldPos.x, worldPos.y);
+        ctx.rotate(worldAngle * Math.PI / 180);
+        ctx.translate(this.offset.x, this.offset.y);
+
+        // Only draw full gizmos if object is selected
+        if (!this.gameObject.isEditorSelected) {
+            // Draw polygon icon
+            ctx.translate(-this.offset.x, -this.offset.y);
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(162, 0, 255, 0.6)";
+            ctx.fill();
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw polygon shape icon
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-6, -4);
+            ctx.lineTo(0, -6);
+            ctx.lineTo(6, -4);
+            ctx.lineTo(6, 4);
+            ctx.lineTo(0, 6);
+            ctx.lineTo(-6, 4);
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.restore();
+            return;
+        }
+
+        // Draw connecting lines between vertices
+        ctx.strokeStyle = "rgba(162, 0, 255, 0.3)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (this.vertices.length > 0) {
+            ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+            for (let i = 1; i < this.vertices.length; i++) {
+                ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+            }
+            ctx.closePath();
+        }
+        ctx.stroke();
+
+        // Draw vertex points
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+            const isSelected = i === this.selectedVertexIndex;
+            const isHovered = i === this.hoveredVertex;
+            const isDragging = i === this.draggingVertexIndex;
+
+            // Draw outer glow for hovered/selected
+            if (isHovered || isSelected || isDragging) {
+                ctx.beginPath();
+                ctx.arc(vertex.x, vertex.y, this.gizmoRadius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(162, 0, 255, 0.2)";
+                ctx.fill();
+            }
+
+            // Draw vertex circle
+            ctx.beginPath();
+            ctx.arc(vertex.x, vertex.y,
+                isDragging ? this.gizmoRadius * 1.7 :
+                    (isSelected ? this.gizmoRadius * 1.5 : this.gizmoRadius),
+                0, Math.PI * 2);
+
+            ctx.fillStyle = isDragging ? "#FF4444" :
+                (isSelected ? "#FF0000" :
+                    (isHovered ? "#CC00FF" : "#A200FF"));
+            ctx.fill();
+
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw vertex index
+            ctx.fillStyle = "#FFFFFF";
+            ctx.font = "bold 12px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(i.toString(), vertex.x, vertex.y);
+
+            // Draw delete hint on right-click hover
+            if (isHovered && this.vertices.length > 3) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.font = "10px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("Right-click to delete", vertex.x, vertex.y - this.gizmoRadius * 2 - 5);
+            }
+        }
+
+        // Draw polygon icon at object center
+        ctx.translate(-this.offset.x, -this.offset.y);
+        ctx.beginPath();
+        ctx.arc(0, 0, 12, 0, Math.PI * 2);
+        ctx.fillStyle = "#A200FF";
+        ctx.fill();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw polygon shape icon
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-6, -4);
+        ctx.lineTo(0, -6);
+        ctx.lineTo(6, -4);
+        ctx.lineTo(6, 4);
+        ctx.lineTo(0, 6);
+        ctx.lineTo(-6, 4);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    /**
+     * Handle gizmo interaction from the editor
+     */
+    handleGizmoInteraction(worldPos, isClick = false) {
+        if (!this.showGizmos) return null;
+
+        if (isClick) {
+            return this.onMouseDown(worldPos, 0);
+        } else {
+            return this.onMouseMove(worldPos);
+        }
+    }
+
+    /**
+     * Convert world position to local position (accounting for GameObject transform)
+     */
+    worldToLocal(worldPos) {
+        if (!this.gameObject) return worldPos.clone();
+
+        const gameObjectWorldPos = this.gameObject.getWorldPosition();
+        const gameObjectAngle = this.gameObject.angle;
+
+        // Translate to local space
+        let localX = worldPos.x - gameObjectWorldPos.x;
+        let localY = worldPos.y - gameObjectWorldPos.y;
+
+        // Rotate to local space
+        const angleRad = -gameObjectAngle * Math.PI / 180;
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+
+        const rotatedX = localX * cos - localY * sin;
+        const rotatedY = localX * sin + localY * cos;
+
+        // Account for offset
+        return new Vector2(rotatedX - this.offset.x, rotatedY - this.offset.y);
+    }
+
+    /**
+     * Handle mouse down event for gizmo interaction
+     */
+    onMouseDown(worldPos, button) {
+        if (!this.showGizmos) return false;
+
+        const localPos = this.worldToLocal(worldPos);
+
+        // Right click - delete vertex
+        if (button === 2) {
+            for (let i = 0; i < this.vertices.length; i++) {
+                if (this.vertices.length <= 3) break; // Keep at least 3 vertices
+
+                const vertex = this.vertices[i];
+                const distance = Math.sqrt(
+                    Math.pow(localPos.x - vertex.x, 2) +
+                    Math.pow(localPos.y - vertex.y, 2)
+                );
+
+                if (distance <= this.gizmoRadius * 2) {
+                    this.removeVertex(i);
+                    this.selectedVertexIndex = -1;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Left click - select/drag vertex
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+            const distance = Math.sqrt(
+                Math.pow(localPos.x - vertex.x, 2) +
+                Math.pow(localPos.y - vertex.y, 2)
+            );
+
+            if (distance <= this.gizmoRadius * 2) {
+                this.selectedVertexIndex = i;
+                this.draggingVertexIndex = i;
+                this.isDragging = true;
+                this.dragOffset.x = localPos.x - vertex.x;
+                this.dragOffset.y = localPos.y - vertex.y;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle mouse move event for gizmo interaction
+     */
+    onMouseMove(worldPos) {
+        if (!this.showGizmos) return false;
+
+        const localPos = this.worldToLocal(worldPos);
+
+        // Update dragging
+        if (this.isDragging && this.draggingVertexIndex >= 0) {
+            this.vertices[this.draggingVertexIndex].x = localPos.x - this.dragOffset.x;
+            this.vertices[this.draggingVertexIndex].y = localPos.y - this.dragOffset.y;
+            this._onVerticesChanged(); // Update RigidBody if present
+            return true;
+        }
+
+        // Update hover states
+        this.hoveredVertex = -1;
+
+        // Check vertices
+        for (let i = 0; i < this.vertices.length; i++) {
+            const vertex = this.vertices[i];
+            const distance = Math.sqrt(
+                Math.pow(localPos.x - vertex.x, 2) +
+                Math.pow(localPos.y - vertex.y, 2)
+            );
+
+            if (distance <= this.gizmoRadius * 2) {
+                this.hoveredVertex = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle mouse up event
+     */
+    onMouseUp(worldPos, button) {
+        if (this.isDragging) {
+            this.isDragging = false;
+            this.draggingVertexIndex = -1;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Called when the module is attached to a game object
      * This is a good place to sync vertices with RigidBody
      */
@@ -144,69 +419,6 @@ class DrawPolygon extends Module {
         }
     }
 
-    /**
-     * Ensure Vector2 objects are properly serialized
-     */
-    toJSON() {
-        const json = super.toJSON();
-        
-        // Serialize vertices array - ensure each Vector2 is represented as an object
-        if (this.vertices && Array.isArray(this.vertices)) {
-            json.vertices = this.vertices.map(v => ({
-                x: v.x || 0,
-                y: v.y || 0
-            }));
-        }
-        
-        // Serialize offset Vector2
-        if (this.offset) {
-            json.offset = {
-                x: this.offset.x || 0,
-                y: this.offset.y || 0
-            };
-        }
-        
-        return json;
-    }
-
-    /**
-     * Ensure Vector2 objects are properly reconstructed from serialized data
-     * @param {Object} json - Serialized data
-     */
-    fromJSON(json) {
-        super.fromJSON(json);
-        
-        // Reconstruct vertices array - check for valid data first
-        if (json.vertices && Array.isArray(json.vertices)) {
-            try {
-                this.vertices = json.vertices.map(v => new Vector2(v.x || 0, v.y || 0));
-            } catch (e) {
-                console.warn("Error reconstructing polygon vertices:", e);
-                // Fallback to default triangle
-                this.vertices = [
-                    new Vector2(0, -50),
-                    new Vector2(50, 50),
-                    new Vector2(-50, 50)
-                ];
-            }
-        }
-        
-        // Reconstruct offset Vector2 - check for valid data first
-        if (json.offset && typeof json.offset === 'object') {
-            try {
-                this.offset = new Vector2(json.offset.x || 0, json.offset.y || 0);
-            } catch (e) {
-                console.warn("Error reconstructing polygon offset:", e);
-                this.offset = new Vector2(0, 0);
-            }
-        }
-        
-        // Don't call _onVerticesChanged here, as the gameObject may not be set yet
-        // It will be called in onAttach
-        
-        return this;
-    }
-    
     /**
      * Set a vertex at a specific index
      * @param {number} index - Index of the vertex to modify
@@ -284,8 +496,8 @@ class DrawPolygon extends Module {
 
     toJSON() {
         const json = super.toJSON();
-        json.vertices = this.vertices.map(v => v.toJSON());
-        json.offset = this.offset.toJSON();
+        json.vertices = this.vertices.map(v => v.toJSON ? v.toJSON() : { x: v.x || 0, y: v.y || 0 });
+        json.offset = this.offset.toJSON ? this.offset.toJSON() : { x: this.offset.x || 0, y: this.offset.y || 0 };
         json.color = this.color;
         json.fill = this.fill;
         json.outline = this.outline;
@@ -296,8 +508,32 @@ class DrawPolygon extends Module {
 
     fromJSON(json) {
         super.fromJSON(json);
-        this.vertices = json.vertices.map(v => Vector2.fromJSON(v));
-        this.offset = Vector2.fromJSON(json.offset) || new Vector2(0, 0);
+        
+        // Reconstruct vertices array
+        if (json.vertices && Array.isArray(json.vertices)) {
+            try {
+                this.vertices = json.vertices.map(v => new Vector2(v.x || 0, v.y || 0));
+            } catch (e) {
+                console.warn("Error reconstructing polygon vertices:", e);
+                // Fallback to default triangle
+                this.vertices = [
+                    new Vector2(0, -50),
+                    new Vector2(50, 50),
+                    new Vector2(-50, 50)
+                ];
+            }
+        }
+        
+        // Reconstruct offset Vector2
+        if (json.offset && typeof json.offset === 'object') {
+            try {
+                this.offset = new Vector2(json.offset.x || 0, json.offset.y || 0);
+            } catch (e) {
+                console.warn("Error reconstructing polygon offset:", e);
+                this.offset = new Vector2(0, 0);
+            }
+        }
+        
         this.color = json.color || "#ffffff";
         this.fill = json.fill !== undefined ? json.fill : true;
         this.outline = json.outline !== undefined ? json.outline : false;

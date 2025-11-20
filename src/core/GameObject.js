@@ -21,6 +21,7 @@ class GameObject {
         this.expanded = false; // Track if expanded in hierarchy
         this.editorColor = this.generateRandomColor(); // Color in editor view
         this.id = crypto.randomUUID(); // Generate unique ID
+        this.solid = false; // Whether this object is solid for collision purposes
 
         this.isEditorSelected = this.selected; // Whether selected in editor
 
@@ -156,7 +157,7 @@ class GameObject {
 
         // Update depth based on Y position if enabled
         if (this.depthToY) {
-            this.depth = Math.floor(this.position.y);
+            this.depth = -Math.floor(this.position.y);
         }
 
         // Update polygon if enabled
@@ -1747,22 +1748,136 @@ class GameObject {
     clone(addNameCopySuffix = false) {
         const originalGameObject = this;
 
-        // Create new GameObject
-        // Only add " (Copy)" if not already present
+        // Create new GameObject with basic properties
         let newName = this.name;
         if (addNameCopySuffix && !newName.trim().endsWith("(Copy)")) {
             newName += " (Copy)";
         }
-        const cloned = GameObject.fromJSON(this.toJSON());
-
-        cloned.name = newName;
-
-        // Generate a new unique ID for the cloned GameObject
+        
+        // IMPROVED: Instead of using JSON serialization which might capture old values,
+        // directly create and configure the new GameObject
+        const cloned = new GameObject(newName);
+        
+        // Generate a new unique ID
         cloned.id = crypto.randomUUID ? crypto.randomUUID() : `go-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        
+        // Copy basic properties
+        cloned.position = this.position.clone();
+        cloned.scale = this.scale.clone();
+        cloned.size = this.size.clone();
+        cloned.angle = this.angle;
+        cloned.depth = this.depth;
+        cloned.depthToY = this.depthToY;
+        cloned.active = this.active;
+        cloned.visible = this.visible;
+        cloned.editorColor = this.editorColor;
+        
+        // Copy collision properties
+        cloned.useCollisions = this.useCollisions;
+        cloned.collisionEnabled = this.collisionEnabled;
+        cloned.collisionLayer = this.collisionLayer;
+        cloned.collisionMask = this.collisionMask;
+        cloned.colliderWidth = this.colliderWidth;
+        cloned.colliderHeight = this.colliderHeight;
+        
+        // Copy shadow properties
+        cloned.drawShadow = this.drawShadow;
+        cloned.shadowColor = this.shadowColor;
+        cloned.shadowBlur = this.shadowBlur;
+        cloned.shadowOffsetX = this.shadowOffsetX;
+        cloned.shadowOffsetY = this.shadowOffsetY;
+        
+        // Copy polygon collision properties
+        cloned.usePolygonCollision = this.usePolygonCollision;
+        cloned.polygonPointCount = this.polygonPointCount;
+        cloned.polygonAngleOffset = this.polygonAngleOffset;
+        if (this.polygonPoints && this.polygonPoints.length > 0) {
+            cloned.polygonPoints = this.polygonPoints.map(pt => pt.clone());
+            cloned.polygon = new Polygon(cloned, cloned.position.clone(), ...cloned.polygonPoints.map(pt => pt.clone()));
+        }
+        
+        // Copy tags
+        cloned.tags = [...this.tags];
+        
+        // CRITICAL: Clone modules using the LIVE module instances and current class definitions
+        this.modules.forEach(sourceModule => {
+            try {
+                const ModuleClass = sourceModule.constructor;
+                console.log(`🔄 Cloning module: ${ModuleClass.name}`);
+                
+                // FIXED: Use the module's clone() method which properly handles exposed properties
+                const newModule = sourceModule.clone(cloned);
+                
+                // Generate a NEW unique ID for the module (don't copy the old one!)
+                newModule.id = crypto.randomUUID ? crypto.randomUUID() : `m-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                
+                // The clone method already set the gameObject reference, but ensure it's correct
+                newModule.gameObject = cloned;
+                
+                // IMPORTANT: Manually add to modules array instead of using addModule()
+                // to avoid triggering dependency resolution which might add duplicates
+                cloned.modules.push(newModule);
+                
+                // Call onAttach manually
+                if (typeof newModule.onAttach === 'function') {
+                    try {
+                        newModule.onAttach(cloned);
+                    } catch (error) {
+                        console.error(`Error calling onAttach on cloned ${ModuleClass.name}:`, error);
+                    }
+                }
+                
+                console.log(`  ✅ Cloned module ${ModuleClass.name} successfully`);
+                
+            } catch (error) {
+                console.error(`Failed to clone module ${sourceModule.constructor.name}:`, error);
+            }
+        });
+        
+        // Clone children recursively
+        this.children.forEach(child => {
+            const clonedChild = child.clone(false); // Don't add copy suffix to children
+            cloned.addChild(clonedChild);
+        });
 
+        console.log(`✅ GameObject cloned: ${this.name} -> ${cloned.name}`);
         return cloned;
     }
 
+    /**
+     * Deep clone a value for module property copying
+     * Fallback if moduleReloader is not available
+     */
+    deepCloneValue(value) {
+        if (value === null || value === undefined) {
+            return value;
+        }
+        if (typeof value !== 'object') {
+            return value;
+        }
+        if (value instanceof Date) {
+            return new Date(value.getTime());
+        }
+        if (value.constructor && value.constructor.name === 'Vector2') {
+            return new Vector2(value.x, value.y);
+        }
+        if (value.constructor && value.constructor.name === 'Vector3') {
+            return new Vector3(value.x, value.y, value.z);
+        }
+        if (Array.isArray(value)) {
+            return value.map(item => this.deepCloneValue(item));
+        }
+        if (value.constructor === Object || !value.constructor) {
+            const cloned = {};
+            for (const key in value) {
+                if (value.hasOwnProperty(key)) {
+                    cloned[key] = this.deepCloneValue(value[key]);
+                }
+            }
+            return cloned;
+        }
+        return value;
+    }
 }
 
 function deepScanAndReplaceAllReferences(obj, originalObj, newObj) {

@@ -97,6 +97,30 @@ class Scene {
         return this.findGameObjectByIdRecursive(this.gameObjects, id);
     }
 
+    /**
+     * Find a GameObject by ID in the scene hierarchy
+     * @param {string} id - The GameObject ID
+     * @returns {GameObject|null} - The found GameObject or null
+     */
+    findObjectById(id) {
+        if (!id) return null;
+        
+        const search = (objects) => {
+            for (const obj of objects) {
+                if (obj.id === id) {
+                    return obj;
+                }
+                if (obj.children && obj.children.length > 0) {
+                    const found = search(obj.children);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        
+        return search(this.gameObjects);
+    }
+
     findGameObjectByIdRecursive(objects, id) {
         for (const obj of objects) {
             if (obj.id === id) {

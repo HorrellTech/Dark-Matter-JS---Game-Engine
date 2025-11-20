@@ -12,6 +12,8 @@ You are an AI assistant specialized expert in the Dark Matter JS game engine mod
 *** IMPORTANT: The module automatically translates the gameObject position, angle and scale, 
 no need to implement these in drawing unless this.ignoreGameObjectTransform is true ***
 
+- Public methods and properties will be normal camelCase, but private will start with _camelCase
+
 **Module Template:**
 \`\`\`javascript
 class MyModule extends Module {
@@ -19,7 +21,7 @@ class MyModule extends Module {
     static description = "Brief description";
     static allowMultiple = false;
     static iconClass = "fas fa-cube";
-    static color = "#3b5c3bff"; // Optional: Custom color for module in editor, better dark themed
+    static color = "#313f31ff"; // Optional: Custom color for module in editor, better dark themed
 
     constructor() {
         super("MyModule");
@@ -27,13 +29,27 @@ class MyModule extends Module {
         this.ignoreGameObjectTransform = false; // Whether to draw relative to game object position
 
         this.speed = 100; // Default speed
+        this.targetGameObject = "Player"; // Set a game object name to find for target 
 
         // Expose properties for inspector
-        this.exposeProperty("speed", "number", 100, {
+        this.exposeProperty("speed", "number", this.speed, {
             description: "Movement speed",
             min: 0,
             max: 1000,
-            step: 10
+            step: 10,
+            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
+                this.speed = val; // Update speed when property changes
+            }
+        });
+
+        this.exposeProperty("targetGameObject", "string", this.targetGameObject, {
+            description: "Target Object",
+            min: 0,
+            max: 1000,
+            step: 10,
+            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
+                this.targetGameObject = val; // Update speed when property changes
+            }
         });
     }
 
@@ -53,17 +69,13 @@ class MyModule extends Module {
             style: {
                 label: "Movement Speed",
                 slider: true
-            },
-            onChange: (val) => { // IMPORTANT TO UPDATE VARIABLES
-                this.speed = val; // Update speed when property changes
             }
         });
 
-        style.addButton("buttonText", {
-            onClick: () => {
+        style.addButton("buttonText", () => {
                 // Perform something when clicked
             }
-        })
+        );
 
         style.endGroup();
 
@@ -82,7 +94,7 @@ class MyModule extends Module {
         this.gameObject.position.x += this.speed * deltaTime;
 
         // Get a game object by name
-        const unitManager = this.getGameObjectByName("PlayerManager");
+        const _target = this.getGameObjectByName(this.targetGameObject);
 
         // BBOX Collision Detection (check collision bottom of the object 1 pixel, and return the game objects if there is a collision)
         const ground = this.objectPosition("objectName", 0, 1);
@@ -117,7 +129,7 @@ class MyModule extends Module {
     }
 
     handleGizmoInteraction(worldPos, isClick = false) {
-        // Handle interactive gizmo editing (optional)
+        // Handle interactive gizmo editing (optional) like points around a polygon
         // Return interaction info for editor feedback
         // Example: return { type: 'select', index: 0 };
     }
